@@ -1,57 +1,146 @@
-# Sample Hardhat 3 Beta Project (`node:test` and `viem`)
+# `rome-solidity`
 
-This project showcases a Hardhat 3 Beta project using the native Node.js test runner (`node:test`) and the `viem` library for Ethereum interactions.
+`rome-solidity` is a Solidity smart contract monorepo for SPL/EVM cross-program interaction primitives within Rome-EVM program stack, token utilities, and a Meteora DEX AMM implementation, tested via Hardhat.
 
-To learn more about the Hardhat 3 Beta, please visit the [Getting Started guide](https://hardhat.org/docs/getting-started#getting-started-with-hardhat-3). To share your feedback, join our [Hardhat 3 Beta](https://hardhat.org/hardhat3-beta-telegram-group) Telegram group or [open an issue](https://github.com/NomicFoundation/hardhat/issues/new) in our GitHub issue tracker.
+## Key goals
 
-## Project Overview
+- Solana-compatible token/account behavior in EVM style
+- `Meteora DAMMv1`: automated market maker + factory/pool system
+- Cross-program invocation wrappers (CPI)
+- ERC20 SPL bridge and account helpers
 
-This example project includes:
+---
 
-- A simple Hardhat configuration file.
-- Foundry-compatible Solidity unit tests.
-- TypeScript integration tests using [`node:test`](nodejs.org/api/test.html), the new Node.js native test runner, and [`viem`](https://viem.sh/).
-- Examples demonstrating how to connect to different types of networks, including locally simulating OP mainnet.
+## Repository structure
 
-## Usage
+- contracts
+  - `access_control.sol` - SPL ERC20 & permissions
+  - `borsch.sol` - utility program primitive
+  - `convert.sol` - currency/program conversions
+  - `interface.sol` - CPI and SPL interface stubs
+  - `rome_evm_account.sol` - account abstraction
+  - `wcross_program_invocation.sol` - wrapped cross-program invocation test program
+  - `wsystem_program.sol` - system program wrapper
+  - `erc20spl/`
+    - `erc20spl_factory.sol` - factory for SPL-mapped ERC20
+    - `erc20spl.sol` - ERC20-SPL bridge token
+  - `meteora/`
+    - `damm_v1_factory.sol` - factory for DAMM v1 pools
+    - `damm_v1_pool.sol` - AMM pair pool logic
+  - `mpl_token_metadata/`
+    - `lib.sol` - metadata helper for token metadata, MPL style
+  - `spl_token/`
+    - `associated_spl_token.sol` - associated token helper
+    - `spl_token.sol` - SPL token primitives
+- scripts
+  - `deploy_meteora_factory.ts`
+  - `deploy_meteora_pool.ts`
+- hardhat.config.ts
+- package.json, tsconfig.json
+- artifacts, cache, deployments
 
-### Running Tests
+---
 
-To run all the tests in the project, execute the following command:
+## Quick start
 
-```shell
+### Requirements
+
+- Node.js 18+ (recommended)
+- npm / yarn
+- Hardhat dependencies (installed by `npm install` below)
+
+### Install
+
+```bash
+npm install
+```
+
+### Compile
+
+```bash
+npx hardhat compile
+```
+
+---
+
+## Tests
+
+Use Hardhat test suite:
+
+```bash
 npx hardhat test
 ```
 
-You can also selectively run the Solidity or `node:test` tests:
+Optionally run only specific sets (if configured by tag names or folder paths in tests):
 
-```shell
-npx hardhat test solidity
-npx hardhat test nodejs
+```bash
+npx hardhat test test/meteora
+npx hardhat test test/erc20spl
 ```
 
-### Make a deployment to Sepolia
+---
 
-This project includes an example Ignition module to deploy the contract. You can deploy this module to a locally simulated chain or to Sepolia.
+## Deployment (local / chain)
 
-To run the deployment to a local chain:
+Example scripts:
+- deploy_meteora_factory.ts
+- deploy_meteora_pool.ts
 
-```shell
-npx hardhat ignition deploy ignition/modules/Counter.ts
+Run local network:
+
+```bash
+npx hardhat node
 ```
 
-To run the deployment to Sepolia, you need an account with funds to send the transaction. The provided Hardhat configuration includes a Configuration Variable called `SEPOLIA_PRIVATE_KEY`, which you can use to set the private key of the account you want to use.
+Deploy to local Hardhat RPC:
 
-You can set the `SEPOLIA_PRIVATE_KEY` variable using the `hardhat-keystore` plugin or by setting it as an environment variable.
-
-To set the `SEPOLIA_PRIVATE_KEY` config variable using `hardhat-keystore`:
-
-```shell
-npx hardhat keystore set SEPOLIA_PRIVATE_KEY
+```bash
+npx hardhat run scripts/deploy_meteora_factory.ts --network localhost
+npx hardhat run scripts/deploy_meteora_pool.ts --network localhost
 ```
 
-After setting the variable, you can run the deployment with the Sepolia network:
+For external networks, configure API keys and accounts in hardhat.config.ts.
 
-```shell
-npx hardhat ignition deploy --network sepolia ignition/modules/Counter.ts
-```
+---
+
+## Contract highlights
+
+- `MeteoraDAMMv1Factory`
+  - create pool factory
+  - manage pool creation and fee config
+- `DAMMv1Pool`
+  - liquidity add/remove
+  - swap with invariant
+  - fee model
+- `ERC20SPLFactory` + `SPL_ERC20`
+  - minting/burning wrapped SPL tokens
+  - bridging SPL tokens to ERC20 style
+
+---
+
+## Project policies
+
+- Solidity currently targeted: 0.8.28
+- Prefer non-reentrant checks and SafeMath semantics (built in)
+- Maintain artifacts + `build-info` for deterministic testing
+- Cross-program invocations encouraged through clean wrappers in `interface.sol`
+
+---
+
+## Contributing
+
+1. Fork repo
+2. branch `feature/<name>`
+3. add/adjust tests
+4. `npm test`
+5. PR with explanation + gas/security notes
+
+---
+
+## Notes
+
+- artifacts includes compiled JSON from existing snapshot builds.
+- monti_spl.json is existing deployed contract metadata.
+- Keep toolchain with hardhat.config.ts and `tsconfig` consistent with existing pattern.
+
+---
