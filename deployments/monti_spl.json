@@ -1,0 +1,13 @@
+{
+  "MeteoraDAMMv1Factory": {
+    "address": "0x351a802b1cfae3f9e3bde68736c43957d0da9491"
+  },
+  "MeteoraDAMMv1Pools": [
+    {
+      "pubkey": "0xa4514882d7c6a6b10bc25ba983e7c8d6b077f07241f90755c6fd7831e0eda5e5",
+      "address": "0x405151f330a60C332a122A4CbEe59Fb5c61d65e9",
+      "txHash": "0xd1ae889033442d9d678e3ec1ad31f07d4974d4ed4d8124a68b85331d1ebf61bf",
+      "blockNumber": "35807"
+    }
+  ]
+}
