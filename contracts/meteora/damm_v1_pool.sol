@@ -70,7 +70,7 @@ library DAMMv1Lib {
     // Parses DAMMv1 pool
     // @param data raw Solana account data
     // @return instance PoolState structure
-    function parse_pool(bytes memory data) pure public returns (PoolState memory p)
+    function parse_pool(bytes memory data) pure internal returns (PoolState memory p)
     {
         if (data.length < POOL_PREFIX_MIN_LEN) {
             revert InvalidPoolDataLength(data.length, POOL_PREFIX_MIN_LEN);
@@ -150,7 +150,7 @@ library DAMMv1Lib {
     // @param pool_pubkey address of DAMMv1 Pool account in Solana
     // @return instance PoolState structure
     function load_pool(bytes32 pool_pubkey)
-    public
+    internal
     view
     returns (PoolState memory) {
         ICrossProgramInvocation.AccountInfo memory acc = CrossProgramInvocation.account_info(pool_pubkey);

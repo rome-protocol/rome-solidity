@@ -16,7 +16,7 @@ library RomeEVMAccount {
         return seeds;
     }
 
-    function pda(address user) public view returns (bytes32) {
+    function pda(address user) internal view returns (bytes32) {
         bytes32 rome_program = SystemProgram.rome_evm_program_id();
         ISystemProgram.Seed[] memory pda_seeds = RomeEVMAccount.balance_key_seeds(user, block.chainid);
         (bytes32 key,) = SystemProgram.find_program_address(rome_program, pda_seeds);

@@ -9,7 +9,7 @@ import {RomeEVMAccount} from "../rome_evm_account.sol";
 library AssociatedSplTokenLib {
     event Message(string account);
 
-    function program_id() public view returns (string memory) {
+    function program_id() internal view returns (string memory) {
         bytes32 key = AssociatedSplToken.program_id();
         bytes memory b58 = SystemProgram.bytes32_to_base58(key);
         return string(b58);
@@ -29,7 +29,7 @@ library AssociatedSplTokenLib {
         return seeds;
     }
 
-    function associated_token_address(bytes32 user, bytes32 mint) public view returns(bytes32, uint8) {
+    function associated_token_address(bytes32 user, bytes32 mint) internal view returns(bytes32, uint8) {
         bytes32 program_id_ = AssociatedSplToken.program_id();
         ISystemProgram.Seed[] memory seeds = associated_token_address_seeds(user, mint);
 
@@ -38,7 +38,7 @@ library AssociatedSplTokenLib {
         return (key, bump);
     }
 
-//    function associated_token_address(string memory user, string memory mint) public view returns(string memory, uint8) {
+//    function associated_token_address(string memory user, string memory mint) internal view returns(string memory, uint8) {
 //        bytes32 program_id_ = AssociatedSplToken.program_id();
 //        bytes32 user_ = SystemProgram.base58_to_bytes32(bytes(user));
 //        bytes32 mint_ = SystemProgram.base58_to_bytes32(bytes(mint));
@@ -51,7 +51,7 @@ library AssociatedSplTokenLib {
 //        return (string(b58), bump);
 //    }
 
-//    function associated_token_address(address user, string memory mint) public view returns(string memory, uint8) {
+//    function associated_token_address(address user, string memory mint) internal view returns(string memory, uint8) {
 //        bytes32 user_ = pda(user);
 //
 //        bytes32 program_id_ = AssociatedSplToken.program_id();
@@ -65,7 +65,7 @@ library AssociatedSplTokenLib {
 //        return (string(b58), bump);
 //    }
 
-//    function associated_token_address(bytes32 mint) public view returns(string memory, uint8) {
+//    function associated_token_address(bytes32 mint) internal view returns(string memory, uint8) {
 //        bytes32 user = pda(msg.sender);
 //        bytes32 program_id_ = AssociatedSplToken.program_id();
 //
@@ -77,12 +77,12 @@ library AssociatedSplTokenLib {
 //        return (string(b58), bump);
 //    }
 
-//    function associated_token_address(string memory mint) public view returns(string memory, uint8) {
+//    function associated_token_address(string memory mint) internal view returns(string memory, uint8) {
 //        bytes32 mint_ = SystemProgram.base58_to_bytes32(bytes(mint));
 //        return associated_token_address(mint_);
 //    }
 
-//    function create_associated_token_account(string memory user, string memory mint) public {
+//    function create_associated_token_account(string memory user, string memory mint) internal {
 //        bytes32 user_ = SystemProgram.base58_to_bytes32(bytes(user));
 //        bytes32 mint_ = SystemProgram.base58_to_bytes32(bytes(mint));
 //
@@ -93,7 +93,7 @@ library AssociatedSplTokenLib {
 //        // return string(b58);
 //    }
 
-//    function create_associated_token_account(string memory user, string memory mint) public returns (string memory) {
+//    function create_associated_token_account(string memory user, string memory mint) internal returns (string memory) {
 //        bytes32 user_ = SystemProgram.base58_to_bytes32(bytes(user));
 //        bytes32 mint_ = SystemProgram.base58_to_bytes32(bytes(mint));
 //
@@ -104,7 +104,7 @@ library AssociatedSplTokenLib {
 //        return string(b58);
 //     }
 
-    function create_associated_token_account(bytes32 user, bytes32 mint) public returns (bytes32) {
+    function create_associated_token_account(bytes32 user, bytes32 mint) internal returns (bytes32) {
         bytes32 key = AssociatedSplToken.create_associated_token_account(user, mint);
         return key;
     }

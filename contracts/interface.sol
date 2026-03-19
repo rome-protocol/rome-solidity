@@ -101,11 +101,15 @@ ISystemProgram constant SystemProgram = ISystemProgram(system_program_address);
 library CrossProgramInvocation {
     error AccountNotFound(bytes32 pubkey);
 
-    function invoke_signed(bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) public {
+    function invoke_signed(
+        bytes32 program_id, 
+        ICrossProgramInvocation.AccountMeta[] memory accounts, 
+        bytes memory data
+    ) internal {
         revert("Not implemented");
     }
 
-    function account_info(bytes32 pubkey) public view returns(ICrossProgramInvocation.AccountInfo memory) {
+    function account_info(bytes32 pubkey) internal view returns(ICrossProgramInvocation.AccountInfo memory) {
         if (pubkey == 0x9d908846bb27b1f3a35ca3d143d6ec1bf368a3c566b36e9bdedd96b3a7b3d415) {
             return testAccount_Bc4qMUea5Xb41oUtY5zDQtdTB2cr1msQ6v7tsXAqZhdn();
         } else if (pubkey == 0x069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001) {

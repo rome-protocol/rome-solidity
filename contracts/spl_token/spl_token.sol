@@ -36,14 +36,14 @@ library SplTokenLib {
     error InvalidMintDataLength(uint256 actual, uint256 expected, bytes32 spl_token);
     error InvalidCOptionTag(uint32 tag);
 
-    function program_id() public view returns (string memory) {
+    function program_id() internal view returns (string memory) {
         bytes32 key = SplToken.program_id();
         bytes memory b58 = SystemProgram.bytes32_to_base58(key);
 
         return string(b58);
     }
 
-    function transfer(bytes32 from, bytes32 to, uint64 amount) public {
+    function transfer(bytes32 from, bytes32 to, uint64 amount) internal {
         ISplToken.Seed[] memory seeds = new ISplToken.Seed[](0);
         (bool success, bytes memory result) = spl_token_address.delegatecall(
             abi.encodeWithSignature("transfer(bytes32,bytes32,uint64,(bytes)[])", from, to, amount, seeds)
@@ -52,7 +52,7 @@ library SplTokenLib {
         require (success, string(Convert.revert_msg(result)));
     }
 
-    function init_account(string memory acc, string memory mint, string memory owner) public {
+    function init_account(string memory acc, string memory mint, string memory owner) internal {
         bytes32 acc_ = SystemProgram.base58_to_bytes32(bytes(acc));
         bytes32 mint_ = SystemProgram.base58_to_bytes32(bytes(mint));
         bytes32 owner_ = SystemProgram.base58_to_bytes32(bytes(owner));
@@ -60,7 +60,7 @@ library SplTokenLib {
         SplToken.initialize_account3(acc_, mint_, owner_);
     }
 
-    function load_mint(bytes32 token) public view returns (SplMint memory mint) {
+    function load_mint(bytes32 token) internal view returns (SplMint memory mint) {
         ICrossProgramInvocation.AccountInfo memory spl_account = CrossProgramInvocation.account_info(token);
         return parseMint(spl_account.data, token);
     }
@@ -110,14 +110,14 @@ library SplTokenLib {
     }
 
     function transfer(bytes32 from, bytes32 to, uint256 amount)
-    public
+    internal
     returns (bool)
     {
         revert("transfer not implemented");
     }
 
     function allowance(bytes32 account, bytes32 spender)
-    public
+    internal
     view
     returns (uint256)
     {
@@ -125,14 +125,14 @@ library SplTokenLib {
     }
 
     function approve(bytes32 spender, uint256 value)
-    public
+    internal
     returns (bool)
     {
         revert("approve not implemented");
     }
 
     function transferFrom(bytes32 from, bytes32 to, uint256 value)
-    public
+    internal
     returns (bool)
     {
         revert("transferFrom not implemented");
