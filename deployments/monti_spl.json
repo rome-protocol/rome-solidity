@@ -1,13 +1,13 @@
 {
   "MeteoraDAMMv1Factory": {
-    "address": "0x351a802b1cfae3f9e3bde68736c43957d0da9491"
+    "address": "0x9a7b01047d032261443379f9094e88ede6f3f0d1"
   },
   "MeteoraDAMMv1Pools": [
     {
       "pubkey": "0xa4514882d7c6a6b10bc25ba983e7c8d6b077f07241f90755c6fd7831e0eda5e5",
-      "address": "0x405151f330a60C332a122A4CbEe59Fb5c61d65e9",
-      "txHash": "0xd1ae889033442d9d678e3ec1ad31f07d4974d4ed4d8124a68b85331d1ebf61bf",
-      "blockNumber": "35807"
+      "address": "0xb5c33DDAC59F477091181346574751E9B0290671",
+      "txHash": "0x861aeba0d9552c791d731cb3ea636caa6c179a05bca69b3dc13ecdb741e99fe7",
+      "blockNumber": "35809"
     }
   ]
 }

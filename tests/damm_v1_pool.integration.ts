@@ -134,23 +134,78 @@ describe("DAMMv1Pool integration", function () {
         );
     });
 
-    it("returns vault structs with sane values", async function () {
-        const vaultA = await pool.read.vault_a();
-        const vaultB = await pool.read.vault_b();
+it("returns vault structs with sane values", async function () {
+    const vaultA = await pool.read.vault_a();
+    const vaultB = await pool.read.vault_b();
 
-        assert.ok(isHex32(vaultA.token_vault), "vault_a.token_vault must be bytes32");
-        assert.ok(isHex32(vaultA.fee_vault), "vault_a.fee_vault must be bytes32");
-        assert.ok(isHex32(vaultA.token_mint), "vault_a.token_mint must be bytes32");
-        assert.ok(isHex32(vaultA.lp_mint), "vault_a.lp_mint must be bytes32");
+    const vaultAEnabled = vaultA[0];
+    const vaultABumps = vaultA[1];
+    const vaultATotalAmount = vaultA[2];
+    const vaultATokenVault = vaultA[3];
+    const vaultAFeeVault = vaultA[4];
+    const vaultATokenMint = vaultA[5];
+    const vaultALpMint = vaultA[6];
+    const vaultALockedProfitTracker = vaultA[7];
 
-        assert.ok(isHex32(vaultB.token_vault), "vault_b.token_vault must be bytes32");
-        assert.ok(isHex32(vaultB.fee_vault), "vault_b.fee_vault must be bytes32");
-        assert.ok(isHex32(vaultB.token_mint), "vault_b.token_mint must be bytes32");
-        assert.ok(isHex32(vaultB.lp_mint), "vault_b.lp_mint must be bytes32");
+    const vaultBEnabled = vaultB[0];
+    const vaultBBumps = vaultB[1];
+    const vaultBTotalAmount = vaultB[2];
+    const vaultBTokenVault = vaultB[3];
+    const vaultBFeeVault = vaultB[4];
+    const vaultBTokenMint = vaultB[5];
+    const vaultBLpMint = vaultB[6];
+    const vaultBLockedProfitTracker = vaultB[7];
 
-        assert.ok(vaultA.total_amount >= 0n, "vault_a.total_amount must be non-negative");
-        assert.ok(vaultB.total_amount >= 0n, "vault_b.total_amount must be non-negative");
-    });
+    assert.ok(typeof vaultAEnabled === "number", "vault_a.enabled must be number");
+    assert.ok(typeof vaultBEnabled === "number", "vault_b.enabled must be number");
+
+    assert.ok(typeof vaultABumps.vault_bump === "number", "vault_a.bumps.vault_bump must be number");
+    assert.ok(typeof vaultABumps.token_vault_bump === "number", "vault_a.bumps.token_vault_bump must be number");
+    assert.ok(typeof vaultBBumps.vault_bump === "number", "vault_b.bumps.vault_bump must be number");
+    assert.ok(typeof vaultBBumps.token_vault_bump === "number", "vault_b.bumps.token_vault_bump must be number");
+
+    assert.ok(typeof vaultATotalAmount === "bigint", "vault_a.total_amount must be bigint");
+    assert.ok(typeof vaultBTotalAmount === "bigint", "vault_b.total_amount must be bigint");
+
+    assert.ok(isHex32(vaultATokenVault), "vault_a.token_vault must be bytes32");
+    assert.ok(isHex32(vaultAFeeVault), "vault_a.fee_vault must be bytes32");
+    assert.ok(isHex32(vaultATokenMint), "vault_a.token_mint must be bytes32");
+    assert.ok(isHex32(vaultALpMint), "vault_a.lp_mint must be bytes32");
+
+    assert.ok(isHex32(vaultBTokenVault), "vault_b.token_vault must be bytes32");
+    assert.ok(isHex32(vaultBFeeVault), "vault_b.fee_vault must be bytes32");
+    assert.ok(isHex32(vaultBTokenMint), "vault_b.token_mint must be bytes32");
+    assert.ok(isHex32(vaultBLpMint), "vault_b.lp_mint must be bytes32");
+
+    assert.ok(vaultATotalAmount >= 0n, "vault_a.total_amount must be non-negative");
+    assert.ok(vaultBTotalAmount >= 0n, "vault_b.total_amount must be non-negative");
+
+    assert.ok(
+        typeof vaultALockedProfitTracker.last_updated_locked_profit === "bigint",
+        "vault_a.locked_profit_tracker.last_updated_locked_profit must be bigint",
+    );
+    assert.ok(
+        typeof vaultALockedProfitTracker.last_report === "bigint",
+        "vault_a.locked_profit_tracker.last_report must be bigint",
+    );
+    assert.ok(
+        typeof vaultALockedProfitTracker.locked_profit_degradation === "bigint",
+        "vault_a.locked_profit_tracker.locked_profit_degradation must be bigint",
+    );
+
+    assert.ok(
+        typeof vaultBLockedProfitTracker.last_updated_locked_profit === "bigint",
+        "vault_b.locked_profit_tracker.last_updated_locked_profit must be bigint",
+    );
+    assert.ok(
+        typeof vaultBLockedProfitTracker.last_report === "bigint",
+        "vault_b.locked_profit_tracker.last_report must be bigint",
+    );
+    assert.ok(
+        typeof vaultBLockedProfitTracker.locked_profit_degradation === "bigint",
+        "vault_b.locked_profit_tracker.locked_profit_degradation must be bigint",
+    );
+});
 
     it("returns reserves", async function () {
         const reserves = await pool.read.get_reserves();

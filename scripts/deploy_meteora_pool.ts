@@ -1,6 +1,6 @@
 import hardhat from "hardhat";
 import { getAddress, isHex } from "viem";
-import { resolveFactoryAddress, savePoolDeployment } from "./lib/deployments";
+import { resolveFactoryAddress, savePoolDeployment } from "./lib/deployments.js";
 
 function requireEnv(name: string): string {
     const value = process.env[name];
