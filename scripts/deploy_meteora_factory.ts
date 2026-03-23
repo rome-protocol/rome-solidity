@@ -12,8 +12,8 @@ function requireEnv(name: string): string {
 }
 
 async function main() {
-    const progDynamicAmm = "0xcbe5357484699af28489f7d3f863df8f04c10db8bf8f753ea7f2d79e6e09f4b0";
-    const progDynamicVault = "0x1051efe75a2e47e09ee987cf6761dffaad9aca72a74206ded07e0773d5975e4c";
+    const progDynamicAmm = "0xccf802d4cccc84d7fb21b5f73b49d81a16c5b4c88ee32394e1c91d3588cc4080"; // Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB
+    const progDynamicVault = "0x0fbfe8846d685cbdc62cca7e04c7e8f68dcc313ab31277e2e0112a2ec0e052e5"; // 24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi
     const cpiAddress = "0xFF00000000000000000000000000000000000008"; // Precompile address for CPI
 
     const { viem, networkName } = await hardhat.network.connect();
