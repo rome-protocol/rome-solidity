@@ -149,21 +149,21 @@ library DAMMv1Lib {
     // Reads DAMMv1 pool account from Solana and parses it
     // @param pool_pubkey address of DAMMv1 Pool account in Solana
     // @return instance PoolState structure
-    function load_pool(bytes32 pool_pubkey)
+    function load_pool(bytes32 pool_pubkey, address cpi_program)
     internal
     view
     returns (PoolState memory) {
-        ICrossProgramInvocation.AccountInfo memory acc = CrossProgramInvocation.account_info(pool_pubkey);
-        return parse_pool(acc.data);
+        (,,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(pool_pubkey);
+        return parse_pool(data);
     }
 
-    function load_vault(bytes32 vault_pubkey)
+    function load_vault(bytes32 vault_pubkey, address cpi_program)
     internal
     view
     returns (VaultState memory)
     {
-        ICrossProgramInvocation.AccountInfo memory acc = CrossProgramInvocation.account_info(vault_pubkey);
-        return parse_vault(acc.data);
+        (,,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(vault_pubkey);
+        return parse_vault(data);
     }
 }
 
@@ -200,9 +200,13 @@ contract DAMMv1Pool {
     error ZeroReserve();
     error DivisionByZero();
 
+    address public immutable factory;
+    bool public initialized;
+
     bytes32 public pool_address;
     bytes32 public prog_dynamic_vault;
     bytes32 public prog_dynamic_amm;
+    address public cpi_program;
 
     //////////////////////////////////////////////////////
     // Pool state (does not fit into stack as a structure)
@@ -225,22 +229,36 @@ contract DAMMv1Pool {
     DAMMv1Lib.VaultState public vault_a;
     DAMMv1Lib.VaultState public vault_b;
 
+    constructor() {
+        factory = msg.sender;
+    }
+
+    modifier onlyFactory() {
+        require(msg.sender == factory, "FORBIDDEN");
+        _;
+    }
+
     function initialize(
         bytes32 _pool_address,
         bytes32 _prog_dynamic_vault,
-        bytes32 _prog_dynamic_amm
-    ) public {
+        bytes32 _prog_dynamic_amm,
+        address _cpi_program
+    ) public onlyFactory {
+        require(!initialized, "ALREADY_INITIALIZED");
+        initialized = true;
+        
         pool_address = _pool_address;
         prog_dynamic_vault = _prog_dynamic_vault;
         prog_dynamic_amm = _prog_dynamic_amm;
+        cpi_program = _cpi_program;
         update_state();
     }
 
     function update_state() public {
-        DAMMv1Lib.PoolState memory pool = DAMMv1Lib.load_pool(pool_address);
+        DAMMv1Lib.PoolState memory pool = DAMMv1Lib.load_pool(pool_address, cpi_program);
         update_pool_state(pool);
-        vault_a = DAMMv1Lib.load_vault(a_vault);
-        vault_b = DAMMv1Lib.load_vault(b_vault);
+        vault_a = DAMMv1Lib.load_vault(a_vault, cpi_program);
+        vault_b = DAMMv1Lib.load_vault(b_vault, cpi_program);
     }
 
     function update_pool_state(DAMMv1Lib.PoolState memory pool) internal
@@ -268,14 +286,14 @@ contract DAMMv1Pool {
     view
     returns (Reserves memory r)
     {
-        DAMMv1Lib.VaultState memory vault_a_state = DAMMv1Lib.load_vault(a_vault);
-        DAMMv1Lib.VaultState memory vault_b_state = DAMMv1Lib.load_vault(b_vault);
+        DAMMv1Lib.VaultState memory vault_a_state = DAMMv1Lib.load_vault(a_vault, cpi_program);
+        DAMMv1Lib.VaultState memory vault_b_state = DAMMv1Lib.load_vault(b_vault, cpi_program);
 
-        SplTokenLib.SplMint memory a_lp_mint = SplTokenLib.load_mint(vault_a_state.lp_mint);
-        SplTokenLib.SplMint memory b_lp_mint = SplTokenLib.load_mint(vault_b_state.lp_mint);
+        SplTokenLib.SplMint memory a_lp_mint = SplTokenLib.load_mint(vault_a_state.lp_mint, cpi_program);
+        SplTokenLib.SplMint memory b_lp_mint = SplTokenLib.load_mint(vault_b_state.lp_mint, cpi_program);
 
-        uint64 pool_lp_a = SplTokenLib.load_token_amount(a_vault_lp);
-        uint64 pool_lp_b = SplTokenLib.load_token_amount(b_vault_lp);
+        uint64 pool_lp_a = SplTokenLib.load_token_amount(a_vault_lp, cpi_program);
+        uint64 pool_lp_b = SplTokenLib.load_token_amount(b_vault_lp, cpi_program);
 
         uint128 a_reserve = a_lp_mint.supply == 0
             ? 0
@@ -296,8 +314,8 @@ contract DAMMv1Pool {
     returns (uint256)
     {
         Reserves memory r = get_reserves();
-        SplTokenLib.SplMint memory mint_a = SplTokenLib.load_mint(token_a_mint);
-        SplTokenLib.SplMint memory mint_b = SplTokenLib.load_mint(token_b_mint);
+        SplTokenLib.SplMint memory mint_a = SplTokenLib.load_mint(token_a_mint, cpi_program);
+        SplTokenLib.SplMint memory mint_b = SplTokenLib.load_mint(token_b_mint, cpi_program);
 
         if (token == PoolToken.TokenA) {
             if (r.a_reserve == 0) revert ZeroReserve();
@@ -445,7 +463,7 @@ contract DAMMv1Pool {
     ) external {
         ICrossProgramInvocation.AccountMeta[] memory metas = build_swap_account_metas(a);
         bytes memory data = build_swap_ix_data(in_amount, minimum_out_amount);
-        CrossProgramInvocation.invoke_signed(prog_dynamic_amm, metas, data);
+        ICrossProgramInvocation(cpi_program).invoke_signed(prog_dynamic_amm, metas, data);
     }
 
     function invoke_swap(

@@ -21,13 +21,16 @@ contract MeteoraDAMMv1Factory {
 
     bytes32 public prog_dynamic_vault;
     bytes32 public prog_dynamic_amm;
+    address public cpi_program;
 
     constructor(
         bytes32 _prog_dynamic_vault,
-        bytes32 _prog_dynamic_amm
+        bytes32 _prog_dynamic_amm,
+        address _cpi_program
     ) {
         prog_dynamic_vault = _prog_dynamic_vault;
         prog_dynamic_amm = _prog_dynamic_amm;
+        cpi_program = _cpi_program;
     }
 
     function allPoolsLength() external view returns (uint) {
@@ -37,7 +40,7 @@ contract MeteoraDAMMv1Factory {
     function addPool(
         bytes32 pubkey
     ) external returns (address pool) {
-        DAMMv1Lib.PoolState memory pool_state = DAMMv1Lib.load_pool(pubkey);
+        DAMMv1Lib.PoolState memory pool_state = DAMMv1Lib.load_pool(pubkey, cpi_program);
         (bytes32 token0, bytes32 token1) = pool_state.token_a_mint < pool_state.token_b_mint
             ? (pool_state.token_a_mint, pool_state.token_b_mint)
             : (pool_state.token_b_mint, pool_state.token_a_mint);
@@ -49,7 +52,7 @@ contract MeteoraDAMMv1Factory {
             pool := create2(0, add(bytecode, 32), mload(bytecode), salt)
         }
         DAMMv1Pool(pool).initialize(
-            pubkey, prog_dynamic_vault, prog_dynamic_amm
+            pubkey, prog_dynamic_vault, prog_dynamic_amm, cpi_program
         );
         getPool[token0][token1] = pool;
         getPool[token1][token0] = pool; // populate mapping in the reverse direction

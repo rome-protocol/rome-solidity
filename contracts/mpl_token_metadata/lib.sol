@@ -204,14 +204,14 @@ library MplTokenMetadataLib {
         return SystemProgram.find_program_address(mpl_program_id, seeds);
     }
 
-    function load_metadata(bytes32 mint, bytes32 mpl_program_id)
+    function load_metadata(bytes32 mint, bytes32 mpl_program_id, address cpi_program)
     internal
     view
     returns (Metadata memory)
     {
         (bytes32 metadata_pubkey,) = find_metadata_pda(mint, mpl_program_id);
-        ICrossProgramInvocation.AccountInfo memory metadata_account = CrossProgramInvocation.account_info(metadata_pubkey);
-        return parse_metadata(metadata_account.data);
+        (,,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(metadata_pubkey);
+        return parse_metadata(data);
     }
 
     // =========================

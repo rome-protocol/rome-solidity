@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+pragma solidity =0.8.28;
+
 library Borsch {
     error InvalidBool(uint8 value);
     error BorshOutOfBounds(uint256 offset, uint256 need, uint256 total);

@@ -14,6 +14,7 @@ function requireEnv(name: string): string {
 async function main() {
     const progDynamicAmm = "0xcbe5357484699af28489f7d3f863df8f04c10db8bf8f753ea7f2d79e6e09f4b0";
     const progDynamicVault = "0x1051efe75a2e47e09ee987cf6761dffaad9aca72a74206ded07e0773d5975e4c";
+    const cpiAddress = "0xFF00000000000000000000000000000000000008"; // Precompile address for CPI
 
     const { viem, networkName } = await hardhat.network.connect();
     const [deployer] = await viem.getWalletClients();
@@ -30,7 +31,7 @@ async function main() {
     );
 
 
-    const factoryImpl = await viem.deployContract("MeteoraDAMMv1Factory", [progDynamicVault, progDynamicAmm]);
+    const factoryImpl = await viem.deployContract("MeteoraDAMMv1Factory", [progDynamicVault, progDynamicAmm, cpiAddress]);
     console.log("MeteoraDAMMv1Factory implementation deployed to:", factoryImpl.address);
 
     const deploymentsDir = path.resolve(process.cwd(), "deployments");

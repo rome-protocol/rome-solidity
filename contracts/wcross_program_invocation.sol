@@ -17,7 +17,7 @@ contract HelloWorldSolanaProgram {
 
         bytes memory data = hex"ffffff"; 
 
-        CrossProgramInvocation.invoke_signed(program_id, accounts, data);
+        ICrossProgramInvocation(cpi_program_address).invoke_signed(program_id, accounts, data);
     }
 
     function signer_pda() public view returns (bytes32) {

@@ -60,9 +60,9 @@ library SplTokenLib {
         SplToken.initialize_account3(acc_, mint_, owner_);
     }
 
-    function load_mint(bytes32 token) internal view returns (SplMint memory mint) {
-        ICrossProgramInvocation.AccountInfo memory spl_account = CrossProgramInvocation.account_info(token);
-        return parseMint(spl_account.data, token);
+    function load_mint(bytes32 token, address cpi_program) internal view returns (SplMint memory mint) {
+        (,,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(token);
+        return parseMint(data, token);
     }
 
     function parseMint(bytes memory data, bytes32 token) internal pure returns (SplMint memory mint) {
@@ -85,13 +85,13 @@ library SplTokenLib {
         return mint;
     }
 
-    function load_token_amount(bytes32 token_account_pubkey)
+    function load_token_amount(bytes32 token_account_pubkey, address cpi_program)
     internal
     view
     returns (uint64)
     {
-        ICrossProgramInvocation.AccountInfo memory acc = CrossProgramInvocation.account_info(token_account_pubkey);
-        return parse_token_account_amount(acc.data);
+        (,,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(token_account_pubkey);
+        return parse_token_account_amount(data);
     }
 
     function parse_token_account_amount(bytes memory data)

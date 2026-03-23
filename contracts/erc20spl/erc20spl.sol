@@ -10,11 +10,14 @@ import {MplTokenMetadataLib} from "../mpl_token_metadata/lib.sol";
 
 contract SPL_ERC20 is IERC20 {
 
+    address public immutable cpi_program;
     bytes32 public immutable mint_id;
     uint8 public immutable decimals;
 
-    constructor(bytes32 mint_id) {
-        SplTokenLib.SplMint memory mint = SplTokenLib.load_mint(mint_id);
+    constructor(bytes32 _mint_id, address _cpi_program) {
+        SplTokenLib.SplMint memory mint = SplTokenLib.load_mint(_mint_id, cpi_program);
+        cpi_program = _cpi_program;
+        mint_id = _mint_id;
         decimals = mint.decimals;
     }
 
@@ -25,18 +28,18 @@ contract SPL_ERC20 is IERC20 {
     }
 
     function totalSupply() external view returns (uint256) {
-        SplTokenLib.SplMint memory mint = SplTokenLib.load_mint(mint_id);
+        SplTokenLib.SplMint memory mint = SplTokenLib.load_mint(mint_id, cpi_program);
         return uint256(mint.supply);
     }
 
     function balanceOf(address account) external view returns (uint256) {
-        return uint256(SplTokenLib.load_token_amount(get_account_address(account)));
+        return uint256(SplTokenLib.load_token_amount(get_account_address(account), cpi_program));
     }
 
     function transfer(address to_, uint256 value) external returns (bool) {
         bytes32 from = get_account_address(msg.sender);
-        bytes32 to_ = get_account_address(to_);
-        return SplTokenLib.transfer(from, to_, value);
+        bytes32 bytes_to_ = get_account_address(to_);
+        return SplTokenLib.transfer(from, bytes_to_, value);
     }
 
     function allowance(address owner, address spender) external view returns (uint256) {
