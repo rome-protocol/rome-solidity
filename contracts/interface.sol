@@ -21,17 +21,14 @@ interface ISplToken {
         uint64 delegated_amount;
         bytes32 close_authority;
     }
-
     enum AccountState {
         Uninitialized,
         Initialized,
         Frozen
     }
-
     struct Seed{
         bytes item;
     }
-
     // eth_calls
     function program_id() external view returns(bytes32);
     function account_state(bytes32) external view returns(Account memory);
@@ -39,7 +36,6 @@ interface ISplToken {
     function decimals_eq(bytes32 mint, uint8 decimals) external;
     // invokes
     function initialize_account3(bytes32 acc, bytes32 mint, bytes32 owner) external;
-    //    function transfer_from(bytes32 from, bytes32 to, uint64 amount, Seed[] memory seeds) external;
     function transfer(bytes32 to, bytes32 mint, uint256 amount) external;
 }
 
@@ -71,7 +67,6 @@ interface ICrossProgramInvocation {
         bool is_signer;
         bool is_writable;
     }
-
     function invoke_signed(bytes32 program_id, AccountMeta[] memory accounts, bytes memory data) external;
     function account_info(bytes32 pubkey) external view returns(bytes32, uint64, bytes32, bool, bool, bool, bytes memory);
 }
