@@ -68,6 +68,7 @@ interface ICrossProgramInvocation {
         bool is_writable;
     }
     function invoke_signed(bytes32 program_id, AccountMeta[] memory accounts, bytes memory data) external;
+    // return value: key, lamports, owner, is_signer, is_writable, executable, data
     function account_info(bytes32 pubkey) external view returns(bytes32, uint64, bytes32, bool, bool, bool, bytes memory);
 }
 
