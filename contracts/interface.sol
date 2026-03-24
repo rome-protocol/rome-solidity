@@ -65,7 +65,7 @@ interface ICrossProgramInvocation {
         bytes32 pubkey;
         bool is_signer;
         bool is_writable;
-    }      
+    }
     struct Instruction {
         bytes32 program_id;
         AccountMeta[] accounts;

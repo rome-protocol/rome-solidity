@@ -1,15 +1,6 @@
 import hardhat from "hardhat";
 import fs from "node:fs";
 import path from "node:path";
-import { type Abi, isAddress, encodeFunctionData } from "viem";
-
-function requireEnv(name: string): string {
-    const value = process.env[name];
-    if (!value) {
-        throw new Error(`Missing required environment variable: ${name}`);
-    }
-    return value;
-}
 
 async function main() {
     const progDynamicAmm = "0xccf802d4cccc84d7fb21b5f73b49d81a16c5b4c88ee32394e1c91d3588cc4080"; // Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB

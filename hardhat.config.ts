@@ -39,6 +39,12 @@ export default defineConfig({
       chainType: "l1",
       url: "https://montispl-i.devnet.romeprotocol.xyz/",
       accounts: [configVariable("MONTI_SPL_PRIVATE_KEY")]
+    },
+    local: {
+      type: "http",
+      chainType: "l1",
+      url: "http://localhost:9090",
+      accounts: [configVariable("LOCAL_PRIVATE_KEY")],
     }
   },
 });
