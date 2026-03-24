@@ -7,37 +7,7 @@
 - Solana-compatible token/account behavior in EVM style
 - `Meteora DAMMv1`: automated market maker + factory/pool system
 - Cross-program invocation wrappers (CPI)
-- ERC20 SPL bridge and account helpers
-
----
-
-## Repository structure
-
-- contracts
-  - `access_control.sol` - SPL ERC20 & permissions
-  - `borsch.sol` - utility program primitive
-  - `convert.sol` - currency/program conversions
-  - `interface.sol` - CPI and SPL interface stubs
-  - `rome_evm_account.sol` - account abstraction
-  - `wcross_program_invocation.sol` - wrapped cross-program invocation test program
-  - `wsystem_program.sol` - system program wrapper
-  - `erc20spl/`
-    - `erc20spl_factory.sol` - factory for SPL-mapped ERC20
-    - `erc20spl.sol` - ERC20-SPL bridge token
-  - `meteora/`
-    - `damm_v1_factory.sol` - factory for DAMM v1 pools
-    - `damm_v1_pool.sol` - AMM pair pool logic
-  - `mpl_token_metadata/`
-    - `lib.sol` - metadata helper for token metadata, MPL style
-  - `spl_token/`
-    - `associated_spl_token.sol` - associated token helper
-    - `spl_token.sol` - SPL token primitives
-- scripts
-  - `deploy_meteora_factory.ts`
-  - `deploy_meteora_pool.ts`
-- hardhat.config.ts
-- package.json, tsconfig.json
-- artifacts, cache, deployments
+- ERC20 interface to SPL tokens
 
 ---
 
@@ -63,45 +33,46 @@ npx hardhat compile
 
 ---
 
-## Tests
+# Meteora DAMMv1 integration
 
-Use Hardhat test suite:
+This integration can be used as an example of how Rome-EVM can provide interoperability with native Solana smart-contracts.
 
-```bash
-npx hardhat test
-```
+## Preparation
 
-Optionally run only specific sets (if configured by tag names or folder paths in tests):
+1. Go to https://devnet.meteora.ag/pools#dynamicpools and find Meteora **DAMMv1** pool which your would like to use from within Rome-EVM
+2. Copy the address of this pool (base58) and convert it into HEX. Later we will refer to this address as *POOL_ADDRESS*
 
-```bash
-npx hardhat test test/meteora
-npx hardhat test test/erc20spl
-```
-
----
-
-## Deployment (local / chain)
+## Deployment
 
 Example scripts:
 - deploy_meteora_factory.ts
 - deploy_meteora_pool.ts
 
-Run local network:
-
 ```bash
-npx hardhat node
+export MONTI_SPL_PRIVATE_KEY=<YOUR_PRIVATE_KEY>
+export POOL_ADDRESS=<YOUR_POOL_ADDRESS>
+npx hardhat run scripts/deploy_meteora_factory.ts --network monti_spl
+npx hardhat run scripts/deploy_meteora_pool.ts --network monti_spl
 ```
 
-Deploy to local Hardhat RPC:
-
-```bash
-npx hardhat run scripts/deploy_meteora_factory.ts --network localhost
-npx hardhat run scripts/deploy_meteora_pool.ts --network localhost
-```
-
-For external networks, configure API keys and accounts in hardhat.config.ts.
+After successfull deployment, you will see new file /deployments/monti_spl.json
+Wich contains information about deployed smart contracts. This file later is used by tests
 
 ---
+
+## Tests
+
+Set tester private key in dev keystore:
+
+```bash
+npx hardhat keystore set MONTI_SPL_PRIVATE_KEY --dev
+```
+
+Use Hardhat test suite:
+
+```bash
+npx hardhat test tests/damm_v1_pool.integration.ts --network local
+```
 
 ## Contract highlights
 
@@ -109,8 +80,8 @@ For external networks, configure API keys and accounts in hardhat.config.ts.
   - create pool factory
   - manage pool creation and fee config
 - `DAMMv1Pool`
-  - liquidity add/remove
-  - swap with invariant
+  - liquidity add/remove (WIP)
+  - swap with invariant (WIP)
   - fee model
 - `ERC20SPLFactory` + `SPL_ERC20`
   - minting/burning wrapped SPL tokens
