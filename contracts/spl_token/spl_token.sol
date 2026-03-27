@@ -109,32 +109,753 @@ library SplTokenLib {
         (amount,) = Convert.read_u64le(data, 64);
     }
 
-    function transfer(bytes32 from, bytes32 to, uint256 amount)
-    internal
-    returns (bool)
-    {
-        revert("transfer not implemented");
+    enum AuthorityType {
+        MintTokens,
+        FreezeAccount,
+        AccountOwner,
+        CloseAccount,
+        TransferFeeConfig,
+        WithheldWithdraw,
+        CloseMint,
+        InterestRate,
+        PermanentDelegate,
+        ConfidentialTransferMint,
+        TransferHookProgramId,
+        ConfidentialTransferFeeConfig,
+        MetadataPointer,
+        GroupPointer,
+        GroupMemberPointer,
+        ScaledUiAmount,
+        Pause
     }
 
-    function allowance(bytes32 account, bytes32 spender)
-    internal
-    view
-    returns (uint256)
-    {
-        revert("allowance not implemented");
+    uint256 constant MIN_SIGNERS = 1;
+    uint256 constant MAX_SIGNERS = 11;
+
+    // Replace with your actual constants if they already exist elsewhere.
+    bytes32 constant SYSVAR_RENT_ID = 0x06a7d517188b16e1d6b7b1b4c4d8b0f2f8b4f2e4d8b0f2f8b4f2e4d8b0f2f8b4;
+    bytes32 constant SYSTEM_PROGRAM_ID = 0x0000000000000000000000000000000000000000000000000000000000000000;
+    bytes32 constant NATIVE_MINT_ID = 0x0000000000000000000000000000000000000000000000000000000000000000;
+
+    error InvalidSignerCount(uint256 count);
+    error InvalidAuthorityType(uint8 value);
+
+    function initialize_mint(
+        bytes32 token_program_id,
+        bytes32 mint_pubkey,
+        bytes32 mint_authority_pubkey,
+        bool has_freeze_authority,
+        bytes32 freeze_authority_pubkey,
+        uint8 decimals
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        bytes memory data = _pack_initialize_mint(decimals, mint_authority_pubkey, has_freeze_authority, freeze_authority_pubkey);
+
+        ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](2);
+        accounts[0] = _account_meta(mint_pubkey, false, true);
+        accounts[1] = _account_meta(SYSVAR_RENT_ID, false, false);
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: data
+        });
     }
 
-    function approve(bytes32 spender, uint256 value)
-    internal
-    returns (bool)
-    {
-        revert("approve not implemented");
+    function initialize_mint2(
+        bytes32 token_program_id,
+        bytes32 mint_pubkey,
+        bytes32 mint_authority_pubkey,
+        bool has_freeze_authority,
+        bytes32 freeze_authority_pubkey,
+        uint8 decimals
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        bytes memory data = _pack_initialize_mint2(decimals, mint_authority_pubkey, has_freeze_authority, freeze_authority_pubkey);
+
+        ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
+        accounts[0] = _account_meta(mint_pubkey, false, true);
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: data
+        });
     }
 
-    function transferFrom(bytes32 from, bytes32 to, uint256 value)
-    internal
-    returns (bool)
-    {
-        revert("transferFrom not implemented");
+    function initialize_account(
+        bytes32 token_program_id,
+        bytes32 account_pubkey,
+        bytes32 mint_pubkey,
+        bytes32 owner_pubkey
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](4);
+        accounts[0] = _account_meta(account_pubkey, false, true);
+        accounts[1] = _account_meta(mint_pubkey, false, false);
+        accounts[2] = _account_meta(owner_pubkey, false, false);
+        accounts[3] = _account_meta(SYSVAR_RENT_ID, false, false);
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag(1)
+        });
+    }
+
+    function initialize_account2(
+        bytes32 token_program_id,
+        bytes32 account_pubkey,
+        bytes32 mint_pubkey,
+        bytes32 owner_pubkey
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](3);
+        accounts[0] = _account_meta(account_pubkey, false, true);
+        accounts[1] = _account_meta(mint_pubkey, false, false);
+        accounts[2] = _account_meta(SYSVAR_RENT_ID, false, false);
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag_pubkey(16, owner_pubkey)
+        });
+    }
+
+    function initialize_account3(
+        bytes32 token_program_id,
+        bytes32 account_pubkey,
+        bytes32 mint_pubkey,
+        bytes32 owner_pubkey
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](2);
+        accounts[0] = _account_meta(account_pubkey, false, true);
+        accounts[1] = _account_meta(mint_pubkey, false, false);
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag_pubkey(18, owner_pubkey)
+        });
+    }
+
+    function initialize_multisig(
+        bytes32 token_program_id,
+        bytes32 multisig_pubkey,
+        bytes32[] memory signer_pubkeys,
+        uint8 m
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        if (!is_valid_signer_index(m) || !is_valid_signer_index(uint8(signer_pubkeys.length)) || uint256(m) > signer_pubkeys.length) {
+            revert InvalidSignerCount(signer_pubkeys.length);
+        }
+
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](2 + signer_pubkeys.length);
+        accounts[0] = _account_meta(multisig_pubkey, false, true);
+        accounts[1] = _account_meta(SYSVAR_RENT_ID, false, false);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[2 + i] = _account_meta(signer_pubkeys[i], false, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: abi.encodePacked(uint8(2), m)
+        });
+    }
+
+    function initialize_multisig2(
+        bytes32 token_program_id,
+        bytes32 multisig_pubkey,
+        bytes32[] memory signer_pubkeys,
+        uint8 m
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        if (!is_valid_signer_index(m) || !is_valid_signer_index(uint8(signer_pubkeys.length)) || uint256(m) > signer_pubkeys.length) {
+            revert InvalidSignerCount(signer_pubkeys.length);
+        }
+
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](1 + signer_pubkeys.length);
+        accounts[0] = _account_meta(multisig_pubkey, false, true);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[1 + i] = _account_meta(signer_pubkeys[i], false, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: abi.encodePacked(uint8(19), m)
+        });
+    }
+
+    function transfer(
+        bytes32 token_program_id,
+        bytes32 source_pubkey,
+        bytes32 destination_pubkey,
+        bytes32 authority_pubkey,
+        bytes32[] memory signer_pubkeys,
+        uint64 amount
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
+        accounts[0] = _account_meta(source_pubkey, false, true);
+        accounts[1] = _account_meta(destination_pubkey, false, true);
+        accounts[2] = _account_meta(authority_pubkey, signer_pubkeys.length == 0, false);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag_u64(3, amount)
+        });
+    }
+
+    function approve(
+        bytes32 token_program_id,
+        bytes32 source_pubkey,
+        bytes32 delegate_pubkey,
+        bytes32 owner_pubkey,
+        bytes32[] memory signer_pubkeys,
+        uint64 amount
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
+        accounts[0] = _account_meta(source_pubkey, false, true);
+        accounts[1] = _account_meta(delegate_pubkey, false, false);
+        accounts[2] = _account_meta(owner_pubkey, signer_pubkeys.length == 0, false);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag_u64(4, amount)
+        });
+    }
+
+    function revoke(
+        bytes32 token_program_id,
+        bytes32 source_pubkey,
+        bytes32 owner_pubkey,
+        bytes32[] memory signer_pubkeys
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](2 + signer_pubkeys.length);
+        accounts[0] = _account_meta(source_pubkey, false, true);
+        accounts[1] = _account_meta(owner_pubkey, signer_pubkeys.length == 0, false);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[2 + i] = _account_meta(signer_pubkeys[i], true, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag(5)
+        });
+    }
+
+    function set_authority(
+        bytes32 token_program_id,
+        bytes32 owned_pubkey,
+        bool has_new_authority_pubkey,
+        bytes32 new_authority_pubkey,
+        AuthorityType authority_type,
+        bytes32 owner_pubkey,
+        bytes32[] memory signer_pubkeys
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](2 + signer_pubkeys.length);
+        accounts[0] = _account_meta(owned_pubkey, false, true);
+        accounts[1] = _account_meta(owner_pubkey, signer_pubkeys.length == 0, false);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[2 + i] = _account_meta(signer_pubkeys[i], true, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: bytes.concat(
+                bytes1(uint8(6)),
+                bytes1(uint8(authority_type)),
+                _pack_pubkey_option(has_new_authority_pubkey, new_authority_pubkey)
+            )
+        });
+    }
+
+    function mint_to(
+        bytes32 token_program_id,
+        bytes32 mint_pubkey,
+        bytes32 account_pubkey,
+        bytes32 mint_authority_pubkey,
+        bytes32[] memory signer_pubkeys,
+        uint64 amount
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
+        accounts[0] = _account_meta(mint_pubkey, false, true);
+        accounts[1] = _account_meta(account_pubkey, false, true);
+        accounts[2] = _account_meta(mint_authority_pubkey, signer_pubkeys.length == 0, false);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag_u64(7, amount)
+        });
+    }
+
+    function burn(
+        bytes32 token_program_id,
+        bytes32 account_pubkey,
+        bytes32 mint_pubkey,
+        bytes32 authority_pubkey,
+        bytes32[] memory signer_pubkeys,
+        uint64 amount
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
+        accounts[0] = _account_meta(account_pubkey, false, true);
+        accounts[1] = _account_meta(mint_pubkey, false, true);
+        accounts[2] = _account_meta(authority_pubkey, signer_pubkeys.length == 0, false);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag_u64(8, amount)
+        });
+    }
+
+    function close_account(
+        bytes32 token_program_id,
+        bytes32 account_pubkey,
+        bytes32 destination_pubkey,
+        bytes32 owner_pubkey,
+        bytes32[] memory signer_pubkeys
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
+        accounts[0] = _account_meta(account_pubkey, false, true);
+        accounts[1] = _account_meta(destination_pubkey, false, true);
+        accounts[2] = _account_meta(owner_pubkey, signer_pubkeys.length == 0, false);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag(9)
+        });
+    }
+
+    function freeze_account(
+        bytes32 token_program_id,
+        bytes32 account_pubkey,
+        bytes32 mint_pubkey,
+        bytes32 freeze_authority_pubkey,
+        bytes32[] memory signer_pubkeys
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
+        accounts[0] = _account_meta(account_pubkey, false, true);
+        accounts[1] = _account_meta(mint_pubkey, false, false);
+        accounts[2] = _account_meta(freeze_authority_pubkey, signer_pubkeys.length == 0, false);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag(10)
+        });
+    }
+
+    function thaw_account(
+        bytes32 token_program_id,
+        bytes32 account_pubkey,
+        bytes32 mint_pubkey,
+        bytes32 freeze_authority_pubkey,
+        bytes32[] memory signer_pubkeys
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
+        accounts[0] = _account_meta(account_pubkey, false, true);
+        accounts[1] = _account_meta(mint_pubkey, false, false);
+        accounts[2] = _account_meta(freeze_authority_pubkey, signer_pubkeys.length == 0, false);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag(11)
+        });
+    }
+
+    function transfer_checked(
+        bytes32 token_program_id,
+        bytes32 source_pubkey,
+        bytes32 mint_pubkey,
+        bytes32 destination_pubkey,
+        bytes32 authority_pubkey,
+        bytes32[] memory signer_pubkeys,
+        uint64 amount,
+        uint8 decimals
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](4 + signer_pubkeys.length);
+        accounts[0] = _account_meta(source_pubkey, false, true);
+        accounts[1] = _account_meta(mint_pubkey, false, false);
+        accounts[2] = _account_meta(destination_pubkey, false, true);
+        accounts[3] = _account_meta(authority_pubkey, signer_pubkeys.length == 0, false);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[4 + i] = _account_meta(signer_pubkeys[i], true, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag_u64_u8(12, amount, decimals)
+        });
+    }
+
+    function approve_checked(
+        bytes32 token_program_id,
+        bytes32 source_pubkey,
+        bytes32 mint_pubkey,
+        bytes32 delegate_pubkey,
+        bytes32 owner_pubkey,
+        bytes32[] memory signer_pubkeys,
+        uint64 amount,
+        uint8 decimals
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](4 + signer_pubkeys.length);
+        accounts[0] = _account_meta(source_pubkey, false, true);
+        accounts[1] = _account_meta(mint_pubkey, false, false);
+        accounts[2] = _account_meta(delegate_pubkey, false, false);
+        accounts[3] = _account_meta(owner_pubkey, signer_pubkeys.length == 0, false);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[4 + i] = _account_meta(signer_pubkeys[i], true, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag_u64_u8(13, amount, decimals)
+        });
+    }
+
+    function mint_to_checked(
+        bytes32 token_program_id,
+        bytes32 mint_pubkey,
+        bytes32 account_pubkey,
+        bytes32 mint_authority_pubkey,
+        bytes32[] memory signer_pubkeys,
+        uint64 amount,
+        uint8 decimals
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
+        accounts[0] = _account_meta(mint_pubkey, false, true);
+        accounts[1] = _account_meta(account_pubkey, false, true);
+        accounts[2] = _account_meta(mint_authority_pubkey, signer_pubkeys.length == 0, false);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag_u64_u8(14, amount, decimals)
+        });
+    }
+
+    function burn_checked(
+        bytes32 token_program_id,
+        bytes32 account_pubkey,
+        bytes32 mint_pubkey,
+        bytes32 authority_pubkey,
+        bytes32[] memory signer_pubkeys,
+        uint64 amount,
+        uint8 decimals
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
+        accounts[0] = _account_meta(account_pubkey, false, true);
+        accounts[1] = _account_meta(mint_pubkey, false, true);
+        accounts[2] = _account_meta(authority_pubkey, signer_pubkeys.length == 0, false);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag_u64_u8(15, amount, decimals)
+        });
+    }
+
+    function sync_native(
+        bytes32 token_program_id,
+        bytes32 account_pubkey
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
+        accounts[0] = _account_meta(account_pubkey, false, true);
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag(17)
+        });
+    }
+
+    function get_account_data_size(
+        bytes32 token_program_id,
+        bytes32 mint_pubkey,
+        uint16[] memory extension_types
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
+        accounts[0] = _account_meta(mint_pubkey, false, false);
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: bytes.concat(bytes1(uint8(21)), _pack_u16_array(extension_types))
+        });
+    }
+
+    function initialize_mint_close_authority(
+        bytes32 token_program_id,
+        bytes32 mint_pubkey,
+        bool has_close_authority,
+        bytes32 close_authority
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
+        accounts[0] = _account_meta(mint_pubkey, false, true);
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: bytes.concat(bytes1(uint8(25)), _pack_pubkey_option(has_close_authority, close_authority))
+        });
+    }
+
+    function initialize_immutable_owner(
+        bytes32 token_program_id,
+        bytes32 token_account
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
+        accounts[0] = _account_meta(token_account, false, true);
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag(22)
+        });
+    }
+
+    function amount_to_ui_amount(
+        bytes32 token_program_id,
+        bytes32 mint_pubkey,
+        uint64 amount
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
+        accounts[0] = _account_meta(mint_pubkey, false, false);
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag_u64(23, amount)
+        });
+    }
+
+    function ui_amount_to_amount(
+        bytes32 token_program_id,
+        bytes32 mint_pubkey,
+        string memory ui_amount
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
+        accounts[0] = _account_meta(mint_pubkey, false, false);
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: bytes.concat(bytes1(uint8(24)), bytes(ui_amount))
+        });
+    }
+
+    function reallocate(
+        bytes32 token_program_id,
+        bytes32 account_pubkey,
+        bytes32 payer,
+        bytes32 owner_pubkey,
+        bytes32[] memory signer_pubkeys,
+        uint16[] memory extension_types
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            new ICrossProgramInvocation.AccountMeta[](4 + signer_pubkeys.length);
+        accounts[0] = _account_meta(account_pubkey, false, true);
+        accounts[1] = _account_meta(payer, true, true);
+        accounts[2] = _account_meta(SYSTEM_PROGRAM_ID, false, false);
+        accounts[3] = _account_meta(owner_pubkey, signer_pubkeys.length == 0, false);
+        for (uint256 i = 0; i < signer_pubkeys.length; i++) {
+            accounts[4 + i] = _account_meta(signer_pubkeys[i], true, false);
+        }
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: bytes.concat(bytes1(uint8(29)), _pack_u16_array(extension_types))
+        });
+    }
+
+    function create_native_mint(
+        bytes32 token_program_id,
+        bytes32 payer
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](3);
+        accounts[0] = _account_meta(payer, true, true);
+        accounts[1] = _account_meta(NATIVE_MINT_ID, false, true);
+        accounts[2] = _account_meta(SYSTEM_PROGRAM_ID, false, false);
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag(31)
+        });
+    }
+
+    function initialize_non_transferable_mint(
+        bytes32 token_program_id,
+        bytes32 mint_pubkey
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
+        accounts[0] = _account_meta(mint_pubkey, false, true);
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag(32)
+        });
+    }
+
+    function initialize_permanent_delegate(
+        bytes32 token_program_id,
+        bytes32 mint_pubkey,
+        bytes32 delegate
+    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+        ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
+        accounts[0] = _account_meta(mint_pubkey, false, true);
+
+        return ICrossProgramInvocation.Instruction({
+            program_id: token_program_id,
+            accounts: accounts,
+            data: _pack_tag_pubkey(35, delegate)
+        });
+    }
+
+    function is_valid_signer_index(uint8 index) public pure returns (bool) {
+        return index >= uint8(MIN_SIGNERS) && index <= uint8(MAX_SIGNERS);
+    }
+
+    function decode_instruction_type(bytes memory input) public pure returns (uint8) {
+        require(input.length > 0, "InvalidInstructionData");
+        return uint8(input[0]);
+    }
+
+    function _pack_initialize_mint(
+        uint8 decimals,
+        bytes32 mint_authority,
+        bool has_freeze_authority,
+        bytes32 freeze_authority
+    ) internal pure returns (bytes memory) {
+        return bytes.concat(
+            bytes1(uint8(0)),
+            bytes1(decimals),
+            abi.encodePacked(mint_authority),
+            _pack_pubkey_option(has_freeze_authority, freeze_authority)
+        );
+    }
+
+    function _pack_initialize_mint2(
+        uint8 decimals,
+        bytes32 mint_authority,
+        bool has_freeze_authority,
+        bytes32 freeze_authority
+    ) internal pure returns (bytes memory) {
+        return bytes.concat(
+            bytes1(uint8(20)),
+            bytes1(decimals),
+            abi.encodePacked(mint_authority),
+            _pack_pubkey_option(has_freeze_authority, freeze_authority)
+        );
+    }
+
+    function _account_meta(
+        bytes32 pubkey,
+        bool is_signer,
+        bool is_writable
+    ) internal pure returns (ICrossProgramInvocation.AccountMeta memory) {
+        return ICrossProgramInvocation.AccountMeta({
+            pubkey: pubkey,
+            is_signer: is_signer,
+            is_writable: is_writable
+        });
+    }
+
+    function _pack_tag(uint8 tag) internal pure returns (bytes memory) {
+        return abi.encodePacked(tag);
+    }
+
+    function _pack_tag_pubkey(uint8 tag, bytes32 value) internal pure returns (bytes memory) {
+        return abi.encodePacked(tag, value);
+    }
+
+    function _pack_tag_u64(uint8 tag, uint64 value) internal pure returns (bytes memory) {
+        return bytes.concat(bytes1(tag), _le_u64(value));
+    }
+
+    function _pack_tag_u64_u8(uint8 tag, uint64 value, uint8 value2) internal pure returns (bytes memory) {
+        return bytes.concat(bytes1(tag), _le_u64(value), bytes1(value2));
+    }
+
+    function _pack_pubkey_option(bool has_value, bytes32 value) internal pure returns (bytes memory) {
+        if (!has_value) {
+            return abi.encodePacked(uint8(0));
+        }
+        return abi.encodePacked(uint8(1), value);
+    }
+
+    function _pack_u16_array(uint16[] memory values) internal pure returns (bytes memory out) {
+        for (uint256 i = 0; i < values.length; i++) {
+            out = bytes.concat(out, _le_u16(values[i]));
+        }
+    }
+
+    function _le_u16(uint16 value) internal pure returns (bytes memory) {
+        bytes memory out = new bytes(2);
+        out[0] = bytes1(uint8(value));
+        out[1] = bytes1(uint8(value >> 8));
+        return out;
+    }
+
+    function _le_u64(uint64 value) internal pure returns (bytes memory) {
+        bytes memory out = new bytes(8);
+        out[0] = bytes1(uint8(value));
+        out[1] = bytes1(uint8(value >> 8));
+        out[2] = bytes1(uint8(value >> 16));
+        out[3] = bytes1(uint8(value >> 24));
+        out[4] = bytes1(uint8(value >> 32));
+        out[5] = bytes1(uint8(value >> 40));
+        out[6] = bytes1(uint8(value >> 48));
+        out[7] = bytes1(uint8(value >> 56));
+        return out;
     }
 }

@@ -11,6 +11,7 @@ import {MplTokenMetadataLib} from "../mpl_token_metadata/lib.sol";
 contract SPL_ERC20 is IERC20 {
 
     address public immutable cpi_program;
+    bytes32 public immutable token_program;
     bytes32 public immutable mint_id;
     uint8 public immutable decimals;
 
@@ -21,8 +22,13 @@ contract SPL_ERC20 is IERC20 {
         decimals = mint.decimals;
     }
 
+    function get_owner(address user) internal view returns (bytes32) {
+        bytes32 user_pda = RomeEVMAccount.pda(user);
+        return user_pda;
+    }
+
     function get_account_address(address account) public view returns (bytes32) {
-        bytes32 account_pda = RomeEVMAccount.pda(account);
+        bytes32 account_pda = get_owner(account);
         (bytes32 token_account,) = AssociatedSplTokenLib.associated_token_address(account_pda, mint_id);
         return token_account;
     }
@@ -36,10 +42,25 @@ contract SPL_ERC20 is IERC20 {
         return uint256(SplTokenLib.load_token_amount(get_account_address(account), cpi_program));
     }
 
-    function transfer(address to_, uint256 value) external returns (bool) {
-        bytes32 from = get_account_address(msg.sender);
-        bytes32 bytes_to_ = get_account_address(to_);
-        return SplTokenLib.transfer(from, bytes_to_, value);
+    function transfer(address to, uint256 value) external returns (bool) {
+        bytes32 owner = get_owner(msg.sender);
+        bytes32 source = get_account_address(msg.sender);
+        bytes32 destination = get_account_address(to);
+        bytes32[] memory signers = new bytes32[](1);
+        signers[0] = owner;
+
+        ICrossProgramInvocation.Instruction memory instr = SplTokenLib.transfer_checked(
+            token_program, 
+            source, 
+            mint_id, 
+            destination,
+            owner,
+            signers,
+            uint64(value), 
+            decimals
+        );
+        ICrossProgramInvocation(cpi_program).invoke_signed(instr.program_id, instr.accounts, instr.data);
+        return true;
     }
 
     function allowance(address owner, address spender) external view returns (uint256) {
