@@ -61,7 +61,7 @@ library SplTokenLib {
     }
 
     function load_mint(bytes32 token, address cpi_program) internal view returns (SplMint memory mint) {
-        (,,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(token);
+        (,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(token);
         return parseMint(data, token);
     }
 
@@ -90,7 +90,7 @@ library SplTokenLib {
     view
     returns (uint64)
     {
-        (,,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(token_account_pubkey);
+        (,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(token_account_pubkey);
         return parse_token_account_amount(data);
     }
 
