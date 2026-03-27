@@ -21,7 +21,7 @@ contract WSystemProgram {
 
     function pda(address user) public view returns (bytes32, uint8) {
         bytes32 key = SystemProgram.rome_evm_program_id();
-        ISystemProgram.Seed[] memory seeds = RomeEVMAccount.authority_seeds(user, block.chainid);
+        ISystemProgram.Seed[] memory seeds = RomeEVMAccount.authority_seeds(user);
 
         return SystemProgram.find_program_address(key, seeds);
     }

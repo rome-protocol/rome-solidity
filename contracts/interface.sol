@@ -71,8 +71,13 @@ interface ICrossProgramInvocation {
         bool is_signer;
         bool is_writable;
     }
-    function invoke_signed(bytes32 program_id, AccountMeta[] memory accounts, bytes memory data) external;
-    function account_info(bytes32 pubkey) external view returns(bytes32, uint64, bytes32, bool, bool, bool, bytes memory);
+    struct Seed{
+        bytes item;
+    }
+    function invoke(bytes32 program_id, AccountMeta[] memory accounts, bytes memory data) external;
+    function invoke_signed(bytes32 program_id, AccountMeta[] memory accounts, bytes memory data, bytes32[] memory seeds) external;
+    // return value: lamports, owner, is_signer, is_writable, executable, data
+    function account_info(bytes32 pubkey) external view returns(uint64, bytes32, bool, bool, bool, bytes memory);
 }
 
 address constant spl_token_address = address(0xff00000000000000000000000000000000000005);

@@ -210,7 +210,7 @@ library MplTokenMetadataLib {
     returns (Metadata memory)
     {
         (bytes32 metadata_pubkey,) = find_metadata_pda(mint, mpl_program_id);
-        (,,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(metadata_pubkey);
+        (,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(metadata_pubkey);
         return parse_metadata(data);
     }
 

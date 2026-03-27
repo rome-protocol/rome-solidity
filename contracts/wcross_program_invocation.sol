@@ -17,12 +17,12 @@ contract HelloWorldSolanaProgram {
 
         bytes memory data = hex"ffffff"; 
 
-        ICrossProgramInvocation(cpi_program_address).invoke_signed(program_id, accounts, data);
+        ICrossProgramInvocation(cpi_program_address).invoke(program_id, accounts, data);
     }
 
     function signer_pda() public view returns (bytes32) {
         bytes32 rome_program = SystemProgram.rome_evm_program_id();
-        ISystemProgram.Seed[] memory pda_seeds = RomeEVMAccount.authority_seeds(msg.sender, block.chainid);
+        ISystemProgram.Seed[] memory pda_seeds = RomeEVMAccount.authority_seeds(msg.sender);
         (bytes32 key,) = SystemProgram.find_program_address(rome_program, pda_seeds);
         return key;
     }

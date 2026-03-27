@@ -6,48 +6,52 @@ import "./convert.sol";
 import "./system_program/system_program.sol";
 
 library RomeEVMAccount {
-    function authority_seeds(address user, uint chain_id) internal pure returns(ISystemProgram.Seed[] memory) {
-        bytes memory chain_le = Convert.chain_id_le(chain_id);
-
-        ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](3);
-        seeds[0] = ISystemProgram.Seed(chain_le);
-        seeds[1] = ISystemProgram.Seed(bytes("EXTERNAL_AUTHORITY"));
-        seeds[2] = ISystemProgram.Seed(abi.encodePacked(user));
+    function authority_seeds(address user) internal pure returns(ISystemProgram.Seed[] memory) {
+        ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](2);
+        seeds[0] = ISystemProgram.Seed(bytes("EXTERNAL_AUTHORITY"));
+        seeds[1] = ISystemProgram.Seed(abi.encodePacked(user));
 
         return seeds;
     }
 
-    function authority_seeds_with_salt(address user, uint chain_id, bytes32 salt) internal pure returns(ISystemProgram.Seed[] memory) {
-        bytes memory chain_le = Convert.chain_id_le(chain_id);
+    function authority_seeds_with_salt(address user, bytes32 salt) internal pure returns(ISystemProgram.Seed[] memory) {
         bytes memory salt_ = Convert.bytes32_to_bytes(salt);
 
-        ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](4);
-        seeds[0] = ISystemProgram.Seed(chain_le);
-        seeds[1] = ISystemProgram.Seed(bytes("EXTERNAL_AUTHORITY"));
-        seeds[2] = ISystemProgram.Seed(abi.encodePacked(user));
-        seeds[3] = ISystemProgram.Seed(salt_);
+        ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](3);
+        seeds[0] = ISystemProgram.Seed(bytes("EXTERNAL_AUTHORITY"));
+        seeds[1] = ISystemProgram.Seed(abi.encodePacked(user));
+        seeds[2] = ISystemProgram.Seed(salt_);
 
         return seeds;
+    }
+
+    function minimum_balance(uint64 len) internal pure returns(uint64) {
+        // (ACCOUNT_STORAGE_OVERHEAD + len) * LAMPORTS_PER_BYTE_YEAR * EXEMPTION_THRESHOLD
+        return (128 + len) * 3480 * 2;
     }
 
     function pda(address user) internal view returns (bytes32) {
         bytes32 rome_program = SystemProgram.rome_evm_program_id();
-        ISystemProgram.Seed[] memory pda_seeds = RomeEVMAccount.authority_seeds(user, block.chainid);
+        ISystemProgram.Seed[] memory pda_seeds = RomeEVMAccount.authority_seeds(user);
         (bytes32 key,) = SystemProgram.find_program_address(rome_program, pda_seeds);
         return key;
     }
 
     function pda_with_salt(address user, bytes32 salt) internal view returns (bytes32) {
         bytes32 rome_program = SystemProgram.rome_evm_program_id();
-        ISystemProgram.Seed[] memory pda_seeds = RomeEVMAccount.authority_seeds_with_salt(user, block.chainid, salt);
-        (bytes32 key,) = SystemProgram.find_program_address(rome_program, pda_seeds);
+        ISystemProgram.Seed[] memory seeds = RomeEVMAccount.authority_seeds_with_salt(user, salt);
+        (bytes32 key,) = SystemProgram.find_program_address(rome_program, seeds);
         return key;
     }
 
-    function create_payer(address user, uint64 lamports)  external {
-        bytes32 salt = Convert.bytes_to_bytes32(bytes("PAYER"));
-        bytes32 payer = RomeEVMAccount.pda_with_salt(user, salt);
+    function create_payer(address user, uint64 lamports, bytes32 salt)  external {
+        bytes32 key = RomeEVMAccount.pda_with_salt(user, salt);
 
-        SystemProgramLib.transfer(SystemProgram.operator(), payer, lamports);
+        (uint64 lamports_,,,,,) = CpiProgram.account_info(key);
+        if (lamports_ == 0) {
+            require(lamports >= minimum_balance(0), "insufficient lamports, rent-exemption value is 890880");
+        }
+
+        SystemProgramLib.transfer(SystemProgram.operator(), key, lamports);
     }
 }
