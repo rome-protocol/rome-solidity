@@ -147,18 +147,14 @@ library SplTokenLib {
         bool has_freeze_authority,
         bytes32 freeze_authority_pubkey,
         uint8 decimals
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         bytes memory data = _pack_initialize_mint(decimals, mint_authority_pubkey, has_freeze_authority, freeze_authority_pubkey);
 
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](2);
         accounts[0] = _account_meta(mint_pubkey, false, true);
         accounts[1] = _account_meta(SYSVAR_RENT_ID, false, false);
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: data
-        });
+        return (token_program_id, accounts, data);
     }
 
     function initialize_mint2(
@@ -168,17 +164,13 @@ library SplTokenLib {
         bool has_freeze_authority,
         bytes32 freeze_authority_pubkey,
         uint8 decimals
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         bytes memory data = _pack_initialize_mint2(decimals, mint_authority_pubkey, has_freeze_authority, freeze_authority_pubkey);
 
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
         accounts[0] = _account_meta(mint_pubkey, false, true);
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: data
-        });
+        return (token_program_id, accounts, data);
     }
 
     function initialize_account(
@@ -186,18 +178,14 @@ library SplTokenLib {
         bytes32 account_pubkey,
         bytes32 mint_pubkey,
         bytes32 owner_pubkey
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](4);
         accounts[0] = _account_meta(account_pubkey, false, true);
         accounts[1] = _account_meta(mint_pubkey, false, false);
         accounts[2] = _account_meta(owner_pubkey, false, false);
         accounts[3] = _account_meta(SYSVAR_RENT_ID, false, false);
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag(1)
-        });
+        return (token_program_id, accounts, _pack_tag(1));
     }
 
     function initialize_account2(
@@ -205,17 +193,13 @@ library SplTokenLib {
         bytes32 account_pubkey,
         bytes32 mint_pubkey,
         bytes32 owner_pubkey
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](3);
         accounts[0] = _account_meta(account_pubkey, false, true);
         accounts[1] = _account_meta(mint_pubkey, false, false);
         accounts[2] = _account_meta(SYSVAR_RENT_ID, false, false);
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag_pubkey(16, owner_pubkey)
-        });
+        return (token_program_id, accounts, _pack_tag_pubkey(16, owner_pubkey));
     }
 
     function initialize_account3(
@@ -223,16 +207,12 @@ library SplTokenLib {
         bytes32 account_pubkey,
         bytes32 mint_pubkey,
         bytes32 owner_pubkey
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](2);
         accounts[0] = _account_meta(account_pubkey, false, true);
         accounts[1] = _account_meta(mint_pubkey, false, false);
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag_pubkey(18, owner_pubkey)
-        });
+        return (token_program_id, accounts, _pack_tag_pubkey(18, owner_pubkey));
     }
 
     function initialize_multisig(
@@ -240,7 +220,7 @@ library SplTokenLib {
         bytes32 multisig_pubkey,
         bytes32[] memory signer_pubkeys,
         uint8 m
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         if (!is_valid_signer_index(m) || !is_valid_signer_index(uint8(signer_pubkeys.length)) || uint256(m) > signer_pubkeys.length) {
             revert InvalidSignerCount(signer_pubkeys.length);
         }
@@ -253,11 +233,7 @@ library SplTokenLib {
             accounts[2 + i] = _account_meta(signer_pubkeys[i], false, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: abi.encodePacked(uint8(2), m)
-        });
+        return (token_program_id, accounts, abi.encodePacked(uint8(2), m));
     }
 
     function initialize_multisig2(
@@ -265,7 +241,7 @@ library SplTokenLib {
         bytes32 multisig_pubkey,
         bytes32[] memory signer_pubkeys,
         uint8 m
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         if (!is_valid_signer_index(m) || !is_valid_signer_index(uint8(signer_pubkeys.length)) || uint256(m) > signer_pubkeys.length) {
             revert InvalidSignerCount(signer_pubkeys.length);
         }
@@ -277,11 +253,7 @@ library SplTokenLib {
             accounts[1 + i] = _account_meta(signer_pubkeys[i], false, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: abi.encodePacked(uint8(19), m)
-        });
+        return (token_program_id, accounts, abi.encodePacked(uint8(19), m));
     }
 
     function transfer(
@@ -291,7 +263,7 @@ library SplTokenLib {
         bytes32 authority_pubkey,
         bytes32[] memory signer_pubkeys,
         uint64 amount
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
         accounts[0] = _account_meta(source_pubkey, false, true);
@@ -301,11 +273,7 @@ library SplTokenLib {
             accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag_u64(3, amount)
-        });
+        return (token_program_id, accounts, _pack_tag_u64(3, amount));
     }
 
     function approve(
@@ -315,7 +283,7 @@ library SplTokenLib {
         bytes32 owner_pubkey,
         bytes32[] memory signer_pubkeys,
         uint64 amount
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
         accounts[0] = _account_meta(source_pubkey, false, true);
@@ -325,11 +293,7 @@ library SplTokenLib {
             accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag_u64(4, amount)
-        });
+        return (token_program_id, accounts, _pack_tag_u64(4, amount));
     }
 
     function revoke(
@@ -337,7 +301,7 @@ library SplTokenLib {
         bytes32 source_pubkey,
         bytes32 owner_pubkey,
         bytes32[] memory signer_pubkeys
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             new ICrossProgramInvocation.AccountMeta[](2 + signer_pubkeys.length);
         accounts[0] = _account_meta(source_pubkey, false, true);
@@ -346,11 +310,7 @@ library SplTokenLib {
             accounts[2 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag(5)
-        });
+        return (token_program_id, accounts, _pack_tag(5));
     }
 
     function set_authority(
@@ -361,7 +321,7 @@ library SplTokenLib {
         AuthorityType authority_type,
         bytes32 owner_pubkey,
         bytes32[] memory signer_pubkeys
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             new ICrossProgramInvocation.AccountMeta[](2 + signer_pubkeys.length);
         accounts[0] = _account_meta(owned_pubkey, false, true);
@@ -370,15 +330,11 @@ library SplTokenLib {
             accounts[2 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: bytes.concat(
+        return (token_program_id, accounts, bytes.concat(
                 bytes1(uint8(6)),
                 bytes1(uint8(authority_type)),
                 _pack_pubkey_option(has_new_authority_pubkey, new_authority_pubkey)
-            )
-        });
+            ));
     }
 
     function mint_to(
@@ -388,7 +344,7 @@ library SplTokenLib {
         bytes32 mint_authority_pubkey,
         bytes32[] memory signer_pubkeys,
         uint64 amount
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
         accounts[0] = _account_meta(mint_pubkey, false, true);
@@ -398,11 +354,7 @@ library SplTokenLib {
             accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag_u64(7, amount)
-        });
+        return (token_program_id, accounts, _pack_tag_u64(7, amount));
     }
 
     function burn(
@@ -412,7 +364,7 @@ library SplTokenLib {
         bytes32 authority_pubkey,
         bytes32[] memory signer_pubkeys,
         uint64 amount
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
         accounts[0] = _account_meta(account_pubkey, false, true);
@@ -422,11 +374,7 @@ library SplTokenLib {
             accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag_u64(8, amount)
-        });
+        return (token_program_id, accounts, _pack_tag_u64(8, amount));
     }
 
     function close_account(
@@ -435,7 +383,7 @@ library SplTokenLib {
         bytes32 destination_pubkey,
         bytes32 owner_pubkey,
         bytes32[] memory signer_pubkeys
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
         accounts[0] = _account_meta(account_pubkey, false, true);
@@ -445,11 +393,7 @@ library SplTokenLib {
             accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag(9)
-        });
+        return (token_program_id, accounts, _pack_tag(9));
     }
 
     function freeze_account(
@@ -458,7 +402,7 @@ library SplTokenLib {
         bytes32 mint_pubkey,
         bytes32 freeze_authority_pubkey,
         bytes32[] memory signer_pubkeys
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
         accounts[0] = _account_meta(account_pubkey, false, true);
@@ -468,11 +412,7 @@ library SplTokenLib {
             accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag(10)
-        });
+        return (token_program_id, accounts, _pack_tag(10));
     }
 
     function thaw_account(
@@ -481,7 +421,7 @@ library SplTokenLib {
         bytes32 mint_pubkey,
         bytes32 freeze_authority_pubkey,
         bytes32[] memory signer_pubkeys
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
         accounts[0] = _account_meta(account_pubkey, false, true);
@@ -491,11 +431,7 @@ library SplTokenLib {
             accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag(11)
-        });
+        return (token_program_id, accounts, _pack_tag(11));
     }
 
     function transfer_checked(
@@ -507,7 +443,7 @@ library SplTokenLib {
         bytes32[] memory signer_pubkeys,
         uint64 amount,
         uint8 decimals
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             new ICrossProgramInvocation.AccountMeta[](4 + signer_pubkeys.length);
         accounts[0] = _account_meta(source_pubkey, false, true);
@@ -518,11 +454,7 @@ library SplTokenLib {
             accounts[4 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag_u64_u8(12, amount, decimals)
-        });
+        return (token_program_id, accounts, _pack_tag_u64_u8(12, amount, decimals));
     }
 
     function approve_checked(
@@ -534,7 +466,7 @@ library SplTokenLib {
         bytes32[] memory signer_pubkeys,
         uint64 amount,
         uint8 decimals
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             new ICrossProgramInvocation.AccountMeta[](4 + signer_pubkeys.length);
         accounts[0] = _account_meta(source_pubkey, false, true);
@@ -545,11 +477,7 @@ library SplTokenLib {
             accounts[4 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag_u64_u8(13, amount, decimals)
-        });
+        return (token_program_id, accounts, _pack_tag_u64_u8(13, amount, decimals));
     }
 
     function mint_to_checked(
@@ -560,7 +488,7 @@ library SplTokenLib {
         bytes32[] memory signer_pubkeys,
         uint64 amount,
         uint8 decimals
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
         accounts[0] = _account_meta(mint_pubkey, false, true);
@@ -570,11 +498,7 @@ library SplTokenLib {
             accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag_u64_u8(14, amount, decimals)
-        });
+        return (token_program_id, accounts, _pack_tag_u64_u8(14, amount, decimals));
     }
 
     function burn_checked(
@@ -585,7 +509,7 @@ library SplTokenLib {
         bytes32[] memory signer_pubkeys,
         uint64 amount,
         uint8 decimals
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
         accounts[0] = _account_meta(account_pubkey, false, true);
@@ -595,40 +519,28 @@ library SplTokenLib {
             accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag_u64_u8(15, amount, decimals)
-        });
+        return (token_program_id, accounts, _pack_tag_u64_u8(15, amount, decimals));
     }
 
     function sync_native(
         bytes32 token_program_id,
         bytes32 account_pubkey
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
         accounts[0] = _account_meta(account_pubkey, false, true);
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag(17)
-        });
+        return (token_program_id, accounts, _pack_tag(17));
     }
 
     function get_account_data_size(
         bytes32 token_program_id,
         bytes32 mint_pubkey,
         uint16[] memory extension_types
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
         accounts[0] = _account_meta(mint_pubkey, false, false);
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: bytes.concat(bytes1(uint8(21)), _pack_u16_array(extension_types))
-        });
+        return (token_program_id, accounts, bytes.concat(bytes1(uint8(21)), _pack_u16_array(extension_types)));
     }
 
     function initialize_mint_close_authority(
@@ -636,59 +548,43 @@ library SplTokenLib {
         bytes32 mint_pubkey,
         bool has_close_authority,
         bytes32 close_authority
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
         accounts[0] = _account_meta(mint_pubkey, false, true);
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: bytes.concat(bytes1(uint8(25)), _pack_pubkey_option(has_close_authority, close_authority))
-        });
+        return (token_program_id, accounts, bytes.concat(bytes1(uint8(25)), _pack_pubkey_option(has_close_authority, close_authority)));
     }
 
     function initialize_immutable_owner(
         bytes32 token_program_id,
         bytes32 token_account
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
         accounts[0] = _account_meta(token_account, false, true);
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag(22)
-        });
+        return (token_program_id, accounts, _pack_tag(22));
     }
 
     function amount_to_ui_amount(
         bytes32 token_program_id,
         bytes32 mint_pubkey,
         uint64 amount
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
         accounts[0] = _account_meta(mint_pubkey, false, false);
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag_u64(23, amount)
-        });
+        return (token_program_id, accounts, _pack_tag_u64(23, amount));
     }
 
     function ui_amount_to_amount(
         bytes32 token_program_id,
         bytes32 mint_pubkey,
         string memory ui_amount
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
         accounts[0] = _account_meta(mint_pubkey, false, false);
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: bytes.concat(bytes1(uint8(24)), bytes(ui_amount))
-        });
+        return (token_program_id, accounts, bytes.concat(bytes1(uint8(24)), bytes(ui_amount)));
     }
 
     function reallocate(
@@ -698,7 +594,7 @@ library SplTokenLib {
         bytes32 owner_pubkey,
         bytes32[] memory signer_pubkeys,
         uint16[] memory extension_types
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             new ICrossProgramInvocation.AccountMeta[](4 + signer_pubkeys.length);
         accounts[0] = _account_meta(account_pubkey, false, true);
@@ -709,56 +605,40 @@ library SplTokenLib {
             accounts[4 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: bytes.concat(bytes1(uint8(29)), _pack_u16_array(extension_types))
-        });
+        return (token_program_id, accounts, bytes.concat(bytes1(uint8(29)), _pack_u16_array(extension_types)));
     }
 
     function create_native_mint(
         bytes32 token_program_id,
         bytes32 payer
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](3);
         accounts[0] = _account_meta(payer, true, true);
         accounts[1] = _account_meta(NATIVE_MINT_ID, false, true);
         accounts[2] = _account_meta(SYSTEM_PROGRAM_ID, false, false);
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag(31)
-        });
+        return (token_program_id, accounts, _pack_tag(31));
     }
 
     function initialize_non_transferable_mint(
         bytes32 token_program_id,
         bytes32 mint_pubkey
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
         accounts[0] = _account_meta(mint_pubkey, false, true);
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag(32)
-        });
+        return (token_program_id, accounts, _pack_tag(32));
     }
 
     function initialize_permanent_delegate(
         bytes32 token_program_id,
         bytes32 mint_pubkey,
         bytes32 delegate
-    ) public pure returns (ICrossProgramInvocation.Instruction memory) {
+    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](1);
         accounts[0] = _account_meta(mint_pubkey, false, true);
 
-        return ICrossProgramInvocation.Instruction({
-            program_id: token_program_id,
-            accounts: accounts,
-            data: _pack_tag_pubkey(35, delegate)
-        });
+        return (token_program_id, accounts, _pack_tag_pubkey(35, delegate));
     }
 
     function is_valid_signer_index(uint8 index) public pure returns (bool) {

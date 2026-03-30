@@ -30,13 +30,6 @@ library RomeEVMAccount {
         return (128 + len) * 3480 * 2;
     }
 
-    function pda(address user) internal view returns (bytes32) {
-        bytes32 rome_program = SystemProgram.rome_evm_program_id();
-        ISystemProgram.Seed[] memory pda_seeds = RomeEVMAccount.authority_seeds(user);
-        (bytes32 key,) = SystemProgram.find_program_address(rome_program, pda_seeds);
-        return key;
-    }
-
     function pda_with_salt(address user, bytes32 salt) internal view returns (bytes32) {
         bytes32 rome_program = SystemProgram.rome_evm_program_id();
         ISystemProgram.Seed[] memory seeds = RomeEVMAccount.authority_seeds_with_salt(user, salt);
@@ -44,8 +37,12 @@ library RomeEVMAccount {
         return key;
     }
 
+    function get_payer(address user, bytes32 salt) internal view returns (bytes32) {
+        return pda_with_salt(user, salt);
+    }
+
     function create_payer(address user, uint64 lamports, bytes32 salt)  external {
-        bytes32 key = RomeEVMAccount.pda_with_salt(user, salt);
+        bytes32 key = get_payer(user, salt);
 
         (uint64 lamports_,,,,,) = CpiProgram.account_info(key);
         if (lamports_ == 0) {
