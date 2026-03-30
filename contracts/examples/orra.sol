@@ -6,7 +6,7 @@ import "../system_program/system_program.sol";
 import {ICrossProgramInvocation as icpi, CpiProgram as cpi} from "../interface.sol";
 
 contract orra_example {
-    bytes32 public constant ORRA_PROGRAM_ID = 0x78d3128f7f605f26cbba85370ad38435f622302be6d8293b798ce3cb56a35762;
+    bytes32 public constant ORRA_PROGRAM_ID = 0x06c47d83a43f44ac4a8ac28c545b068e9253ce77a3049e0372d4848dfd032e64;
 
     function create_payer_account() external {
         bytes32 salt = Convert.bytes_to_bytes32(bytes("PAYER"));
