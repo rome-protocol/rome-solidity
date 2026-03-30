@@ -153,7 +153,7 @@ library DAMMv1Lib {
     internal
     view
     returns (PoolState memory) {
-        (,,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(pool_pubkey);
+        (,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(pool_pubkey);
         return parse_pool(data);
     }
 
@@ -162,7 +162,7 @@ library DAMMv1Lib {
     view
     returns (VaultState memory)
     {
-        (,,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(vault_pubkey);
+        (,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(vault_pubkey);
         return parse_vault(data);
     }
 }
@@ -463,7 +463,7 @@ contract DAMMv1Pool {
     ) external {
         ICrossProgramInvocation.AccountMeta[] memory metas = build_swap_account_metas(a);
         bytes memory data = build_swap_ix_data(in_amount, minimum_out_amount);
-        ICrossProgramInvocation(cpi_program).invoke_signed(prog_dynamic_amm, metas, data);
+        ICrossProgramInvocation(cpi_program).invoke(prog_dynamic_amm, metas, data);
     }
 
     function invoke_swap(
