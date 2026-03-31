@@ -62,17 +62,18 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     function _transfer(address from, address to, uint256 value) internal returns (bool) {
+        require(value <= type(uint64).max, "Transfer amount exceeds uint64");
+        
         bytes32 owner = UnifiedLiquidity.get_payer_account(from);
-        bytes32 source = UnifiedLiquidity.get_token_account(from, mint_id);
-        bytes32 destination = UnifiedLiquidity.get_token_account(to, mint_id);
         bytes32[] memory signers = new bytes32[](1);
         signers[0] = owner;
 
-        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) = SplTokenLib.transfer_checked(
+        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) = 
+        SplTokenLib.transfer_checked(
             token_program, 
-            source, 
+            UnifiedLiquidity.get_token_account(from, mint_id), 
             mint_id, 
-            destination,
+            UnifiedLiquidity.get_token_account(to, mint_id),
             owner,
             signers,
             uint64(value), 

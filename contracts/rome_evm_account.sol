@@ -30,6 +30,13 @@ library RomeEVMAccount {
         return (128 + len) * 3480 * 2;
     }
 
+    function pda(address user) internal view returns (bytes32) {
+        bytes32 rome_program = SystemProgram.rome_evm_program_id();
+        ISystemProgram.Seed[] memory pda_seeds = RomeEVMAccount.authority_seeds(user);
+        (bytes32 key,) = SystemProgram.find_program_address(rome_program, pda_seeds);
+        return key;
+    }
+
     function pda_with_salt(address user, bytes32 salt) internal view returns (bytes32) {
         bytes32 rome_program = SystemProgram.rome_evm_program_id();
         ISystemProgram.Seed[] memory seeds = RomeEVMAccount.authority_seeds_with_salt(user, salt);
