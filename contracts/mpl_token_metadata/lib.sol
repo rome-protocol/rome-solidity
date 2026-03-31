@@ -207,11 +207,25 @@ library MplTokenMetadataLib {
     function load_metadata(bytes32 mint, bytes32 mpl_program_id, address cpi_program)
     internal
     view
-    returns (Metadata memory)
+    returns (bool, Metadata memory)
     {
         (bytes32 metadata_pubkey,) = find_metadata_pda(mint, mpl_program_id);
-        (,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(metadata_pubkey);
-        return parse_metadata(data);
+        (uint64 lamports,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(metadata_pubkey);
+        if (lamports == 0) {
+            return (
+                false, 
+                Metadata(
+                    Key.Uninitialized, 0, 0, "", "", "", 0, false, 
+                    new Creator[](0), false, false, false, 0, false, 
+                    TokenStandard.NonFungible, false, Collection(false, 0), 
+                    false, Uses(UseMethod.Burn, 0, 0), false, 
+                    CollectionDetails(CollectionDetailsVariant.None, 0, 0), 
+                    false, ProgrammableConfig(ProgrammableConfigVariant.None, false, 0)
+                )
+            );
+        }
+
+        return (lamports > 0, parse_metadata(data));
     }
 
     // =========================
