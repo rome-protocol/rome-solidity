@@ -5,7 +5,8 @@ import "../IAggregatorV3Interface.sol";
 
 /// @title SampleLendingOracle
 /// @notice Example consumer demonstrating standard Chainlink-style usage
-///         of PythAggregatorV3 adapters for a lending protocol.
+///         of Oracle Gateway V2 adapters (PythPull, Switchboard) for a lending protocol.
+///         Works with any adapter deployed by OracleAdapterFactory.
 contract SampleLendingOracle {
     uint256 public constant MAX_STALENESS = 60; // 60 seconds
 

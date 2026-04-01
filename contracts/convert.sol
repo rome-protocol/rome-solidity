@@ -72,6 +72,37 @@ library Convert {
         return (value, offset + 8);
     }
 
+    function read_i64le(bytes memory data, uint256 offset)
+    internal
+    pure
+    returns (int64 value, uint256 newOffset)
+    {
+        uint64 unsigned;
+        (unsigned, newOffset) = read_u64le(data, offset);
+        value = int64(unsigned);
+    }
+
+    function read_i128le(bytes memory data, uint256 offset)
+    internal
+    pure
+    returns (int128 value, uint256 newOffset)
+    {
+        require(offset + 16 <= data.length, "oob i128");
+        uint128 lo;
+        uint128 hi;
+        // Read low 8 bytes
+        for (uint256 i = 0; i < 8; i++) {
+            lo |= uint128(uint8(data[offset + i])) << uint128(i * 8);
+        }
+        // Read high 8 bytes
+        for (uint256 i = 0; i < 8; i++) {
+            hi |= uint128(uint8(data[offset + 8 + i])) << uint128(i * 8);
+        }
+        uint128 unsigned = lo | (hi << 64);
+        value = int128(unsigned);
+        newOffset = offset + 16;
+    }
+
     function read_bytes32(bytes memory data, uint256 offset)
     internal
     pure
