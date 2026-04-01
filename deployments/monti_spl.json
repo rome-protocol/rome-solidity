@@ -35,5 +35,42 @@
       "pythAccount": "0xca80ba6dc32e08d06f1aa886011eed1d77c77be9eb761cc10d72b7d0a2fd57a6",
       "adapter": "0x8a67386F90b5422D3B61e9a5e4BD1986A216D98D"
     }
-  ]
+  ],
+  "OracleGatewayV2": {
+    "PythPullAdapter": {
+      "address": "0x552f54edc06c7172c2748678af4c19600c0a6a8d",
+      "type": "implementation"
+    },
+    "SwitchboardV3Adapter": {
+      "address": "0xa423d30c8d28a524f857423b6c776bc523dccafa",
+      "type": "implementation"
+    },
+    "OracleAdapterFactory": {
+      "address": "0x242e8a18c69ad68368ea08d49fa1333594276a9a",
+      "pythPriceFeedProgramId": "0x0cb7fabb52f7a648bb5b317d9a018b9057cb024774fafe01e6c4df98cc385881",
+      "switchboardProgramId": "0x068851c68c6832f02fa581b1bf491b77ca41776ba2b988b5a6faba8ee3a2ec90",
+      "defaultMaxStaleness": 60
+    },
+    "BatchReader": {
+      "address": "0x2b26b7e5d74980882468348f7a07617c9f97c8cf"
+    },
+    "deployedAt": "2026-04-01T23:39:27.183Z",
+    "feeds": [
+      {
+        "pair": "SOL / USD",
+        "pythAccountBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243",
+        "adapter": "0xF408E6F07Fdd927A877e71586e74978FCe9ffB7e"
+      },
+      {
+        "pair": "BTC / USD",
+        "pythAccountBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de",
+        "adapter": "0x7EF3e28460cDb1C299E1a462AF69C815397c216a"
+      },
+      {
+        "pair": "ETH / USD",
+        "pythAccountBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb",
+        "adapter": "0xE4610114c3E43a394aC01ca25103f4bfD89B4C1C"
+      }
+    ]
+  }
 }

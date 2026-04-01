@@ -20,9 +20,10 @@ import path from "node:path";
  *   DEFAULT_MAX_STALENESS=60
  */
 
-// Pyth Price Feed program: pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT
+// Pyth Solana Receiver program: rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ
+// PriceFeedAccount PDAs are owned by this program on-chain
 const DEFAULT_PYTH_PRICE_FEED_PROGRAM_ID =
-    "0x0c4aa0128e95d3e1622aa501c585a9eb07b37354c108ea0b791b456dc7eea336";
+    "0x0cb7fabb52f7a648bb5b317d9a018b9057cb024774fafe01e6c4df98cc385881";
 
 // Switchboard V3 program: SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f
 const DEFAULT_SWITCHBOARD_PROGRAM_ID =

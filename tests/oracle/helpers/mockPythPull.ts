@@ -1,19 +1,19 @@
 /**
  * Mock PriceUpdateV2 (Pyth Pull) account builder for testing PythPullParser.
  *
- * Layout (Borsh/Anchor, little-endian):
+ * Layout (Borsh/Anchor, little-endian, Full verification variant):
  *   [0..8]     Anchor discriminator
  *   [8..40]    write_authority (Pubkey)
- *   [40..42]   verification_level (enum: 1 byte tag + 1 byte num_signatures)
- *   [42..74]   feed_id ([u8;32])
- *   [74..82]   price (i64)
- *   [82..90]   conf (u64)
- *   [90..94]   exponent (i32)
- *   [94..102]  publish_time (i64)
- *   [102..110] prev_publish_time (i64)
- *   [110..118] ema_price (i64)
- *   [118..126] ema_conf (u64)
- *   [126..134] posted_slot (u64)
+ *   [40]       verification_level = Full (0x01, 1 byte)
+ *   [41..73]   feed_id ([u8;32])
+ *   [73..81]   price (i64)
+ *   [81..89]   conf (u64)
+ *   [89..93]   exponent (i32)
+ *   [93..101]  publish_time (i64)
+ *   [101..109] prev_publish_time (i64)
+ *   [109..117] ema_price (i64)
+ *   [117..125] ema_conf (u64)
+ *   [125..133] posted_slot (u64)
  */
 
 export interface PythPullAccountParams {
@@ -53,11 +53,11 @@ function writeUint64LE(buf: Uint8Array, offset: number, value: bigint): void {
 }
 
 /**
- * Build a mock PriceUpdateV2 account byte array.
+ * Build a mock PriceUpdateV2 account byte array (Full verification variant).
  * Returns a hex string prefixed with 0x, suitable for passing to Solidity.
  */
 export function buildPythPullAccount(params: PythPullAccountParams): `0x${string}` {
-    const buf = new Uint8Array(134);
+    const buf = new Uint8Array(133);
 
     // Anchor discriminator at offset 0 (8 bytes, big-endian to match Solidity bytes8)
     const disc = params.discriminator ?? DEFAULT_DISCRIMINATOR;
@@ -65,23 +65,26 @@ export function buildPythPullAccount(params: PythPullAccountParams): `0x${string
         buf[i] = Number((disc >> BigInt((7 - i) * 8)) & 0xffn);
     }
 
-    // price at offset 74 (i64, LE)
-    writeInt64LE(buf, 74, params.price);
+    // verification_level = Full at offset 40
+    buf[40] = 0x01;
 
-    // conf at offset 82 (u64, LE)
-    writeUint64LE(buf, 82, params.conf);
+    // price at offset 73 (i64, LE)
+    writeInt64LE(buf, 73, params.price);
 
-    // exponent at offset 90 (i32, LE)
-    writeInt32LE(buf, 90, params.expo);
+    // conf at offset 81 (u64, LE)
+    writeUint64LE(buf, 81, params.conf);
 
-    // publish_time at offset 94 (i64, LE)
-    writeInt64LE(buf, 94, BigInt(params.publishTime));
+    // exponent at offset 89 (i32, LE)
+    writeInt32LE(buf, 89, params.expo);
 
-    // ema_price at offset 110 (i64, LE)
-    writeInt64LE(buf, 110, params.emaPrice ?? 0n);
+    // publish_time at offset 93 (i64, LE)
+    writeInt64LE(buf, 93, BigInt(params.publishTime));
 
-    // ema_conf at offset 118 (u64, LE)
-    writeUint64LE(buf, 118, params.emaConf ?? 0n);
+    // ema_price at offset 109 (i64, LE)
+    writeInt64LE(buf, 109, params.emaPrice ?? 0n);
+
+    // ema_conf at offset 117 (u64, LE)
+    writeUint64LE(buf, 117, params.emaConf ?? 0n);
 
     const hex = Array.from(buf)
         .map((b) => b.toString(16).padStart(2, "0"))
