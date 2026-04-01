@@ -20,7 +20,7 @@ export interface SwitchboardAccountParams {
     timestamp: number;
 }
 
-const DEFAULT_DISCRIMINATOR = 0xd790d78a3102f2afn;
+const DEFAULT_DISCRIMINATOR = 0xd9e64165c9a21b7dn;
 
 function writeBytes8BE(buf: Uint8Array, offset: number, value: bigint): void {
     for (let i = 0; i < 8; i++) {

@@ -21,7 +21,7 @@ library SwitchboardParser {
 
     /// @notice Anchor discriminator for AggregatorAccountData
     /// Must be validated against live account before deployment
-    bytes8 constant DISCRIMINATOR = 0xd790d78a3102f2af;
+    bytes8 constant DISCRIMINATOR = 0xd9e64165c9a21b7d;
 
     /// @notice Byte offset of latest_confirmed_round.result in AggregatorAccountData
     /// This is a large struct — offset must be validated empirically

@@ -12,25 +12,27 @@ import path from "node:path";
  *   4. BatchReader
  *
  * Usage:
- *   PYTH_RECEIVER_PROGRAM_ID=0x... SWITCHBOARD_PROGRAM_ID=0x... \
  *   npx hardhat run scripts/oracle/deploy.ts --network monti_spl
+ *
+ * Override program IDs via env vars if needed:
+ *   PYTH_PRICE_FEED_PROGRAM_ID=0x...
+ *   SWITCHBOARD_PROGRAM_ID=0x...
+ *   DEFAULT_MAX_STALENESS=60
  */
 
+// Pyth Price Feed program: pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT
+const DEFAULT_PYTH_PRICE_FEED_PROGRAM_ID =
+    "0x0c4aa0128e95d3e1622aa501c585a9eb07b37354c108ea0b791b456dc7eea336";
+
+// Switchboard V3 program: SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f
+const DEFAULT_SWITCHBOARD_PROGRAM_ID =
+    "0x068851c68c6832f02fa581b1bf491b77ca41776ba2b988b5a6faba8ee3a2ec90";
+
 async function main() {
-    const pythReceiverProgramId = process.env.PYTH_RECEIVER_PROGRAM_ID;
-    if (!pythReceiverProgramId) {
-        throw new Error(
-            "PYTH_RECEIVER_PROGRAM_ID env var required (bytes32 hex of Pyth Solana Receiver program)",
-        );
-    }
-
-    const switchboardProgramId = process.env.SWITCHBOARD_PROGRAM_ID;
-    if (!switchboardProgramId) {
-        throw new Error(
-            "SWITCHBOARD_PROGRAM_ID env var required (bytes32 hex of Switchboard V3 program)",
-        );
-    }
-
+    const pythProgramId =
+        process.env.PYTH_PRICE_FEED_PROGRAM_ID ?? DEFAULT_PYTH_PRICE_FEED_PROGRAM_ID;
+    const switchboardProgramId =
+        process.env.SWITCHBOARD_PROGRAM_ID ?? DEFAULT_SWITCHBOARD_PROGRAM_ID;
     const defaultMaxStaleness = Number(process.env.DEFAULT_MAX_STALENESS ?? "60");
 
     const { viem, networkName } = await hardhat.network.connect();
@@ -50,7 +52,7 @@ async function main() {
         (await publicClient.getBalance({ address: deployer.account.address })).toString(),
     );
     console.log("Network:", networkName);
-    console.log("Pyth Receiver Program ID:", pythReceiverProgramId);
+    console.log("Pyth Price Feed Program ID:", pythProgramId);
     console.log("Switchboard Program ID:", switchboardProgramId);
     console.log("Default Max Staleness:", defaultMaxStaleness, "seconds");
     console.log();
@@ -70,7 +72,7 @@ async function main() {
     const factory = await viem.deployContract("OracleAdapterFactory", [
         pythImpl.address,
         sbImpl.address,
-        pythReceiverProgramId as `0x${string}`,
+        pythProgramId as `0x${string}`,
         switchboardProgramId as `0x${string}`,
         BigInt(defaultMaxStaleness),
     ]);
@@ -99,7 +101,7 @@ async function main() {
         SwitchboardV3Adapter: { address: sbImpl.address, type: "implementation" },
         OracleAdapterFactory: {
             address: factory.address,
-            pythReceiverProgramId,
+            pythPriceFeedProgramId: pythProgramId,
             switchboardProgramId,
             defaultMaxStaleness,
         },

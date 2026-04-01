@@ -161,7 +161,7 @@ describe("PythPullParser", function () {
         );
     });
 
-    it("reverts on data too short (< 133 bytes)", async function () {
+    it("reverts on data too short (< 134 bytes)", async function () {
         const shortData = "0x" + "00".repeat(100);
 
         await assert.rejects(
