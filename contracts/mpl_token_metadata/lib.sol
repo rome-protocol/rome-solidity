@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "../borsch.sol";
-import "../wsystem_program.sol";
+import "../interface.sol";
 
 library MplTokenMetadataLib {
     // =========================

@@ -5,18 +5,6 @@ import "../interface.sol";
 import {Convert} from "../convert.sol";
 
 library SplTokenLib {
-    struct AccountBase58 {
-        string mint;
-        string owner;
-        uint64 amount;
-        string delegate;
-        ISplToken.AccountState state;
-        bool is_native;
-        uint64 native_value;
-        uint64 delegated_amount;
-        string close_authority;
-    }
-
     bytes32 public constant SPL_TOKEN_PROGRAM =
     0x06ddf6e1d765a193d9cbe146ceeb79ac1cb485ed5f5b37913a8cf5857eff00a9; // Tokenkeg..
 
@@ -35,30 +23,6 @@ library SplTokenLib {
 
     error InvalidMintDataLength(uint256 actual, uint256 expected, bytes32 spl_token);
     error InvalidCOptionTag(uint32 tag);
-
-    function program_id() internal view returns (string memory) {
-        bytes32 key = SplToken.program_id();
-        bytes memory b58 = SystemProgram.bytes32_to_base58(key);
-
-        return string(b58);
-    }
-
-    function transfer(bytes32 from, bytes32 to, uint64 amount) internal {
-        ISplToken.Seed[] memory seeds = new ISplToken.Seed[](0);
-        (bool success, bytes memory result) = spl_token_address.delegatecall(
-            abi.encodeWithSignature("transfer(bytes32,bytes32,uint64,(bytes)[])", from, to, amount, seeds)
-        );
-
-        require (success, string(Convert.revert_msg(result)));
-    }
-
-    function init_account(string memory acc, string memory mint, string memory owner) internal {
-        bytes32 acc_ = SystemProgram.base58_to_bytes32(bytes(acc));
-        bytes32 mint_ = SystemProgram.base58_to_bytes32(bytes(mint));
-        bytes32 owner_ = SystemProgram.base58_to_bytes32(bytes(owner));
-
-        SplToken.initialize_account3(acc_, mint_, owner_);
-    }
 
     function load_mint(bytes32 token, address cpi_program) internal view returns (SplMint memory mint) {
         (,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(token);
