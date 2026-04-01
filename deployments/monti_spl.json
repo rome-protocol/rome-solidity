@@ -15,5 +15,12 @@
       "txHash": "0xd0259a0ba944b6d2e459fec27ec618f03fb8b8cbafd8cb0ee4cd6d0cb45b2b24",
       "blockNumber": "1550"
     }
-  ]
+  ],
+  "AssociatedSplToken": {
+    "address": "0x49609e7159d1590167cfd9694b1d65dd00ee573f",
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008",
+    "systemProgramId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "tokenProgramId": "0x06ddf6e1d765a193d9cbe146ceeb79ac1cb485ed5f5b37913a8cf5857eff00a9",
+    "associatedTokenProgramId": "0x8c97258f4e2489f1bb3d1029148e0d830b5a1399daff1084048e7bd8dbe9f859"
+  }
 }

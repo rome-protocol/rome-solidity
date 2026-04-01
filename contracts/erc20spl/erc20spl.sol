@@ -6,7 +6,6 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {SplTokenLib} from "../spl_token/spl_token.sol";
 import {ICrossProgramInvocation} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
-import {AssociatedSplTokenLib} from "../spl_token/associated_spl_token.sol";
 import {UnifiedLiquidity} from "../spl_token/unified_liquidity.sol";
 // import {MplTokenMetadataLib} from "../mpl_token_metadata/lib.sol";
 

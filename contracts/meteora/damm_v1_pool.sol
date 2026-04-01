@@ -4,7 +4,6 @@ pragma solidity ^0.8.20;
 import "../interface.sol";
 import {SplTokenLib} from "../spl_token/spl_token.sol";
 import {Convert} from "../convert.sol";
-import {AssociatedSplTokenLib} from "../spl_token/associated_spl_token.sol";
 import "../rome_evm_account.sol";
 
 library DAMMv1Lib {
@@ -480,44 +479,6 @@ contract DAMMv1Pool {
             user,
             in_token
         );
-
-        this.invoke_swap(a, in_amount, minimum_out_amount);
-    }
-
-    function invoke_swap(
-        PoolToken in_token,
-        uint64 in_amount,
-        uint64 minimum_out_amount
-    ) external {
-        bytes32 protocol_token_fee = in_token == PoolToken.TokenA
-            ? protocol_token_a_fee
-            : protocol_token_b_fee;
-
-        (bytes32 _in_token, bytes32 _out_token) = in_token == PoolToken.TokenA
-            ? (token_a_mint, token_b_mint)
-            : (token_b_mint, token_a_mint);
-
-        bytes32 user = RomeEVMAccount.pda(msg.sender);
-        (bytes32 user_source_token,) = AssociatedSplTokenLib.associated_token_address(user, _in_token);
-        (bytes32 user_destination_token,) = AssociatedSplTokenLib.associated_token_address(user, _out_token);
-
-        SwapAccountsInput memory a = SwapAccountsInput({
-            pool: pool_address,
-            user_source_token: user_source_token,
-            user_destination_token: user_destination_token,
-            a_vault_lp: a_vault_lp,
-            b_vault_lp: b_vault_lp,
-            a_vault: a_vault,
-            b_vault: b_vault,
-            a_vault_lp_mint: vault_a.lp_mint,
-            b_vault_lp_mint: vault_b.lp_mint,
-            a_token_vault: vault_a.token_vault,
-            b_token_vault: vault_b.token_vault,
-            user: user,
-            vault_program: prog_dynamic_vault,
-            token_program: SplTokenLib.SPL_TOKEN_PROGRAM,
-            protocol_token_fee: protocol_token_fee
-        });
 
         this.invoke_swap(a, in_amount, minimum_out_amount);
     }

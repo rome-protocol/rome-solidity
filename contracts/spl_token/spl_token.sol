@@ -268,10 +268,15 @@ library SplTokenLib {
             new ICrossProgramInvocation.AccountMeta[](3 + signer_pubkeys.length);
         accounts[0] = _account_meta(source_pubkey, false, true);
         accounts[1] = _account_meta(destination_pubkey, false, true);
-        accounts[2] = _account_meta(authority_pubkey, signer_pubkeys.length == 0, false);
+        accounts[2] = _account_meta(authority_pubkey, signer_pubkeys.length == 0, false); // RomEVMAccount.pda
         for (uint256 i = 0; i < signer_pubkeys.length; i++) {
             accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
+
+        // delagatecall
+        // ICrossProgramInvocation(cpi_program).invoke(
+        //     token_program_id, accounts, _pack_tag_u64(3, amount));
+        // );
 
         return (token_program_id, accounts, _pack_tag_u64(3, amount));
     }

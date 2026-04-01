@@ -13,9 +13,18 @@ export type FactoryDeployment = {
     address?: string;
 };
 
+export type AssociatedSplTokenDeployment = {
+    address?: string;
+    cpiContractAddress?: string;
+    systemProgramId?: string;
+    tokenProgramId?: string;
+    associatedTokenProgramId?: string;
+};
+
 export type DeploymentsFile = {
     MeteoraDAMMv1Factory?: FactoryDeployment;
     MeteoraDAMMv1Pools?: PoolDeployment[];
+    AssociatedSplToken?: AssociatedSplTokenDeployment;
 };
 
 export function deploymentsFilePath(networkName: string): string {
@@ -127,5 +136,26 @@ export function savePoolDeployment(args: {
     }
 
     deployments.MeteoraDAMMv1Pools = pools;
+    writeDeployments(args.networkName, deployments);
+}
+
+export function saveAssociatedSplTokenDeployment(args: {
+    networkName: string;
+    address: `0x${string}`;
+    cpiContractAddress: `0x${string}`;
+    systemProgramId: `0x${string}`;
+    tokenProgramId: `0x${string}`;
+    associatedTokenProgramId: `0x${string}`;
+}): void {
+    const deployments = readDeployments(args.networkName);
+
+    deployments.AssociatedSplToken = {
+        address: args.address,
+        cpiContractAddress: args.cpiContractAddress,
+        systemProgramId: args.systemProgramId,
+        tokenProgramId: args.tokenProgramId,
+        associatedTokenProgramId: args.associatedTokenProgramId,
+    };
+
     writeDeployments(args.networkName, deployments);
 }

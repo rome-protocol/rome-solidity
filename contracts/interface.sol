@@ -50,7 +50,7 @@ interface ISystemProgram {
     // eth_calls
     function program_id() external view returns(bytes32);
     function rome_evm_program_id() external view returns(bytes32);
-    function find_program_address(bytes32 program, Seed[] memory seeds) external view returns (bytes32, uint8);
+    function find_program_address(bytes32 program, Seed[] memory seeds) external pure returns (bytes32, uint8);
     function bytes32_to_base58(bytes32) external view returns(bytes memory);
     function base58_to_bytes32(bytes memory) external view returns(bytes32);
     function operator() external view returns(bytes32);
@@ -87,7 +87,6 @@ address constant cpi_program_address = address(0xFF00000000000000000000000000000
 address constant withdraw_address = address(0x4200000000000000000000000000000000000016);
 
 ISplToken constant SplToken = ISplToken(spl_token_address);
-IAssociatedSplToken constant AssociatedSplToken = IAssociatedSplToken(aspl_token_address);
 ISystemProgram constant SystemProgram = ISystemProgram(system_program_address);
 ICrossProgramInvocation constant CpiProgram = ICrossProgramInvocation(cpi_program_address);
 IWithdraw constant Withdraw = IWithdraw(withdraw_address);
