@@ -15,5 +15,25 @@
       "txHash": "0xd0259a0ba944b6d2e459fec27ec618f03fb8b8cbafd8cb0ee4cd6d0cb45b2b24",
       "blockNumber": "1550"
     }
+  ],
+  "PythAggregatorFactory": {
+    "address": "0x05382ec336f797fcbeddcb0fef8288fb4f26e072"
+  },
+  "PythAggregatorFeeds": [
+    {
+      "pair": "SOL/USD",
+      "pythAccountBase58": "J83w4HKfqxwcq3BEMMkPFSppX3gqekLyLJBexebFVkix",
+      "adapter": "0x170dDC928429FC1A55Dc31c7f5793fc1b2Afea08"
+    },
+    {
+      "pair": "BTC/USD",
+      "pythAccount": "0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b",
+      "adapter": "0xaF9b0a1F94FAa8d36F67a6057cd9aC0Aa16BCa07"
+    },
+    {
+      "pair": "ETH/USD",
+      "pythAccount": "0xca80ba6dc32e08d06f1aa886011eed1d77c77be9eb761cc10d72b7d0a2fd57a6",
+      "adapter": "0x8a67386F90b5422D3B61e9a5e4BD1986A216D98D"
+    }
   ]
 }
