@@ -1,15 +1,16 @@
 /**
- * Mock Switchboard V3 AggregatorAccountData builder for testing SwitchboardParser.
+ * Mock Switchboard V2 AggregatorAccountData builder for testing SwitchboardParser.
  *
- * Key layout:
- *   [0..8]     Anchor discriminator
- *   ...
- *   [176..192] latest_confirmed_round.result.mantissa (i128, LE)
- *   [192..196] latest_confirmed_round.result.scale (u32, LE)
- *   [196..204] round_open_slot (u64, LE)
- *   [204..212] round_open_timestamp (i64, LE)
+ * Validated layout (from live SOL/USD aggregator on monti_spl):
+ *   [0..8]     Anchor discriminator (0xd9e64165c9a21b7d)
+ *   [8..40]    name
+ *   ...        (many config fields)
+ *   [350..358] round_open_slot (u64, LE)
+ *   [358..366] round_open_timestamp (i64, LE)
+ *   [366..382] result.mantissa (i128, LE)
+ *   [382..386] result.scale (u32, LE)
  *
- * Total minimum: 224 bytes
+ * Total minimum: 386 bytes
  */
 
 export interface SwitchboardAccountParams {
@@ -54,27 +55,27 @@ function writeInt64LE(buf: Uint8Array, offset: number, value: bigint): void {
 }
 
 /**
- * Build a mock Switchboard V3 AggregatorAccountData byte array.
+ * Build a mock Switchboard V2 AggregatorAccountData byte array.
  * Returns a hex string prefixed with 0x, suitable for passing to Solidity.
  */
 export function buildSwitchboardAccount(params: SwitchboardAccountParams): `0x${string}` {
-    const buf = new Uint8Array(224);
+    const buf = new Uint8Array(386);
 
     // Anchor discriminator at offset 0 (8 bytes, big-endian to match Solidity bytes8)
     const disc = params.discriminator ?? DEFAULT_DISCRIMINATOR;
     writeBytes8BE(buf, 0, disc);
 
-    // mantissa at offset 176 (i128, LE)
-    writeInt128LE(buf, 176, params.mantissa);
+    // round_open_slot at offset 350 (u64, LE)
+    writeUint64LE(buf, 350, params.slot ?? 0n);
 
-    // scale at offset 192 (u32, LE)
-    writeUint32LE(buf, 192, params.scale);
+    // round_open_timestamp at offset 358 (i64, LE)
+    writeInt64LE(buf, 358, BigInt(params.timestamp));
 
-    // round_open_slot at offset 196 (u64, LE)
-    writeUint64LE(buf, 196, params.slot ?? 0n);
+    // result.mantissa at offset 366 (i128, LE)
+    writeInt128LE(buf, 366, params.mantissa);
 
-    // round_open_timestamp at offset 204 (i64, LE)
-    writeInt64LE(buf, 204, BigInt(params.timestamp));
+    // result.scale at offset 382 (u32, LE)
+    writeUint32LE(buf, 382, params.scale);
 
     const hex = Array.from(buf)
         .map((b) => b.toString(16).padStart(2, "0"))
