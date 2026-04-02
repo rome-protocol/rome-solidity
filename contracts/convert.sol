@@ -42,6 +42,17 @@ library Convert {
         return (value, offset + 1);
     }
 
+    function read_u16le(bytes memory data, uint256 offset)
+    internal
+    pure
+    returns (uint16 value, uint256 newOffset)
+    {
+        require(offset + 2 <= data.length, "oob u16");
+        value = uint16(uint8(data[offset]))
+            | (uint16(uint8(data[offset + 1])) << 8);
+        return (value, offset + 2);
+    }
+
     function read_u32le(bytes memory data, uint256 offset)
     internal
     pure
@@ -82,25 +93,25 @@ library Convert {
         value = int64(unsigned);
     }
 
+    function read_u128le(bytes memory data, uint256 offset)
+    internal
+    pure
+    returns (uint128 value, uint256 newOffset)
+    {
+        require(offset + 16 <= data.length, "oob u128");
+        (uint64 lo,) = read_u64le(data, offset);
+        (uint64 hi,) = read_u64le(data, offset + 8);
+        value = uint128(hi) << 64 | uint128(lo);
+        return (value, offset + 16);
+    }
+
     function read_i128le(bytes memory data, uint256 offset)
     internal
     pure
     returns (int128 value, uint256 newOffset)
     {
-        require(offset + 16 <= data.length, "oob i128");
-        uint128 lo;
-        uint128 hi;
-        // Read low 8 bytes
-        for (uint256 i = 0; i < 8; i++) {
-            lo |= uint128(uint8(data[offset + i])) << uint128(i * 8);
-        }
-        // Read high 8 bytes
-        for (uint256 i = 0; i < 8; i++) {
-            hi |= uint128(uint8(data[offset + 8 + i])) << uint128(i * 8);
-        }
-        uint128 unsigned = lo | (hi << 64);
-        value = int128(unsigned);
-        newOffset = offset + 16;
+        (uint128 uval, uint256 off) = read_u128le(data, offset);
+        return (int128(uval), off);
     }
 
     function read_bytes32(bytes memory data, uint256 offset)
@@ -113,6 +124,13 @@ library Convert {
             value := mload(add(add(data, 0x20), offset))
         }
         return (value, offset + 32);
+    }
+
+    function u16le(uint16 x) internal pure returns (bytes2) {
+        return bytes2(
+            (uint16(x & 0x00FF) << 8)
+            | (uint16(x & 0xFF00) >> 8)
+        );
     }
 
     function u64le(uint64 x) internal pure returns (bytes8) {
