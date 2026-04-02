@@ -5,6 +5,9 @@ import path from "node:path";
 /**
  * Deploy TokenRegistry and ERC20SPLFactory to the target network.
  *
+ * The Convert library has public functions, so it must be deployed first
+ * and linked into ERC20SPLFactory (which deploys SPL_ERC20 internally).
+ *
  * Usage:
  *   npx hardhat run scripts/deploy_token_registry.ts --network monti_spl
  */
@@ -23,12 +26,21 @@ async function main() {
     console.log("Deployer:", deployer.account.address);
     console.log("Balance:", balance.toString());
 
-    // ─── Step 1: Deploy ERC20SPLFactory ───
+    // ─── Step 1: Deploy Convert library ───
+    console.log("\nDeploying Convert library...");
+    const convertLib = await viem.deployContract("Convert", []);
+    console.log("Convert library deployed to:", convertLib.address);
+
+    // ─── Step 2: Deploy ERC20SPLFactory (linked to Convert) ───
     console.log("\nDeploying ERC20SPLFactory...");
-    const factory = await viem.deployContract("ERC20SPLFactory", [CPI_PROGRAM]);
+    const factory = await viem.deployContract("ERC20SPLFactory", [CPI_PROGRAM], {
+        libraries: {
+            "project/contracts/convert.sol:Convert": convertLib.address,
+        },
+    });
     console.log("ERC20SPLFactory deployed to:", factory.address);
 
-    // ─── Step 2: Deploy TokenRegistry ───
+    // ─── Step 3: Deploy TokenRegistry ───
     console.log("\nDeploying TokenRegistry...");
     const registry = await viem.deployContract("TokenRegistry", [factory.address]);
     console.log("TokenRegistry deployed to:", registry.address);
@@ -50,6 +62,9 @@ async function main() {
         content = JSON.parse(fs.readFileSync(filePath, "utf8"));
     }
 
+    content.ConvertLibrary = {
+        address: convertLib.address,
+    };
     content.ERC20SPLFactory = {
         address: factory.address,
     };

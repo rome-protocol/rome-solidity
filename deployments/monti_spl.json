@@ -63,5 +63,15 @@
         "adapter": "0xF0864572019c295407CF2ed46e6FD3615e10E19d"
       }
     ]
+  },
+  "ConvertLibrary": {
+    "address": "0x7fb66ac4e560c12d2b3a61192aae06c73ed988de"
+  },
+  "ERC20SPLFactory": {
+    "address": "0xf023cedd478c127c909e09f62e776d89ec43a694"
+  },
+  "TokenRegistry": {
+    "address": "0xee020c891c1244b8d26e80711d4a4ee904eda677",
+    "owner": "0x2a62C98D6Cbfd50e21A43F68a08E6aa1F7Da4901"
   }
 }
