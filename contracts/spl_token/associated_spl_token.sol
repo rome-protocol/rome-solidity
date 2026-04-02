@@ -6,36 +6,23 @@ import "../convert.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 
 
-contract AssociatedSplToken {
-    address public immutable cpi_contract_address;
-    bytes32 public immutable system_program_id;
-    bytes32 public immutable token_program_id;
-    bytes32 public immutable associated_token_program_id;
-
-    constructor(
-        address _cpi_contract_address,
-        bytes32 _system_program_id,
-        bytes32 _token_program_id, 
-        bytes32 _associated_token_program_id
-    ) {
-        cpi_contract_address = _cpi_contract_address;
-        system_program_id = _system_program_id;
-        token_program_id = _token_program_id;
-        associated_token_program_id = _associated_token_program_id;
-    }
-
+library AssociatedSplToken {
     function create_associated_token_account(
         bytes32 funding_address,
         bytes32 wallet_address,
         bytes32 token_mint_address,
-        bytes32[] memory seeds
-    ) external {
-        _create_associated_token_account(
+        bytes32 system_program_id,
+        bytes32 token_program_id,
+        bytes32 associated_token_program_id
+    ) internal pure returns(bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory, bytes32) {
+        return _create_associated_token_account(
             funding_address,
             wallet_address,
             token_mint_address,
             0, // AssociatedTokenAccountInstruction::Create
-            seeds
+            system_program_id,
+            token_program_id,
+            associated_token_program_id
         );
     }
 
@@ -43,14 +30,18 @@ contract AssociatedSplToken {
         bytes32 funding_address,
         bytes32 wallet_address,
         bytes32 token_mint_address,
-        bytes32[] memory seeds
-    ) external {
-        _create_associated_token_account(
+        bytes32 system_program_id,
+        bytes32 token_program_id,
+        bytes32 associated_token_program_id
+    ) internal pure returns(bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory, bytes32) {
+        return _create_associated_token_account(
             funding_address,
             wallet_address,
             token_mint_address,
             1, // AssociatedTokenAccountInstruction::CreateIdempotent
-            seeds
+            system_program_id,
+            token_program_id,
+            associated_token_program_id
         );
     }
 
@@ -58,24 +49,31 @@ contract AssociatedSplToken {
         bytes32 wallet_address,
         bytes32 owner_token_mint_address,
         bytes32 nested_token_mint_address,
-        bytes32[] memory seeds
-    ) external {
+        bytes32 token_program_id,
+        bytes32 associated_token_program_id
+    ) internal pure returns(bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         bytes32 owner_associated_account_address =
             get_associated_token_address_with_program_id(
                 wallet_address,
-                owner_token_mint_address
+                owner_token_mint_address,
+                token_program_id,
+                associated_token_program_id
             );
 
         bytes32 destination_associated_account_address =
             get_associated_token_address_with_program_id(
                 wallet_address,
-                nested_token_mint_address
+                nested_token_mint_address,
+                token_program_id,
+                associated_token_program_id
             );
 
         bytes32 nested_associated_account_address =
             get_associated_token_address_with_program_id(
                 owner_associated_account_address, // ATA is wrongly used as a wallet_address
-                nested_token_mint_address
+                nested_token_mint_address,
+                token_program_id,
+                associated_token_program_id
             );
 
         ICrossProgramInvocation.AccountMeta[] memory accounts =
@@ -117,27 +115,44 @@ contract AssociatedSplToken {
             is_writable: false
         });
 
-        ICrossProgramInvocation(cpi_contract_address).invoke_signed(
-            associated_token_program_id,
-            accounts,
-            abi.encodePacked(uint8(2)), // AssociatedTokenAccountInstruction::RecoverNested
-            seeds
+        return (
+            associated_token_program_id, 
+            accounts, 
+            abi.encodePacked(uint8(2)) // AssociatedTokenAccountInstruction::RecoverNested);
         );
     }
 
+    /**
+     * Prepares instruction data and accounts for creating an associated token account. 
+     * @param funding_address EVM payer account (must contain enough SOL to pay for account creation)
+     * @param wallet_address Address of the owner of the associated token account (usually a PDA derived from the user's EVM address)
+     * @param token_mint_address Address of the SPL token mint for which the associated account is being created
+     * @param instruction Creation instruction
+     * @param system_program_id Solana System Program ID
+     * @param token_program_id Solana Token Program ID
+     * @param associated_token_program_id Solana Associated Token Program ID
+     * @return associated_token_program_id The program ID to invoke (Associated Token Program)
+     * @return accounts The list of accounts required for the instruction
+     * @return data The instruction data (encoded instruction type)
+     * @return associated_account_address The address of the associated token account that will be created
+     */
     function _create_associated_token_account(
         bytes32 funding_address, // EVM payer (seed PAYER)
         bytes32 wallet_address,  // SPL token account owner RomeEVMAccount.pda(user)
         bytes32 token_mint_address,
         uint8 instruction,
-        bytes32[] memory seeds
-    ) internal {
+        bytes32 system_program_id,
+        bytes32 token_program_id,
+        bytes32 associated_token_program_id
+    ) internal pure returns(bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory, bytes32) {
         require(instruction <= 1, "invalid creation instruction");
 
         bytes32 associated_account_address =
             get_associated_token_address_with_program_id(
                 wallet_address,
-                token_mint_address
+                token_mint_address,
+                token_program_id,
+                associated_token_program_id
             );
 
         ICrossProgramInvocation.AccountMeta[] memory accounts =
@@ -174,40 +189,49 @@ contract AssociatedSplToken {
             is_writable: false
         });
 
-        // delegatecall
-        ICrossProgramInvocation(cpi_contract_address).invoke_signed(
+        return (
             associated_token_program_id,
             accounts,
             abi.encodePacked(instruction),
-            seeds
+            associated_account_address
         );
     }
 
     function get_associated_token_address_with_program_id(
         bytes32 wallet_address,
-        bytes32 token_mint_address
-    ) internal view returns (bytes32) {
+        bytes32 token_mint_address,
+        bytes32 token_program_id,
+        bytes32 associated_token_program_id
+    ) internal pure returns (bytes32) {
         (bytes32 addr, ) = get_associated_token_address_and_bump_seed(
             wallet_address,
-            token_mint_address
+            token_mint_address,
+            token_program_id,
+            associated_token_program_id
         );
         return addr;
     }
 
     function get_associated_token_address_and_bump_seed(
         bytes32 wallet_address,
-        bytes32 token_mint_address
-    ) internal view returns (bytes32, uint8) {
+        bytes32 token_mint_address,
+        bytes32 token_program_id,
+        bytes32 associated_token_program_id
+    ) internal pure returns (bytes32, uint8) {
         return get_associated_token_address_and_bump_seed_internal(
             wallet_address,
-            token_mint_address
+            token_mint_address,
+            token_program_id,
+            associated_token_program_id
         );
     }
 
     function get_associated_token_address_and_bump_seed_internal(
         bytes32 wallet_address,
-        bytes32 token_mint_address
-    ) internal view returns (bytes32, uint8) {
+        bytes32 token_mint_address,
+        bytes32 token_program_id,
+        bytes32 associated_token_program_id
+    ) internal pure returns (bytes32, uint8) {
         ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](3);
 
         seeds[0] = ISystemProgram.Seed({

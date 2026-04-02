@@ -237,11 +237,6 @@ library SplTokenLib {
             accounts[3 + i] = _account_meta(signer_pubkeys[i], true, false);
         }
 
-        // delagatecall
-        // ICrossProgramInvocation(cpi_program).invoke(
-        //     token_program_id, accounts, _pack_tag_u64(3, amount));
-        // );
-
         return (token_program_id, accounts, _pack_tag_u64(3, amount));
     }
 
