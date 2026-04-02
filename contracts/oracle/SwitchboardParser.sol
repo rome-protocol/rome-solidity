@@ -4,31 +4,43 @@ pragma solidity ^0.8.20;
 import "../convert.sol";
 
 /// @title SwitchboardParser
-/// @notice Parses AggregatorAccountData from Switchboard V3.
+/// @notice Parses AggregatorAccountData from Switchboard V2 on Solana.
 /// @dev Switchboard stores results as SwitchboardDecimal:
 ///   - mantissa: i128 (16 bytes, little-endian)
 ///   - scale: u32 (4 bytes, little-endian)
 ///   - actual_value = mantissa / 10^scale
 ///
-/// The latest_confirmed_round contains result, round_open_slot, round_open_timestamp.
+/// Validated layout (from live SOL/USD aggregator GvDMxP... on monti_spl):
+///   Offset  Size  Field
+///   0       8     Anchor discriminator (0xd9e64165c9a21b7d)
+///   8       32    name
+///   ...           (many config fields)
+///   350     8     latest_confirmed_round.round_open_slot (u64)
+///   358     8     latest_confirmed_round.round_open_timestamp (i64)
+///   366     16    latest_confirmed_round.result.mantissa (i128)
+///   382     4     latest_confirmed_round.result.scale (u32)
 ///
-/// IMPORTANT: The exact byte offset of latest_confirmed_round.result must be
-/// confirmed by reading a live Switchboard aggregator on devnet.
-/// Run validate-switchboard-offsets.ts before deployment.
+/// IMPORTANT: These offsets are empirically validated against the live account.
+/// Run validate-switchboard-offsets.ts to re-confirm before redeployment.
 library SwitchboardParser {
     error InvalidSwitchboardAccount();
     error SwitchboardDataTooShort();
 
     /// @notice Anchor discriminator for AggregatorAccountData
-    /// Must be validated against live account before deployment
+    /// sha256("account:AggregatorAccountData")[0..8]
     bytes8 constant DISCRIMINATOR = 0xd9e64165c9a21b7d;
 
-    /// @notice Byte offset of latest_confirmed_round.result in AggregatorAccountData
-    /// This is a large struct — offset must be validated empirically
-    uint256 constant LATEST_RESULT_OFFSET = 176;
+    /// @notice Byte offset of latest_confirmed_round.round_open_slot
+    uint256 constant ROUND_SLOT_OFFSET = 350;
+    /// @notice Byte offset of latest_confirmed_round.round_open_timestamp
+    uint256 constant ROUND_TIMESTAMP_OFFSET = 358;
+    /// @notice Byte offset of latest_confirmed_round.result.mantissa
+    uint256 constant RESULT_MANTISSA_OFFSET = 366;
+    /// @notice Byte offset of latest_confirmed_round.result.scale
+    uint256 constant RESULT_SCALE_OFFSET = 382;
 
-    /// @notice Minimum account data length
-    uint256 constant MIN_DATA_LENGTH = 224;
+    /// @notice Minimum account data length (must cover through scale field)
+    uint256 constant MIN_DATA_LENGTH = 386;
 
     struct SwitchboardPrice {
         int128 mantissa;
@@ -37,7 +49,7 @@ library SwitchboardParser {
         uint64 slot;
     }
 
-    /// @notice Parse a Switchboard V3 AggregatorAccountData
+    /// @notice Parse a Switchboard V2 AggregatorAccountData
     /// @param data Raw account data from CPI precompile
     /// @return parsed The parsed price data
     function parse(bytes memory data) internal pure returns (SwitchboardPrice memory parsed) {
@@ -50,16 +62,16 @@ library SwitchboardParser {
         }
         if (disc != DISCRIMINATOR) revert InvalidSwitchboardAccount();
 
-        // latest_confirmed_round.result.mantissa at LATEST_RESULT_OFFSET (i128, LE)
-        (parsed.mantissa,) = Convert.read_i128le(data, LATEST_RESULT_OFFSET);
+        // round_open_slot (u64, LE)
+        (parsed.slot,) = Convert.read_u64le(data, ROUND_SLOT_OFFSET);
 
-        // latest_confirmed_round.result.scale at LATEST_RESULT_OFFSET + 16 (u32, LE)
-        (parsed.scale,) = Convert.read_u32le(data, LATEST_RESULT_OFFSET + 16);
+        // round_open_timestamp (i64, LE)
+        (parsed.timestamp,) = Convert.read_i64le(data, ROUND_TIMESTAMP_OFFSET);
 
-        // round_open_slot at LATEST_RESULT_OFFSET + 20 (u64, LE)
-        (parsed.slot,) = Convert.read_u64le(data, LATEST_RESULT_OFFSET + 20);
+        // result.mantissa (i128, LE)
+        (parsed.mantissa,) = Convert.read_i128le(data, RESULT_MANTISSA_OFFSET);
 
-        // round_open_timestamp at LATEST_RESULT_OFFSET + 28 (i64, LE)
-        (parsed.timestamp,) = Convert.read_i64le(data, LATEST_RESULT_OFFSET + 28);
+        // result.scale (u32, LE)
+        (parsed.scale,) = Convert.read_u32le(data, RESULT_SCALE_OFFSET);
     }
 }
