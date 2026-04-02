@@ -33,7 +33,6 @@ library DriftLib {
         int128 cumulative_funding_long;
         int128 cumulative_funding_short;
         int64 last_funding_rate_ts;
-        uint128 open_interest;
     }
 
     struct SpotMarketSummary {
@@ -92,15 +91,16 @@ library DriftLib {
             revert InvalidDataLength("PerpMarket", data.length, PERP_MARKET_MIN_LEN);
         }
 
-        (m.market_index,) = Convert.read_u16le(data, 8);
-        (m.status,) = Convert.read_u8(data, 10);
-        (m.oracle,) = Convert.read_bytes32(data, 56);
-        (m.base_asset_reserve,) = Convert.read_u128le(data, 328);
-        (m.quote_asset_reserve,) = Convert.read_u128le(data, 344);
-        (m.cumulative_funding_long,) = Convert.read_i128le(data, 592);
-        (m.cumulative_funding_short,) = Convert.read_i128le(data, 608);
-        (m.last_funding_rate_ts,) = Convert.read_i64le(data, 816);
-        (m.open_interest,) = Convert.read_u128le(data, 940);
+        // Validated offsets against mainnet Drift v2 accounts (2026-04-01)
+        // [8..40] = pubkey (self), [40..72] = AMM.oracle
+        (m.oracle,) = Convert.read_bytes32(data, 40);
+        (m.base_asset_reserve,) = Convert.read_u128le(data, 176);
+        (m.quote_asset_reserve,) = Convert.read_u128le(data, 192);
+        (m.cumulative_funding_long,) = Convert.read_i128le(data, 560);
+        (m.cumulative_funding_short,) = Convert.read_i128le(data, 576);
+        (m.last_funding_rate_ts,) = Convert.read_i64le(data, 792);
+        (m.market_index,) = Convert.read_u16le(data, 1160);
+        (m.status,) = Convert.read_u8(data, 1162);
     }
 
     function parse_spot_market(bytes memory data) internal pure returns (SpotMarketSummary memory m) {
@@ -108,22 +108,21 @@ library DriftLib {
             revert InvalidDataLength("SpotMarket", data.length, SPOT_MARKET_MIN_LEN);
         }
 
-        uint256 o = 8; // skip discriminator
+        // Validated offsets against mainnet Drift v2 accounts (2026-04-01)
+        // [8..40] = pubkey (self), [40..72] = oracle, [72..104] = mint, [104..136] = vault
+        (m.oracle,) = Convert.read_bytes32(data, 40);
+        (m.mint,) = Convert.read_bytes32(data, 72);
+        (m.vault,) = Convert.read_bytes32(data, 104);
 
-        (m.oracle, o) = Convert.read_bytes32(data, o);       // 8
-        (m.mint, o) = Convert.read_bytes32(data, o);          // 40
-        (m.vault, o) = Convert.read_bytes32(data, o);         // 72
+        (m.deposit_balance,) = Convert.read_u128le(data, 432);
+        (m.borrow_balance,) = Convert.read_u128le(data, 448);
+        (m.cumulative_deposit_interest,) = Convert.read_u128le(data, 464);
+        (m.cumulative_borrow_interest,) = Convert.read_u128le(data, 480);
 
-        o = 136; // skip name[32] at 104
-
-        (m.deposit_balance, o) = Convert.read_u128le(data, o);             // 136
-        (m.borrow_balance, o) = Convert.read_u128le(data, o);              // 152
-        (m.cumulative_deposit_interest, o) = Convert.read_u128le(data, o); // 168
-        (m.cumulative_borrow_interest,) = Convert.read_u128le(data, o);    // 184
-
-        (m.market_index,) = Convert.read_u16le(data, 288);
-        (m.status,) = Convert.read_u8(data, 290);
-        (m.decimals,) = Convert.read_u8(data, 292);
+        (m.market_index,) = Convert.read_u16le(data, 684);
+        (m.status,) = Convert.read_u8(data, 688);
+        // decimals is u32 at offset 680 in Drift v2, read low byte
+        (m.decimals,) = Convert.read_u8(data, 680);
     }
 
     function get_spot_position(bytes memory data, uint8 index) internal pure returns (SpotPosition memory pos) {

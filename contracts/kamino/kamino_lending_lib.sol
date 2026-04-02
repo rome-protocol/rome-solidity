@@ -9,10 +9,10 @@ import "../convert.sol";
 ///         Reads Solana account data via CPI precompile and deserializes
 ///         Borsh-encoded Kamino Lending program accounts.
 library KaminoLendingLib {
-    /// Kamino Lending program ID (KLend2g3cP87ber8LQsmXrCY6ZadMZRQv5ioanSDE9p)
-    bytes32 public constant PROGRAM_ID = 0x04b2acb11258cce36828e7b98f45472b7ce8244701bfd68a06eda8e810cd524d;
+    /// Kamino Lending program ID (KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD)
+    bytes32 public constant PROGRAM_ID = 0x04b2acb11258cce3682c418ba872ff3df91102712f15af12b6be69b3435b0008;
 
-    uint256 constant RESERVE_MIN_LEN = 8616;
+    uint256 constant RESERVE_MIN_LEN = 8624;
     uint256 constant OBLIGATION_MIN_LEN = 200;
 
     // ========================
@@ -132,14 +132,19 @@ library KaminoLendingLib {
         // cumulative_borrow_rate_sf (u128)
         (s.cumulative_borrow_rate_sf, offset) = Convert.read_u128le(data, offset);
 
-        // Jump to collateral_mint at offset 520
+        // UNVERIFIED: Collateral and config offsets below need validation
+        // against a fully-configured USDC reserve via private Solana RPC.
+        // Run: npx tsx scripts/defi/validate-offsets.ts
+
+        // Jump to collateral_mint (approximate offset, VERIFY)
         offset = 520;
         (s.collateral_mint, offset) = Convert.read_bytes32(data, offset);
 
-        // collateral_supply (u64) follows collateral_mint
+        // collateral_supply (u64) — skip collateral_supply_vault (32 bytes)
+        offset += 32;
         (s.collateral_supply, offset) = Convert.read_u64le(data, offset);
 
-        // Jump to status/ltv/liquidation at offset 700
+        // Jump to config section (approximate offset, VERIFY)
         offset = 700;
         (s.status, offset) = Convert.read_u8(data, offset);
         (s.loan_to_value_pct, offset) = Convert.read_u8(data, offset);
