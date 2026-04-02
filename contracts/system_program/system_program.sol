@@ -6,7 +6,7 @@ import {SystemProgramInstructionData as Ix} from  "./instruction_data.sol";
 import "../convert.sol";
 
 library SystemProgramLib {
-    bytes32 public constant PROGRAM_ID = 0x0000000000000000000000000000000000000000000000000000000000000000;
+    bytes32 internal constant PROGRAM_ID = 0x0000000000000000000000000000000000000000000000000000000000000000;
 
     bytes32 internal constant ID =
         0x0000000000000000000000000000000000000000000000000000000000000000;
@@ -29,7 +29,7 @@ library SystemProgramLib {
         uint64 lamports,
         uint64 space,
         bytes32 owner
-    ) public pure returns (Instruction memory ix) {
+    ) internal pure returns (Instruction memory ix) {
         ICrossProgramInvocation.AccountMeta[] memory account_metas =
             new ICrossProgramInvocation.AccountMeta[](2);
         account_metas[0] = _meta(from_pubkey, true, true);
@@ -53,7 +53,7 @@ library SystemProgramLib {
         uint64 lamports,
         uint64 space,
         bytes32 owner
-    ) public pure returns (Instruction memory ix) {
+    ) internal pure returns (Instruction memory ix) {
         ICrossProgramInvocation.AccountMeta[] memory account_metas =
             new ICrossProgramInvocation.AccountMeta[](3);
         account_metas[0] = _meta(from_pubkey, true, true);
@@ -73,7 +73,7 @@ library SystemProgramLib {
     }
 
     function assign(bytes32 pubkey, bytes32 owner)
-        public
+        internal
         pure
         returns (Instruction memory ix)
     {
@@ -91,7 +91,7 @@ library SystemProgramLib {
         bytes32 base,
         string memory seed,
         bytes32 owner
-    ) public pure returns (Instruction memory ix) {
+    ) internal pure returns (Instruction memory ix) {
         ICrossProgramInvocation.AccountMeta[] memory account_metas =
             new ICrossProgramInvocation.AccountMeta[](2);
         account_metas[0] = _meta(address_, false, true);
@@ -111,7 +111,7 @@ library SystemProgramLib {
         bytes32 from_pubkey,
         bytes32 to_pubkey,
         uint64 lamports
-    ) public pure returns (Instruction memory ix) {
+    ) internal pure returns (Instruction memory ix) {
         ICrossProgramInvocation.AccountMeta[] memory account_metas =
             new ICrossProgramInvocation.AccountMeta[](2);
         account_metas[0] = _meta(from_pubkey, true, true);
@@ -129,7 +129,7 @@ library SystemProgramLib {
         bytes32 from_owner,
         bytes32 to_pubkey,
         uint64 lamports
-    ) public pure returns (Instruction memory ix) {
+    ) internal pure returns (Instruction memory ix) {
         ICrossProgramInvocation.AccountMeta[] memory account_metas =
             new ICrossProgramInvocation.AccountMeta[](3);
         account_metas[0] = _meta(from_pubkey, false, true);
@@ -147,7 +147,7 @@ library SystemProgramLib {
     }
 
     function allocate(bytes32 pubkey, uint64 space)
-        public
+        internal
         pure
         returns (Instruction memory ix)
     {
@@ -166,7 +166,7 @@ library SystemProgramLib {
         string memory seed,
         uint64 space,
         bytes32 owner
-    ) public pure returns (Instruction memory ix) {
+    ) internal pure returns (Instruction memory ix) {
         ICrossProgramInvocation.AccountMeta[] memory account_metas =
             new ICrossProgramInvocation.AccountMeta[](2);
         account_metas[0] = _meta(address_, false, true);
@@ -184,7 +184,7 @@ library SystemProgramLib {
     }
 
     function transfer_many(bytes32 from_pubkey, RecipientLamports[] memory to_lamports)
-        public
+        internal
         pure
         returns (Instruction[] memory ixs)
     {
@@ -201,7 +201,7 @@ library SystemProgramLib {
         string memory seed,
         bytes32 authority,
         uint64 lamports
-    ) public pure returns (Instruction[] memory ixs) {
+    ) internal pure returns (Instruction[] memory ixs) {
         ixs = new Instruction[](2);
         ixs[0] = create_account_with_seed(
             from_pubkey,
@@ -231,7 +231,7 @@ library SystemProgramLib {
         bytes32 nonce_pubkey,
         bytes32 authority,
         uint64 lamports
-    ) public pure returns (Instruction[] memory ixs) {
+    ) internal pure returns (Instruction[] memory ixs) {
         ixs = new Instruction[](2);
         ixs[0] = create_account(
             from_pubkey,
@@ -255,7 +255,7 @@ library SystemProgramLib {
     }
 
     function advance_nonce_account(bytes32 nonce_pubkey, bytes32 authorized_pubkey)
-        public
+        internal
         pure
         returns (Instruction memory ix)
     {
@@ -275,7 +275,7 @@ library SystemProgramLib {
         bytes32 authorized_pubkey,
         bytes32 to_pubkey,
         uint64 lamports
-    ) public pure returns (Instruction memory ix) {
+    ) internal pure returns (Instruction memory ix) {
         ICrossProgramInvocation.AccountMeta[] memory account_metas =
             new ICrossProgramInvocation.AccountMeta[](5);
         account_metas[0] = _meta(nonce_pubkey, false, true);
@@ -293,7 +293,7 @@ library SystemProgramLib {
         bytes32 nonce_pubkey,
         bytes32 authorized_pubkey,
         bytes32 new_authority
-    ) public pure returns (Instruction memory ix) {
+    ) internal pure returns (Instruction memory ix) {
         ICrossProgramInvocation.AccountMeta[] memory account_metas =
             new ICrossProgramInvocation.AccountMeta[](2);
         account_metas[0] = _meta(nonce_pubkey, false, true);
@@ -305,7 +305,7 @@ library SystemProgramLib {
     }
 
     function upgrade_nonce_account(bytes32 nonce_pubkey)
-        public
+        internal
         pure
         returns (Instruction memory ix)
     {

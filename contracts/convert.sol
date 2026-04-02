@@ -119,7 +119,7 @@ library Convert {
         );
     }
 
-    function uint_to_bytes(uint src) public pure returns (bytes memory) {
+    function uint_to_bytes(uint src) internal pure returns (bytes memory) {
         bytes memory dst = new bytes(32);
 
         assembly {
@@ -128,7 +128,7 @@ library Convert {
         return dst;
     }
 
-    function bytes_to_bytes32(bytes memory src) public pure returns (bytes32) {
+    function bytes_to_bytes32(bytes memory src) internal pure returns (bytes32) {
         bytes32 dst;
 
         assembly {
@@ -137,7 +137,7 @@ library Convert {
         return  dst;
     }
 
-    function revert_msg(bytes memory _returnData) public pure returns (string memory) {
+    function revert_msg(bytes memory _returnData) internal pure returns (string memory) {
         if (_returnData.length < 68) return '';
 
         bytes memory mes;
@@ -147,7 +147,7 @@ library Convert {
         return abi.decode(mes, (string));
     }
 
-    function to_uint64(uint256 value) public pure returns (uint64) {
+    function to_uint64(uint256 value) internal pure returns (uint64) {
         if (value > type(uint64).max) {
             revert SafeCastOverflowedUintDowncast(64, value);
         }

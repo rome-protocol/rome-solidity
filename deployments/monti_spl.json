@@ -22,5 +22,15 @@
     "systemProgramId": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "tokenProgramId": "0x06ddf6e1d765a193d9cbe146ceeb79ac1cb485ed5f5b37913a8cf5857eff00a9",
     "associatedTokenProgramId": "0x8c97258f4e2489f1bb3d1029148e0d830b5a1399daff1084048e7bd8dbe9f859"
+  },
+  "ERC20SPLFactory": {
+    "address": "0x471f9f80c388583d3415ab6016233bbb71539fee",
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
+  },
+  "ERC20SPLLibraries": {
+    "Borsch": "0x7136f2c8d99fb2ec6625cf1dcf48fbb78997adb2",
+    "Convert": "0xd81e443c0122dbd31af33f496d4ae189698d70a1",
+    "SplTokenLib": "0xeff2d2c538f52ebbb5ace73e96903e83e041b15c",
+    "SystemProgramLib": "0xab262fbfd72e0c89326a98450d0427cd4b646a5c"
   }
 }

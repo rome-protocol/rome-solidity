@@ -74,7 +74,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         string memory symbol_,
         ERC20Users users_
     ) {
-        SplTokenLib.SplMint memory mint = SplTokenLib.load_mint(_mint_id, cpi_program);
+        SplTokenLib.SplMint memory mint = SplTokenLib.load_mint(_mint_id, _cpi_program);
 
         cpi_program = _cpi_program;
         mint_id = _mint_id;

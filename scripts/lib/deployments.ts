@@ -21,10 +21,16 @@ export type AssociatedSplTokenDeployment = {
     associatedTokenProgramId?: string;
 };
 
+export type ERC20SPLFactoryDeployment = {
+    address?: string;
+    cpiContractAddress?: string;
+};
+
 export type DeploymentsFile = {
     MeteoraDAMMv1Factory?: FactoryDeployment;
     MeteoraDAMMv1Pools?: PoolDeployment[];
     AssociatedSplToken?: AssociatedSplTokenDeployment;
+    ERC20SPLFactory?: ERC20SPLFactoryDeployment;
 };
 
 export function deploymentsFilePath(networkName: string): string {
@@ -159,3 +165,19 @@ export function saveAssociatedSplTokenDeployment(args: {
 
     writeDeployments(args.networkName, deployments);
 }
+
+export function saveERC20SPLFactoryDeployment(args: {
+    networkName: string;
+    address: `0x${string}`;
+    cpiContractAddress: `0x${string}`;
+}): void {
+    const deployments = readDeployments(args.networkName);
+
+    deployments.ERC20SPLFactory = {
+        address: args.address,
+        cpiContractAddress: args.cpiContractAddress,
+    };
+
+    writeDeployments(args.networkName, deployments);
+}
+
