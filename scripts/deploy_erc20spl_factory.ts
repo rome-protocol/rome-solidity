@@ -1,9 +1,6 @@
 import hardhat from "hardhat";
 import { getAddress, isAddress } from "viem";
-import {
-    resolveERC20SPLLibrariesDeployment,
-    saveERC20SPLFactoryDeployment,
-} from "./lib/deployments.js";
+import { saveERC20SPLFactoryDeployment } from "./lib/deployments.js";
 
 const DEFAULT_CPI_CONTRACT_ADDRESS = "0xFF00000000000000000000000000000000000008";
 

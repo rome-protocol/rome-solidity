@@ -43,6 +43,14 @@ contract ERC20SPLFactory {
         require(mint_by_symbol_hash[symbolHash] == bytes32(0), "Token with symbol exists");
     }
 
+    /**
+     * Registers existing SPL token and deploys ERC20 wrapper for it. 
+     * Name and symbol are loaded from the token's metadata account, 
+     * so the token must have metadata already created on Solana for this function to work. 
+     * If the token does not have metadata or if the metadata is missing name or symbol, 
+     * this function will revert. Symbol must be unique across all tokens created through this factory.
+     * @param mint SPL token mint address
+     */
     function add_spl_token_with_metadata(bytes32 mint)
     public
     returns (address) {
@@ -61,6 +69,13 @@ contract ERC20SPLFactory {
         return address(new_contract);
     }
 
+    /**
+     * Registers existing SPL token without metadata and deploys ERC20 wrapper for it.
+     * @param mint SPL token mint address. The mint account must already exist and be initialized, 
+     * but it does not need to have metadata associated with it.
+     * @param name Name of the token.
+     * @param symbol Symbol of the token. Symbol must be unique across all tokens created through this factory.
+     */
     function add_spl_token_no_metadata(bytes32 mint, string memory name, string memory symbol)
     public
     returns (address) {
@@ -70,6 +85,13 @@ contract ERC20SPLFactory {
         return address(new_contract);
     }
 
+    /**
+     * Creates new SPL token account.
+     * Token mint is derived from the creator's address and their current nonce, so each creator can create multiple tokens 
+     * by calling this function multiple times. This function only creates the mint account and does not initialize it, 
+     * so the returned mint address will not be a valid SPL token until the mint account is initialized 
+     * (e.g. by calling init_token_account with the same name and symbol that will be used for the ERC20 wrapper).
+     */
     function create_token_account()
     public
     returns (bytes32) {
@@ -82,7 +104,12 @@ contract ERC20SPLFactory {
         return mint;
     }
 
-
+    /**
+     * Initializes previously created mint account and deploys ERC20 wrapper for it. Name and symbol are required to initialize the mint account,
+     * @param name name of the token, required for mint initialization and ERC20 wrapper deployment
+     * @param symbol symbol of the token, required for mint initialization and ERC20 wrapper deployment. 
+     *               Must be unique across all tokens created through this factory
+     */
     function init_token_account(string memory name, string memory symbol)
     public
     returns (address) {
