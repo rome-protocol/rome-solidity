@@ -1,7 +1,7 @@
 import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import hardhat from "hardhat";
-import type { Address } from "viem";
+import { keccak256, toHex, type Address } from "viem";
 
 /**
  * TokenRegistry integration tests.
@@ -33,12 +33,18 @@ describe("TokenRegistry integration", function () {
             throw new Error("No deployer wallet. Set network key.");
         }
 
-        // Deploy helper to create test mints
-        mintHelper = await viem.deployContract("TestSPLMintHelper", []);
+        // Deploy Convert library first (has public functions, needs linking)
+        const convertLib = await viem.deployContract("Convert", []);
+        console.log("Convert library deployed:", convertLib.address);
+        const libraries = { "project/contracts/convert.sol:Convert": convertLib.address };
 
-        // Create three test mints
-        for (const _ of [0, 1, 2]) {
-            const tx = await mintHelper.write.createMint([9], { account: deployer.account });
+        // Deploy helper to create test mints (needs Convert library)
+        mintHelper = await viem.deployContract("TestSPLMintHelper", [], { libraries });
+
+        // Create three test mints (random salts for unique PDAs per run)
+        for (let i = 0; i < 3; i++) {
+            const salt = keccak256(toHex(`registry-test-${Date.now()}-${Math.random()}-${i}`));
+            const tx = await mintHelper.write.createMint([9, salt], { account: deployer.account });
             await publicClient.waitForTransactionReceipt({ hash: tx });
         }
         // We'll read them from the helper's array
@@ -48,11 +54,11 @@ describe("TokenRegistry integration", function () {
 
         console.log("Test mints:", mintA, mintB, mintC);
 
-        // Deploy ERC20SPLFactory (required by TokenRegistry)
-        factory = await viem.deployContract("ERC20SPLFactory", [CPI_PROGRAM]);
+        // Deploy ERC20SPLFactory (needs Convert library)
+        factory = await viem.deployContract("ERC20SPLFactory", [CPI_PROGRAM], { libraries });
         console.log("ERC20SPLFactory:", factory.address);
 
-        // Deploy TokenRegistry
+        // Deploy TokenRegistry (no library linking needed)
         registry = await viem.deployContract("TokenRegistry", [factory.address]);
         console.log("TokenRegistry:", registry.address);
     });
@@ -140,7 +146,8 @@ describe("TokenRegistry integration", function () {
             }
 
             // Create a fresh mint for this test
-            const tx = await mintHelper.write.createMint([6], { account: deployer.account });
+            const freshSalt = keccak256(toHex(`nonadmin-${Date.now()}-${Math.random()}`));
+            const tx = await mintHelper.write.createMint([6, freshSalt], { account: deployer.account });
             await publicClient.waitForTransactionReceipt({ hash: tx });
             const freshMint = await mintHelper.read.lastMint();
 
@@ -310,7 +317,8 @@ describe("TokenRegistry integration", function () {
             if (nonAdmin.account.address === deployer.account.address) return;
 
             // Create a new mint
-            const tx = await mintHelper.write.createMint([6], { account: deployer.account });
+            const ownerSalt = keccak256(toHex(`owner-test-${Date.now()}-${Math.random()}`));
+            const tx = await mintHelper.write.createMint([6, ownerSalt], { account: deployer.account });
             await publicClient.waitForTransactionReceipt({ hash: tx });
             const freshMint = await mintHelper.read.lastMint();
 

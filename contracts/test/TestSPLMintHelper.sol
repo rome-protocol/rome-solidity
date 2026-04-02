@@ -9,6 +9,8 @@ import {Convert} from "../convert.sol";
 
 /**
  * @dev Test helper for creating SPL mints and minting tokens in integration tests.
+ *      Uses address(this) as the user for create_account to get a fresh PDA
+ *      namespace per deployment (avoids collisions with deployer's existing PDA).
  *      NOT for production use.
  */
 contract TestSPLMintHelper {
@@ -18,44 +20,50 @@ contract TestSPLMintHelper {
     bytes32 constant SPL_TOKEN_PROGRAM =
         0x06ddf6e1d765a193d9cbe146ceeb79ac1cb485ed5f5b37913a8cf5857eff00a9;
 
-    /// @notice Create a new SPL mint with the given decimals
-    function createMint(uint8 _decimals) external {
-        // Create a mint account via System Program + SPL Token InitializeMint
-        bytes32 ownerPda = RomeEVMAccount.pda(msg.sender);
+    event MintCreated(bytes32 indexed mintAccount);
+    event DebugStep(string step);
+    event DebugBytes32(string label, bytes32 value);
 
-        // Use a salt derived from mint count for unique account
-        bytes32 salt = bytes32(mints.length);
+    /// @notice Create a new SPL mint with the given decimals
+    function createMint(uint8 _decimals, bytes32 salt) external {
+        emit DebugStep("starting createMint");
+
+        // Step 1: Create account using this contract's address as user
+        // Each deployment gets a fresh PDA namespace
+        emit DebugStep("calling create_account");
         bytes32 mintAccount = SystemProgram.create_account(
             SPL_TOKEN_PROGRAM,
             82, // SPL Mint account size
-            msg.sender,
+            address(this),
             salt
         );
+        emit DebugBytes32("mintAccount", mintAccount);
 
-        // Initialize the mint via CPI to SPL Token program
-        // InitializeMint2 instruction: discriminator 20 (u8) + decimals (u8) + mint_authority (32 bytes) + freeze_authority COption (1 + 32 bytes)
+        // Step 2: Initialize the mint via SPL Token precompile
+        // Use the SPL Token precompile's initialize_account3 is for TOKEN ACCOUNTS not mints.
+        // For mints, we need CPI to SPL Token's InitializeMint2 instruction.
+        bytes32 callerPda = RomeEVMAccount.pda(msg.sender);
+
+        // InitializeMint2: discriminator 20 | decimals | mint_authority (32 bytes) | no freeze
         bytes memory ixData = abi.encodePacked(
-            uint8(20), // InitializeMint2
+            uint8(20),
             _decimals,
-            ownerPda, // mint authority
-            uint8(0) // no freeze authority (COption::None)
+            callerPda,
+            uint8(0) // no freeze authority
         );
 
         ICrossProgramInvocation.AccountMeta[] memory meta = new ICrossProgramInvocation.AccountMeta[](1);
         meta[0] = ICrossProgramInvocation.AccountMeta(mintAccount, false, true);
 
-        (bool success, bytes memory result) = cpi_program_address.delegatecall(
-            abi.encodeWithSignature(
-                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
-                SPL_TOKEN_PROGRAM,
-                meta,
-                ixData
-            )
-        );
-        require(success, string(Convert.revert_msg(result)));
+        emit DebugStep("calling CPI invoke for InitializeMint2");
 
+        // Use regular call — InitializeMint2 needs no signer
+        CpiProgram.invoke(SPL_TOKEN_PROGRAM, meta, ixData);
+
+        emit DebugStep("mint initialized");
         mints.push(mintAccount);
         lastMint = mintAccount;
+        emit MintCreated(mintAccount);
     }
 
     /// @notice Mint tokens to a user's PDA ATA
@@ -66,19 +74,20 @@ contract TestSPLMintHelper {
         (bytes32 ata,) = AssociatedSplTokenLib.associated_token_address(userPda, mint);
         _ensureAta(userPda, mint, ata);
 
-        // MintTo instruction: discriminator 7 (u8) + amount (u64 LE)
+        // MintTo: discriminator 7 + amount (u64 LE)
         bytes memory ixData = abi.encodePacked(
-            uint8(7), // MintTo
+            uint8(7),
             Convert.u64le(amount)
         );
 
         bytes32 mintAuthority = RomeEVMAccount.pda(msg.sender);
 
         ICrossProgramInvocation.AccountMeta[] memory meta = new ICrossProgramInvocation.AccountMeta[](3);
-        meta[0] = ICrossProgramInvocation.AccountMeta(mint, false, true);        // mint (writable)
-        meta[1] = ICrossProgramInvocation.AccountMeta(ata, false, true);          // destination ATA (writable)
-        meta[2] = ICrossProgramInvocation.AccountMeta(mintAuthority, true, false); // mint authority (signer)
+        meta[0] = ICrossProgramInvocation.AccountMeta(mint, false, true);
+        meta[1] = ICrossProgramInvocation.AccountMeta(ata, false, true);
+        meta[2] = ICrossProgramInvocation.AccountMeta(mintAuthority, true, false);
 
+        // Use delegatecall so msg.sender's PDA signs as mint authority
         (bool success, bytes memory result) = cpi_program_address.delegatecall(
             abi.encodeWithSignature(
                 "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
@@ -90,23 +99,19 @@ contract TestSPLMintHelper {
         require(success, string(Convert.revert_msg(result)));
     }
 
-    /// @notice Ensure an ATA exists for a user+mint combination
     function ensureAta(bytes32 mint, address user) external {
         bytes32 userPda = RomeEVMAccount.pda(user);
         (bytes32 ata,) = AssociatedSplTokenLib.associated_token_address(userPda, mint);
         _ensureAta(userPda, mint, ata);
     }
 
-    /// @notice Get the mint at a given index
     function mintAt(uint256 index) external view returns (bytes32) {
         return mints[index];
     }
 
     function _ensureAta(bytes32 owner, bytes32 mint, bytes32 ata) internal {
-        // Check if ATA exists by trying account_info
         (uint64 lamports,,,,,) = CpiProgram.account_info(ata);
         if (lamports == 0) {
-            // ATA doesn't exist, create it
             AssociatedSplTokenLib.create_associated_token_account(owner, mint);
         }
     }

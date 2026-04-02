@@ -1,7 +1,7 @@
 import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import hardhat from "hardhat";
-import type { Address } from "viem";
+import { keccak256, toHex, type Address } from "viem";
 
 /**
  * Full ERC-20 compliance integration tests for SPL_ERC20 transparent proxy.
@@ -43,33 +43,22 @@ describe("SPL_ERC20 integration", function () {
         systemProgram = await viem.getContractAt("ISystemProgram", SYSTEM_PROGRAM);
         splToken = await viem.getContractAt("ISplToken", SPL_TOKEN_PRECOMPILE);
 
-        // Deploy ERC20SPLFactory
-        factory = await viem.deployContract("ERC20SPLFactory", [CPI_PROGRAM]);
+        // Deploy Convert library first (has public functions, needs linking)
+        const convertLib = await viem.deployContract("Convert", []);
+        console.log("Convert library deployed:", convertLib.address);
+        const libraries = { "project/contracts/convert.sol:Convert": convertLib.address };
+
+        // Deploy ERC20SPLFactory (linked to Convert)
+        factory = await viem.deployContract("ERC20SPLFactory", [CPI_PROGRAM], { libraries });
         console.log("ERC20SPLFactory deployed:", factory.address);
 
-        // Create a test SPL mint via the SPL precompile
-        // We use the system program to create a mint account, then initialize it
-        // For integration testing, we use an existing SPL mint or create one
-        // For now, use the deployer's PDA to create a mint via CPI
-
-        // Derive deployer PDA
-        const romeProgram = await systemProgram.read.rome_evm_program_id();
-
-        // Create a test mint — we'll use a known devnet mint or create one
-        // For integration tests, we need a real SPL mint that exists on-chain
-        // The test setup creates a mint via CPI precompile
-        const cpiProgram = await viem.getContractAt("ICrossProgramInvocation", CPI_PROGRAM);
-
-        // Use the MintCreator helper if available, or reference an existing mint
-        // For TDD purposes, we create a simple test SPL mint
-        // This requires a helper contract — deploy TestMintHelper
-
-        // Deploy the TestSPLMintHelper that creates mints
-        const mintHelper = await viem.deployContract("TestSPLMintHelper", []);
+        // Deploy the TestSPLMintHelper that creates mints (also needs Convert)
+        const mintHelper = await viem.deployContract("TestSPLMintHelper", [], { libraries });
         console.log("TestSPLMintHelper deployed:", mintHelper.address);
 
-        // Create a test mint with 9 decimals
-        const txHash = await mintHelper.write.createMint([9], { account: deployer.account });
+        // Create a test mint with 9 decimals (random salt for unique PDA per run)
+        const salt = keccak256(toHex(`erc20-test-${Date.now()}-${Math.random()}`));
+        const txHash = await mintHelper.write.createMint([9, salt], { account: deployer.account });
         const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
         assert.equal(receipt.status, "success", "createMint tx failed");
 
