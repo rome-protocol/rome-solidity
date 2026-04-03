@@ -59,9 +59,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     string private _symbol;
     ERC20Users private _users;
     mapping(address => bytes32) private _accounts;
-    
 
-    mapping(address account => mapping(address spender => uint256)) private _allowances;
 
     error ERC20InvalidApprover(address approver);
     error ERC20InvalidSpender(address spender);
@@ -165,7 +163,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
 
     /**
      * Internal transfer function that performs a token transfer by invoking the SPL Token program's TransferChecked instruction via CPI.
-     * @param user The User struct containing payer and seeds for the sender
+     * @param user The User struct containing payer and seeds for the signer
      * @param from EVM address of the sender
      * @param to EVM address of the recipient
      * @param value amount of tokens to transfer (in the smallest unit, e.g. if decimals is 6, then value should be in micro-units)
@@ -179,11 +177,6 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         uint256 value
     ) internal returns (bool) {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
-
-        bytes32[] memory signers = new bytes32[](2);
-        signers[0] = user.owner; // signer is the user's PDA
-        signers[1] = user.payer; // payer is the user's payer account
-
         (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) = 
         SplTokenLib.transfer_checked(
             SplTokenLib.SPL_TOKEN_PROGRAM,
@@ -191,17 +184,15 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             mint_id, 
             get_token_account(to),
             user.owner,
-            signers,
+            new bytes32[](0),
             uint64(value), 
             decimals
         );
 
-        bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = user.seed;
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
-                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
-                program_id, accounts, data, seeds
+                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
+                program_id, accounts, data
             )
         );
 
@@ -210,48 +201,44 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     function allowance(address owner, address spender) public view virtual returns (uint256) {
-        return _allowances[owner][spender];
+        ERC20Users.User memory spenderUser = _users.get_user(spender);
+        (bytes32 delegate, uint64 delegated_amount) =
+                            SplTokenLib.load_token_account_delegate(get_token_account(owner), cpi_program);
+        if (delegate != spenderUser.owner) {
+            return uint256(0);
+        }
+
+        return uint256(delegated_amount);
     }
 
     function approve(address spender, uint256 value) public virtual returns (bool) {
-        _approve(msg.sender, spender, value);
+        ERC20Users.User memory ownerUser = _users.get_user(msg.sender);
+        ERC20Users.User memory spenderUser = _users.get_user(spender);
+
+        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) = 
+        SplTokenLib.approve(
+            SplTokenLib.SPL_TOKEN_PROGRAM,
+            get_token_account(msg.sender),
+            spenderUser.owner,
+            ownerUser.owner,
+            new bytes32[](0),
+            uint64(value)
+        );
+
+        (bool success, bytes memory result) = address(cpi_program).delegatecall(
+            abi.encodeWithSignature(
+                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
+                program_id, accounts, data
+            )
+        );
+
+        require (success, string(Convert.revert_msg(result)));
         return true;
-    }
-
- 
-    function _approve(address owner, address spender, uint256 value) internal {
-        _approve(owner, spender, value, true);
-    }
-
-    function _approve(address owner, address spender, uint256 value, bool emitEvent) internal virtual {
-        if (owner == address(0)) {
-            revert ERC20InvalidApprover(address(0));
-        }
-        if (spender == address(0)) {
-            revert ERC20InvalidSpender(address(0));
-        }
-        _allowances[owner][spender] = value;
-        if (emitEvent) {
-            emit Approval(owner, spender, value);
-        }
     }
 
     function transferFrom(address from, address to, uint256 value) public virtual returns (bool) {
         address spender = msg.sender;
-        _spendAllowance(from, spender, value);
         return _transfer(_users.get_user(spender), from, to, value);
-    }
-
-    function _spendAllowance(address owner, address spender, uint256 value) internal virtual {
-        uint256 currentAllowance = allowance(owner, spender);
-        if (currentAllowance < type(uint256).max) {
-            if (currentAllowance < value) {
-                revert ERC20InsufficientAllowance(spender, currentAllowance, value);
-            }
-            unchecked {
-                _approve(owner, spender, currentAllowance - value, false);
-            }
-        }
     }
 
     function mint_to(address to, uint256 value) public virtual returns (bool) {

@@ -10,6 +10,7 @@ library SplTokenLib {
 
     uint256 internal constant SPL_MINT_LEN = 82;
     uint256 internal constant SPL_TOKEN_ACCOUNT_MIN_LEN = 72;
+    uint256 internal constant SPL_TOKEN_ACCOUNT_DELEGATE_LEN = 129;
 
     error InvalidTokenAccountDataLength(uint256 actual, uint256 expected);
 
@@ -71,6 +72,34 @@ library SplTokenLib {
         }
 
         (amount,) = Convert.read_u64le(data, 64);
+    }
+
+    function load_token_account_delegate(bytes32 token_account_pubkey, address cpi_program)
+    internal
+    view
+    returns (bytes32 delegate, uint64 delegated_amount)
+    {
+        (,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(token_account_pubkey);
+        return parse_token_account_delegate(data);
+    }
+
+    function parse_token_account_delegate(bytes memory data)
+    internal
+    pure
+    returns (bytes32 delegate, uint64 delegated_amount)
+    {
+        if (data.length < SPL_TOKEN_ACCOUNT_DELEGATE_LEN) {
+            revert InvalidTokenAccountDataLength(
+                data.length,
+                SPL_TOKEN_ACCOUNT_DELEGATE_LEN
+            );
+        }
+
+        Convert.COptionBytes32 memory delegate_option;
+        (delegate_option,) = Convert.read_coption_bytes32(data, 72);
+        delegate = delegate_option.is_some ? delegate_option.value : bytes32(0);
+
+        (delegated_amount,) = Convert.read_u64le(data, 121);
     }
 
     enum AuthorityType {
