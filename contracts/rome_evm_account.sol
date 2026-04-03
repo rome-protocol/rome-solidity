@@ -57,7 +57,7 @@ library RomeEVMAccount {
         return pda_with_salt(user, salt);
     }
 
-    function create_payer(address user, uint64 lamports, bytes32 salt) external view {
+    function create_payer(address user, uint64 lamports, bytes32 salt) internal {
         bytes32 key = get_payer(user, salt);
 
         (uint64 lamports_,,,,,) = CpiProgram.account_info(key);
@@ -65,6 +65,18 @@ library RomeEVMAccount {
             require(lamports >= minimum_balance(0), "insufficient lamports, rent-exemption value is 890880");
         }
 
-        SystemProgramLib.transfer(SystemProgram.operator(), key, lamports);
+        //require(false, string(SystemProgram.bytes32_to_base58(key)));
+
+        SystemProgramLib.Instruction memory ix =
+                            SystemProgramLib.transfer(SystemProgram.operator(), key, lamports);
+
+        (bool success, bytes memory result) = address(cpi_program_address).delegatecall(
+            abi.encodeWithSignature(
+                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
+                ix.program_id, ix.accounts, ix.data
+            )
+        );
+
+        require (success, string(Convert.revert_msg(result)));
     }
 }

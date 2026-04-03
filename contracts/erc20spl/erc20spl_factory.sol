@@ -43,6 +43,17 @@ contract ERC20SPLFactory {
         require(mint_by_symbol_hash[symbolHash] == bytes32(0), "Token with symbol exists");
     }
 
+    function _register_contract(bytes32 mint, string memory name, string memory symbol) internal returns(address) {
+        bytes32 symbolHash = keccak256(bytes(symbol));
+        _check_symbol_hash_exists(symbolHash);
+
+        SPL_ERC20 new_contract = new SPL_ERC20(mint, cpi_program, name, symbol, _users);
+        token_by_mint[mint] = address(new_contract);
+        mint_by_symbol_hash[symbolHash] = mint;
+        token_by_symbol_hash[symbolHash] = address(new_contract);
+        return address(new_contract);
+    }
+
     /**
      * Registers existing SPL token and deploys ERC20 wrapper for it. 
      * Name and symbol are loaded from the token's metadata account, 
@@ -60,13 +71,7 @@ contract ERC20SPLFactory {
             mint, mpl_token_metadata_program, cpi_program
         );
         require(metadata_exists, "Metadata does not exist");
-
-        bytes32 symbolHash = keccak256(bytes(metadata.symbol));
-        _check_symbol_hash_exists(symbolHash);
-    
-        SPL_ERC20 new_contract = new SPL_ERC20(mint, cpi_program, metadata.name, metadata.symbol, _users);
-        token_by_mint[mint] = address(new_contract);
-        return address(new_contract);
+        return _register_contract(mint, metadata.name, metadata.symbol);
     }
 
     /**
@@ -80,70 +85,46 @@ contract ERC20SPLFactory {
     public
     returns (address) {
         require(token_by_mint[mint] == address(0), "Token exists");
-        SPL_ERC20 new_contract = new SPL_ERC20(mint, cpi_program, name, symbol, _users);
-        token_by_mint[mint] = address(new_contract);
-        return address(new_contract);
+        return _register_contract(mint, name, symbol);
+    }
+
+    function create_user()
+    public {
+        _users.ensure_user(msg.sender);
     }
 
     /**
-     * Creates new SPL token account.
+     * Derives the address of the mint account that will be created for the user in the next call to create_token_mint, 
+     * based on the user's current nonce. This can be used by clients to know the mint address before it is created,
+     *  so they can create metadata accounts for it or perform other setup steps on Solana before calling create_token_mint.
+     * @return (bytes32 mint, bytes32 mintSeed) The address of the mint account that will be created for the user in the next call to create_token_mint, 
+     *              and the seed that can be used to derive it.
+     */
+    function get_current_mint(address user) public view returns (bytes32, bytes32) {
+        uint64 nonce = creator_nonce[user];
+
+        // [ "MINT" (4 bytes) | nonce (8 bytes) | 20 zero bytes ]
+        bytes32 mintSeed = bytes32(
+            (uint256(uint32(bytes4("MINT"))) << 224) |
+            (uint256(nonce) << 160)
+        );
+        return (RomeEVMAccount.pda_with_salt(user, mintSeed), mintSeed);
+    }
+
+    /**
+     * Creates new SPL token mint.
      * Token mint is derived from the creator's address and their current nonce, so each creator can create multiple tokens 
      * by calling this function multiple times. This function only creates the mint account and does not initialize it, 
      * so the returned mint address will not be a valid SPL token until the mint account is initialized 
      * (e.g. by calling init_token_account with the same name and symbol that will be used for the ERC20 wrapper).
+     *
+     * @return (bytes32 mint) Address of the created SPL Token mint.
      */
-    function create_token_account()
-    public
-    returns (bytes32) {
-        ERC20Users.User memory user = _users.ensure_user(msg.sender);
-        uint64 nonce = creator_nonce[msg.sender];
-        (bytes32 mint) = _derive_mint_address(msg.sender, nonce);
-
+    function create_token_mint() external returns (bytes32) {
+        ERC20Users.User memory user = _users.get_user(msg.sender);
+        (bytes32 mint, bytes32 mintSeed) = get_current_mint(msg.sender);
         require(token_by_mint[mint] == address(0), "Token exists");
-        _create_mint_account(user, mint, user.seeds);
-        return mint;
-    }
 
-    /**
-     * Initializes previously created mint account and deploys ERC20 wrapper for it. Name and symbol are required to initialize the mint account,
-     * @param name name of the token, required for mint initialization and ERC20 wrapper deployment
-     * @param symbol symbol of the token, required for mint initialization and ERC20 wrapper deployment. 
-     *               Must be unique across all tokens created through this factory
-     */
-    function init_token_account(string memory name, string memory symbol)
-    public
-    returns (address) {
-        bytes32 symbolHash = keccak256(bytes(symbol));
-        _check_symbol_hash_exists(symbolHash);
-
-        ERC20Users.User memory user = _users.ensure_user(msg.sender);
-        uint64 nonce = creator_nonce[msg.sender];
-        (bytes32 mint) = _derive_mint_address(msg.sender, nonce);
-        _initialize_mint(mint, user.owner);
-        SPL_ERC20 newContract = new SPL_ERC20(mint, cpi_program, name, symbol, _users);
-
-        creator_nonce[msg.sender] = nonce + 1;
-        token_by_mint[mint] = address(newContract);
-        mint_by_symbol_hash[symbolHash] = mint;
-        token_by_symbol_hash[symbolHash] = address(newContract);
-
-        emit TokenCreated(msg.sender, mint, address(newContract), name, symbol, nonce);
-
-        return address(newContract);
-    }
-
-    function _derive_mint_address(address creator, uint64 nonce) internal view returns (bytes32 mint) {
-        ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](2);
-        bytes memory creatorSeed = abi.encodePacked(creator);
-        bytes memory nonceSeed = abi.encodePacked(nonce);
-        seeds[0] = ISystemProgram.Seed(creatorSeed);
-        seeds[1] = ISystemProgram.Seed(nonceSeed);
-
-        (mint,) = SystemProgram.find_program_address(SystemProgram.rome_evm_program_id(), seeds);
-        return mint;
-    }
-
-    function _create_mint_account(ERC20Users.User memory user, bytes32 mint, bytes32[] memory mintSeeds) internal {
         SystemProgramLib.Instruction memory createMintAccount = SystemProgramLib.create_account(
             user.payer,
             mint,
@@ -152,28 +133,54 @@ contract ERC20SPLFactory {
             SplTokenLib.SPL_TOKEN_PROGRAM
         );
 
-        ICrossProgramInvocation(cpi_program).invoke_signed(
-            createMintAccount.program_id,
-            createMintAccount.accounts,
-            createMintAccount.data,
-            mintSeeds
+        bytes32[] memory seeds = new bytes32[](2);
+        seeds[0] = user.seed;
+        seeds[1] = mintSeed;
+
+        (bool success, bytes memory result) = address(cpi_program).delegatecall(
+            abi.encodeWithSignature(
+                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
+                createMintAccount.program_id,
+                createMintAccount.accounts,
+                abi.encodePacked(createMintAccount.data),
+                seeds
+            )
         );
+
+        require (success, string(Convert.revert_msg(result)));
+        uint64 nonce = creator_nonce[msg.sender];
+        creator_nonce[msg.sender] = nonce + 1;
+        return mint;
     }
 
-    function _initialize_mint(bytes32 mint, bytes32 mintAuthority) internal {
+    /**
+     * Initializes previously created mint account.
+     */
+    function init_token_mint(bytes32 mint) external {
+        ERC20Users.User memory user = _users.get_user(msg.sender);
+
         (
             bytes32 tokenProgramId,
             ICrossProgramInvocation.AccountMeta[] memory initAccounts,
             bytes memory initData
-        ) = SplTokenLib.initialize_mint2(
+        ) = SplTokenLib.initialize_mint(
             SplTokenLib.SPL_TOKEN_PROGRAM,
             mint,
-            mintAuthority,
+            user.owner,
             false,
             bytes32(0),
             DEFAULT_DECIMALS
         );
 
-        ICrossProgramInvocation(cpi_program).invoke(tokenProgramId, initAccounts, initData);
+        (bool success, bytes memory result) = address(cpi_program).delegatecall(
+            abi.encodeWithSignature(
+                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
+                tokenProgramId,
+                initAccounts,
+                initData
+            )
+        );
+
+        require (success, string(Convert.revert_msg(result)));
     }
 }

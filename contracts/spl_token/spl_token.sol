@@ -97,9 +97,9 @@ library SplTokenLib {
     uint256 constant MAX_SIGNERS = 11;
 
     // Replace with your actual constants if they already exist elsewhere.
-    bytes32 constant SYSVAR_RENT_ID = 0x06a7d517188b16e1d6b7b1b4c4d8b0f2f8b4f2e4d8b0f2f8b4f2e4d8b0f2f8b4;
+    bytes32 constant SYSVAR_RENT_ID = 0x06a7d517192c5c51218cc94c3d4af17f58daee089ba1fd44e3dbd98a00000000;
     bytes32 constant SYSTEM_PROGRAM_ID = 0x0000000000000000000000000000000000000000000000000000000000000000;
-    bytes32 constant NATIVE_MINT_ID = 0x0000000000000000000000000000000000000000000000000000000000000000;
+    bytes32 constant NATIVE_MINT_ID = 0x069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001;
 
     error InvalidSignerCount(uint256 count);
     error InvalidAuthorityType(uint8 value);
@@ -111,7 +111,7 @@ library SplTokenLib {
         bool has_freeze_authority,
         bytes32 freeze_authority_pubkey,
         uint8 decimals
-    ) public pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
+    ) internal pure returns (bytes32, ICrossProgramInvocation.AccountMeta[] memory, bytes memory) {
         bytes memory data = _pack_initialize_mint(decimals, mint_authority_pubkey, has_freeze_authority, freeze_authority_pubkey);
 
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](2);

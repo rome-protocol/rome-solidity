@@ -193,7 +193,7 @@ library MplTokenMetadataLib {
 
     function find_metadata_pda(bytes32 mint, bytes32 mpl_program_id)
     internal
-    view
+    pure
     returns (bytes32 pda, uint8 bump)
     {
         ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](3);

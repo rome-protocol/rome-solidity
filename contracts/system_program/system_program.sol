@@ -43,6 +43,8 @@ library SystemProgramLib {
             Convert.u64le(space),
             owner
         );
+
+        return ix;
     }
 
     function create_account_with_seed(
@@ -70,6 +72,8 @@ library SystemProgramLib {
             Convert.u64le(space),
             owner
         );
+
+        return ix;
     }
 
     function assign(bytes32 pubkey, bytes32 owner)
@@ -84,6 +88,7 @@ library SystemProgramLib {
         ix.program_id = ID;
         ix.accounts = account_metas;
         ix.data = abi.encodePacked(_u32le(1), owner);
+        return ix;
     }
 
     function assign_with_seed(
@@ -105,6 +110,8 @@ library SystemProgramLib {
             _encode_string(seed),
             owner
         );
+
+        return ix;
     }
 
     function transfer(
@@ -120,6 +127,7 @@ library SystemProgramLib {
         ix.program_id = ID;
         ix.accounts = account_metas;
         ix.data = abi.encodePacked(_u32le(2), Convert.u64le(lamports));
+        return ix;
     }
 
     function transfer_with_seed(
@@ -144,6 +152,7 @@ library SystemProgramLib {
             _encode_string(from_seed),
             from_owner
         );
+        return ix;
     }
 
     function allocate(bytes32 pubkey, uint64 space)
@@ -158,6 +167,7 @@ library SystemProgramLib {
         ix.program_id = ID;
         ix.accounts = account_metas;
         ix.data = abi.encodePacked(_u32le(8), Convert.u64le(space));
+        return ix;
     }
 
     function allocate_with_seed(
@@ -181,6 +191,8 @@ library SystemProgramLib {
             Convert.u64le(space),
             owner
         );
+
+        return ix;
     }
 
     function transfer_many(bytes32 from_pubkey, RecipientLamports[] memory to_lamports)
@@ -268,6 +280,7 @@ library SystemProgramLib {
         ix.program_id = ID;
         ix.accounts = account_metas;
         ix.data = abi.encodePacked(_u32le(4));
+        return ix;
     }
 
     function withdraw_nonce_account(
@@ -287,6 +300,7 @@ library SystemProgramLib {
         ix.program_id = ID;
         ix.accounts = account_metas;
         ix.data = abi.encodePacked(_u32le(5), Convert.u64le(lamports));
+        return ix;
     }
 
     function authorize_nonce_account(
@@ -302,6 +316,7 @@ library SystemProgramLib {
         ix.program_id = ID;
         ix.accounts = account_metas;
         ix.data = abi.encodePacked(_u32le(7), new_authority);
+        return ix;
     }
 
     function upgrade_nonce_account(bytes32 nonce_pubkey)
@@ -316,6 +331,7 @@ library SystemProgramLib {
         ix.program_id = ID;
         ix.accounts = account_metas;
         ix.data = abi.encodePacked(_u32le(12));
+        return ix;
     }
 
     struct RecipientLamports {

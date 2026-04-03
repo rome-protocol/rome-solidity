@@ -24,7 +24,7 @@
     "associatedTokenProgramId": "0x8c97258f4e2489f1bb3d1029148e0d830b5a1399daff1084048e7bd8dbe9f859"
   },
   "ERC20SPLFactory": {
-    "address": "0x471f9f80c388583d3415ab6016233bbb71539fee",
+    "address": "0xfd21da046c282e1d36cc45e46d9599cff5742f2b",
     "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
   },
   "ERC20SPLLibraries": {
