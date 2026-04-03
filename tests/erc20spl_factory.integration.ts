@@ -208,13 +208,13 @@ describe("ERC20SPLFactory integration", { concurrency: false }, function () {
         console.log("Account B:", accountBWallet.account.address);
     });
 
-    // it("creates token with correct name and symbol", async function () {
-    //     const name = await tokenFromA.read.name();
-    //     const symbol = await tokenFromA.read.symbol();
-    //
-    //     assert.equal(name, testName);
-    //     assert.equal(symbol, testSymbol);
-    // });
+    it("creates token with correct name and symbol", async function () {
+        const name = await tokenFromA.read.name();
+        const symbol = await tokenFromA.read.symbol();
+
+        assert.equal(name, testName);
+        assert.equal(symbol, testSymbol);
+    });
 
     it("supports mint_to, approve, allowance, and transferFrom lifecycle", async function () {
         const ensureAccountATxHash = await tokenFromA.write.ensure_token_account([accountA.account.address], {
@@ -274,32 +274,32 @@ describe("ERC20SPLFactory integration", { concurrency: false }, function () {
         assert.equal(allowanceAfterTransfer, 0n, "allowance must be fully spent after transferFrom");
     });
 
-    // it("does not allow account B to mint without mint authority", async function () {
-    //     await expectWriteToFail(
-    //         () =>
-    //             tokenFromB.write.mint_to([accountBWallet.account.address, 1n], {
-    //                 account: accountBWallet.account,
-    //             }),
-    //         publicClient,
-    //     );
-    // });
-    //
-    // it("does not allow account A to transfer from account B without allowance", async function () {
-    //     const resetApprovalTxHash = await tokenFromB.write.approve([accountA.account.address, 0n], {
-    //         account: accountBWallet.account,
-    //     });
-    //     await waitForSuccess(publicClient, resetApprovalTxHash, "reset approval");
-    //
-    //     await expectWriteToFail(
-    //         () =>
-    //             tokenFromA.write.transferFrom([
-    //                 accountBWallet.account.address,
-    //                 accountA.account.address,
-    //                 1n,
-    //             ], {
-    //                 account: accountA.account,
-    //             }),
-    //         publicClient,
-    //     );
-    // });
+    it("does not allow account B to mint without mint authority", async function () {
+        await expectWriteToFail(
+            () =>
+                tokenFromB.write.mint_to([accountBWallet.account.address, 1n], {
+                    account: accountBWallet.account,
+                }),
+            publicClient,
+        );
+    });
+
+    it("does not allow account A to transfer from account B without allowance", async function () {
+        const resetApprovalTxHash = await tokenFromB.write.approve([accountA.account.address, 0n], {
+            account: accountBWallet.account,
+        });
+        await waitForSuccess(publicClient, resetApprovalTxHash, "reset approval");
+
+        await expectWriteToFail(
+            () =>
+                tokenFromA.write.transferFrom([
+                    accountBWallet.account.address,
+                    accountA.account.address,
+                    1n,
+                ], {
+                    account: accountA.account,
+                }),
+            publicClient,
+        );
+    });
 });
