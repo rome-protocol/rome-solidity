@@ -106,3 +106,33 @@ Deployment metadata is tracked in `deployments/monti_spl.json`. Current deployme
 ### Solidity Version
 
 Target: `0.8.28`. Production profile enables optimizer with 200 runs.
+
+## Agent Execution Guide
+
+- All contracts consume precompile interfaces from `rome-solidity-sdk` (../rome-solidity-sdk/).
+- After modifying precompile addresses or ABIs, verify consumers compile: `npx hardhat compile`.
+- Test against local Rome-EVM node first: `npx hardhat test --network local`.
+- Test against devnet: `npx hardhat test --network montispl`.
+- Oracle Gateway V2 contracts depend on live Pyth/Switchboard feeds — test against montispl for oracle-related changes.
+- Never deploy contracts without running the full Hardhat test suite.
+- ERC-20 SPL wrappers interact with Solana precompiles at fixed addresses (0xFF...05-08) — verify precompile addresses match rome-evm-private if changed.
+
+## Change Impact Map
+
+| If you change... | Also check/update... |
+|-----------------|---------------------|
+| Precompile interface addresses | `rome-solidity-sdk/` interfaces must match `rome-evm-private/` precompile dispatch |
+| Contract ABIs | `rome-deposit-ui/` ABI imports, `tests/` Solidity test contracts |
+| Oracle adapter interfaces | Consuming contracts in this repo that use the adapters |
+| SPL token wrapper logic | `rome-uniswap-v2/` (uses SPL wrappers for trading pairs) |
+| Hardhat network config | `rome-solidity-sdk/` uses same network definitions |
+
+## Test Selection Guide
+
+| What Changed | Tests to Run |
+|-------------|-------------|
+| Any contract | `npx hardhat test` (full suite) |
+| Oracle contracts | `npx hardhat test` + `npx hardhat test --network montispl` (verify live feeds) |
+| Precompile wrappers | `npx hardhat test` + `tests/` opcode suite in integration repo |
+| ERC-20 SPL wrappers | `npx hardhat test` + `tests/` EVM suite |
+| Hardhat config only | `npx hardhat compile` (verify config is valid) |
