@@ -63,5 +63,14 @@
         "adapter": "0xF0864572019c295407CF2ed46e6FD3615e10E19d"
       }
     ]
+  },
+  "SolanaStateSDK": {
+    "JupiterSwap": "0x1f67cfdfe9545f79e4f2de7243f4350d8c044d84",
+    "DriftFactory": "0x7e8d277ecc3da14718fda1a4066002e206aa0244",
+    "KaminoLending": "0xad9432a6d2c52e540df1c81a44dac0b05998f985",
+    "KaminoVault": "0x8dddf7d1b8ade2c8b3230a4fa4b626c8c7d0b03c",
+    "DeFiRouter": "0x893297525024de0dc3de44cde83b1b939a0db6bc",
+    "cpiProgram": "0xFF00000000000000000000000000000000000008",
+    "deployedAt": "2026-04-02T00:45:24.792Z"
   }
 }
