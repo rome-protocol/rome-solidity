@@ -459,7 +459,7 @@ contract DAMMv1Pool {
         SwapAccountsInput memory a,
         uint64 in_amount,
         uint64 minimum_out_amount
-    ) external {
+    ) internal {
         ICrossProgramInvocation.AccountMeta[] memory metas = build_swap_account_metas(a);
         bytes memory data = build_swap_ix_data(in_amount, minimum_out_amount);
         ICrossProgramInvocation(cpi_program).invoke(prog_dynamic_amm, metas, data);
