@@ -1,19 +1,29 @@
 /**
- * Bridge tokens from Sepolia → Rome EVM via Wormhole.
+ * Inbound Wormhole transfer: Sepolia ETH → Rome EVM (wrapped WETH).
  *
- * Two phases:
- *   Phase 1 (Sepolia):  Lock tokens on Sepolia Token Bridge → get VAA
- *   Phase 2 (Rome):     Post VAA on Solana devnet + claimCompleteWrapped on Rome EVM
+ * Prerequisites:
+ *   1. RomeWormholeBridge deployed (scripts/deploy_wormhole_bridge.ts)
+ *   2. Sepolia ETH in your wallet (same private key for both networks)
+ *   3. SOL in your Rome PDA on Solana devnet (for posting the VAA)
  *
  * Usage:
- *   # Phase 1: Send from Sepolia (wraps & locks ETH)
+ *   # Step 1 — Lock ETH on Sepolia. Prints the sequence number for Step 2.
  *   PHASE=send npx hardhat run scripts/wormhole_sepolia_to_rome.ts --network sepolia
  *
- *   # Phase 2: Claim on Rome (after VAA is available)
- *   PHASE=claim npx hardhat run scripts/wormhole_sepolia_to_rome.ts --network monti_spl
+ *   # Step 2 — Claim on Rome. Polls Wormholescan, posts VAA, completes transfer.
+ *   PHASE=claim SEQ=<sequence> npx hardhat run scripts/wormhole_sepolia_to_rome.ts --network monti_spl
  *
- *   # Or provide a custom VAA:
+ *   # Or supply the base64 VAA directly (skips polling):
  *   PHASE=claim VAA_B64=<base64> npx hardhat run scripts/wormhole_sepolia_to_rome.ts --network monti_spl
+ *
+ * Environment:
+ *   MONTI_SPL_PRIVATE_KEY  — hex private key (with 0x prefix)
+ *   SEPOLIA_PRIVATE_KEY    — same key, used on Sepolia
+ *   PHASE                  — "send" or "claim"
+ *   SEQ                    — Wormhole sequence number (from Step 1 output)
+ *   VAA_B64                — (optional) base64-encoded signed VAA
+ *   BRIDGE                 — (optional) RomeWormholeBridge address override
+ *   AMOUNT                 — (optional) ETH amount to send, default "0.001"
  */
 import hardhat from "hardhat";
 import {
@@ -40,29 +50,30 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-// Sepolia (Ethereum testnet)
+// Sepolia
 const SEPOLIA_TOKEN_BRIDGE = "0xDB5492265f6038831E89f495670FF909aDe94bd9";
-const SOLANA_CHAIN_ID = 1;
+const SEPOLIA_EMITTER = "000000000000000000000000db5492265f6038831e89f495670ff909ade94bd9";
+const SEPOLIA_WORMHOLE_CHAIN_ID = 10002;
+const SOLANA_CHAIN_ID = 1; // Wormhole chain ID for Solana
 
-// Solana Devnet — same cluster Rome EVM runs on
+// Sepolia WETH (token address emitted by the Token Bridge)
+const SEPOLIA_WETH_PADDED = Buffer.from(
+    "000000000000000000000000eef12a83ee5b7161d3873317c8e0e7b76e0b5d9c", "hex",
+);
+
+// Solana Devnet
 const SOLANA_DEVNET_RPC = "https://api.devnet.solana.com";
 const WORMHOLE_CORE = new PublicKey("3u8hJUVTA4jH1wYAyUur7FFZVQ8H635K3tSHHF4ssjQ5");
 const TOKEN_BRIDGE = new PublicKey("DZnkkTmCiFWfYTfT41X3Rd1kDgozqzxWaHqsw6W4x2oe");
 const SPL_TOKEN_PK = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const ATA_PROGRAM = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
-// Rome EVM — deployed RomeWormholeBridge contract
-const BRIDGE_ADDRESS = "0x79f34fa78651efa9d24ff8ac526cbd9753e8fc1f";
-
-// Rome EVM precompile addresses
+// Rome EVM
+const DEFAULT_BRIDGE = "0x79f34fa78651efa9d24ff8ac526cbd9753e8fc1f";
 const ASSOC_TOKEN_PRECOMPILE = "0xFF00000000000000000000000000000000000006" as const;
 
-// Default VAA from the corrected Sepolia transfer (sequence 343846, recipient = ATA)
-const DEFAULT_VAA_B64 =
-    "AQAAAAABAOIx5K7OeRBbDJNJpiY8mGzPrAA9KlrmLPKG0FoJkZofbE4dHI81sjYHEOtb8dcRO1sTVMXx2kqcMJDevVTinbABadQFUAAAAAAnEgAAAAAAAAAAAAAAANtUkiZfYDiDHon0lWcP+Qmt6UvZAAAAAAAFPyYBAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYagAAAAAAAAAAAAAAAA7vEqg+5bcWHThzMXyODnt24LXZwnEiw4QaLvURhcFpb3j+Feg6pV/mvLuEMjniy+b/GfWc68AAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
-
-// EVM private key (used to derive a Solana keypair for posting the VAA)
-const EVM_PRIVATE_KEY = "fff86a5d88cc029df8c309c0bc77144ce8f21dfdcc85fc965b16dd1cba442ad8";
+// Wormholescan API
+const WORMHOLESCAN_API = "https://api.testnet.wormholescan.io/api/v1/vaas";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -73,6 +84,39 @@ function getAta(mint: PublicKey, owner: PublicKey): PublicKey {
         [owner.toBuffer(), SPL_TOKEN_PK.toBuffer(), mint.toBuffer()],
         ATA_PROGRAM,
     )[0];
+}
+
+function getEvmPrivateKey(): string {
+    const raw = process.env.MONTI_SPL_PRIVATE_KEY || process.env.SEPOLIA_PRIVATE_KEY || "";
+    return raw.replace(/^0x/, "");
+}
+
+async function fetchSignedVaa(seq: number, maxWaitMs = 900_000): Promise<string> {
+    const url = `${WORMHOLESCAN_API}/${SEPOLIA_WORMHOLE_CHAIN_ID}/${SEPOLIA_EMITTER}/${seq}`;
+    const start = Date.now();
+    let attempt = 0;
+
+    while (Date.now() - start < maxWaitMs) {
+        attempt++;
+        const elapsed = ((Date.now() - start) / 1000).toFixed(0);
+        process.stdout.write(`\r  Polling Wormholescan (attempt ${attempt}, ${elapsed}s)...`);
+
+        try {
+            const res = await fetch(url);
+            if (res.ok) {
+                const json = await res.json() as any;
+                const vaaB64 = json?.data?.vaa;
+                if (vaaB64) {
+                    console.log(" found!");
+                    return vaaB64;
+                }
+            }
+        } catch {}
+
+        await new Promise(r => setTimeout(r, 15_000));
+    }
+
+    throw new Error(`VAA not found after ${maxWaitMs / 1000}s. Check Wormholescan manually.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -88,52 +132,34 @@ async function sendFromSepolia() {
     console.log("=== Phase 1: Send ETH from Sepolia ===");
     console.log("Wallet:", wallet.account.address);
     const balance = await publicClient.getBalance({ address: wallet.account.address });
-    console.log("ETH Balance:", balance.toString(), `(${Number(balance) / 1e18} ETH)`);
+    console.log("ETH Balance:", (Number(balance) / 1e18).toFixed(6), "ETH");
 
-    if (balance < parseEther("0.01")) {
+    const sendAmount = parseEther(process.env.AMOUNT || "0.001");
+    if (balance < sendAmount + parseEther("0.005")) {
         console.log("\nInsufficient ETH. Get Sepolia ETH from a faucet.");
         return;
     }
 
-    // The PDA (Rome EVM wallet's canonical Solana identity)
-    const pda = new PublicKey(Buffer.from(
-        "1f8d99b0be76e3e279322fb00689009cf921507c8210041ed6f6d2732b2d5ce0", "hex",
-    ));
-    console.log("\nRome PDA:", pda.toBase58());
+    // Derive PDA → wrapped mint → ATA
+    const evmKey = getEvmPrivateKey();
+    const payer = Keypair.fromSeed(Buffer.from(evmKey, "hex"));
+    const connection = new Connection(SOLANA_DEVNET_RPC, "confirmed");
 
-    // The Wormhole Token Bridge on Solana requires the recipient to be a TOKEN
-    // ACCOUNT (ATA), not a wallet address. The Token Bridge checks that the `to`
-    // account key in the instruction matches the `recipient` bytes in the VAA.
-    //
-    // To compute the ATA, we need the wrapped mint, which is derived from the
-    // token chain + token address that the Sepolia Token Bridge will emit.
-    // For wrapAndTransferETH on Sepolia:
-    //   token_chain = 10002 (Sepolia)
-    //   token_address = Sepolia WETH contract (left-padded to 32 bytes)
-    //
-    // We extract these from the previous VAA to ensure consistency.
-    const SEPOLIA_WETH_PADDED = Buffer.from(
-        "000000000000000000000000eef12a83ee5b7161d3873317c8e0e7b76e0b5d9c", "hex",
-    );
-    const SEPOLIA_CHAIN_ID_WORMHOLE = 10002;
+    const bridgeAddr = process.env.BRIDGE || DEFAULT_BRIDGE;
+    const bridgeContract = await viem.getContractAt("RomeWormholeBridge", bridgeAddr);
+    // PDA must be derived for the *same* wallet on Rome EVM, which uses the same key
+    const pdaHex = await bridgeContract.read.bridgeUserPda() as `0x${string}`;
+    const pda = new PublicKey(Buffer.from(pdaHex.slice(2), "hex"));
+    console.log("Rome PDA:", pda.toBase58());
 
-    const wrappedMint = deriveWrappedMintKey(
-        TOKEN_BRIDGE,
-        SEPOLIA_CHAIN_ID_WORMHOLE,
-        SEPOLIA_WETH_PADDED,
-    );
-    console.log("Wrapped mint (Solana):", wrappedMint.toBase58());
-
+    const wrappedMint = deriveWrappedMintKey(TOKEN_BRIDGE, SEPOLIA_WORMHOLE_CHAIN_ID, SEPOLIA_WETH_PADDED);
     const recipientAta = getAta(wrappedMint, pda);
+    const recipientAtaHex = `0x${Buffer.from(recipientAta.toBytes()).toString("hex")}` as `0x${string}`;
+
+    console.log("Wrapped mint:", wrappedMint.toBase58());
     console.log("Recipient ATA:", recipientAta.toBase58());
 
-    const recipientAtaHex = `0x${Buffer.from(recipientAta.toBytes()).toString("hex")}` as `0x${string}`;
-    console.log("Recipient ATA (hex):", recipientAtaHex);
-
-    const SEND_AMOUNT = parseEther("0.001");
-
-    console.log(`\nSending ${Number(SEND_AMOUNT) / 1e18} ETH to Wormhole Token Bridge...`);
-    console.log("Token Bridge:", SEPOLIA_TOKEN_BRIDGE);
+    console.log(`\nSending ${Number(sendAmount) / 1e18} ETH to Wormhole Token Bridge...`);
 
     const calldata = encodeFunctionData({
         abi: [{
@@ -152,27 +178,28 @@ async function sendFromSepolia() {
         args: [SOLANA_CHAIN_ID, recipientAtaHex, 0n, 0],
     });
 
-    try {
-        const txHash = await wallet.sendTransaction({
-            to: SEPOLIA_TOKEN_BRIDGE as `0x${string}`,
-            data: calldata,
-            value: SEND_AMOUNT,
-            gas: 500_000n,
-        });
-        console.log("\nTX submitted:", txHash);
+    const txHash = await wallet.sendTransaction({
+        to: SEPOLIA_TOKEN_BRIDGE as `0x${string}`,
+        data: calldata,
+        value: sendAmount,
+        gas: 500_000n,
+    });
+    console.log("TX:", txHash);
 
-        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-        console.log("Status:", receipt.status);
-        console.log("Block:", receipt.blockNumber.toString());
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+    console.log("Status:", receipt.status);
+    console.log("Block:", receipt.blockNumber.toString());
 
-        console.log("\n=== Next Steps ===");
-        console.log("1. Wait ~15 minutes for guardians to sign the VAA");
-        console.log("2. Fetch the signed VAA from Wormholescan API");
-        console.log("3. Then run Phase 2:");
-        console.log("   PHASE=claim npx hardhat run scripts/wormhole_sepolia_to_rome.ts --network monti_spl");
-    } catch (e: any) {
-        console.log("TX failed:", e.message?.slice(0, 300));
-    }
+    // Parse sequence from logs (topic[1] of the LogMessagePublished event)
+    const wormholeLog = receipt.logs.find(
+        l => l.topics[0] === "0x6eb224fb001ed210e379b335e35efe88672a8ce935d981a6896b27ffdf52a3b2",
+    );
+    const seq = wormholeLog ? BigInt(wormholeLog.topics[1]!).toString() : "unknown";
+
+    console.log("\n=== Step 1 complete ===");
+    console.log("Sequence:", seq);
+    console.log("\nRun Step 2 (~15 min after guardians sign):");
+    console.log(`  PHASE=claim SEQ=${seq} npx hardhat run scripts/wormhole_sepolia_to_rome.ts --network monti_spl`);
 }
 
 // ---------------------------------------------------------------------------
@@ -181,64 +208,61 @@ async function sendFromSepolia() {
 
 async function claimOnRome() {
     // -----------------------------------------------------------------------
-    // 1. Parse the VAA
+    // 1. Get the signed VAA
     // -----------------------------------------------------------------------
-    const vaaB64 = process.env.VAA_B64 || DEFAULT_VAA_B64;
+    let vaaB64: string;
+
+    if (process.env.VAA_B64) {
+        vaaB64 = process.env.VAA_B64;
+        console.log("Using VAA from VAA_B64 env var.");
+    } else if (process.env.SEQ) {
+        const seq = parseInt(process.env.SEQ, 10);
+        console.log(`Fetching signed VAA for sequence ${seq}...`);
+        vaaB64 = await fetchSignedVaa(seq);
+    } else {
+        throw new Error("Provide SEQ=<sequence> or VAA_B64=<base64>. SEQ comes from Phase 1 output.");
+    }
+
     const vaaBytes = Buffer.from(vaaB64, "base64");
     const vaa = deserialize("TokenBridge:Transfer", vaaBytes) as any;
 
-    console.log("=== Phase 2: Claim on Rome ===");
-    console.log("VAA parsed:");
-    console.log("  Guardian set:", vaa.guardianSet);
-    console.log("  Emitter chain:", vaa.emitterChain);
+    console.log("\n=== Phase 2: Claim on Rome ===");
     console.log("  Sequence:", vaa.sequence?.toString());
+    console.log("  Emitter:", vaa.emitterChain);
     console.log("  Hash:", Buffer.from(vaa.hash).toString("hex"));
-    console.log("  Token chain:", vaa.payload?.token?.chain);
-    console.log("  Amount:", vaa.payload?.token ? "present" : "missing");
 
-    // Extract token info from VAA for PDA derivation
-    const rawVaaBuf = vaaBytes;
-    const sigCount = rawVaaBuf[5];
+    // Extract token + emitter info from raw VAA
+    const sigCount = vaaBytes[5];
     const bodyOffset = 6 + sigCount * 66;
-    const payload = rawVaaBuf.subarray(bodyOffset + 51);
+    const payload = vaaBytes.subarray(bodyOffset + 51);
     const tokenAddress = payload.subarray(33, 65);
     const tokenChain = payload.readUInt16BE(65);
-    const emitterAddress = rawVaaBuf.subarray(bodyOffset + 10, bodyOffset + 42);
-    const emitterChain = rawVaaBuf.readUInt16BE(bodyOffset + 8);
-    const sequence = rawVaaBuf.readBigUInt64BE(bodyOffset + 42);
-
-    console.log("\n  Token address:", "0x" + tokenAddress.toString("hex"));
-    console.log("  Token chain ID:", tokenChain);
-    console.log("  Emitter:", "0x" + emitterAddress.toString("hex"));
+    const emitterAddress = vaaBytes.subarray(bodyOffset + 10, bodyOffset + 42);
+    const emitterChain = vaaBytes.readUInt16BE(bodyOffset + 8);
+    const sequence = vaaBytes.readBigUInt64BE(bodyOffset + 42);
 
     // -----------------------------------------------------------------------
-    // 2. Post VAA to Solana devnet (native Solana transactions)
+    // 2. Post VAA to Solana devnet
     // -----------------------------------------------------------------------
     console.log("\n--- Step 1: Post VAA to Solana devnet ---");
 
     const connection = new Connection(SOLANA_DEVNET_RPC, "confirmed");
     const vaaHash = Buffer.from(vaa.hash);
     const postedVaaKey = coreUtils.derivePostedVaaKey(WORMHOLE_CORE, vaaHash);
-    console.log("PostedVAA PDA:", postedVaaKey.toBase58());
 
     const postedVaaInfo = await connection.getAccountInfo(postedVaaKey);
-
     if (postedVaaInfo) {
-        console.log("PostedVAA already exists on Solana! Skipping verify+post.");
+        console.log("PostedVAA already exists. Skipping.");
     } else {
-        console.log("PostedVAA not found. Posting via native Solana transactions...");
-
-        // Derive a Solana keypair from the EVM private key for paying tx fees
-        const payer = Keypair.fromSeed(Buffer.from(EVM_PRIVATE_KEY, "hex"));
+        const evmKey = getEvmPrivateKey();
+        const payer = Keypair.fromSeed(Buffer.from(evmKey, "hex"));
         console.log("Solana payer:", payer.publicKey.toBase58());
 
         let solBalance = await connection.getBalance(payer.publicKey);
         console.log("Payer balance:", solBalance / 1e9, "SOL");
 
         if (solBalance < 10_000_000) {
-            console.log("Payer needs SOL. Funding from Rome EVM via SystemProgram.transfer...");
-
-            // Connect to Rome EVM to transfer SOL
+            console.log("Funding payer from Rome EVM...");
             const { viem: romeViem } = await hardhat.network.connect();
             const [romeWallet] = await romeViem.getWalletClients();
             const romePublic = await romeViem.getPublicClient();
@@ -246,196 +270,112 @@ async function claimOnRome() {
 
             const SYSTEM_PRECOMPILE = "0xfF00000000000000000000000000000000000007" as const;
             const payerBytes32 = `0x${Buffer.from(payer.publicKey.toBytes()).toString("hex")}` as `0x${string}`;
-            const fundAmount = BigInt(100_000_000); // 0.1 SOL in lamports
 
-            const fundCalldata = encodeFunctionData({
-                abi: [{
-                    name: "transfer",
-                    type: "function" as const,
-                    stateMutability: "nonpayable" as const,
-                    inputs: [
-                        { name: "to", type: "bytes32" as const },
-                        { name: "amount", type: "uint64" as const },
-                        { name: "salt", type: "bytes32" as const },
-                    ],
-                    outputs: [] as const,
-                }],
-                functionName: "transfer",
-                args: [
-                    payerBytes32,
-                    fundAmount,
-                    "0x0000000000000000000000000000000000000000000000000000000000000001" as `0x${string}`,
-                ],
+            const fundTx = await romeWallet.sendTransaction({
+                to: SYSTEM_PRECOMPILE,
+                data: encodeFunctionData({
+                    abi: [{
+                        name: "transfer", type: "function" as const, stateMutability: "nonpayable" as const,
+                        inputs: [
+                            { name: "to", type: "bytes32" as const },
+                            { name: "amount", type: "uint64" as const },
+                            { name: "salt", type: "bytes32" as const },
+                        ],
+                        outputs: [] as const,
+                    }],
+                    functionName: "transfer",
+                    args: [payerBytes32, BigInt(100_000_000), "0x0000000000000000000000000000000000000000000000000000000000000001"],
+                }),
+                gas: 5_000_000n,
             });
-
-            try {
-                const fundTx = await romeWallet.sendTransaction({
-                    to: SYSTEM_PRECOMPILE,
-                    data: fundCalldata,
-                    gas: 5_000_000n,
-                });
-                const fundReceipt = await romePublic.waitForTransactionReceipt({ hash: fundTx });
-                console.log("Fund payer tx:", fundTx, "status:", fundReceipt.status);
-            } catch (e: any) {
-                console.error("Funding failed:", e.message?.slice(0, 300));
-                console.log("\nTrying airdrop as fallback...");
-                try {
-                    const sig = await connection.requestAirdrop(payer.publicKey, 1_000_000_000);
-                    await connection.confirmTransaction(sig, "confirmed");
-                    console.log("Airdrop confirmed:", sig);
-                } catch (e2: any) {
-                    console.error("Airdrop also failed:", e2.message?.slice(0, 200));
-                    console.log("\nManual funding required. Send SOL to:", payer.publicKey.toBase58());
-                    return;
-                }
-            }
-
-            // Re-check balance
+            await romePublic.waitForTransactionReceipt({ hash: fundTx });
             solBalance = await connection.getBalance(payer.publicKey);
             console.log("Payer balance after funding:", solBalance / 1e9, "SOL");
-            if (solBalance < 5_000_000) {
-                console.error("Still insufficient SOL. Manual funding required.");
-                return;
-            }
         }
 
-        // Verify guardian signatures (batched, each batch = Secp256k1 + verify_signatures)
         const signatureSet = Keypair.generate();
-        console.log("\nCreating verify_signatures instructions...");
-
         const verifyIxs = await coreUtils.createVerifySignaturesInstructions(
-            connection,
-            WORMHOLE_CORE,
-            payer.publicKey,
-            vaa,
-            signatureSet.publicKey,
+            connection, WORMHOLE_CORE, payer.publicKey, vaa, signatureSet.publicKey,
         );
-
-        console.log(`Built ${verifyIxs.length} instructions (${Math.ceil(verifyIxs.length / 2)} transactions)`);
 
         for (let i = 0; i < verifyIxs.length; i += 2) {
-            const batch = verifyIxs.slice(i, i + 2);
-            const tx = new Transaction().add(...batch);
+            const tx = new Transaction().add(...verifyIxs.slice(i, i + 2));
             tx.feePayer = payer.publicKey;
             const sig = await sendAndConfirmTransaction(connection, tx, [payer, signatureSet]);
-            console.log(`  verify_signatures tx ${i / 2 + 1}:`, sig);
+            console.log(`  verify_signatures ${i / 2 + 1}:`, sig);
         }
 
-        // Post the VAA body
-        console.log("Posting VAA...");
-        const postVaaIx = coreUtils.createPostVaaInstruction(
-            connection,
-            WORMHOLE_CORE,
-            payer.publicKey,
-            vaa,
-            signatureSet.publicKey,
+        const postTx = new Transaction().add(
+            coreUtils.createPostVaaInstruction(connection, WORMHOLE_CORE, payer.publicKey, vaa, signatureSet.publicKey),
         );
-
-        const postVaaTx = new Transaction().add(postVaaIx);
-        postVaaTx.feePayer = payer.publicKey;
-        const postSig = await sendAndConfirmTransaction(connection, postVaaTx, [payer]);
-        console.log("  post_vaa tx:", postSig);
-
-        // Verify it's posted
-        const check = await connection.getAccountInfo(postedVaaKey);
-        if (check) {
-            console.log("PostedVAA confirmed on Solana!");
-        } else {
-            console.error("PostedVAA NOT found after posting. Something went wrong.");
-            return;
-        }
+        postTx.feePayer = payer.publicKey;
+        const postSig = await sendAndConfirmTransaction(connection, postTx, [payer]);
+        console.log("  post_vaa:", postSig);
     }
 
     // -----------------------------------------------------------------------
     // 3. Connect to Rome EVM
     // -----------------------------------------------------------------------
     console.log("\n--- Step 2: Connect to Rome EVM ---");
+    const bridgeAddr = process.env.BRIDGE || DEFAULT_BRIDGE;
 
     const { viem } = await hardhat.network.connect();
     const [wallet] = await viem.getWalletClients();
     const publicClient = await viem.getPublicClient();
     if (!wallet?.account) throw new Error("No wallet found");
 
-    const bridge = await viem.getContractAt("RomeWormholeBridge", BRIDGE_ADDRESS);
-
+    const bridge = await viem.getContractAt("RomeWormholeBridge", bridgeAddr);
     console.log("Wallet:", wallet.account.address);
 
     const pdaHex = await bridge.read.bridgeUserPda() as `0x${string}`;
     const pda = new PublicKey(Buffer.from(pdaHex.slice(2), "hex"));
-    console.log("Your PDA:", pda.toBase58());
+    console.log("PDA:", pda.toBase58());
 
     // -----------------------------------------------------------------------
-    // 4. Derive wrapped mint and create ATA
+    // 4. Derive wrapped mint + ensure ATA exists
     // -----------------------------------------------------------------------
-    console.log("\n--- Step 3: Derive wrapped mint + create ATA ---");
-
+    console.log("\n--- Step 3: Wrapped mint + ATA ---");
     const wrappedMint = deriveWrappedMintKey(TOKEN_BRIDGE, tokenChain, tokenAddress);
-    console.log("Wrapped mint:", wrappedMint.toBase58());
-
     const recipientAta = getAta(wrappedMint, pda);
-    console.log("Recipient ATA:", recipientAta.toBase58());
+    console.log("Wrapped mint:", wrappedMint.toBase58());
+    console.log("ATA:", recipientAta.toBase58());
 
-    // Check if ATA exists on Solana
     const ataInfo = await connection.getAccountInfo(recipientAta);
     if (ataInfo) {
-        console.log("ATA already exists!");
+        console.log("ATA exists.");
     } else {
-        console.log("Creating ATA via Rome EVM precompile...");
-
+        console.log("Creating ATA...");
         const mintHex = publicKeyToBytes32Hex(wrappedMint);
-        const assocTokenAbi = [{
-            name: "create_associated_token_account",
-            type: "function" as const,
-            stateMutability: "nonpayable" as const,
-            inputs: [
-                { name: "user", type: "address" as const },
-                { name: "mint", type: "bytes32" as const },
-            ],
-            outputs: [] as const,
-        }] as const;
-
-        const ataCalldata = encodeFunctionData({
-            abi: assocTokenAbi,
-            functionName: "create_associated_token_account",
-            args: [wallet.account.address, mintHex as `0x${string}`],
+        const ataTx = await wallet.sendTransaction({
+            to: ASSOC_TOKEN_PRECOMPILE,
+            data: encodeFunctionData({
+                abi: [{
+                    name: "create_associated_token_account", type: "function" as const,
+                    stateMutability: "nonpayable" as const,
+                    inputs: [{ name: "user", type: "address" as const }, { name: "mint", type: "bytes32" as const }],
+                    outputs: [] as const,
+                }],
+                functionName: "create_associated_token_account",
+                args: [wallet.account.address, mintHex as `0x${string}`],
+            }),
+            gas: 5_000_000n,
         });
-
-        try {
-            const ataTxHash = await wallet.sendTransaction({
-                to: ASSOC_TOKEN_PRECOMPILE,
-                data: ataCalldata,
-                gas: 5_000_000n,
-            });
-            const ataReceipt = await publicClient.waitForTransactionReceipt({ hash: ataTxHash });
-            console.log("ATA creation tx:", ataTxHash, "status:", ataReceipt.status);
-        } catch (e: any) {
-            console.log("ATA creation failed (may already exist):", e.message?.slice(0, 200));
-        }
+        await publicClient.waitForTransactionReceipt({ hash: ataTx });
+        console.log("ATA created:", ataTx);
     }
 
     // -----------------------------------------------------------------------
-    // 5. Call claimCompleteWrapped via RomeWormholeBridge
+    // 5. claimCompleteWrapped
     // -----------------------------------------------------------------------
     console.log("\n--- Step 4: claimCompleteWrapped ---");
-
-    // Build the account list matching Token Bridge completeWrapped instruction
-    const claimKey = coreUtils.deriveClaimKey(
-        TOKEN_BRIDGE,
-        emitterAddress,
-        emitterChain,
-        sequence,
-    );
-
-    const endpointKey = deriveEndpointKey(TOKEN_BRIDGE, emitterChain, emitterAddress);
-
     const claimAccounts = [
         { pubkey: pda, isSigner: true, isWritable: true },
         { pubkey: deriveTokenBridgeConfigKey(TOKEN_BRIDGE), isSigner: false, isWritable: false },
         { pubkey: postedVaaKey, isSigner: false, isWritable: false },
-        { pubkey: claimKey, isSigner: false, isWritable: true },
-        { pubkey: endpointKey, isSigner: false, isWritable: false },
+        { pubkey: coreUtils.deriveClaimKey(TOKEN_BRIDGE, emitterAddress, emitterChain, sequence), isSigner: false, isWritable: true },
+        { pubkey: deriveEndpointKey(TOKEN_BRIDGE, emitterChain, emitterAddress), isSigner: false, isWritable: false },
         { pubkey: recipientAta, isSigner: false, isWritable: true },
-        { pubkey: recipientAta, isSigner: false, isWritable: true }, // toFees = to
+        { pubkey: recipientAta, isSigner: false, isWritable: true },
         { pubkey: wrappedMint, isSigner: false, isWritable: true },
         { pubkey: deriveWrappedMetaKey(TOKEN_BRIDGE, wrappedMint), isSigner: false, isWritable: false },
         { pubkey: deriveMintAuthorityKey(TOKEN_BRIDGE), isSigner: false, isWritable: false },
@@ -450,31 +390,28 @@ async function claimOnRome() {
         solanaAccountMetasToRome(claimAccounts),
     );
 
-    console.log(`Claim accounts: ${claimAccounts.length}`);
-    console.log(`Calldata length: ${(claimCalldata.length - 2) / 2} bytes`);
-    console.log(`Calldata: ${claimCalldata.slice(0, 74)}...`);
+    const claimTxHash = await wallet.sendTransaction({
+        to: bridgeAddr as `0x${string}`,
+        data: claimCalldata,
+        gas: 5_000_000n,
+    });
+    const claimReceipt = await publicClient.waitForTransactionReceipt({ hash: claimTxHash });
+    console.log("TX:", claimTxHash);
+    console.log("Status:", claimReceipt.status);
 
-    console.log("\nSubmitting claimCompleteWrapped transaction...");
-    try {
-        const claimTxHash = await wallet.sendTransaction({
-            to: BRIDGE_ADDRESS as `0x${string}`,
-            data: claimCalldata,
-            gas: 5_000_000n,
-        });
-        console.log("TX submitted:", claimTxHash);
+    if (claimReceipt.status === "success") {
+        console.log("\n=== SUCCESS ===");
+        console.log("Wrapped tokens minted to ATA:", recipientAta.toBase58());
+        console.log("Mint:", wrappedMint.toBase58());
 
-        const claimReceipt = await publicClient.waitForTransactionReceipt({ hash: claimTxHash });
-        console.log("Status:", claimReceipt.status);
-
-        if (claimReceipt.status === "success") {
-            console.log("\n=== Claim successful! ===");
-            console.log("Wrapped tokens minted to your ATA:", recipientAta.toBase58());
-            console.log("Wrapped mint:", wrappedMint.toBase58());
-        } else {
-            console.log("\nTransaction reverted. Check Rome EVM logs for details.");
+        // Read balance
+        const ataData = await connection.getAccountInfo(recipientAta);
+        if (ataData && ataData.data.length >= 72) {
+            const balance = ataData.data.readBigUInt64LE(64);
+            console.log("ATA balance:", balance.toString(), `(${Number(balance) / 1e8} WETH)`);
         }
-    } catch (e: any) {
-        console.error("Claim failed:", e.message?.slice(0, 500));
+    } else {
+        console.log("\nTransaction reverted.");
     }
 }
 
@@ -484,7 +421,6 @@ async function claimOnRome() {
 
 async function main() {
     const phase = process.env.PHASE || "claim";
-
     if (phase === "send") {
         await sendFromSepolia();
     } else {
