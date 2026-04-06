@@ -53,13 +53,13 @@ The core abstraction layer. Rome-EVM exposes Solana programs as EVM precompiles 
 
 | Precompile | Address | Interface |
 |---|---|---|
-| SPL Token | `0xff..05` | `ISplToken` — token account state, transfers, init |
-| Associated Token | `0xff..06` | `IAssociatedSplToken` — ATA creation |
+| SPL Token | `0xff..05` | `ISplToken` — token account state, transfers, init (**legacy**: no longer a dedicated handler in rome-evm-private; routed via Mollusk SVM/CPI) |
+| Associated Token | `0xff..06` | `IAssociatedSplToken` — ATA creation (**legacy**: no longer a dedicated handler in rome-evm-private; routed via Mollusk SVM/CPI) |
 | System Program | `0xff..07` | `ISystemProgram` — PDA derivation, account creation, base58 conversion |
 | CPI | `0xff..08` | `ICrossProgramInvocation` — arbitrary Solana CPI from EVM |
 | Withdraw | `0x42..16` | `IWithdraw` — SOL withdrawal |
 
-Global constants (`SplToken`, `AssociatedSplToken`, `SystemProgram`, `CpiProgram`, `Withdraw`) are pre-bound instances.
+Global constants (`SplToken`, `AssociatedSplToken`, `SystemProgram`, `CpiProgram`, `Withdraw`) are pre-bound instances. Note: as of the rome-evm-private Mollusk refactor, `SplToken` and `AssociatedSplToken` no longer have dedicated precompile handlers — SPL operations are executed via Mollusk SVM in the emulator and CPI on-chain.
 
 ### Contract Layers
 
@@ -115,7 +115,7 @@ Target: `0.8.28`. Production profile enables optimizer with 200 runs.
 - Test against devnet: `npx hardhat test --network montispl`.
 - Oracle Gateway V2 contracts depend on live Pyth/Switchboard feeds — test against montispl for oracle-related changes.
 - Never deploy contracts without running the full Hardhat test suite.
-- ERC-20 SPL wrappers interact with Solana precompiles at fixed addresses (0xFF...05-08) — verify precompile addresses match rome-evm-private if changed.
+- ERC-20 SPL wrappers interact with Solana precompiles at fixed addresses — verify precompile addresses match rome-evm-private if changed. Note: SPL Token (0xFF...05) and Associated Token (0xFF...06) dedicated handlers were removed in the Mollusk refactor; these now route through Mollusk SVM/CPI.
 
 ## Change Impact Map
 
