@@ -15,9 +15,9 @@ contract SPL_ERC20 is IERC20 {
     uint8 public immutable decimals;
 
     constructor(bytes32 _mint_id, address _cpi_program) {
-        SplTokenLib.SplMint memory mint = SplTokenLib.load_mint(_mint_id, cpi_program);
         cpi_program = _cpi_program;
         mint_id = _mint_id;
+        SplTokenLib.SplMint memory mint = SplTokenLib.load_mint(_mint_id, _cpi_program);
         decimals = mint.decimals;
     }
 

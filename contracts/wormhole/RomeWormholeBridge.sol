@@ -160,6 +160,13 @@ contract RomeWormholeBridge {
         for (uint256 i = 0; i < accounts.length; i++) {
             m[i] = accounts[i];
         }
-        CpiProgram.invoke(programId, m, data);
+        // delegatecall preserves msg.sender so the CPI precompile signs
+        // for the original caller's PDA, not the bridge contract's PDA.
+        (bool ok, bytes memory ret) = address(CpiProgram).delegatecall(
+            abi.encodeCall(ICrossProgramInvocation.invoke, (programId, m, data))
+        );
+        if (!ok) {
+            assembly { revert(add(ret, 32), mload(ret)) }
+        }
     }
 }
