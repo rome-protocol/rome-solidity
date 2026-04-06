@@ -7,10 +7,18 @@ export default defineConfig({
     profiles: {
       default: {
         version: "0.8.28",
+        settings: {
+          viaIR: true,
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+        },
       },
       production: {
         version: "0.8.28",
         settings: {
+          viaIR: true,
           optimizer: {
             enabled: true,
             runs: 200,
@@ -31,8 +39,8 @@ export default defineConfig({
     sepolia: {
       type: "http",
       chainType: "l1",
-      url: configVariable("SEPOLIA_RPC_URL"),
-      accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
+      url: "https://sepolia.gateway.tenderly.co/1WaYWPMXChhNxZn22C0r27",
+      accounts: ["0xfff86a5d88cc029df8c309c0bc77144ce8f21dfdcc85fc965b16dd1cba442ad8"],
     },
     monti_spl: {
       type: "http",
