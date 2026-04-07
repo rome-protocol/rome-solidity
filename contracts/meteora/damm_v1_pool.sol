@@ -460,9 +460,19 @@ contract DAMMv1Pool {
         uint64 in_amount,
         uint64 minimum_out_amount
     ) internal {
-        ICrossProgramInvocation.AccountMeta[] memory metas = build_swap_account_metas(a);
+        ICrossProgramInvocation.AccountMeta[] memory accounts = build_swap_account_metas(a);
         bytes memory data = build_swap_ix_data(in_amount, minimum_out_amount);
-        ICrossProgramInvocation(cpi_program).invoke(prog_dynamic_amm, metas, data);
+
+        (bool success, bytes memory result) = address(cpi_program).delegatecall(
+            abi.encodeWithSignature(
+                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
+                prog_dynamic_amm,
+                accounts,
+                data
+            )
+        );
+
+        require(success, string(result));
     }
 
     function invoke_swap(
@@ -480,6 +490,6 @@ contract DAMMv1Pool {
             in_token
         );
 
-        this.invoke_swap(a, in_amount, minimum_out_amount);
+        invoke_swap(a, in_amount, minimum_out_amount);
     }
 }

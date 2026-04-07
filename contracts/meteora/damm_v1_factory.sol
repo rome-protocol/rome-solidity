@@ -2,14 +2,16 @@
 pragma solidity ^0.8.20;
 
 import {DAMMv1Lib, DAMMv1Pool} from "./damm_v1_pool.sol";
+import {ERC20SPLFactory} from "../erc20spl/erc20spl_factory.sol";
 
 contract MeteoraDAMMv1Factory {
-    mapping(bytes32 => mapping(bytes32 => address)) public getPool;
+    ERC20SPLFactory public immutable token_factory;
+    mapping(address => mapping(address => address)) public getPool; // token0 => token1 => pool
     address[] public allPools;
 
     event PoolAdded(
-        bytes32 indexed token0,
-        bytes32 indexed token1,
+        address indexed token0,
+        address indexed token1,
         address pair,
         uint
     );
@@ -37,15 +39,27 @@ contract MeteoraDAMMv1Factory {
         return allPools.length;
     }
 
+    function orderTokens(address tokenA, address tokenB) public view returns (address token0, address token1) {
+        (token0, token1) = tokenA < tokenB
+            ? (tokenA, tokenB)
+            : (tokenB, tokenA);
+
+        return (token0, token1);
+    }
+
     function addPool(
         bytes32 pubkey
     ) external returns (address pool) {
         DAMMv1Lib.PoolState memory pool_state = DAMMv1Lib.load_pool(pubkey, cpi_program);
-        (bytes32 token0, bytes32 token1) = pool_state.token_a_mint < pool_state.token_b_mint
-            ? (pool_state.token_a_mint, pool_state.token_b_mint)
-            : (pool_state.token_b_mint, pool_state.token_a_mint);
+        address token_a_address = token_factory.token_by_mint(pool_state.token_a_mint);
+        address token_b_address = token_factory.token_by_mint(pool_state.token_b_mint);
 
+        require(token_a_address != address(0), "TokenA not registered in factory");
+        require(token_b_address != address(0), "TokenB not registered in factory");
+
+        (address token0, address token1) = orderTokens(token_a_address, token_b_address);
         require(getPool[token0][token1] == address(0), "PAIR_EXISTS");
+
         bytes memory bytecode = type(DAMMv1Pool).creationCode;
         bytes32 salt = keccak256(abi.encodePacked(token0, token1));
         assembly {
