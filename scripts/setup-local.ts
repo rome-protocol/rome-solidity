@@ -63,6 +63,15 @@ const PYTH_FEEDS: { pair: string; pubkey: `0x${string}`; base58: string }[] = [
     },
 ];
 
+// Pre-seeded Switchboard aggregator accounts from rome-evm-private/ci/dump (mainnet snapshots)
+const SWITCHBOARD_FEEDS: { pair: string; pubkey: `0x${string}`; base58: string }[] = [
+    {
+        pair: "SOL / USD (Switchboard)",
+        pubkey: "0xec81105112a257d61df4cf5f13ee0a1b019197c8c5343b4f2a7ec8846ae22c1a",
+        base58: "GvDMxPzN1sCj7L26YDK2HnMRXEQmQ2aemov8YBtPS7vR",
+    },
+];
+
 // 10 years in seconds — snapshot data is static, so staleness checks must be disabled
 const LOCAL_MAX_STALENESS = 315_360_000n;
 
@@ -89,7 +98,7 @@ async function main() {
     const deployments: Record<string, any> = {};
 
     // ─── 1. Meteora DAMMv1 Factory ───
-    console.log("=== 1/4 Deploying MeteoraDAMMv1Factory ===");
+    console.log("=== 1/5 Deploying MeteoraDAMMv1Factory ===");
     const factory = await viem.deployContract("MeteoraDAMMv1Factory", [
         PROG_DYNAMIC_VAULT,
         PROG_DYNAMIC_AMM,
@@ -99,7 +108,7 @@ async function main() {
     deployments.MeteoraDAMMv1Factory = { address: factory.address };
 
     // ─── 2. Register pre-seeded pool ───
-    console.log("\n=== 2/4 Registering pre-seeded Meteora pool ===");
+    console.log("\n=== 2/5 Registering pre-seeded Meteora pool ===");
     console.log("  Pool pubkey:", POOL_PUBKEY);
 
     const addPoolTx = await factory.write.addPool([POOL_PUBKEY], {
@@ -122,7 +131,7 @@ async function main() {
     ];
 
     // ─── 3. Oracle Gateway V2 ───
-    console.log("\n=== 3/4 Deploying Oracle Gateway V2 ===");
+    console.log("\n=== 3/5 Deploying Oracle Gateway V2 ===");
 
     const pythImpl = await viem.deployContract("PythPullAdapter", []);
     console.log("  PythPullAdapter impl:", pythImpl.address);
@@ -156,7 +165,7 @@ async function main() {
     };
 
     // ─── 4. Create Pyth feeds ───
-    console.log("\n=== 4/4 Creating Pyth Pull feed adapters ===");
+    console.log("\n=== 4/5 Creating Pyth Pull feed adapters ===");
     const feeds: any[] = [];
 
     for (const feed of PYTH_FEEDS) {
@@ -190,6 +199,41 @@ async function main() {
 
     deployments.OracleGatewayV2.feeds = feeds;
 
+    // ─── 5. Create Switchboard feeds ───
+    console.log("\n=== 5/5 Creating Switchboard feed adapters ===");
+    const sbFeeds: any[] = [];
+
+    for (const feed of SWITCHBOARD_FEEDS) {
+        process.stdout.write(`  ${feed.pair} (${feed.base58})... `);
+        try {
+            const txHash = await oracleFactory.write.createSwitchboardFeed(
+                [feed.pubkey, feed.pair, LOCAL_MAX_STALENESS],
+                { account: deployer.account },
+            );
+            await publicClient.waitForTransactionReceipt({ hash: txHash });
+            const adapterAddr = await oracleFactory.read.switchboardAdapters([feed.pubkey]);
+            console.log(adapterAddr);
+            sbFeeds.push({
+                pair: feed.pair,
+                aggregator: feed.base58,
+                aggregatorBytes32: feed.pubkey,
+                adapter: adapterAddr,
+            });
+        } catch (e: any) {
+            const reason = e.cause?.reason ?? e.message?.slice(0, 80);
+            console.log(`FAILED — ${reason}`);
+            sbFeeds.push({
+                pair: feed.pair,
+                aggregator: feed.base58,
+                aggregatorBytes32: feed.pubkey,
+                adapter: null,
+                error: reason,
+            });
+        }
+    }
+
+    deployments.OracleGatewayV2.switchboardFeeds = sbFeeds;
+
     // ─── Save deployments ───
     const deploymentsDir = path.resolve(process.cwd(), "deployments");
     fs.mkdirSync(deploymentsDir, { recursive: true });
@@ -199,13 +243,17 @@ async function main() {
     // ─── Summary ───
     const successFeeds = feeds.filter((f) => f.adapter);
     const failedFeeds = feeds.filter((f) => !f.adapter);
+    const successSbFeeds = sbFeeds.filter((f: any) => f.adapter);
+    const failedSbFeeds = sbFeeds.filter((f: any) => !f.adapter);
 
     console.log("\n=== Setup Complete ===");
     console.log(`Deployments saved to: ${filePath}`);
     console.log(`Meteora: factory + 1 pool`);
-    console.log(`Oracle: ${successFeeds.length}/${feeds.length} feeds created`);
-    if (failedFeeds.length > 0) {
-        console.log(`Failed feeds: ${failedFeeds.map((f) => f.pair).join(", ")}`);
+    console.log(`Pyth feeds: ${successFeeds.length}/${feeds.length} created`);
+    console.log(`Switchboard feeds: ${successSbFeeds.length}/${sbFeeds.length} created`);
+    const allFailed = [...failedFeeds, ...failedSbFeeds];
+    if (allFailed.length > 0) {
+        console.log(`Failed feeds: ${allFailed.map((f: any) => f.pair).join(", ")}`);
     }
     console.log("\nRun tests:");
     console.log("  npx hardhat test tests/damm_v1_pool.integration.ts --network local");
