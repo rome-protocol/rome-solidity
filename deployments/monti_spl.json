@@ -32,5 +32,53 @@
     "Convert": "0xd81e443c0122dbd31af33f496d4ae189698d70a1",
     "SplTokenLib": "0xeff2d2c538f52ebbb5ace73e96903e83e041b15c",
     "SystemProgramLib": "0xab262fbfd72e0c89326a98450d0427cd4b646a5c"
+  },
+  "PythAggregatorFactory": {
+    "address": "0x05382ec336f797fcbeddcb0fef8288fb4f26e072"
+  },
+  "PythAggregatorFeeds": [
+    {
+      "pair": "SOL/USD",
+      "pythAccountBase58": "J83w4HKfqxwcq3BEMMkPFSppX3gqekLyLJBexebFVkix",
+      "adapter": "0x170dDC928429FC1A55Dc31c7f5793fc1b2Afea08"
+    },
+    {
+      "pair": "BTC/USD",
+      "pythAccount": "0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b",
+      "adapter": "0xaF9b0a1F94FAa8d36F67a6057cd9aC0Aa16BCa07"
+    },
+    {
+      "pair": "ETH/USD",
+      "pythAccount": "0xca80ba6dc32e08d06f1aa886011eed1d77c77be9eb761cc10d72b7d0a2fd57a6",
+      "adapter": "0x8a67386F90b5422D3B61e9a5e4BD1986A216D98D"
+    }
+  ],
+  "OracleGatewayV2": {
+    "PythPullAdapter": {
+      "address": "0x4fd11aed44ee5f71df22fb804cfcbb4c50535db9",
+      "type": "implementation"
+    },
+    "SwitchboardV3Adapter": {
+      "address": "0xb57e3589b880aa3f6b66ce2df6aa42cd9c36925e",
+      "type": "implementation"
+    },
+    "OracleAdapterFactory": {
+      "address": "0xa4647955a16b72d15f13b51b5277036755d297be",
+      "pythPriceFeedProgramId": "0x0cb7fabb52f7a648bb5b317d9a018b9057cb024774fafe01e6c4df98cc385881",
+      "switchboardProgramId": "0x068851c68c6832f02fa581b1bf491b77ca41776ba2b988b5a6faba8ee3a2ec90",
+      "defaultMaxStaleness": 60
+    },
+    "BatchReader": {
+      "address": "0x70da375e5680f84032f5b15d35ba0e6f9871d3fd"
+    },
+    "deployedAt": "2026-04-02T00:02:18.942Z",
+    "switchboardFeeds": [
+      {
+        "pair": "SOL/USD",
+        "aggregator": "GvDMxPzN1sCj7L26YDK2HnMRXEQmQ2aemov8YBtPS7vR",
+        "aggregatorBytes32": "0xec81105112a257d61df4cf5f13ee0a1b019197c8c5343b4f2a7ec8846ae22c1a",
+        "adapter": "0xF0864572019c295407CF2ed46e6FD3615e10E19d"
+      }
+    ]
   }
 }
