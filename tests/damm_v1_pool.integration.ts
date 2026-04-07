@@ -2,6 +2,8 @@ import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import hardhat from "hardhat";
 import { readDeployments, PoolDeployment, DeploymentsFile } from "../scripts/lib/deployments.js";
+import { encodeFunctionData } from "viem";
+import { requireEnv } from "../scripts/lib/helpers.js";
 
 
 function isHex32(value: string): boolean {
@@ -281,5 +283,87 @@ describe("DAMMv1Pool integration", function () {
 
         const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
         assert.equal(receipt.status, "success", "update_state tx failed");
+    });
+
+    it("can invoke_swap via explicit accounts", async function () {
+        const userSourceToken = requireEnv("SWAP_USER_SOURCE_TOKEN");
+        const userDestinationToken = requireEnv("SWAP_USER_DESTINATION_TOKEN");
+        const user = requireEnv("SWAP_USER");
+        const inTokenRaw = requireEnv("SWAP_IN_TOKEN");
+        const inAmountRaw = requireEnv("SWAP_IN_AMOUNT");
+        const minimumOutAmountRaw = requireEnv("SWAP_MIN_OUT");
+
+        if (!isHex32(userSourceToken)) {
+            throw new Error(`SWAP_USER_SOURCE_TOKEN must be bytes32 hex, got: ${userSourceToken}`);
+        }
+        if (!isHex32(userDestinationToken)) {
+            throw new Error(`SWAP_USER_DESTINATION_TOKEN must be bytes32 hex, got: ${userDestinationToken}`);
+        }
+        if (!isHex32(user)) {
+            throw new Error(`SWAP_USER must be bytes32 hex, got: ${user}`);
+        }
+
+        const inToken = Number(inTokenRaw);
+        if (inToken !== 0 && inToken !== 1) {
+            throw new Error(`SWAP_IN_TOKEN must be 0 or 1, got: ${inTokenRaw}`);
+        }
+
+        const inAmount = BigInt(inAmountRaw);
+        const minimumOutAmount = BigInt(minimumOutAmountRaw);
+
+        if (inAmount < 0n || inAmount > 18446744073709551615n) {
+            throw new Error(`SWAP_IN_AMOUNT must fit uint64, got: ${inAmountRaw}`);
+        }
+        if (minimumOutAmount < 0n || minimumOutAmount > 18446744073709551615n) {
+            throw new Error(`SWAP_MIN_OUT must fit uint64, got: ${minimumOutAmountRaw}`);
+        }
+
+        const { viem } = await hardhat.network.connect();
+        const [deployer] = await viem.getWalletClients();
+        if (!deployer?.account) {
+            throw new Error("No deployer wallet available for invoke_swap test.");
+        }
+
+        const calldata = encodeFunctionData({
+            abi: pool.abi,
+            functionName: "invoke_swap(bytes32,bytes32,bytes32,uint8,uint64,uint64)",
+            args: [
+                userSourceToken,
+                userDestinationToken,
+                user,
+                inToken,
+                inAmount,
+                minimumOutAmount,
+            ],
+        });
+
+        const gasPrice = await publicClient.getGasPrice();
+        const nonce = await publicClient.getTransactionCount({
+            address: deployer.account.address,
+        });
+
+        console.log("invoke_swap params:");
+        console.log("  userSourceToken:", userSourceToken);
+        console.log("  userDestinationToken:", userDestinationToken);
+        console.log("  user:", user);
+        console.log("  inToken:", inToken);
+        console.log("  inAmount:", inAmount.toString());
+        console.log("  minimumOutAmount:", minimumOutAmount.toString());
+        console.log("  nonce:", nonce);
+        console.log("  gasPrice:", gasPrice.toString());
+
+        const txHash = await deployer.sendTransaction({
+            account: deployer.account,
+            to: poolAddress,
+            data: calldata,
+            gas: 5_000_000n,
+            gasPrice,
+            nonce,
+            value: 0n,
+        });
+
+        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+        assert.equal(receipt.status, "success", "invoke_swap transaction failed");
     });
 });
