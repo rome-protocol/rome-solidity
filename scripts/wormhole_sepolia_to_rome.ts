@@ -146,10 +146,12 @@ async function sendFromSepolia() {
     const connection = new Connection(SOLANA_DEVNET_RPC, "confirmed");
 
     // Derive PDA off-chain (the bridge contract is on Rome, not Sepolia).
-    // Seeds: ["rome_evm_user", <20-byte EVM address>], program: Rome EVM program
-    const ROME_EVM_PROGRAM = new PublicKey("RoLEbzVJF14CBRV5GXJ7kaihYC5gAKjjSfRCkDyLrVE");
+    // Seeds: ["EXTERNAL_AUTHORITY", <20-byte EVM address>], program: Rome EVM program ID
+    // Must match RomeEVMAccount.pda() in contracts/rome_evm_account.sol
+    // The program ID must be the actual deployed Rome EVM program for the target rollup.
+    const ROME_EVM_PROGRAM = new PublicKey(process.env.ROME_EVM_PROGRAM || "DP1dshBzmXXVsRxH5kCKMemrDuptg1JvJ1j5AsFV4Hm3");
     const pda = PublicKey.findProgramAddressSync(
-        [Buffer.from("rome_evm_user"), Buffer.from(wallet.account.address.slice(2), "hex")],
+        [Buffer.from("EXTERNAL_AUTHORITY"), Buffer.from(wallet.account.address.slice(2), "hex")],
         ROME_EVM_PROGRAM,
     )[0];
     console.log("Rome PDA:", pda.toBase58());
@@ -192,11 +194,13 @@ async function sendFromSepolia() {
     console.log("Status:", receipt.status);
     console.log("Block:", receipt.blockNumber.toString());
 
-    // Parse sequence from logs (topic[1] of the LogMessagePublished event)
+    // Parse sequence from LogMessagePublished event data (not topics).
+    // Event: LogMessagePublished(address indexed sender, uint64 sequence, uint32 nonce, bytes payload, uint8 consistencyLevel)
+    // topics[0] = event sig, topics[1] = indexed sender. sequence is the first field in data.
     const wormholeLog = receipt.logs.find(
         l => l.topics[0] === "0x6eb224fb001ed210e379b335e35efe88672a8ce935d981a6896b27ffdf52a3b2",
     );
-    const seq = wormholeLog ? BigInt(wormholeLog.topics[1]!).toString() : "unknown";
+    const seq = wormholeLog ? BigInt("0x" + wormholeLog.data.slice(2, 66)).toString() : "unknown";
 
     console.log("\n=== Step 1 complete ===");
     console.log("Sequence:", seq);
