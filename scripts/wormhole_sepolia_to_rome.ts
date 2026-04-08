@@ -27,7 +27,7 @@
  */
 import hardhat from "hardhat";
 import {
-    Connection, Keypair, PublicKey, Transaction,
+    Connection, Keypair, PublicKey, Transaction, TransactionInstruction,
     sendAndConfirmTransaction, SYSVAR_RENT_PUBKEY, SystemProgram as SolanaSystemProgram,
 } from "@solana/web3.js";
 import { encodeFunctionData, parseEther } from "viem";
@@ -371,53 +371,50 @@ async function claimOnRome() {
     }
 
     // -----------------------------------------------------------------------
-    // 5. claimCompleteWrapped
+    // 5. claimCompleteWrapped — send as native Solana transaction
+    //    (bypasses Rome EVM proxy emulator which can't simulate complex CPI)
     // -----------------------------------------------------------------------
-    console.log("\n--- Step 4: claimCompleteWrapped ---");
-    const claimAccounts = [
-        { pubkey: pda, isSigner: true, isWritable: true },
-        { pubkey: deriveTokenBridgeConfigKey(TOKEN_BRIDGE), isSigner: false, isWritable: false },
-        { pubkey: postedVaaKey, isSigner: false, isWritable: false },
-        { pubkey: coreUtils.deriveClaimKey(TOKEN_BRIDGE, emitterAddress, emitterChain, sequence), isSigner: false, isWritable: true },
-        { pubkey: deriveEndpointKey(TOKEN_BRIDGE, emitterChain, emitterAddress), isSigner: false, isWritable: false },
-        { pubkey: recipientAta, isSigner: false, isWritable: true },
-        { pubkey: recipientAta, isSigner: false, isWritable: true },
-        { pubkey: wrappedMint, isSigner: false, isWritable: true },
-        { pubkey: deriveWrappedMetaKey(TOKEN_BRIDGE, wrappedMint), isSigner: false, isWritable: false },
-        { pubkey: deriveMintAuthorityKey(TOKEN_BRIDGE), isSigner: false, isWritable: false },
-        { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
-        { pubkey: SolanaSystemProgram.programId, isSigner: false, isWritable: false },
-        { pubkey: SPL_TOKEN_PK, isSigner: false, isWritable: false },
-        { pubkey: WORMHOLE_CORE, isSigner: false, isWritable: false },
-    ];
+    console.log("\n--- Step 4: claimCompleteWrapped (native Solana) ---");
 
-    const claimCalldata = encodeRomeWormholeClaimCompleteWrapped(
-        publicKeyToBytes32Hex(TOKEN_BRIDGE),
-        solanaAccountMetasToRome(claimAccounts),
-    );
+    const evmKey = getEvmPrivateKey();
+    const payer = Keypair.fromSeed(Buffer.from(evmKey, "hex"));
 
-    const claimTxHash = await wallet.sendTransaction({
-        to: bridgeAddr as `0x${string}`,
-        data: claimCalldata,
-        gas: 5_000_000n,
+    const claimIx = new TransactionInstruction({
+        programId: TOKEN_BRIDGE,
+        keys: [
+            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+            { pubkey: deriveTokenBridgeConfigKey(TOKEN_BRIDGE), isSigner: false, isWritable: false },
+            { pubkey: postedVaaKey, isSigner: false, isWritable: false },
+            { pubkey: coreUtils.deriveClaimKey(TOKEN_BRIDGE, emitterAddress, emitterChain, sequence), isSigner: false, isWritable: true },
+            { pubkey: deriveEndpointKey(TOKEN_BRIDGE, emitterChain, emitterAddress), isSigner: false, isWritable: false },
+            { pubkey: recipientAta, isSigner: false, isWritable: true },
+            { pubkey: recipientAta, isSigner: false, isWritable: true }, // toFees = same when fee=0
+            { pubkey: wrappedMint, isSigner: false, isWritable: true },
+            { pubkey: deriveWrappedMetaKey(TOKEN_BRIDGE, wrappedMint), isSigner: false, isWritable: false },
+            { pubkey: deriveMintAuthorityKey(TOKEN_BRIDGE), isSigner: false, isWritable: false },
+            { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+            { pubkey: SolanaSystemProgram.programId, isSigner: false, isWritable: false },
+            { pubkey: SPL_TOKEN_PK, isSigner: false, isWritable: false },
+            { pubkey: WORMHOLE_CORE, isSigner: false, isWritable: false },
+        ],
+        data: Buffer.from([3]), // CompleteWrapped instruction discriminator
     });
-    const claimReceipt = await publicClient.waitForTransactionReceipt({ hash: claimTxHash });
-    console.log("TX:", claimTxHash);
-    console.log("Status:", claimReceipt.status);
 
-    if (claimReceipt.status === "success") {
+    const claimTx = new Transaction().add(claimIx);
+    claimTx.feePayer = payer.publicKey;
+    const claimSig = await sendAndConfirmTransaction(connection, claimTx, [payer]);
+    console.log("Claim TX:", claimSig);
+
+    // Verify balance
+    const ataData = await connection.getAccountInfo(recipientAta);
+    if (ataData && ataData.data.length >= 72) {
+        const balance = ataData.data.readBigUInt64LE(64);
         console.log("\n=== SUCCESS ===");
         console.log("Wrapped tokens minted to ATA:", recipientAta.toBase58());
         console.log("Mint:", wrappedMint.toBase58());
-
-        // Read balance
-        const ataData = await connection.getAccountInfo(recipientAta);
-        if (ataData && ataData.data.length >= 72) {
-            const balance = ataData.data.readBigUInt64LE(64);
-            console.log("ATA balance:", balance.toString(), `(${Number(balance) / 1e8} WETH)`);
-        }
+        console.log("ATA balance:", balance.toString(), `(${Number(balance) / 1e8} WETH)`);
     } else {
-        console.log("\nTransaction reverted.");
+        console.log("Could not read ATA balance.");
     }
 }
 
