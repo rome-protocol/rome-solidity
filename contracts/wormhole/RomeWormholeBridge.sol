@@ -4,13 +4,38 @@ pragma solidity ^0.8.20;
 import "../interface.sol";
 import {WormholeTokenBridgeEncoding} from "./WormholeTokenBridgeEncoding.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 /// @title RomeWormholeBridge
 /// @notice Rome EVM adapter: CPI into Wormhole Core, Token Bridge, and SPL Token. Client SDK builds
 /// the same `AccountMeta` lists as `wormhole-sdk-ts` for Solana; this contract supplies instruction
 /// data helpers and forwards `invoke` (do not call CPI precompiles from application code).
-contract RomeWormholeBridge {
+contract RomeWormholeBridge is Ownable, Pausable {
     error EmptyAccounts();
+
+    event BridgeSend(
+        address indexed sender,
+        bytes32 targetAddress,
+        uint16 targetChain,
+        uint64 amount,
+        uint32 nonce
+    );
+    event BridgeClaim(
+        address indexed claimer,
+        bytes32 tokenBridgeProgramId,
+        uint256 accountCount
+    );
+
+    constructor() Ownable(msg.sender) {}
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
+    }
 
     function invoke(bytes32 programId, ICrossProgramInvocation.AccountMeta[] calldata accounts, bytes calldata data)
         external
@@ -54,12 +79,17 @@ contract RomeWormholeBridge {
         bytes32 targetAddress,
         uint16 targetChain
     ) external {
+        _requireNotPaused();
+        _validateSendParams(amount, targetAddress, targetChain);
+
         _invoke(splTokenProgramId, approveAccounts, _encodeSplApprove(approveAmount));
         _invoke(
             tokenBridgeProgramId,
             transferAccounts,
             WormholeTokenBridgeEncoding.encodeTransferNative(nonce, amount, fee, targetAddress, targetChain)
         );
+
+        emit BridgeSend(msg.sender, targetAddress, targetChain, amount, nonce);
     }
 
     function sendTransferWrapped(
@@ -74,24 +104,35 @@ contract RomeWormholeBridge {
         bytes32 targetAddress,
         uint16 targetChain
     ) external {
+        _requireNotPaused();
+        _validateSendParams(amount, targetAddress, targetChain);
+
         _invoke(splTokenProgramId, approveAccounts, _encodeSplApprove(approveAmount));
         _invoke(
             tokenBridgeProgramId,
             transferAccounts,
             WormholeTokenBridgeEncoding.encodeTransferWrapped(nonce, amount, fee, targetAddress, targetChain)
         );
+
+        emit BridgeSend(msg.sender, targetAddress, targetChain, amount, nonce);
     }
 
     function claimCompleteNative(bytes32 tokenBridgeProgramId, ICrossProgramInvocation.AccountMeta[] calldata accounts)
         external
     {
+        _requireNotPaused();
         _invoke(tokenBridgeProgramId, accounts, WormholeTokenBridgeEncoding.encodeCompleteNative());
+
+        emit BridgeClaim(msg.sender, tokenBridgeProgramId, accounts.length);
     }
 
     function claimCompleteWrapped(bytes32 tokenBridgeProgramId, ICrossProgramInvocation.AccountMeta[] calldata accounts)
         external
     {
+        _requireNotPaused();
         _invoke(tokenBridgeProgramId, accounts, WormholeTokenBridgeEncoding.encodeCompleteWrapped());
+
+        emit BridgeClaim(msg.sender, tokenBridgeProgramId, accounts.length);
     }
 
     /// @notice Token Bridge `authority_signer` PDA (delegate target for SPL approve before transfer).
@@ -140,6 +181,13 @@ contract RomeWormholeBridge {
         seeds[0] = ISystemProgram.Seed(bytes("authority_signer"));
         (bytes32 key,) = SystemProgram.find_program_address(tokenBridgeProgramId, seeds);
         return key;
+    }
+
+    /// @dev Validate common send-transfer parameters before CPI.
+    function _validateSendParams(uint64 amount, bytes32 targetAddress, uint16 targetChain) private pure {
+        require(amount > 0, "Zero amount");
+        require(targetAddress != bytes32(0), "Invalid target");
+        require(targetChain != 0, "Invalid chain");
     }
 
     /// @dev SPL Token `Approve` instruction (discriminator 4 + u64 amount LE).
