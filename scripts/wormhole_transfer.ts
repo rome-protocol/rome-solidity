@@ -9,12 +9,14 @@
  *   npx hardhat run scripts/wormhole_transfer.ts --network monti_spl
  */
 import hardhat from "hardhat";
-import { Keypair, PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY, SYSVAR_CLOCK_PUBKEY } from "@solana/web3.js";
+import { randomBytes } from "crypto";
+import { PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY, SYSVAR_CLOCK_PUBKEY } from "@solana/web3.js";
 
 // ---- SDK: romeEvm encoding helpers ----
 import {
     publicKeyToBytes32Hex,
     solanaAccountMetasToRome,
+    deriveMessagePda,
     encodeRomeWormholeSendTransferNative,
     encodeRomeWormholeClaimCompleteNative,
 } from "@wormhole-foundation/sdk-solana";
@@ -65,15 +67,18 @@ async function main() {
 
     // User's Solana PDA (derived on-chain by the contract on Rome EVM).
     // On a simulated network the precompile won't exist, so we fall back to a dummy PDA.
+    const ROME_EVM_PROGRAM = new PublicKey(
+        process.env.ROME_EVM_PROGRAM || "DP1dshBzmXXVsRxH5kCKMemrDuptg1JvJ1j5AsFV4Hm3",
+    );
     let userPda: PublicKey;
     try {
         const userPdaHex = await bridge.read.bridgeUserPda();
         userPda = new PublicKey(Buffer.from((userPdaHex as string).slice(2), "hex"));
     } catch {
-        console.log("(bridgeUserPda not available — using deterministic placeholder for dry-run)");
+        console.log("(bridgeUserPda not available — deriving off-chain for dry-run)");
         userPda = PublicKey.findProgramAddressSync(
-            [Buffer.from("rome_evm_user"), Buffer.from(wallet.account.address.slice(2), "hex")],
-            new PublicKey("RoLEbzVJF14CBRV5GXJ7kaihYC5gAKjjSfRCkDyLrVE"),
+            [Buffer.from("EXTERNAL_AUTHORITY"), Buffer.from(wallet.account.address.slice(2), "hex")],
+            ROME_EVM_PROGRAM,
         )[0];
     }
     console.log("Your Solana PDA:", userPda.toBase58());
@@ -94,18 +99,24 @@ async function main() {
 
     console.log("\n--- sendTransferNative ---");
 
-    const message = Keypair.generate();
+    // Derive message PDA from a random salt (replaces fresh keypair).
+    // The CPI precompile's invoke_signed signs for this PDA using the salt.
+    const messageSalt = randomBytes(32);
+    const messageSaltHex = `0x${messageSalt.toString("hex")}` as `0x${string}`;
+    const messagePda = deriveMessagePda(wallet.account.address, messageSalt, ROME_EVM_PROGRAM);
     const senderAta = getAssociatedTokenAddress(MINT, userPda);
 
-    console.log("Message keypair:", message.publicKey.toBase58());
+    console.log("Message salt:   ", messageSaltHex);
+    console.log("Message PDA:    ", messagePda.toBase58());
     console.log("Sender ATA:     ", senderAta.toBase58());
 
-    // Use the SDK to derive every transfer account — identical to what the UI does
+    // Use the SDK to derive every transfer account — identical to what the UI does.
+    // messagePda replaces the fresh keypair; invoke_signed signs for this PDA.
     const transferAccounts = getTransferNativeAccounts(
         TOKEN_BRIDGE,
         WORMHOLE_CORE,
         userPda,            // payer
-        message.publicKey,  // message
+        messagePda,         // message (PDA derived from salt)
         senderAta,          // from (sender's ATA)
         MINT,
         SPL_TOKEN,
@@ -134,6 +145,7 @@ async function main() {
         fee: 0n,
         targetAddress: TARGET_ADDRESS_HEX,
         targetChain: TARGET_CHAIN,
+        messageSalt: messageSaltHex,
     });
 
     console.log(`Approve accounts:  ${approveMetas.length}`);

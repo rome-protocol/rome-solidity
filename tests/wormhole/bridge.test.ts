@@ -18,6 +18,7 @@ import {
 const DUMMY_PROGRAM_ID = "0x0000000000000000000000000000000000000000000000000000000000000001" as `0x${string}`;
 const DUMMY_TARGET_ADDR = "0x00000000000000000000000000000000000000000000000000000000deadbeef" as `0x${string}`;
 const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`;
+const DUMMY_MESSAGE_SALT = "0x0000000000000000000000000000000000000000000000000000000000000042" as `0x${string}`;
 
 /** Minimal account meta for CPI invoke (non-empty array required by EmptyAccounts check). */
 function dummyAccountMeta(): { pubkey: `0x${string}`; is_signer: boolean; is_writable: boolean }[] {
@@ -100,6 +101,7 @@ describe("RomeWormholeBridge", function () {
                 0n,                     // fee
                 DUMMY_TARGET_ADDR,      // targetAddress
                 1,                      // targetChain
+                DUMMY_MESSAGE_SALT,
             ]);
 
             const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -130,6 +132,7 @@ describe("RomeWormholeBridge", function () {
                 0n,
                 DUMMY_TARGET_ADDR,
                 inputTargetChain,
+                DUMMY_MESSAGE_SALT,
             ]);
 
             const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -195,6 +198,7 @@ describe("RomeWormholeBridge", function () {
                 0n,
                 DUMMY_TARGET_ADDR,
                 1,
+                DUMMY_MESSAGE_SALT,
             ]);
 
             const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -228,6 +232,7 @@ describe("RomeWormholeBridge", function () {
                         0n,
                         DUMMY_TARGET_ADDR,
                         1,
+                        DUMMY_MESSAGE_SALT,
                     ]),
                 (err: any) => {
                     assert.ok(
@@ -253,6 +258,7 @@ describe("RomeWormholeBridge", function () {
                         0n,
                         ZERO_BYTES32,           // targetAddress = 0 -> should revert
                         1,
+                        DUMMY_MESSAGE_SALT,
                     ]),
                 (err: any) => {
                     assert.ok(
@@ -278,6 +284,7 @@ describe("RomeWormholeBridge", function () {
                         0n,
                         DUMMY_TARGET_ADDR,
                         0,                      // targetChain = 0 -> should revert
+                        DUMMY_MESSAGE_SALT,
                     ]),
                 (err: any) => {
                     assert.ok(
@@ -303,6 +310,7 @@ describe("RomeWormholeBridge", function () {
                         101n,                   // fee = 101 -> exceeds amount
                         DUMMY_TARGET_ADDR,
                         1,
+                        DUMMY_MESSAGE_SALT,
                     ]),
                 (err: any) => {
                     assert.ok(
@@ -330,6 +338,7 @@ describe("RomeWormholeBridge", function () {
                         0n,
                         DUMMY_TARGET_ADDR,
                         1,
+                        DUMMY_MESSAGE_SALT,
                     ]),
                 (err: any) => {
                     assert.ok(
@@ -355,6 +364,7 @@ describe("RomeWormholeBridge", function () {
                         0n,
                         ZERO_BYTES32,           // targetAddress = 0 -> should revert
                         1,
+                        DUMMY_MESSAGE_SALT,
                     ]),
                 (err: any) => {
                     assert.ok(
@@ -380,6 +390,7 @@ describe("RomeWormholeBridge", function () {
                         0n,
                         DUMMY_TARGET_ADDR,
                         0,                      // targetChain = 0 -> should revert
+                        DUMMY_MESSAGE_SALT,
                     ]),
                 (err: any) => {
                     assert.ok(
@@ -405,6 +416,7 @@ describe("RomeWormholeBridge", function () {
                         501n,                   // fee = 501 -> exceeds amount
                         DUMMY_TARGET_ADDR,
                         1,
+                        DUMMY_MESSAGE_SALT,
                     ]),
                 (err: any) => {
                     assert.ok(
@@ -429,6 +441,7 @@ describe("RomeWormholeBridge", function () {
                 1000n,                  // fee = 1000 (equal, should succeed)
                 DUMMY_TARGET_ADDR,
                 1,
+                DUMMY_MESSAGE_SALT,
             ]);
             const receipt = await publicClient.waitForTransactionReceipt({ hash });
             assert.equal(receipt.status, "success", "fee == amount should be allowed");
@@ -605,6 +618,7 @@ describe("RomeWormholeBridge", function () {
                         0n,
                         DUMMY_TARGET_ADDR,
                         1,
+                        DUMMY_MESSAGE_SALT,
                     ]),
                 (err: any) => {
                     assert.ok(
@@ -639,6 +653,7 @@ describe("RomeWormholeBridge", function () {
                         0n,
                         DUMMY_TARGET_ADDR,
                         1,
+                        DUMMY_MESSAGE_SALT,
                     ]),
                 (err: any) => {
                     assert.ok(
@@ -768,6 +783,7 @@ describe("RomeWormholeBridge", function () {
                 0n,
                 DUMMY_TARGET_ADDR,
                 1,
+                DUMMY_MESSAGE_SALT,
             ]);
 
             const receipt = await publicClient.waitForTransactionReceipt({ hash });

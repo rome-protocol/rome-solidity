@@ -90,16 +90,18 @@ contract RomeWormholeBridge is Ownable, Pausable {
         uint64 amount,
         uint64 fee,
         bytes32 targetAddress,
-        uint16 targetChain
+        uint16 targetChain,
+        bytes32 messageSalt
     ) external {
         _requireNotPaused();
         _validateSendParams(amount, fee, targetAddress, targetChain);
 
         _invoke(splTokenProgramId, approveAccounts, _encodeSplApprove(approveAmount));
-        _invoke(
+        _invokeSigned(
             tokenBridgeProgramId,
             transferAccounts,
-            WormholeTokenBridgeEncoding.encodeTransferNative(nonce, amount, fee, targetAddress, targetChain)
+            WormholeTokenBridgeEncoding.encodeTransferNative(nonce, amount, fee, targetAddress, targetChain),
+            messageSalt
         );
 
         emit BridgeSend(msg.sender, targetAddress, targetChain, amount, nonce);
@@ -115,16 +117,18 @@ contract RomeWormholeBridge is Ownable, Pausable {
         uint64 amount,
         uint64 fee,
         bytes32 targetAddress,
-        uint16 targetChain
+        uint16 targetChain,
+        bytes32 messageSalt
     ) external {
         _requireNotPaused();
         _validateSendParams(amount, fee, targetAddress, targetChain);
 
         _invoke(splTokenProgramId, approveAccounts, _encodeSplApprove(approveAmount));
-        _invoke(
+        _invokeSigned(
             tokenBridgeProgramId,
             transferAccounts,
-            WormholeTokenBridgeEncoding.encodeTransferWrapped(nonce, amount, fee, targetAddress, targetChain)
+            WormholeTokenBridgeEncoding.encodeTransferWrapped(nonce, amount, fee, targetAddress, targetChain),
+            messageSalt
         );
 
         emit BridgeSend(msg.sender, targetAddress, targetChain, amount, nonce);
@@ -214,6 +218,18 @@ contract RomeWormholeBridge is Ownable, Pausable {
         return out;
     }
 
+    /// @notice Derive the message PDA that `invoke_signed` will produce for a given salt.
+    /// The CPI precompile derives: PDA(["EXTERNAL_AUTHORITY", caller_evm_addr, salt], rome_evm_program).
+    /// Clients must derive the same PDA off-chain and include it in `transferAccounts`.
+    function deriveMessagePda(bytes32 romeEvmProgramId, bytes32 salt) external view returns (bytes32) {
+        ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](3);
+        seeds[0] = ISystemProgram.Seed(bytes("EXTERNAL_AUTHORITY"));
+        seeds[1] = ISystemProgram.Seed(abi.encodePacked(msg.sender));
+        seeds[2] = ISystemProgram.Seed(abi.encodePacked(salt));
+        (bytes32 key,) = SystemProgram.find_program_address(romeEvmProgramId, seeds);
+        return key;
+    }
+
     function _invoke(bytes32 programId, ICrossProgramInvocation.AccountMeta[] calldata accounts, bytes memory data)
         internal
     {
@@ -226,6 +242,29 @@ contract RomeWormholeBridge is Ownable, Pausable {
         // for the original caller's PDA, not the bridge contract's PDA.
         (bool ok, bytes memory ret) = address(CpiProgram).delegatecall(
             abi.encodeCall(ICrossProgramInvocation.invoke, (programId, m, data))
+        );
+        if (!ok) {
+            assembly { revert(add(ret, 32), mload(ret)) }
+        }
+    }
+
+    function _invokeSigned(
+        bytes32 programId,
+        ICrossProgramInvocation.AccountMeta[] calldata accounts,
+        bytes memory data,
+        bytes32 salt
+    ) internal {
+        if (accounts.length == 0) revert EmptyAccounts();
+        ICrossProgramInvocation.AccountMeta[] memory m = new ICrossProgramInvocation.AccountMeta[](accounts.length);
+        for (uint256 i = 0; i < accounts.length; i++) {
+            m[i] = accounts[i];
+        }
+        bytes32[] memory seeds = new bytes32[](1);
+        seeds[0] = salt;
+        // delegatecall preserves msg.sender; invoke_signed adds the salt-derived PDA
+        // as an additional signer alongside the caller's default PDA.
+        (bool ok, bytes memory ret) = address(CpiProgram).delegatecall(
+            abi.encodeCall(ICrossProgramInvocation.invoke_signed, (programId, m, data, seeds))
         );
         if (!ok) {
             assembly { revert(add(ret, 32), mload(ret)) }
