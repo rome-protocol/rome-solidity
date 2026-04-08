@@ -13,6 +13,10 @@ export type FactoryDeployment = {
     address?: string;
 };
 
+export type RouterDeployment = {
+    address?: string;
+};
+
 export type AssociatedSplTokenDeployment = {
     address?: string;
     cpiContractAddress?: string;
@@ -28,6 +32,7 @@ export type ERC20SPLFactoryDeployment = {
 
 export type DeploymentsFile = {
     MeteoraDAMMv1Factory?: FactoryDeployment;
+    MeteoraDAMMv1Router?: RouterDeployment;
     MeteoraDAMMv1Pools?: PoolDeployment[];
     AssociatedSplToken?: AssociatedSplTokenDeployment;
     ERC20SPLFactory?: ERC20SPLFactoryDeployment;
@@ -97,6 +102,33 @@ export function saveFactoryDeployment(networkName: string, address: string): voi
     const deployments = readDeployments(networkName);
 
     deployments.MeteoraDAMMv1Factory = {
+        address,
+    };
+
+    writeDeployments(networkName, deployments);
+}
+
+export function readRouterAddressFromDeployments(networkName: string): `0x${string}` | null {
+    const parsed = readDeployments(networkName);
+    const address = parsed.MeteoraDAMMv1Router?.address;
+
+    if (!address) {
+        return null;
+    }
+
+    if (!isAddress(address)) {
+        throw new Error(
+            `Invalid MeteoraDAMMv1Router.address in deployments/${networkName}.json: ${address}`,
+        );
+    }
+
+    return getAddress(address);
+}
+
+export function saveRouterDeployment(networkName: string, address: string): void {
+    const deployments = readDeployments(networkName);
+
+    deployments.MeteoraDAMMv1Router = {
         address,
     };
 
@@ -180,4 +212,3 @@ export function saveERC20SPLFactoryDeployment(args: {
 
     writeDeployments(args.networkName, deployments);
 }
-

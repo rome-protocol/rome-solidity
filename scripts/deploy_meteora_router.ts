@@ -1,20 +1,8 @@
 import hardhat from "hardhat";
-import { getAddress, isAddress, isHex } from "viem";
-import { saveFactoryDeployment } from "./lib/deployments.js";
+import { getAddress, isAddress } from "viem";
+import { resolveFactoryAddress, saveRouterDeployment } from "./lib/deployments.js";
 
-const DEFAULT_PROG_DYNAMIC_AMM =
-    "0xcbe5357484699af28489f7d3f863df8f04c10db8bf8f753ea7f2d79e6e09f4b0";
-const DEFAULT_PROG_DYNAMIC_VAULT =
-    "0x1051efe75a2e47e09ee987cf6761dffaad9aca72a74206ded07e0773d5975e4c";
 const DEFAULT_CPI_CONTRACT_ADDRESS = "0xFF00000000000000000000000000000000000008";
-
-function resolveBytes32(value: string, name: string): `0x${string}` {
-    if (!isHex(value, { strict: true }) || value.length !== 66) {
-        throw new Error(`Invalid ${name}: expected bytes32 hex value, got ${value}`);
-    }
-
-    return value as `0x${string}`;
-}
 
 function resolveAddress(value: string, name: string): `0x${string}` {
     if (!isAddress(value)) {
@@ -32,8 +20,8 @@ async function main() {
                 getBalance: (args: { address: `0x${string}` }) => Promise<bigint>;
             }>;
             deployContract: (
-                name: "MeteoraDAMMv1Factory",
-                args: readonly [`0x${string}`, `0x${string}`, `0x${string}`],
+                name: "MeteoraDAMMv1Router",
+                args: readonly [`0x${string}`, `0x${string}`],
             ) => Promise<{ address: `0x${string}` }>;
         };
         networkName: string;
@@ -45,14 +33,7 @@ async function main() {
     }
 
     const publicClient = await viem.getPublicClient();
-    const progDynamicVault = resolveBytes32(
-        process.env.PROG_DYNAMIC_VAULT ?? DEFAULT_PROG_DYNAMIC_VAULT,
-        "PROG_DYNAMIC_VAULT",
-    );
-    const progDynamicAmm = resolveBytes32(
-        process.env.PROG_DYNAMIC_AMM ?? DEFAULT_PROG_DYNAMIC_AMM,
-        "PROG_DYNAMIC_AMM",
-    );
+    const factoryAddress = resolveFactoryAddress(networkName);
     const cpiContractAddress = resolveAddress(
         process.env.CPI_CONTRACT_ADDRESS ?? DEFAULT_CPI_CONTRACT_ADDRESS,
         "CPI_CONTRACT_ADDRESS",
@@ -60,24 +41,22 @@ async function main() {
 
     console.log("Using network:", networkName);
     console.log("Using deployer:", deployer.account.address);
-    console.log("prog_dynamic_vault:", progDynamicVault);
-    console.log("prog_dynamic_amm:", progDynamicAmm);
+    console.log("Using MeteoraDAMMv1Factory:", factoryAddress);
     console.log("CPI contract address:", cpiContractAddress);
     console.log(
         "Account balance:",
         (await publicClient.getBalance({ address: deployer.account.address })).toString(),
     );
 
-    console.log("Deploying MeteoraDAMMv1Factory...");
-    const factory = await viem.deployContract("MeteoraDAMMv1Factory", [
-        progDynamicVault,
-        progDynamicAmm,
+    console.log("Deploying MeteoraDAMMv1Router...");
+    const router = await viem.deployContract("MeteoraDAMMv1Router", [
+        factoryAddress,
         cpiContractAddress,
     ]);
 
-    console.log("MeteoraDAMMv1Factory deployed to:", factory.address);
+    console.log("MeteoraDAMMv1Router deployed to:", router.address);
 
-    saveFactoryDeployment(networkName, factory.address);
+    saveRouterDeployment(networkName, router.address);
     console.log(`Saved deployment to deployments/${networkName}.json`);
 }
 
