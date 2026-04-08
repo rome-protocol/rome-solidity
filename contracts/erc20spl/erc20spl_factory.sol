@@ -21,7 +21,7 @@ contract ERC20SPLFactory {
 
     bytes32 public immutable mpl_token_metadata_program;
     address public immutable cpi_program;
-    ERC20Users private _users;
+    ERC20Users public immutable users;
 
     event TokenCreated(
         address indexed creator,
@@ -35,7 +35,7 @@ contract ERC20SPLFactory {
     constructor(address _cpi_program) {
         cpi_program = _cpi_program;
         mpl_token_metadata_program = SystemProgram.base58_to_bytes32(bytes(METAPLEX_TOKEN_METADATA_PROGRAM_NAME));
-        _users = new ERC20Users();
+        users = new ERC20Users();
     }
 
     function _check_symbol_hash_exists(bytes32 symbolHash) internal view {
@@ -47,7 +47,7 @@ contract ERC20SPLFactory {
         bytes32 symbolHash = keccak256(bytes(symbol));
         _check_symbol_hash_exists(symbolHash);
 
-        SPL_ERC20 new_contract = new SPL_ERC20(mint, cpi_program, name, symbol, _users);
+        SPL_ERC20 new_contract = new SPL_ERC20(mint, cpi_program, name, symbol, users);
         token_by_mint[mint] = address(new_contract);
         mint_by_symbol_hash[symbolHash] = mint;
         token_by_symbol_hash[symbolHash] = address(new_contract);
@@ -90,7 +90,8 @@ contract ERC20SPLFactory {
 
     function create_user()
     public {
-        _users.ensure_user(msg.sender);
+        users.ensure_user(msg.sender);
+        RomeEVMAccount.create_payer(msg.sender, 1000000000, users.payer_salt());
     }
 
     /**
@@ -121,7 +122,7 @@ contract ERC20SPLFactory {
      * @return (bytes32 mint) Address of the created SPL Token mint.
      */
     function create_token_mint() external returns (bytes32) {
-        ERC20Users.User memory user = _users.get_user(msg.sender);
+        ERC20Users.User memory user = users.get_user(msg.sender);
         (bytes32 mint, bytes32 mintSeed) = get_current_mint(msg.sender);
         require(token_by_mint[mint] == address(0), "Token exists");
 
@@ -157,7 +158,7 @@ contract ERC20SPLFactory {
      * Initializes previously created mint account.
      */
     function init_token_mint(bytes32 mint) external {
-        ERC20Users.User memory user = _users.get_user(msg.sender);
+        ERC20Users.User memory user = users.get_user(msg.sender);
 
         (
             bytes32 tokenProgramId,

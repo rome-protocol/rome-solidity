@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {DAMMv1Lib, DAMMv1Pool} from "./damm_v1_pool.sol";
+import {DAMMv1Lib, DAMMv1Pool, ERC20DAMMv1Pool} from "./damm_v1_pool.sol";
 import {ERC20SPLFactory} from "../erc20spl/erc20spl_factory.sol";
+import {SPL_ERC20} from "../erc20spl/erc20spl.sol";
 
 contract MeteoraDAMMv1Factory {
     ERC20SPLFactory public immutable token_factory;
@@ -39,7 +40,7 @@ contract MeteoraDAMMv1Factory {
         return allPools.length;
     }
 
-    function orderTokens(address tokenA, address tokenB) public view returns (address token0, address token1) {
+    function orderTokens(address tokenA, address tokenB) public pure returns (address token0, address token1) {
         (token0, token1) = tokenA < tokenB
             ? (tokenA, tokenB)
             : (tokenB, tokenA);
@@ -68,9 +69,10 @@ contract MeteoraDAMMv1Factory {
         DAMMv1Pool(pool).initialize(
             pubkey, prog_dynamic_vault, prog_dynamic_amm, cpi_program
         );
-        getPool[token0][token1] = pool;
-        getPool[token1][token0] = pool; // populate mapping in the reverse direction
-        allPools.push(pool);
-        emit PoolAdded(token0, token1, pool, allPools.length);
+        ERC20DAMMv1Pool erc20_pool = new ERC20DAMMv1Pool(DAMMv1Pool(pool), token_factory);
+        getPool[token0][token1] = address(erc20_pool);
+        getPool[token1][token0] = address(erc20_pool); // populate mapping in the reverse direction
+        allPools.push(address(erc20_pool));
+        emit PoolAdded(token0, token1, address(erc20_pool), allPools.length);
     }
 }

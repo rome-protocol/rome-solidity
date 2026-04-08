@@ -5,6 +5,8 @@ import "../interface.sol";
 import {SplTokenLib} from "../spl_token/spl_token.sol";
 import {Convert} from "../convert.sol";
 import "../rome_evm_account.sol";
+import {ERC20SPLFactory} from "../erc20spl/erc20spl_factory.sol";
+import {ERC20Users, SPL_ERC20} from "../erc20spl/erc20spl.sol";
 
 library DAMMv1Lib {
     uint256 internal constant POOL_PREFIX_MIN_LEN = 379;
@@ -64,6 +66,25 @@ library DAMMv1Lib {
         bytes32 token_mint;
         bytes32 lp_mint;
         LockedProfitTracker locked_profit_tracker;
+    }
+
+        // Helper structure used to prepare list of account for Swap instruction
+    struct SwapAccountsInput {
+        bytes32 pool;
+        bytes32 user_source_token;
+        bytes32 user_destination_token;
+        bytes32 a_vault_lp;
+        bytes32 b_vault_lp;
+        bytes32 a_vault;
+        bytes32 b_vault;
+        bytes32 a_vault_lp_mint;
+        bytes32 b_vault_lp_mint;
+        bytes32 a_token_vault;
+        bytes32 b_token_vault;
+        bytes32 user;
+        bytes32 vault_program;
+        bytes32 token_program;
+        bytes32 protocol_token_fee;
     }
 
     // Parses DAMMv1 pool
@@ -164,6 +185,76 @@ library DAMMv1Lib {
         (,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(vault_pubkey);
         return parse_vault(data);
     }
+
+
+    function build_swap_account_metas(SwapAccountsInput memory a)
+    internal
+    pure
+    returns (ICrossProgramInvocation.AccountMeta[] memory metas)
+    {
+        metas = new ICrossProgramInvocation.AccountMeta[](15);
+
+        metas[0] = ICrossProgramInvocation.AccountMeta(a.pool, false, true);
+        metas[1] = ICrossProgramInvocation.AccountMeta(
+            a.user_source_token,
+            false,
+            true
+        );
+        metas[2] = ICrossProgramInvocation.AccountMeta(
+            a.user_destination_token,
+            false,
+            true
+        );
+        metas[3] = ICrossProgramInvocation.AccountMeta(a.a_vault_lp, false, true);
+        metas[4] = ICrossProgramInvocation.AccountMeta(a.b_vault_lp, false, true);
+        metas[5] = ICrossProgramInvocation.AccountMeta(a.a_vault, false, true);
+        metas[6] = ICrossProgramInvocation.AccountMeta(a.b_vault, false, true);
+        metas[7] = ICrossProgramInvocation.AccountMeta(
+            a.a_vault_lp_mint,
+            false,
+            true
+        );
+        metas[8] = ICrossProgramInvocation.AccountMeta(
+            a.b_vault_lp_mint,
+            false,
+            true
+        );
+        metas[9] = ICrossProgramInvocation.AccountMeta(
+            a.a_token_vault,
+            false,
+            true
+        );
+        metas[10] = ICrossProgramInvocation.AccountMeta(
+            a.b_token_vault,
+            false,
+            true
+        );
+        metas[11] = ICrossProgramInvocation.AccountMeta(a.user, true, false);
+        metas[12] = ICrossProgramInvocation.AccountMeta(
+            a.vault_program,
+            false,
+            false
+        );
+        metas[13] = ICrossProgramInvocation.AccountMeta(
+            a.token_program,
+            false,
+            false
+        );
+        metas[14] = ICrossProgramInvocation.AccountMeta(
+            a.protocol_token_fee,
+            false,
+            true
+        );
+    }
+
+    function build_swap_ix_data(uint64 in_amount, uint64 minimum_out_amount)
+    internal
+    pure
+    returns (bytes memory)
+    {
+        bytes8 disc = bytes8(sha256(bytes("global:swap")));
+        return abi.encodePacked(disc, Convert.u64le(in_amount), Convert.u64le(minimum_out_amount));
+    }
 }
 
 contract DAMMv1Pool {
@@ -177,29 +268,11 @@ contract DAMMv1Pool {
         uint128 b_reserve;
     }
 
-    // Helper structure used to prepare list of account for Swap instruction
-    struct SwapAccountsInput {
-        bytes32 pool;
-        bytes32 user_source_token;
-        bytes32 user_destination_token;
-        bytes32 a_vault_lp;
-        bytes32 b_vault_lp;
-        bytes32 a_vault;
-        bytes32 b_vault;
-        bytes32 a_vault_lp_mint;
-        bytes32 b_vault_lp_mint;
-        bytes32 a_token_vault;
-        bytes32 b_token_vault;
-        bytes32 user;
-        bytes32 vault_program;
-        bytes32 token_program;
-        bytes32 protocol_token_fee;
-    }
-
     error ZeroReserve();
     error DivisionByZero();
 
-    address public immutable factory;
+    address public immutable pool_factory;
+    address public immutable token_factory;
     bool public initialized;
 
     bytes32 public pool_address;
@@ -228,12 +301,13 @@ contract DAMMv1Pool {
     DAMMv1Lib.VaultState public vault_a;
     DAMMv1Lib.VaultState public vault_b;
 
-    constructor() {
-        factory = msg.sender;
+    constructor(address _token_factory) {
+        pool_factory = msg.sender;
+        token_factory = _token_factory;
     }
 
     modifier onlyFactory() {
-        require(msg.sender == factory, "FORBIDDEN");
+        require(msg.sender == pool_factory, "FORBIDDEN");
         _;
     }
 
@@ -277,8 +351,6 @@ contract DAMMv1Pool {
         fees = pool.fees;
         pool_type = pool.pool_type;
     }
-
-
 
     function get_reserves()
     public
@@ -358,19 +430,19 @@ contract DAMMv1Pool {
     }
 
     function make_swap_accounts_from_pool(
-        bytes32 user_source_token,
-        bytes32 user_destination_token,
+        bytes32 user_source_token_account,
+        bytes32 user_destination_token_account,
         bytes32 user,
         PoolToken in_token
-    ) internal view returns (SwapAccountsInput memory out) {
+    ) internal view returns (DAMMv1Lib.SwapAccountsInput memory out) {
         bytes32 protocol_token_fee = in_token == PoolToken.TokenA
             ? protocol_token_a_fee
             : protocol_token_b_fee;
 
-        out = SwapAccountsInput({
+        out = DAMMv1Lib.SwapAccountsInput({
             pool: pool_address,
-            user_source_token: user_source_token,
-            user_destination_token: user_destination_token,
+            user_source_token: user_source_token_account,
+            user_destination_token: user_destination_token_account,
             a_vault_lp: a_vault_lp,
             b_vault_lp: b_vault_lp,
             a_vault: a_vault,
@@ -386,82 +458,13 @@ contract DAMMv1Pool {
         });
     }
 
-    function build_swap_account_metas(SwapAccountsInput memory a)
-    internal
-    pure
-    returns (ICrossProgramInvocation.AccountMeta[] memory metas)
-    {
-        metas = new ICrossProgramInvocation.AccountMeta[](15);
-
-        metas[0] = ICrossProgramInvocation.AccountMeta(a.pool, false, true);
-        metas[1] = ICrossProgramInvocation.AccountMeta(
-            a.user_source_token,
-            false,
-            true
-        );
-        metas[2] = ICrossProgramInvocation.AccountMeta(
-            a.user_destination_token,
-            false,
-            true
-        );
-        metas[3] = ICrossProgramInvocation.AccountMeta(a.a_vault_lp, false, true);
-        metas[4] = ICrossProgramInvocation.AccountMeta(a.b_vault_lp, false, true);
-        metas[5] = ICrossProgramInvocation.AccountMeta(a.a_vault, false, true);
-        metas[6] = ICrossProgramInvocation.AccountMeta(a.b_vault, false, true);
-        metas[7] = ICrossProgramInvocation.AccountMeta(
-            a.a_vault_lp_mint,
-            false,
-            true
-        );
-        metas[8] = ICrossProgramInvocation.AccountMeta(
-            a.b_vault_lp_mint,
-            false,
-            true
-        );
-        metas[9] = ICrossProgramInvocation.AccountMeta(
-            a.a_token_vault,
-            false,
-            true
-        );
-        metas[10] = ICrossProgramInvocation.AccountMeta(
-            a.b_token_vault,
-            false,
-            true
-        );
-        metas[11] = ICrossProgramInvocation.AccountMeta(a.user, true, false);
-        metas[12] = ICrossProgramInvocation.AccountMeta(
-            a.vault_program,
-            false,
-            false
-        );
-        metas[13] = ICrossProgramInvocation.AccountMeta(
-            a.token_program,
-            false,
-            false
-        );
-        metas[14] = ICrossProgramInvocation.AccountMeta(
-            a.protocol_token_fee,
-            false,
-            true
-        );
-    }
-
-    function build_swap_ix_data(uint64 in_amount, uint64 minimum_out_amount)
-    internal
-    pure
-    returns (bytes memory)
-    {
-        bytes8 disc = bytes8(sha256(bytes("global:swap")));
-        return abi.encodePacked(disc, Convert.u64le(in_amount), Convert.u64le(minimum_out_amount));
-    }
-
     function invoke_swap(
-        SwapAccountsInput memory a,
+        DAMMv1Lib.SwapAccountsInput memory a,
         uint64 in_amount,
         uint64 minimum_out_amount
     ) internal {
-        ICrossProgramInvocation.AccountMeta[] memory accounts = build_swap_account_metas(a);
-        bytes memory data = build_swap_ix_data(in_amount, minimum_out_amount);
+        ICrossProgramInvocation.AccountMeta[] memory accounts = DAMMv1Lib.build_swap_account_metas(a);
+        bytes memory data = DAMMv1Lib.build_swap_ix_data(in_amount, minimum_out_amount);
 
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
@@ -476,20 +479,93 @@ contract DAMMv1Pool {
     }
 
     function invoke_swap(
-        bytes32 user_source_token,
-        bytes32 user_destination_token,
+        bytes32 user_source_token_account,
+        bytes32 user_destination_token_account,
         bytes32 user,
         PoolToken in_token,
         uint64 in_amount,
         uint64 minimum_out_amount
     ) external {
-        SwapAccountsInput memory a = make_swap_accounts_from_pool(
-            user_source_token,
-            user_destination_token,
+        DAMMv1Lib.SwapAccountsInput memory a = make_swap_accounts_from_pool(
+            user_source_token_account,
+            user_destination_token_account,
             user,
             in_token
         );
 
         invoke_swap(a, in_amount, minimum_out_amount);
+    }
+}
+
+contract ERC20DAMMv1Pool {
+    DAMMv1Pool private immutable internal_pool;
+    ERC20Users private immutable users;
+    SPL_ERC20 private immutable tokenA;
+    SPL_ERC20 private immutable tokenB;
+
+    constructor(
+        DAMMv1Pool _internal_pool,
+        ERC20SPLFactory token_factory
+    ) {
+        tokenA = SPL_ERC20(token_factory.token_by_mint(_internal_pool.token_a_mint()));
+        tokenB = SPL_ERC20(token_factory.token_by_mint(_internal_pool.token_b_mint()));
+        internal_pool = _internal_pool;
+        users = token_factory.users();
+    }
+
+    function update_state() external {
+        internal_pool.update_state();
+    }
+
+    function get_reserves() external view returns (DAMMv1Pool.Reserves memory) {
+        return internal_pool.get_reserves();
+    }
+
+    function get_price_e18(DAMMv1Pool.PoolToken token)
+    external
+    view
+    returns (uint256)    {
+        return internal_pool.get_price_e18(token);
+    }
+
+    function get_fees_e18() external view returns (uint256) {
+        return internal_pool.get_fees_e18();
+    }
+
+    function swapExactTokensForTokens(
+        address token_in,
+        uint256 amount_in,
+        uint256 min_amount_out
+    ) external {
+        bytes32 tokenA_account = tokenA.get_token_account(msg.sender);
+        bytes32 tokenB_account = tokenB.get_token_account(msg.sender);
+        bytes32 user = users.get_user(msg.sender).owner;
+
+        DAMMv1Pool.PoolToken in_token = DAMMv1Pool.PoolToken.TokenA;
+        bytes32 source_account = tokenA_account;
+        bytes32 destination_account = tokenB_account;
+
+        if (address(tokenB) == token_in) {
+            in_token = DAMMv1Pool.PoolToken.TokenB;
+            source_account = tokenB_account;
+            destination_account = tokenA_account;
+        }
+
+        require(amount_in <= type(uint64).max, "amount_in exceeds uint64");
+        require(min_amount_out <= type(uint64).max, "min_amount_out exceeds uint64");
+
+        (bool success, bytes memory result) = address(internal_pool).delegatecall(
+            abi.encodeWithSignature(
+                "invoke_swap(bytes32,bytes32,bytes32,uint8,uint64,uint64)",
+                source_account,
+                destination_account,
+                user,
+                uint8(in_token),
+                uint64(amount_in),
+                uint64(min_amount_out)
+            )
+        );
+
+        require(success, string(Convert.revert_msg(result)));
     }
 }

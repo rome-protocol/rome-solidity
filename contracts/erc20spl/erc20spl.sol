@@ -10,7 +10,7 @@ import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {Convert} from "../convert.sol";
 
 contract ERC20Users {
-    bytes32 payer_salt = Convert.bytes_to_bytes32(bytes("PAYER"));
+    bytes32 public payer_salt = Convert.bytes_to_bytes32(bytes("PAYER"));
 
     struct User {
         bytes32 payer;
@@ -18,20 +18,18 @@ contract ERC20Users {
         bytes32 seed;
     }
 
-    mapping (address => User) users;
+    mapping (address => User) private users;
 
     function ensure_user(address user) public returns (User memory) {
         User memory existing_user = users[user];
-
         if (existing_user.owner == bytes32(0)) {
             User memory new_user = User({
                 payer: RomeEVMAccount.get_payer(user, payer_salt),
                 owner: RomeEVMAccount.pda(user),
-                seed: payer_salt 
+                seed: payer_salt
             });
 
             users[user] = new_user;
-            RomeEVMAccount.create_payer(user, 1000000000, payer_salt);
             return new_user;
         } else {
             return existing_user;
