@@ -49,6 +49,16 @@ const BRIDGE_CLAIM_EVENT_ABI = parseAbi([
     "event BridgeClaim(address indexed claimer, bytes32 tokenBridgeProgramId, uint256 accountCount)",
 ]);
 
+/** Extract decoded event logs matching the given ABI from a receipt. */
+function filterEventLogs(logs: { data: `0x${string}`; topics: `0x${string}`[] }[], abi: readonly any[]): any[] {
+    return logs.reduce<any[]>((acc, log) => {
+        try {
+            acc.push(decodeEventLog({ abi, data: log.data, topics: log.topics }));
+        } catch { /* not this event */ }
+        return acc;
+    }, []);
+}
+
 // ─══════════════════════════════════════════════
 // Test suite
 // ═══════════════════════════════════════════════
@@ -91,22 +101,8 @@ describe("RomeWormholeBridge", function () {
 
             const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
-            // Expect at least one BridgeSend event in the logs
-            const bridgeSendLogs = receipt.logs.filter((log) => {
-                try {
-                    decodeEventLog({
-                        abi: BRIDGE_SEND_EVENT_ABI,
-                        data: log.data,
-                        topics: log.topics,
-                    });
-                    return true;
-                } catch {
-                    return false;
-                }
-            });
-
             assert.ok(
-                bridgeSendLogs.length > 0,
+                filterEventLogs(receipt.logs, BRIDGE_SEND_EVENT_ABI).length > 0,
                 "Expected BridgeSend event to be emitted by sendTransferNative",
             );
         });
@@ -127,21 +123,8 @@ describe("RomeWormholeBridge", function () {
 
             const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
-            const bridgeSendLogs = receipt.logs.filter((log) => {
-                try {
-                    decodeEventLog({
-                        abi: BRIDGE_SEND_EVENT_ABI,
-                        data: log.data,
-                        topics: log.topics,
-                    });
-                    return true;
-                } catch {
-                    return false;
-                }
-            });
-
             assert.ok(
-                bridgeSendLogs.length > 0,
+                filterEventLogs(receipt.logs, BRIDGE_SEND_EVENT_ABI).length > 0,
                 "Expected BridgeSend event to be emitted by sendTransferWrapped",
             );
         });
@@ -154,21 +137,8 @@ describe("RomeWormholeBridge", function () {
 
             const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
-            const bridgeClaimLogs = receipt.logs.filter((log) => {
-                try {
-                    decodeEventLog({
-                        abi: BRIDGE_CLAIM_EVENT_ABI,
-                        data: log.data,
-                        topics: log.topics,
-                    });
-                    return true;
-                } catch {
-                    return false;
-                }
-            });
-
             assert.ok(
-                bridgeClaimLogs.length > 0,
+                filterEventLogs(receipt.logs, BRIDGE_CLAIM_EVENT_ABI).length > 0,
                 "Expected BridgeClaim event to be emitted by claimCompleteNative",
             );
         });
@@ -181,21 +151,8 @@ describe("RomeWormholeBridge", function () {
 
             const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
-            const bridgeClaimLogs = receipt.logs.filter((log) => {
-                try {
-                    decodeEventLog({
-                        abi: BRIDGE_CLAIM_EVENT_ABI,
-                        data: log.data,
-                        topics: log.topics,
-                    });
-                    return true;
-                } catch {
-                    return false;
-                }
-            });
-
             assert.ok(
-                bridgeClaimLogs.length > 0,
+                filterEventLogs(receipt.logs, BRIDGE_CLAIM_EVENT_ABI).length > 0,
                 "Expected BridgeClaim event to be emitted by claimCompleteWrapped",
             );
         });
@@ -219,21 +176,9 @@ describe("RomeWormholeBridge", function () {
 
             const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
-            let decoded: any = null;
-            for (const log of receipt.logs) {
-                try {
-                    decoded = decodeEventLog({
-                        abi: BRIDGE_SEND_EVENT_ABI,
-                        data: log.data,
-                        topics: log.topics,
-                    });
-                    break;
-                } catch {
-                    // not this event
-                }
-            }
-
-            assert.ok(decoded !== null, "Expected BridgeSend event");
+            const events = filterEventLogs(receipt.logs, BRIDGE_SEND_EVENT_ABI);
+            assert.ok(events.length > 0, "Expected BridgeSend event");
+            const decoded = events[0];
             assert.equal(decoded.args.amount, expectedAmount);
             assert.equal(decoded.args.nonce, expectedNonce);
         });
@@ -617,7 +562,6 @@ describe("RomeWormholeBridge", function () {
         });
 
         it("non-owner cannot pause", async function () {
-            // Get a second wallet client
             const { viem } = await hardhat.network.connect();
             const allClients = await viem.getWalletClients();
             if (allClients.length < 2) {
@@ -627,35 +571,6 @@ describe("RomeWormholeBridge", function () {
 
             const pauseData = encodeFunctionData({ abi: PAUSE_ABI, functionName: "pause" });
 
-            // Attempt the call — expect it to revert (either OwnableUnauthorizedAccount
-            // when hardened, or "function selector was not recognized" before hardening).
-            // We use eth_call to avoid tx-submission timeout issues on Hardhat EDR.
-            await assert.rejects(
-                async () => {
-                    await publicClient.call({
-                        account: nonOwner.account!,
-                        to: bridgeAddress,
-                        data: pauseData,
-                    });
-                },
-                (err: any) => {
-                    assert.ok(
-                        err.message.includes("OwnableUnauthorizedAccount") ||
-                            err.message.includes("revert") ||
-                            err.message.includes("not the owner") ||
-                            err.message.includes("function selector was not recognized"),
-                        `Expected ownership or selector revert, got: ${err.message}`,
-                    );
-                    return true;
-                },
-            );
-
-            // The test FAILS in RED phase because the revert is "selector not recognized"
-            // (no pause() exists). After hardening, non-owner calls should revert with
-            // OwnableUnauthorizedAccount specifically.
-            // To properly verify non-owner *access control*, we need the function to exist
-            // first. So we assert that the error IS specifically OwnableUnauthorizedAccount.
-            // This will fail now (selector not found) and pass after hardening.
             const errMsg = await publicClient.call({
                 account: nonOwner.account!,
                 to: bridgeAddress,

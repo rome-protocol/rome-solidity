@@ -136,7 +136,7 @@ contract RomeWormholeBridge is Ownable, Pausable {
     }
 
     /// @notice Token Bridge `authority_signer` PDA (delegate target for SPL approve before transfer).
-    function authoritySignerPda(bytes32 tokenBridgeProgramId) external view returns (bytes32) {
+    function authoritySignerPda(bytes32 tokenBridgeProgramId) external pure returns (bytes32) {
         return _authoritySignerPda(tokenBridgeProgramId);
     }
 
@@ -176,7 +176,7 @@ contract RomeWormholeBridge is Ownable, Pausable {
         return _encodeSplApprove(amount);
     }
 
-    function _authoritySignerPda(bytes32 tokenBridgeProgramId) internal view returns (bytes32) {
+    function _authoritySignerPda(bytes32 tokenBridgeProgramId) internal pure returns (bytes32) {
         ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](1);
         seeds[0] = ISystemProgram.Seed(bytes("authority_signer"));
         (bytes32 key,) = SystemProgram.find_program_address(tokenBridgeProgramId, seeds);

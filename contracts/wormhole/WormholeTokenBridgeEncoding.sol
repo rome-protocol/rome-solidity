@@ -5,8 +5,6 @@ pragma solidity ^0.8.20;
 /// @notice Instruction **data** bytes for the Solana Wormhole Token Bridge program, matching
 library WormholeTokenBridgeEncoding {
     /// @dev Must match `TokenBridgeInstruction` in the TS coder.
-    uint8 internal constant IX_INITIALIZE = 0;
-    uint8 internal constant IX_ATTEST_TOKEN = 1;
     uint8 internal constant IX_COMPLETE_NATIVE = 2;
     uint8 internal constant IX_COMPLETE_WRAPPED = 3;
     uint8 internal constant IX_TRANSFER_WRAPPED = 4;
@@ -51,13 +49,7 @@ library WormholeTokenBridgeEncoding {
         bytes32 targetAddress,
         uint16 targetChain
     ) internal pure returns (bytes memory) {
-        bytes memory payload = encodeTransferPayload(nonce, amount, fee, targetAddress, targetChain);
-        bytes memory out = new bytes(1 + payload.length);
-        out[0] = bytes1(IX_TRANSFER_NATIVE);
-        for (uint256 i = 0; i < payload.length; i++) {
-            out[1 + i] = payload[i];
-        }
-        return out;
+        return _encodeTransfer(IX_TRANSFER_NATIVE, nonce, amount, fee, targetAddress, targetChain);
     }
 
     function encodeTransferWrapped(
@@ -67,9 +59,20 @@ library WormholeTokenBridgeEncoding {
         bytes32 targetAddress,
         uint16 targetChain
     ) internal pure returns (bytes memory) {
+        return _encodeTransfer(IX_TRANSFER_WRAPPED, nonce, amount, fee, targetAddress, targetChain);
+    }
+
+    function _encodeTransfer(
+        uint8 discriminator,
+        uint32 nonce,
+        uint64 amount,
+        uint64 fee,
+        bytes32 targetAddress,
+        uint16 targetChain
+    ) private pure returns (bytes memory) {
         bytes memory payload = encodeTransferPayload(nonce, amount, fee, targetAddress, targetChain);
         bytes memory out = new bytes(1 + payload.length);
-        out[0] = bytes1(IX_TRANSFER_WRAPPED);
+        out[0] = bytes1(discriminator);
         for (uint256 i = 0; i < payload.length; i++) {
             out[1 + i] = payload[i];
         }
