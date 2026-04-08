@@ -85,76 +85,99 @@ describe("RomeWormholeBridge", function () {
     // ══════════════════════════════════════════════
 
     describe("Events", function () {
-        it("sendTransferNative emits BridgeSend event", async function () {
+        it("sendTransferNative emits BridgeSend event with correct fields", async function () {
+            const inputAmount = 1000n;
+            const inputNonce = 1;
+
             const hash = await bridge.write.sendTransferNative([
                 DUMMY_PROGRAM_ID,       // splTokenProgramId
                 dummyAccountMeta(),     // approveAccounts
                 1000n,                  // approveAmount
                 DUMMY_PROGRAM_ID,       // tokenBridgeProgramId
                 dummyAccountMeta(),     // transferAccounts
-                1,                      // nonce
-                1000n,                  // amount
+                inputNonce,             // nonce
+                inputAmount,            // amount
                 0n,                     // fee
                 DUMMY_TARGET_ADDR,      // targetAddress
                 1,                      // targetChain
             ]);
 
             const receipt = await publicClient.waitForTransactionReceipt({ hash });
+            const events = filterEventLogs(receipt.logs, BRIDGE_SEND_EVENT_ABI);
 
-            assert.ok(
-                filterEventLogs(receipt.logs, BRIDGE_SEND_EVENT_ABI).length > 0,
-                "Expected BridgeSend event to be emitted by sendTransferNative",
-            );
+            assert.ok(events.length > 0, "Expected BridgeSend event to be emitted by sendTransferNative");
+            const ev = events[0];
+            assert.equal(ev.args.sender.toLowerCase(), deployer.toLowerCase(), "BridgeSend sender should match deployer");
+            assert.equal(ev.args.amount, inputAmount, "BridgeSend amount should match input");
+            assert.equal(ev.args.nonce, inputNonce, "BridgeSend nonce should match input");
+            assert.equal(ev.args.targetAddress, DUMMY_TARGET_ADDR, "BridgeSend targetAddress should match input");
+            assert.equal(ev.args.targetChain, 1, "BridgeSend targetChain should match input");
         });
 
-        it("sendTransferWrapped emits BridgeSend event", async function () {
+        it("sendTransferWrapped emits BridgeSend event with correct fields", async function () {
+            const inputAmount = 500n;
+            const inputNonce = 2;
+            const inputTargetChain = 3;
+
             const hash = await bridge.write.sendTransferWrapped([
                 DUMMY_PROGRAM_ID,
                 dummyAccountMeta(),
                 1000n,
                 DUMMY_PROGRAM_ID,
                 dummyAccountMeta(),
-                2,
-                500n,
+                inputNonce,
+                inputAmount,
                 0n,
                 DUMMY_TARGET_ADDR,
-                3,
+                inputTargetChain,
             ]);
 
             const receipt = await publicClient.waitForTransactionReceipt({ hash });
+            const events = filterEventLogs(receipt.logs, BRIDGE_SEND_EVENT_ABI);
 
-            assert.ok(
-                filterEventLogs(receipt.logs, BRIDGE_SEND_EVENT_ABI).length > 0,
-                "Expected BridgeSend event to be emitted by sendTransferWrapped",
-            );
+            assert.ok(events.length > 0, "Expected BridgeSend event to be emitted by sendTransferWrapped");
+            const ev = events[0];
+            assert.equal(ev.args.sender.toLowerCase(), deployer.toLowerCase(), "BridgeSend sender should match deployer");
+            assert.equal(ev.args.amount, inputAmount, "BridgeSend amount should match input");
+            assert.equal(ev.args.nonce, inputNonce, "BridgeSend nonce should match input");
+            assert.equal(ev.args.targetAddress, DUMMY_TARGET_ADDR, "BridgeSend targetAddress should match input");
+            assert.equal(ev.args.targetChain, inputTargetChain, "BridgeSend targetChain should match input");
         });
 
-        it("claimCompleteNative emits BridgeClaim event", async function () {
+        it("claimCompleteNative emits BridgeClaim event with correct fields", async function () {
+            const accounts = dummyAccountMeta();
+
             const hash = await bridge.write.claimCompleteNative([
                 DUMMY_PROGRAM_ID,
-                dummyAccountMeta(),
+                accounts,
             ]);
 
             const receipt = await publicClient.waitForTransactionReceipt({ hash });
+            const events = filterEventLogs(receipt.logs, BRIDGE_CLAIM_EVENT_ABI);
 
-            assert.ok(
-                filterEventLogs(receipt.logs, BRIDGE_CLAIM_EVENT_ABI).length > 0,
-                "Expected BridgeClaim event to be emitted by claimCompleteNative",
-            );
+            assert.ok(events.length > 0, "Expected BridgeClaim event to be emitted by claimCompleteNative");
+            const ev = events[0];
+            assert.equal(ev.args.claimer.toLowerCase(), deployer.toLowerCase(), "BridgeClaim claimer should match deployer");
+            assert.equal(ev.args.tokenBridgeProgramId, DUMMY_PROGRAM_ID, "BridgeClaim tokenBridgeProgramId should match input");
+            assert.equal(ev.args.accountCount, BigInt(accounts.length), "BridgeClaim accountCount should match input account count");
         });
 
-        it("claimCompleteWrapped emits BridgeClaim event", async function () {
+        it("claimCompleteWrapped emits BridgeClaim event with correct fields", async function () {
+            const accounts = dummyAccountMeta();
+
             const hash = await bridge.write.claimCompleteWrapped([
                 DUMMY_PROGRAM_ID,
-                dummyAccountMeta(),
+                accounts,
             ]);
 
             const receipt = await publicClient.waitForTransactionReceipt({ hash });
+            const events = filterEventLogs(receipt.logs, BRIDGE_CLAIM_EVENT_ABI);
 
-            assert.ok(
-                filterEventLogs(receipt.logs, BRIDGE_CLAIM_EVENT_ABI).length > 0,
-                "Expected BridgeClaim event to be emitted by claimCompleteWrapped",
-            );
+            assert.ok(events.length > 0, "Expected BridgeClaim event to be emitted by claimCompleteWrapped");
+            const ev = events[0];
+            assert.equal(ev.args.claimer.toLowerCase(), deployer.toLowerCase(), "BridgeClaim claimer should match deployer");
+            assert.equal(ev.args.tokenBridgeProgramId, DUMMY_PROGRAM_ID, "BridgeClaim tokenBridgeProgramId should match input");
+            assert.equal(ev.args.accountCount, BigInt(accounts.length), "BridgeClaim accountCount should match input account count");
         });
 
         it("BridgeSend event carries correct amount and nonce", async function () {
@@ -505,6 +528,58 @@ describe("RomeWormholeBridge", function () {
             assert.equal(pausedValue, 1n, "Expected paused() to be true (1) after pause()");
 
             // Unpause for subsequent tests
+            const unpauseData = encodeFunctionData({ abi: PAUSE_ABI, functionName: "unpause" });
+            const unpauseHash = await rawWrite(unpauseData);
+            await publicClient.waitForTransactionReceipt({ hash: unpauseHash });
+        });
+
+        it("invoke reverts when paused", async function () {
+            const pauseData = encodeFunctionData({ abi: PAUSE_ABI, functionName: "pause" });
+            const pauseHash = await rawWrite(pauseData);
+            await publicClient.waitForTransactionReceipt({ hash: pauseHash });
+
+            await assert.rejects(
+                async () =>
+                    bridge.write.invoke([
+                        DUMMY_PROGRAM_ID,
+                        dummyAccountMeta(),
+                        "0x00" as `0x${string}`,
+                    ]),
+                (err: any) => {
+                    assert.ok(
+                        err.message.includes("EnforcedPause") || err.message.includes("paused"),
+                        `Expected pause revert, got: ${err.message}`,
+                    );
+                    return true;
+                },
+            );
+
+            const unpauseData = encodeFunctionData({ abi: PAUSE_ABI, functionName: "unpause" });
+            const unpauseHash = await rawWrite(unpauseData);
+            await publicClient.waitForTransactionReceipt({ hash: unpauseHash });
+        });
+
+        it("invokeWormholeCore reverts when paused", async function () {
+            const pauseData = encodeFunctionData({ abi: PAUSE_ABI, functionName: "pause" });
+            const pauseHash = await rawWrite(pauseData);
+            await publicClient.waitForTransactionReceipt({ hash: pauseHash });
+
+            await assert.rejects(
+                async () =>
+                    bridge.write.invokeWormholeCore([
+                        DUMMY_PROGRAM_ID,
+                        dummyAccountMeta(),
+                        "0x00" as `0x${string}`,
+                    ]),
+                (err: any) => {
+                    assert.ok(
+                        err.message.includes("EnforcedPause") || err.message.includes("paused"),
+                        `Expected pause revert, got: ${err.message}`,
+                    );
+                    return true;
+                },
+            );
+
             const unpauseData = encodeFunctionData({ abi: PAUSE_ABI, functionName: "unpause" });
             const unpauseHash = await rawWrite(unpauseData);
             await publicClient.waitForTransactionReceipt({ hash: unpauseHash });

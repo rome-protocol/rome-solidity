@@ -5,6 +5,10 @@ export default defineConfig({
   plugins: [hardhatToolboxViemPlugin],
   solidity: {
     profiles: {
+      // viaIR is required on the default profile because RomeWormholeBridge's
+      // sendTransferNative/sendTransferWrapped functions accept 10 parameters
+      // (including two dynamic arrays), which exceeds the EVM's 16-slot stack
+      // limit and causes "stack too deep" compilation errors without IR codegen.
       default: {
         version: "0.8.28",
         settings: {

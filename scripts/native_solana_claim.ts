@@ -21,7 +21,10 @@ const TOKEN_BRIDGE = new PublicKey("DZnkkTmCiFWfYTfT41X3Rd1kDgozqzxWaHqsw6W4x2oe
 const SPL_TOKEN_PK = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const ATA_PROGRAM = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
-const EVM_PRIVATE_KEY = "fff86a5d88cc029df8c309c0bc77144ce8f21dfdcc85fc965b16dd1cba442ad8";
+const EVM_PRIVATE_KEY = process.env.EVM_PRIVATE_KEY;
+if (!EVM_PRIVATE_KEY) {
+    throw new Error("EVM_PRIVATE_KEY environment variable is required. Usage: EVM_PRIVATE_KEY=<hex> npx hardhat run scripts/native_solana_claim.ts --network hardhatMainnet");
+}
 
 // Corrected VAA: sequence 343845, recipient = ATA (not PDA)
 const DEFAULT_VAA_B64 =

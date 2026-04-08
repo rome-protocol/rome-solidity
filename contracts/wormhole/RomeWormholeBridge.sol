@@ -37,33 +37,46 @@ contract RomeWormholeBridge is Ownable, Pausable {
         _unpause();
     }
 
+    /// @notice Generic CPI invoke. The programId is caller-supplied because the Solana runtime
+    /// validates CPI account constraints at execution time — the EVM contract delegates security
+    /// to the CPI precompile and the Solana runtime, not to an on-chain allowlist.
     function invoke(bytes32 programId, ICrossProgramInvocation.AccountMeta[] calldata accounts, bytes calldata data)
         external
     {
+        _requireNotPaused();
         _invoke(programId, accounts, data);
     }
 
+    /// @notice CPI invoke targeting Wormhole Core. programId is caller-supplied; the Solana runtime
+    /// validates that the instruction accounts belong to the given program.
     function invokeWormholeCore(
         bytes32 wormholeCoreProgramId,
         ICrossProgramInvocation.AccountMeta[] calldata accounts,
         bytes calldata data
     ) external {
+        _requireNotPaused();
         _invoke(wormholeCoreProgramId, accounts, data);
     }
 
+    /// @notice CPI invoke targeting Token Bridge. programId is caller-supplied; the Solana runtime
+    /// validates that the instruction accounts belong to the given program.
     function invokeTokenBridge(
         bytes32 tokenBridgeProgramId,
         ICrossProgramInvocation.AccountMeta[] calldata accounts,
         bytes calldata data
     ) external {
+        _requireNotPaused();
         _invoke(tokenBridgeProgramId, accounts, data);
     }
 
+    /// @notice CPI invoke targeting SPL Token. programId is caller-supplied; the Solana runtime
+    /// validates that the instruction accounts belong to the given program.
     function invokeSplToken(
         bytes32 splTokenProgramId,
         ICrossProgramInvocation.AccountMeta[] calldata accounts,
         bytes calldata data
     ) external {
+        _requireNotPaused();
         _invoke(splTokenProgramId, accounts, data);
     }
 
