@@ -53,7 +53,7 @@ const BRIDGE_CLAIM_EVENT_ABI = parseAbi([
 function filterEventLogs(logs: { data: `0x${string}`; topics: `0x${string}`[] }[], abi: readonly any[]): any[] {
     return logs.reduce<any[]>((acc, log) => {
         try {
-            acc.push(decodeEventLog({ abi, data: log.data, topics: log.topics }));
+            acc.push(decodeEventLog({ abi, data: log.data, topics: log.topics as [`0x${string}`, ...`0x${string}`[]] }));
         } catch { /* not this event */ }
         return acc;
     }, []);
@@ -266,6 +266,31 @@ describe("RomeWormholeBridge", function () {
             );
         });
 
+        it("sendTransferNative reverts when fee exceeds amount", async function () {
+            await assert.rejects(
+                async () =>
+                    bridge.write.sendTransferNative([
+                        DUMMY_PROGRAM_ID,
+                        dummyAccountMeta(),
+                        1000n,
+                        DUMMY_PROGRAM_ID,
+                        dummyAccountMeta(),
+                        1,
+                        100n,                   // amount = 100
+                        101n,                   // fee = 101 -> exceeds amount
+                        DUMMY_TARGET_ADDR,
+                        1,
+                    ]),
+                (err: any) => {
+                    assert.ok(
+                        err.message.includes("Fee exceeds amount"),
+                        `Expected "Fee exceeds amount" revert, got: ${err.message}`,
+                    );
+                    return true;
+                },
+            );
+        });
+
         // --- sendTransferWrapped ---
 
         it("sendTransferWrapped reverts with amount=0", async function () {
@@ -341,6 +366,49 @@ describe("RomeWormholeBridge", function () {
                     return true;
                 },
             );
+        });
+
+        it("sendTransferWrapped reverts when fee exceeds amount", async function () {
+            await assert.rejects(
+                async () =>
+                    bridge.write.sendTransferWrapped([
+                        DUMMY_PROGRAM_ID,
+                        dummyAccountMeta(),
+                        1000n,
+                        DUMMY_PROGRAM_ID,
+                        dummyAccountMeta(),
+                        1,
+                        500n,                   // amount = 500
+                        501n,                   // fee = 501 -> exceeds amount
+                        DUMMY_TARGET_ADDR,
+                        1,
+                    ]),
+                (err: any) => {
+                    assert.ok(
+                        err.message.includes("Fee exceeds amount"),
+                        `Expected "Fee exceeds amount" revert, got: ${err.message}`,
+                    );
+                    return true;
+                },
+            );
+        });
+
+        it("sendTransferNative allows fee equal to amount", async function () {
+            // fee == amount is valid (full relayer transfer)
+            const hash = await bridge.write.sendTransferNative([
+                DUMMY_PROGRAM_ID,
+                dummyAccountMeta(),
+                1000n,
+                DUMMY_PROGRAM_ID,
+                dummyAccountMeta(),
+                1,
+                1000n,                  // amount = 1000
+                1000n,                  // fee = 1000 (equal, should succeed)
+                DUMMY_TARGET_ADDR,
+                1,
+            ]);
+            const receipt = await publicClient.waitForTransactionReceipt({ hash });
+            assert.equal(receipt.status, "success", "fee == amount should be allowed");
         });
 
         // --- invoke with empty accounts (already works) ---

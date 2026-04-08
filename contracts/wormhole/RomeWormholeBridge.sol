@@ -80,7 +80,7 @@ contract RomeWormholeBridge is Ownable, Pausable {
         uint16 targetChain
     ) external {
         _requireNotPaused();
-        _validateSendParams(amount, targetAddress, targetChain);
+        _validateSendParams(amount, fee, targetAddress, targetChain);
 
         _invoke(splTokenProgramId, approveAccounts, _encodeSplApprove(approveAmount));
         _invoke(
@@ -105,7 +105,7 @@ contract RomeWormholeBridge is Ownable, Pausable {
         uint16 targetChain
     ) external {
         _requireNotPaused();
-        _validateSendParams(amount, targetAddress, targetChain);
+        _validateSendParams(amount, fee, targetAddress, targetChain);
 
         _invoke(splTokenProgramId, approveAccounts, _encodeSplApprove(approveAmount));
         _invoke(
@@ -184,8 +184,9 @@ contract RomeWormholeBridge is Ownable, Pausable {
     }
 
     /// @dev Validate common send-transfer parameters before CPI.
-    function _validateSendParams(uint64 amount, bytes32 targetAddress, uint16 targetChain) private pure {
+    function _validateSendParams(uint64 amount, uint64 fee, bytes32 targetAddress, uint16 targetChain) private pure {
         require(amount > 0, "Zero amount");
+        require(fee <= amount, "Fee exceeds amount");
         require(targetAddress != bytes32(0), "Invalid target");
         require(targetChain != 0, "Invalid chain");
     }
