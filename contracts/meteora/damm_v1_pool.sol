@@ -480,6 +480,6 @@ contract DAMMv1Pool {
             in_token
         );
 
-        this.invoke_swap(a, in_amount, minimum_out_amount);
+        invoke_swap(a, in_amount, minimum_out_amount);
     }
 }
