@@ -5,6 +5,9 @@ import "../borsch.sol";
 import "../interface.sol";
 
 library MplTokenMetadataLib {
+    bytes32 internal constant MPL_TOKEN_METADATA_PROGRAM_ID =
+    0x0b7065b1e3d17c45389d527f6b04c3cd58b86c731aa0fdb549b6d1bc03f82946;
+
     // =========================
     // Errors
     // =========================

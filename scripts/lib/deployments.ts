@@ -212,3 +212,40 @@ export function saveERC20SPLFactoryDeployment(args: {
 
     writeDeployments(args.networkName, deployments);
 }
+
+export function readERC20SPLFactoryAddressFromDeployments(networkName: string): `0x${string}` | null {
+    const parsed = readDeployments(networkName);
+    const address = parsed.ERC20SPLFactory?.address;
+
+    if (!address) {
+        return null;
+    }
+
+    if (!isAddress(address)) {
+        throw new Error(
+            `Invalid ERC20SPLFactory.address in deployments/${networkName}.json: ${address}`,
+        );
+    }
+
+    return getAddress(address);
+}
+
+export function resolveERC20SPLFactoryAddress(networkName: string): `0x${string}` {
+    const envAddress = process.env.ERC20_SPL_FACTORY_ADDRESS;
+    if (envAddress) {
+        if (!isAddress(envAddress)) {
+            throw new Error(`Invalid ERC20_SPL_FACTORY_ADDRESS: ${envAddress}`);
+        }
+
+        return getAddress(envAddress);
+    }
+
+    const fromFile = readERC20SPLFactoryAddressFromDeployments(networkName);
+    if (fromFile) {
+        return fromFile;
+    }
+
+    throw new Error(
+        `ERC20SPLFactory address not found. Set ERC20_SPL_FACTORY_ADDRESS or create deployments/${networkName}.json`,
+    );
+}

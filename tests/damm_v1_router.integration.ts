@@ -4,17 +4,6 @@ import hardhat from "hardhat";
 import { getAddress, isAddress, zeroAddress } from "viem";
 import { readDeployments } from "../scripts/lib/deployments.js";
 
-function requireOneOfEnv(...names: string[]): string {
-    for (const name of names) {
-        const value = process.env[name];
-        if (value) {
-            return value;
-        }
-    }
-
-    throw new Error(`Missing required environment variable. Provide one of: ${names.join(", ")}`);
-}
-
 function resolveDeploymentAddress(
     networkName: string,
     key: "MeteoraDAMMv1Factory" | "MeteoraDAMMv1Router" | "ERC20SPLFactory",
@@ -33,33 +22,8 @@ function resolveDeploymentAddress(
     return getAddress(address);
 }
 
-function parseBytes32(value: string, name: string): `0x${string}` {
-    if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
-        throw new Error(`Invalid ${name}: expected bytes32 hex value, got ${value}`);
-    }
-
-    return value as `0x${string}`;
-}
-
-function parseUint(value: string, name: string): bigint {
-    const parsed = BigInt(value);
-    if (parsed < 0n) {
-        throw new Error(`${name} must be non-negative, got ${value}`);
-    }
-
-    return parsed;
-}
-
-function selectSwapDirection(value: string): 0 | 1 {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "0" || normalized === "a" || normalized === "tokena") {
-        return 0;
-    }
-    if (normalized === "1" || normalized === "b" || normalized === "tokenb") {
-        return 1;
-    }
-
-    throw new Error(`Invalid swap direction ${value}. Use 0/tokenA or 1/tokenB.`);
+function isHex32(value: string): boolean {
+    return /^0x[0-9a-fA-F]{64}$/.test(value);
 }
 
 async function waitForSuccess(
@@ -76,21 +40,69 @@ async function waitForSuccess(
     return receipt;
 }
 
-async function expectWriteToFail(
-    send: () => Promise<`0x${string}`>,
-    publicClient: {
-        waitForTransactionReceipt: (args: { hash: `0x${string}` }) => Promise<{ status: string }>;
-    },
-): Promise<void> {
+async function ensureUser(factoryFromUser: any, users: any, publicClient: any, user: any): Promise<void> {
     try {
-        const txHash = await send();
-        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-        assert.notEqual(receipt.status, "success", "transaction unexpectedly succeeded");
+        await users.read.get_user([user.account.address]);
     } catch {
-        return;
+        const createUserTxHash = await factoryFromUser.write.create_user([], {
+            account: user.account,
+        });
+        await waitForSuccess(publicClient, createUserTxHash, "create_user");
     }
+}
 
-    assert.fail("Expected transaction to fail");
+async function ensureTokenAccount(token: any, publicClient: any, owner: any, label: string): Promise<void> {
+    const txHash = await token.write.ensure_token_account([owner.account.address], {
+        account: owner.account,
+    });
+    await waitForSuccess(publicClient, txHash, label);
+}
+
+async function createSplToken(args: {
+    factory: any;
+    publicClient: any;
+    viem: any;
+    owner: any;
+    name: string;
+    symbol: string;
+}): Promise<{
+    mintId: `0x${string}`;
+    tokenAddress: `0x${string}`;
+    token: any;
+}> {
+    const { factory, publicClient, viem, owner, name, symbol } = args;
+
+    const [mintId] = await factory.read.get_current_mint([owner.account.address]);
+
+    const createTokenTxHash = await factory.write.create_token_mint([], {
+        account: owner.account,
+    });
+    await waitForSuccess(publicClient, createTokenTxHash, `create_token_mint ${symbol}`);
+
+    const initTokenTxHash = await factory.write.init_token_mint([mintId], {
+        account: owner.account,
+    });
+    await waitForSuccess(publicClient, initTokenTxHash, `init_token_mint ${symbol}`);
+
+    const addTokenSimulation = await factory.simulate.add_spl_token_no_metadata(
+        [mintId, name, symbol],
+        {
+            account: owner.account,
+        },
+    );
+    const tokenAddress = addTokenSimulation.result;
+
+    const addTokenTxHash = await factory.write.add_spl_token_no_metadata(addTokenSimulation.request);
+    await waitForSuccess(publicClient, addTokenTxHash, `add_spl_token_no_metadata ${symbol}`);
+
+    const token = await viem.getContractAt("SPL_ERC20", tokenAddress, {
+        client: {
+            public: publicClient,
+            wallet: owner,
+        },
+    });
+
+    return { mintId, tokenAddress, token };
 }
 
 describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () {
@@ -98,28 +110,35 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
     let publicClient: any;
     let deployer: any;
     let factory: any;
+    let factoryFromUser: any;
     let routerFromUser: any;
     let erc20SplFactory: any;
     let erc20FactoryFromUser: any;
     let users: any;
+    let cpiProgram: any;
     let networkName: string;
 
     let factoryAddress: `0x${string}`;
     let routerAddress: `0x${string}`;
     let erc20SplFactoryAddress: `0x${string}`;
-    let poolPubkey: `0x${string}`;
-    let swapDirection: 0 | 1;
-    let amountIn: bigint;
-    let minAmountOut: bigint;
 
-    let swapUser: any;
-
-    let rawPoolAddress: `0x${string}`;
-    let wrappedPoolAddress: `0x${string}`;
+    let tokenAMint: `0x${string}`;
+    let tokenBMint: `0x${string}`;
     let tokenAAddress: `0x${string}`;
     let tokenBAddress: `0x${string}`;
     let tokenAFromUser: any;
     let tokenBFromUser: any;
+    let userRecord: any;
+
+    let poolPubkey: `0x${string}`;
+    let wrappedPoolAddress: `0x${string}`;
+
+    const mintAmount = 2_000_000_000_000n;
+    const poolTokenAAmount = 500_000_000_000n;
+    const poolTokenBAmount = 500_000_000_000n;
+    const swapAmountIn = 100_000_000n;
+    const minAmountOut = 0n;
+    const tradeFeeBps = 25n;
 
     before(async function () {
         const { viem: connectedViem, networkName: connectedNetworkName } = await hardhat.network.connect() as unknown as {
@@ -141,28 +160,28 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
             throw new Error("No wallet client available.");
         }
 
-        swapUser = deployer;
         factoryAddress = resolveDeploymentAddress(networkName, "MeteoraDAMMv1Factory");
         routerAddress = resolveDeploymentAddress(networkName, "MeteoraDAMMv1Router");
         erc20SplFactoryAddress = resolveDeploymentAddress(networkName, "ERC20SPLFactory");
 
-        poolPubkey = parseBytes32(requireOneOfEnv("ROUTER_POOL_PUBKEY", "POOL_PUBKEY"), "ROUTER_POOL_PUBKEY");
-        swapDirection = selectSwapDirection(requireOneOfEnv("ROUTER_SWAP_IN_TOKEN", "SWAP_IN_TOKEN"));
-        amountIn = parseUint(requireOneOfEnv("ROUTER_SWAP_AMOUNT_IN", "SWAP_IN_AMOUNT"), "ROUTER_SWAP_AMOUNT_IN");
-        minAmountOut = parseUint(requireOneOfEnv("ROUTER_SWAP_MIN_OUT", "SWAP_MIN_OUT"), "ROUTER_SWAP_MIN_OUT");
-
         factory = await viem.getContractAt("MeteoraDAMMv1Factory", factoryAddress);
+        factoryFromUser = await viem.getContractAt("MeteoraDAMMv1Factory", factoryAddress, {
+            client: {
+                public: publicClient,
+                wallet: deployer,
+            },
+        });
         erc20SplFactory = await viem.getContractAt("ERC20SPLFactory", erc20SplFactoryAddress);
         erc20FactoryFromUser = await viem.getContractAt("ERC20SPLFactory", erc20SplFactoryAddress, {
             client: {
                 public: publicClient,
-                wallet: swapUser,
+                wallet: deployer,
             },
         });
         routerFromUser = await viem.getContractAt("MeteoraDAMMv1Router", routerAddress, {
             client: {
                 public: publicClient,
-                wallet: swapUser,
+                wallet: deployer,
             },
         });
 
@@ -175,50 +194,131 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
 
         const usersAddress = await erc20SplFactory.read.users();
         users = await viem.getContractAt("ERC20Users", usersAddress);
+        await ensureUser(erc20FactoryFromUser, users, publicClient, deployer);
+        userRecord = await users.read.get_user([deployer.account.address]);
 
-        try {
-            await users.read.get_user([swapUser.account.address]);
-        } catch {
-            const createUserTxHash = await erc20FactoryFromUser.write.create_user([], {
-                account: swapUser.account,
-            });
-            await waitForSuccess(publicClient, createUserTxHash, "create_user for swap user");
-        }
+        const configuredTokenFactoryAddress = getAddress(await factory.read.token_factory());
+        assert.equal(
+            configuredTokenFactoryAddress.toLowerCase(),
+            erc20SplFactoryAddress.toLowerCase(),
+            "MeteoraDAMMv1Factory must be configured with the deployed ERC20SPLFactory",
+        );
+
+        assert.ok(isHex32(userRecord.payer), "User.payer must be bytes32");
+        assert.ok(isHex32(userRecord.owner), "User.owner must be bytes32");
+        assert.notEqual(userRecord.payer, `0x${"0".repeat(64)}`, "User.payer must not be zero");
+        assert.notEqual(userRecord.owner, `0x${"0".repeat(64)}`, "User.owner must not be zero");
+
+        const cpiProgramAddress = await factory.read.cpi_program();
+        cpiProgram = await viem.getContractAt("ICrossProgramInvocation", cpiProgramAddress);
+        const payerAccountInfo = await cpiProgram.read.account_info([userRecord.payer]);
+        assert.ok(payerAccountInfo[0] > 0n, "User.payer Solana account must exist and be funded");
+
+        const uniqueSuffix = `${Date.now()}${Math.floor(Math.random() * 1_000_000)
+            .toString()
+            .padStart(6, "0")}`;
+
+        const tokenA = await createSplToken({
+            factory: erc20FactoryFromUser,
+            publicClient,
+            viem,
+            owner: deployer,
+            name: `Router Token A ${uniqueSuffix}`,
+            symbol: `RTA${uniqueSuffix.slice(-5)}`,
+        });
+        const tokenB = await createSplToken({
+            factory: erc20FactoryFromUser,
+            publicClient,
+            viem,
+            owner: deployer,
+            name: `Router Token B ${uniqueSuffix}`,
+            symbol: `RTB${uniqueSuffix.slice(-5)}`,
+        });
+
+        tokenAMint = tokenA.mintId;
+        tokenBMint = tokenB.mintId;
+        tokenAAddress = tokenA.tokenAddress;
+        tokenBAddress = tokenB.tokenAddress;
+        tokenAFromUser = tokenA.token;
+        tokenBFromUser = tokenB.token;
+
+        await ensureTokenAccount(tokenAFromUser, publicClient, deployer, "ensure token A account");
+        await ensureTokenAccount(tokenBFromUser, publicClient, deployer, "ensure token B account");
+
+        const previewVaultA = await factory.read.previewInitializeVault([tokenAMint, deployer.account.address]);
+        const previewVaultB = await factory.read.previewInitializeVault([tokenBMint, deployer.account.address]);
+        assert.equal(previewVaultA[1].payer.toLowerCase(), userRecord.payer.toLowerCase(), "vault A payer must match User.payer");
+        assert.equal(previewVaultB[1].payer.toLowerCase(), userRecord.payer.toLowerCase(), "vault B payer must match User.payer");
+
+        const mintTokenATxHash = await tokenAFromUser.write.mint_to([deployer.account.address, mintAmount], {
+            account: deployer.account,
+        });
+        await waitForSuccess(publicClient, mintTokenATxHash, "mint token A");
+
+        const mintTokenBTxHash = await tokenBFromUser.write.mint_to([deployer.account.address, mintAmount], {
+            account: deployer.account,
+        });
+        await waitForSuccess(publicClient, mintTokenBTxHash, "mint token B");
+
+        const initVaultATxHash = await factoryFromUser.write.initializeVaultIfMissing([tokenAMint], {
+            account: deployer.account,
+        });
+        await waitForSuccess(publicClient, initVaultATxHash, "initialize vault A");
+
+        const initVaultBTxHash = await factoryFromUser.write.initializeVaultIfMissing([tokenBMint], {
+            account: deployer.account,
+        });
+        await waitForSuccess(publicClient, initVaultBTxHash, "initialize vault B");
+
+        poolPubkey = await factory.read.derivePermissionlessPoolKeyWithFeeTier([
+            tokenAMint,
+            tokenBMint,
+            tradeFeeBps,
+        ]);
+
+        const createPoolTxHash = await factoryFromUser.write.createPermissionlessPoolWithFeeTier(
+            [
+                tokenAMint,
+                tokenBMint,
+                tradeFeeBps,
+                poolTokenAAmount,
+                poolTokenBAmount,
+            ],
+            {
+                account: deployer.account,
+            },
+        );
+        await waitForSuccess(publicClient, createPoolTxHash, "create permissionless pool");
+
+        const addPoolSimulation = await factoryFromUser.simulate.addPool([poolPubkey], {
+            account: deployer.account,
+        });
+        const rawPoolAddress = getAddress(addPoolSimulation.result);
+
+        const addPoolTxHash = await factoryFromUser.write.addPool(addPoolSimulation.request);
+        await waitForSuccess(publicClient, addPoolTxHash, "register wrapped pool");
+
+        const poolCount = await factory.read.allPoolsLength();
+        wrappedPoolAddress = getAddress(await factory.read.allPools([poolCount - 1n]));
+        assert.notEqual(rawPoolAddress, zeroAddress, "raw pool address must not be zero");
 
         console.log("Testing MeteoraDAMMv1Factory at:", factoryAddress);
         console.log("Testing MeteoraDAMMv1Router at:", routerAddress);
         console.log("Using ERC20SPLFactory at:", erc20SplFactoryAddress);
-        console.log("Pool pubkey:", poolPubkey);
-        console.log("Swap user:", swapUser.account.address);
+        console.log("Created token A mint:", tokenAMint);
+        console.log("Created token B mint:", tokenBMint);
+        console.log("Created pool pubkey:", poolPubkey);
+        console.log("Created wrapped pool:", wrappedPoolAddress);
+        console.log("Swap user:", deployer.account.address);
     });
 
-    it("adds a new pool from env pubkey using the deployed factory", async function () {
-        const poolsLengthBefore = await factory.read.allPoolsLength();
-        const simulatedAddPool = await factory.simulate.addPool([poolPubkey], {
-            account: deployer.account,
-        });
-
-        rawPoolAddress = getAddress(simulatedAddPool.result);
-
-        const txHash = await factory.write.addPool(simulatedAddPool.request);
-        await waitForSuccess(publicClient, txHash, "factory.addPool");
-
-        const poolsLengthAfter = await factory.read.allPoolsLength();
-        assert.equal(poolsLengthAfter, poolsLengthBefore + 1n, "allPoolsLength must increment by 1");
-
-        wrappedPoolAddress = await factory.read.allPools([poolsLengthAfter - 1n]);
-        assert.notEqual(wrappedPoolAddress, zeroAddress, "wrapped pool address must not be zero");
-
-        const rawPool = await viem.getContractAt("DAMMv1Pool", rawPoolAddress);
-
-        const tokenAMint = await rawPool.read.token_a_mint();
-        const tokenBMint = await rawPool.read.token_b_mint();
-
-        tokenAAddress = getAddress(await erc20SplFactory.read.token_by_mint([tokenAMint]));
-        tokenBAddress = getAddress(await erc20SplFactory.read.token_by_mint([tokenBMint]));
-
+    it("creates two SPL_ERC20 tokens and registers a wrapped pool", async function () {
+        assert.ok(isHex32(tokenAMint), "token A mint must be bytes32");
+        assert.ok(isHex32(tokenBMint), "token B mint must be bytes32");
         assert.notEqual(tokenAAddress, zeroAddress, "token A wrapper must exist");
         assert.notEqual(tokenBAddress, zeroAddress, "token B wrapper must exist");
+        assert.ok(isHex32(poolPubkey), "pool pubkey must be bytes32");
+        assert.notEqual(wrappedPoolAddress, zeroAddress, "wrapped pool address must not be zero");
 
         const poolForTokenOrder = await factory.read.getPool([tokenAAddress, tokenBAddress]);
         const poolForReverseOrder = await factory.read.getPool([tokenBAddress, tokenAAddress]);
@@ -226,78 +326,48 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
         assert.equal(
             poolForTokenOrder.toLowerCase(),
             wrappedPoolAddress.toLowerCase(),
-            "getPool(tokenA, tokenB) must point to the added pool",
+            "getPool(tokenA, tokenB) must point to the created pool",
         );
         assert.equal(
             poolForReverseOrder.toLowerCase(),
             wrappedPoolAddress.toLowerCase(),
-            "getPool(tokenB, tokenA) must point to the added pool",
+            "getPool(tokenB, tokenA) must point to the created pool",
         );
 
-        tokenAFromUser = await viem.getContractAt("SPL_ERC20", tokenAAddress, {
-            client: {
-                public: publicClient,
-                wallet: swapUser,
-            },
-        });
-        tokenBFromUser = await viem.getContractAt("SPL_ERC20", tokenBAddress, {
-            client: {
-                public: publicClient,
-                wallet: swapUser,
-            },
-        });
-
-        const ensureTokenATxHash = await tokenAFromUser.write.ensure_token_account([swapUser.account.address], {
-            account: swapUser.account,
-        });
-        await waitForSuccess(publicClient, ensureTokenATxHash, "ensure token A account");
-
-        const ensureTokenBTxHash = await tokenBFromUser.write.ensure_token_account([swapUser.account.address], {
-            account: swapUser.account,
-        });
-        await waitForSuccess(publicClient, ensureTokenBTxHash, "ensure token B account");
+        const tokenAccountA = await tokenAFromUser.read.get_token_account([deployer.account.address]);
+        const tokenAccountB = await tokenBFromUser.read.get_token_account([deployer.account.address]);
+        assert.ok(isHex32(tokenAccountA), "user token A account must exist");
+        assert.ok(isHex32(tokenAccountB), "user token B account must exist");
     });
 
-    it("executes router swap path for a user with initialized accounts", async function () {
-        assert.ok(tokenAFromUser, "tokenA contract is not initialized; add pool test must run first");
-        assert.ok(tokenBFromUser, "tokenB contract is not initialized; add pool test must run first");
-
-        const inputToken = swapDirection === 0 ? tokenAFromUser : tokenBFromUser;
-        const outputToken = swapDirection === 0 ? tokenBFromUser : tokenAFromUser;
-        const inputTokenAddress = swapDirection === 0 ? tokenAAddress : tokenBAddress;
-        const outputTokenAddress = swapDirection === 0 ? tokenBAddress : tokenAAddress;
-
-        const inputBalanceBefore = await inputToken.read.balanceOf([swapUser.account.address]);
-        const outputBalanceBefore = await outputToken.read.balanceOf([swapUser.account.address]);
+    it("executes swapExactTokensForTokens on the router", async function () {
+        const inputBalanceBefore = await tokenAFromUser.read.balanceOf([deployer.account.address]);
+        const outputBalanceBefore = await tokenBFromUser.read.balanceOf([deployer.account.address]);
 
         assert.ok(
-            inputBalanceBefore >= amountIn,
-            `Swap user ${swapUser.account.address} must already hold at least ${amountIn} of ${inputTokenAddress}`,
+            inputBalanceBefore >= swapAmountIn,
+            `swap user must hold at least ${swapAmountIn} token A before swap`,
         );
 
-        await expectWriteToFail(
-            () =>
-                routerFromUser.write.swapExactTokensForTokens(
-                    [inputTokenAddress, outputTokenAddress, amountIn, minAmountOut],
-                    {
-                        account: swapUser.account,
-                    },
-                ),
-            publicClient,
+        const swapTxHash = await routerFromUser.write.swapExactTokensForTokens(
+            [tokenAAddress, tokenBAddress, swapAmountIn, minAmountOut],
+            {
+                account: deployer.account,
+            },
         );
+        await waitForSuccess(publicClient, swapTxHash, "router swap");
 
-        const inputBalanceAfter = await inputToken.read.balanceOf([swapUser.account.address]);
-        const outputBalanceAfter = await outputToken.read.balanceOf([swapUser.account.address]);
+        const inputBalanceAfter = await tokenAFromUser.read.balanceOf([deployer.account.address]);
+        const outputBalanceAfter = await tokenBFromUser.read.balanceOf([deployer.account.address]);
 
         assert.equal(
             inputBalanceAfter,
-            inputBalanceBefore,
-            "input token balance must remain unchanged after the failed router swap",
+            inputBalanceBefore - swapAmountIn,
+            "input token balance must decrease by the swap amount",
         );
-        assert.equal(
-            outputBalanceAfter,
-            outputBalanceBefore,
-            "output token balance must remain unchanged after the failed router swap",
+        assert.ok(
+            outputBalanceAfter > outputBalanceBefore,
+            "output token balance must increase after the router swap",
         );
     });
 });
