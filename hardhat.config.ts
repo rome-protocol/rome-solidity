@@ -50,7 +50,20 @@ export default defineConfig({
       type: "http",
       chainType: "l1",
       url: "https://montispl-i.devnet.romeprotocol.xyz/",
-      accounts: [configVariable("MONTI_SPL_PRIVATE_KEY")]
+      accounts: [configVariable("MONTI_SPL_PRIVATE_KEY")],
+    },
+    // Env-var variants for non-interactive use (E2E scripts, CI)
+    sepolia_env: {
+      type: "http",
+      chainType: "l1",
+      url: process.env.SEPOLIA_RPC_URL ?? "https://rpc.sepolia.org",
+      accounts: process.env.SEPOLIA_PRIVATE_KEY ? [process.env.SEPOLIA_PRIVATE_KEY] : [],
+    },
+    monti_spl_env: {
+      type: "http",
+      chainType: "l1",
+      url: "https://montispl-i.devnet.romeprotocol.xyz/",
+      accounts: process.env.MONTI_SPL_PRIVATE_KEY ? [process.env.MONTI_SPL_PRIVATE_KEY] : [],
     },
     local: {
       type: "http",

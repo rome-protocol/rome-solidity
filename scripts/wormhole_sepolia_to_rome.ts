@@ -145,11 +145,13 @@ async function sendFromSepolia() {
     const payer = Keypair.fromSeed(Buffer.from(evmKey, "hex"));
     const connection = new Connection(SOLANA_DEVNET_RPC, "confirmed");
 
-    const bridgeAddr = process.env.BRIDGE || DEFAULT_BRIDGE;
-    const bridgeContract = await viem.getContractAt("RomeWormholeBridge", bridgeAddr);
-    // PDA must be derived for the *same* wallet on Rome EVM, which uses the same key
-    const pdaHex = await bridgeContract.read.bridgeUserPda() as `0x${string}`;
-    const pda = new PublicKey(Buffer.from(pdaHex.slice(2), "hex"));
+    // Derive PDA off-chain (the bridge contract is on Rome, not Sepolia).
+    // Seeds: ["rome_evm_user", <20-byte EVM address>], program: Rome EVM program
+    const ROME_EVM_PROGRAM = new PublicKey("RoLEbzVJF14CBRV5GXJ7kaihYC5gAKjjSfRCkDyLrVE");
+    const pda = PublicKey.findProgramAddressSync(
+        [Buffer.from("rome_evm_user"), Buffer.from(wallet.account.address.slice(2), "hex")],
+        ROME_EVM_PROGRAM,
+    )[0];
     console.log("Rome PDA:", pda.toBase58());
 
     const wrappedMint = deriveWrappedMintKey(TOKEN_BRIDGE, SEPOLIA_WORMHOLE_CHAIN_ID, SEPOLIA_WETH_PADDED);
