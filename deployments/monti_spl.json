@@ -80,5 +80,8 @@
         "adapter": "0xF0864572019c295407CF2ed46e6FD3615e10E19d"
       }
     ]
+  },
+  "RomeWormholeBridge": {
+    "address": "0x79f34fa78651efa9d24ff8ac526cbd9753e8fc1f"
   }
 }
