@@ -12,23 +12,12 @@ import {Convert} from "../convert.sol";
 contract ERC20Users {
     bytes32 public payer_salt = Convert.bytes_to_bytes32(bytes("PAYER"));
 
-    struct User {
-        bytes32 payer;
-        bytes32 owner;
-        bytes32 seed;
-    }
+    mapping (address => bytes32) private users;
 
-    mapping (address => User) private users;
-
-    function ensure_user(address user) public returns (User memory) {
-        User memory existing_user = users[user];
-        if (existing_user.owner == bytes32(0)) {
-            User memory new_user = User({
-                payer: RomeEVMAccount.get_payer(user, payer_salt),
-                owner: RomeEVMAccount.pda(user),
-                seed: payer_salt
-            });
-
+    function ensure_user(address user) public returns (bytes32) {
+        bytes32 existing_user = users[user];
+        if (existing_user == bytes32(0)) {
+            bytes32 new_user = RomeEVMAccount.get_payer(user, payer_salt);
             users[user] = new_user;
             return new_user;
         } else {
@@ -36,9 +25,9 @@ contract ERC20Users {
         }
     }
 
-    function get_user(address user) public view returns (User memory) {
-        User memory existing_user = users[user];
-        require(existing_user.owner != bytes32(0), "User does not exist");
+    function get_user(address user) public view returns (bytes32) {
+        bytes32 existing_user = users[user];
+        require(existing_user != bytes32(0), "User does not exist");
         return existing_user;
     }
 }
@@ -85,12 +74,12 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
      * @param user EVM address of the user for whom to create the associated token account
      * @return associated_account_address The address of the associated token account created or existing for the user
      */
-    function create_token_account(address user, ERC20Users.User memory initiator) public returns(bytes32) {
-        ERC20Users.User memory new_user = _users.ensure_user(user);
+    function create_token_account(address user, bytes32 payer) public returns(bytes32) {
+        bytes32 new_user = _users.ensure_user(user);
         (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data, bytes32 associated_account_address) = 
             AssociatedSplToken.create_associated_token_account(
-                initiator.payer,
-                new_user.owner,
+                payer,
+                new_user,
                 mint_id, 
                 system_program_id,
                 SplTokenLib.SPL_TOKEN_PROGRAM,
@@ -98,7 +87,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             );
         
         bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = initiator.seed;
+        seeds[0] = _users.payer_salt();
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
                 "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
@@ -117,10 +106,10 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
      * @return associated_account_address The address of the associated token account created or existing for the user
      */
     function ensure_token_account(address user) public returns (bytes32) {
-        ERC20Users.User memory initiator = _users.get_user(msg.sender);
+        bytes32 payer = _users.get_user(msg.sender);
         bytes32 token_account = _accounts[user];
         if (token_account == bytes32(0)) {
-            return create_token_account(user, initiator);
+            return create_token_account(user, payer);
         } else {
             return token_account;
         }
@@ -169,7 +158,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
      * @return success Returns true if the transfer was successful
      */
     function _transfer(
-        ERC20Users.User memory user,
+        bytes32 user,
         address from, 
         address to, 
         uint256 value
@@ -181,16 +170,18 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             get_token_account(from), 
             mint_id, 
             get_token_account(to),
-            user.owner,
+            user,
             new bytes32[](0),
             uint64(value), 
             decimals
         );
 
+        bytes32[] memory seeds = new bytes32[](1);
+        seeds[0] = _users.payer_salt();
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
-                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
-                program_id, accounts, data
+                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
+                program_id, accounts, data, seeds
             )
         );
 
@@ -199,10 +190,10 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     function allowance(address owner, address spender) public view virtual returns (uint256) {
-        ERC20Users.User memory spenderUser = _users.get_user(spender);
+        bytes32 spenderUser = _users.get_user(spender);
         (bytes32 delegate, uint64 delegated_amount) =
                             SplTokenLib.load_token_account_delegate(get_token_account(owner), cpi_program);
-        if (delegate != spenderUser.owner) {
+        if (delegate != spenderUser) {
             return uint256(0);
         }
 
@@ -210,23 +201,25 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     function approve(address spender, uint256 value) public virtual returns (bool) {
-        ERC20Users.User memory ownerUser = _users.get_user(msg.sender);
-        ERC20Users.User memory spenderUser = _users.get_user(spender);
+        bytes32 ownerUser = _users.get_user(msg.sender);
+        bytes32 spenderUser = _users.get_user(spender);
 
         (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) = 
         SplTokenLib.approve(
             SplTokenLib.SPL_TOKEN_PROGRAM,
             get_token_account(msg.sender),
-            spenderUser.owner,
-            ownerUser.owner,
+            spenderUser,
+            ownerUser,
             new bytes32[](0),
             uint64(value)
         );
 
+        bytes32[] memory seeds = new bytes32[](1);
+        seeds[0] = _users.payer_salt();
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
-                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
-                program_id, accounts, data
+                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
+                program_id, accounts, data, seeds
             )
         );
 
@@ -242,23 +235,25 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     function mint_to(address to, uint256 value) public virtual returns (bool) {
         require(value <= type(uint64).max, "Mint amount exceeds uint64");
 
-        ERC20Users.User memory user = _users.get_user(msg.sender);
+        bytes32 user = _users.get_user(msg.sender);
         bytes32 to_account = get_token_account(to);
         (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data)
             = SplTokenLib.mint_to_checked(
             SplTokenLib.SPL_TOKEN_PROGRAM,
             mint_id,
             to_account,
-            user.owner,
+            user,
             new bytes32[](0),
             uint64(value),
             decimals
         );
 
+        bytes32[] memory seeds = new bytes32[](1);
+        seeds[0] = _users.payer_salt();
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
-                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
-                program_id, accounts, data
+                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
+                program_id, accounts, data, seeds
             )
         );
 
@@ -266,4 +261,3 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         return true;
     }
 }
-

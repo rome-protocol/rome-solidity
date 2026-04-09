@@ -32,6 +32,8 @@ contract ERC20SPLFactory {
         uint64 nonce
     );
 
+    error MintAccountAlreadyExists(bytes32 mint);
+
     constructor(address _cpi_program) {
         cpi_program = _cpi_program;
         mpl_token_metadata_program = SystemProgram.base58_to_bytes32(bytes(METAPLEX_TOKEN_METADATA_PROGRAM_NAME));
@@ -114,6 +116,14 @@ contract ERC20SPLFactory {
         return (RomeEVMAccount.pda_with_salt(user, mintSeed), mintSeed);
     }
 
+    function _assert_mint_account_missing(bytes32 mint) internal view {
+        require(token_by_mint[mint] == address(0), "Token exists");
+        (uint64 lamports,,,,,) = ICrossProgramInvocation(cpi_program).account_info(mint);
+        if (lamports != 0) {
+            revert MintAccountAlreadyExists(mint);
+        }
+    }
+
     /**
      * Creates new SPL token mint.
      * Token mint is derived from the creator's address and their current nonce, so each creator can create multiple tokens 
@@ -124,12 +134,12 @@ contract ERC20SPLFactory {
      * @return (bytes32 mint) Address of the created SPL Token mint.
      */
     function create_token_mint() external returns (bytes32) {
-        ERC20Users.User memory user = users.get_user(msg.sender);
+        bytes32 user = users.get_user(msg.sender);
         (bytes32 mint, bytes32 mintSeed) = get_current_mint(msg.sender);
-        require(token_by_mint[mint] == address(0), "Token exists");
+        _assert_mint_account_missing(mint);
 
         SystemProgramLib.Instruction memory createMintAccount = SystemProgramLib.create_account(
-            user.payer,
+            user,
             mint,
             RomeEVMAccount.minimum_balance(SPL_MINT_LEN),
             SPL_MINT_LEN,
@@ -137,7 +147,7 @@ contract ERC20SPLFactory {
         );
 
         bytes32[] memory seeds = new bytes32[](2);
-        seeds[0] = user.seed;
+        seeds[0] = users.payer_salt();
         seeds[1] = mintSeed;
 
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
@@ -160,7 +170,7 @@ contract ERC20SPLFactory {
      * Initializes previously created mint account.
      */
     function init_token_mint(bytes32 mint) external {
-        ERC20Users.User memory user = users.get_user(msg.sender);
+        bytes32 user = users.get_user(msg.sender);
 
         (
             bytes32 tokenProgramId,
@@ -169,7 +179,7 @@ contract ERC20SPLFactory {
         ) = SplTokenLib.initialize_mint(
             SplTokenLib.SPL_TOKEN_PROGRAM,
             mint,
-            user.owner,
+            user,
             false,
             bytes32(0),
             DEFAULT_DECIMALS

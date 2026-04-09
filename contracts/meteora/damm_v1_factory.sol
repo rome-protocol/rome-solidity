@@ -9,6 +9,9 @@ import {SystemProgramLib} from "../system_program/system_program.sol";
 import {Convert} from "../convert.sol";
 
 contract MeteoraDAMMv1Factory {
+    bytes32 internal constant SDK_FEE_OWNER =
+        0x51ddfa7d35a812124a296e3ab8793edf00c4e7a2b5bd69fea85bd4f56aa89687;
+
     ERC20SPLFactory public immutable token_factory;
     mapping(address => mapping(address => address)) public getPool; // token0 => token1 => pool
     address[] public allPools;
@@ -76,10 +79,10 @@ contract MeteoraDAMMv1Factory {
         bool should_initialize,
         DAMMv1Lib.InitializeVaultAccounts memory accounts_
     ) {
-        ERC20Users.User memory initiator = ERC20Users(token_factory.users()).get_user(user);
+        bytes32 payer = ERC20Users(token_factory.users()).get_user(user);
         accounts_ = DAMMv1Lib.derive_initialize_vault_accounts(
             token_mint,
-            initiator.payer,
+            payer,
             prog_dynamic_vault,
             vault_override_network
         );
@@ -87,8 +90,8 @@ contract MeteoraDAMMv1Factory {
     }
 
     function initializeVaultIfMissing(bytes32 token_mint) external returns (bytes32 vault, bool initialized_) {
-        ERC20Users.User memory initiator = ERC20Users(token_factory.users()).get_user(msg.sender);
-        return _initialize_vault_if_missing(token_mint, initiator);
+        bytes32 payer = ERC20Users(token_factory.users()).get_user(msg.sender);
+        return _initialize_vault_if_missing(token_mint, payer);
     }
 
     function previewInitializePermissionlessPoolWithFeeTier(
@@ -107,14 +110,14 @@ contract MeteoraDAMMv1Factory {
         bool b_vault_exists,
         DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_
     ) {
-        ERC20Users.User memory initiator = ERC20Users(token_factory.users()).get_user(user);
+        bytes32 payer = ERC20Users(token_factory.users()).get_user(user);
         DAMMv1Lib.InitializePermissionlessPoolConfig memory config = _build_initialize_permissionless_pool_config(
             token_a_mint,
             token_b_mint,
             trade_fee_bps,
             token_a_amount,
             token_b_amount,
-            initiator
+            payer
         );
         accounts_ = DAMMv1Lib.derive_initialize_permissionless_pool_accounts(config);
         a_vault_exists = !_account_missing(accounts_.a_vault);
@@ -129,7 +132,7 @@ contract MeteoraDAMMv1Factory {
         uint64 token_a_amount,
         uint64 token_b_amount
     ) external returns (bytes32 pool_pubkey) {
-        ERC20Users.User memory initiator = ERC20Users(token_factory.users()).get_user(msg.sender);
+        bytes32 payer = ERC20Users(token_factory.users()).get_user(msg.sender);
         DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_ =
             _initialize_permissionless_pool_with_fee_tier(
                 token_a_mint,
@@ -137,34 +140,9 @@ contract MeteoraDAMMv1Factory {
                 trade_fee_bps,
                 token_a_amount,
                 token_b_amount,
-                initiator
+                payer
             );
         return accounts_.pool;
-    }
-
-    function processNewDynamicPool(
-        bytes32 token_a_mint,
-        bytes32 token_b_mint,
-        uint64 trade_fee_bps,
-        uint64 token_a_amount,
-        uint64 token_b_amount
-    ) external returns (bytes32 pool_pubkey, address wrapped_pool) {
-        ERC20Users.User memory initiator = ERC20Users(token_factory.users()).get_user(msg.sender);
-
-        _initialize_vault_if_missing(token_a_mint, initiator);
-        _initialize_vault_if_missing(token_b_mint, initiator);
-
-        DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_ =
-            _initialize_permissionless_pool_with_fee_tier(
-                token_a_mint,
-                token_b_mint,
-                trade_fee_bps,
-                token_a_amount,
-                token_b_amount,
-                initiator
-            );
-        pool_pubkey = accounts_.pool;
-        wrapped_pool = _register_pool(pool_pubkey);
     }
 
     function createPermissionlessPoolWithFeeTier(
@@ -174,9 +152,7 @@ contract MeteoraDAMMv1Factory {
         uint64 token_a_amount,
         uint64 token_b_amount
     ) external returns (bytes32 pool_pubkey) {
-        ERC20Users.User memory initiator = ERC20Users(token_factory.users()).get_user(msg.sender);
-        _initialize_vault_if_missing(token_a_mint, initiator);
-        _initialize_vault_if_missing(token_b_mint, initiator);
+        bytes32 payer = ERC20Users(token_factory.users()).get_user(msg.sender);
         DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_ =
             _initialize_permissionless_pool_with_fee_tier(
                 token_a_mint,
@@ -184,7 +160,7 @@ contract MeteoraDAMMv1Factory {
                 trade_fee_bps,
                 token_a_amount,
                 token_b_amount,
-                initiator
+                payer
             );
         pool_pubkey = accounts_.pool;
     }
@@ -195,14 +171,14 @@ contract MeteoraDAMMv1Factory {
 
     function _initialize_vault_if_missing(
         bytes32 token_mint,
-        ERC20Users.User memory initiator
+        bytes32 payer
     )
     internal
     returns (bytes32 vault, bool initialized_)
     {
         DAMMv1Lib.InitializeVaultAccounts memory accounts_ = DAMMv1Lib.derive_initialize_vault_accounts(
             token_mint,
-            initiator.payer,
+            payer,
             prog_dynamic_vault,
             vault_override_network
         );
@@ -216,7 +192,7 @@ contract MeteoraDAMMv1Factory {
             accounts_,
             prog_dynamic_vault
         );
-        _invoke_signed(ix, initiator.seed);
+        _invoke_signed(ix, token_factory.users().payer_salt());
         return (vault, true);
     }
 
@@ -226,7 +202,7 @@ contract MeteoraDAMMv1Factory {
         uint64 trade_fee_bps,
         uint64 token_a_amount,
         uint64 token_b_amount,
-        ERC20Users.User memory initiator
+        bytes32 payer
     )
     internal
     returns (DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_)
@@ -237,7 +213,7 @@ contract MeteoraDAMMv1Factory {
             trade_fee_bps,
             token_a_amount,
             token_b_amount,
-            initiator
+            payer
         );
         accounts_ = DAMMv1Lib.derive_initialize_permissionless_pool_accounts(config);
 
@@ -254,7 +230,7 @@ contract MeteoraDAMMv1Factory {
                 config.token_b_amount,
                 prog_dynamic_amm
             );
-        _invoke_signed(ix, initiator.seed);
+        _invoke_signed(ix, token_factory.users().payer_salt());
     }
 
     function _build_initialize_permissionless_pool_config(
@@ -263,7 +239,7 @@ contract MeteoraDAMMv1Factory {
         uint64 trade_fee_bps,
         uint64 token_a_amount,
         uint64 token_b_amount,
-        ERC20Users.User memory initiator
+        bytes32 payer
     )
     internal
     view
@@ -276,9 +252,8 @@ contract MeteoraDAMMv1Factory {
             trade_fee_bps: trade_fee_bps,
             token_a_amount: token_a_amount,
             token_b_amount: token_b_amount,
-            payer: initiator.payer,
-            owner: initiator.owner,
-            fee_owner: bytes32(0),
+            payer: payer,
+            fee_owner: SDK_FEE_OWNER,
             dynamic_vault_program: prog_dynamic_vault,
             dynamic_amm_program: prog_dynamic_amm,
             override_network: vault_override_network

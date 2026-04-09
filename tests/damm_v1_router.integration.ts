@@ -341,7 +341,7 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
 
         poolPubkey = previewPool[3].pool;
 
-        const createPoolTxHash = await factoryFromUser.write.processNewDynamicPool(
+        const createPoolTxHash = await factoryFromUser.write.createPermissionlessPoolWithFeeTier(
             [
                 tokenAMint,
                 tokenBMint,
@@ -353,12 +353,17 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
                 account: deployer.account,
             },
         );
-        await waitForSuccess(publicClient, createPoolTxHash, "processNewDynamicPool");
+        await waitForSuccess(publicClient, createPoolTxHash, "createPermissionlessPoolWithFeeTier");
 
         await assertSolanaAccountExists(cpiProgram, poolPubkey, "damm v1 pool");
         await assertSolanaAccountExists(cpiProgram, previewPool[3].lp_mint, "damm v1 pool lp mint");
         await assertSolanaAccountExists(cpiProgram, previewPool[3].a_vault_lp, "damm v1 pool vault A lp");
         await assertSolanaAccountExists(cpiProgram, previewPool[3].b_vault_lp, "damm v1 pool vault B lp");
+
+        const addPoolTxHash = await factoryFromUser.write.addPool([poolPubkey], {
+            account: deployer.account,
+        });
+        await waitForSuccess(publicClient, addPoolTxHash, "addPool");
 
         wrappedPoolAddress = await factory.read.getPool([tokenAAddress, tokenBAddress]);
         assert.notEqual(wrappedPoolAddress, zeroAddress, "wrapped pool must be registered");

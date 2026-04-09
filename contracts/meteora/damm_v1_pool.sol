@@ -161,7 +161,6 @@ library DAMMv1Lib {
         uint64 token_a_amount;
         uint64 token_b_amount;
         bytes32 payer;
-        bytes32 owner;
         bytes32 fee_owner;
         bytes32 dynamic_vault_program;
         bytes32 dynamic_amm_program;
@@ -438,9 +437,9 @@ library DAMMv1Lib {
         accounts_.b_vault_lp_mint = derived.b_vault_lp_mint;
         accounts_.a_vault_lp = derived.a_vault_lp;
         accounts_.b_vault_lp = derived.b_vault_lp;
-        accounts_.payer_token_a = _derive_associated_token_account(config.owner, config.token_a_mint);
-        accounts_.payer_token_b = _derive_associated_token_account(config.owner, config.token_b_mint);
-        accounts_.payer_pool_lp = _derive_associated_token_account(config.owner, derived.lp_mint);
+        accounts_.payer_token_a = _derive_associated_token_account(config.payer, config.token_a_mint);
+        accounts_.payer_token_b = _derive_associated_token_account(config.payer, config.token_b_mint);
+        accounts_.payer_pool_lp = _derive_associated_token_account(config.payer, derived.lp_mint);
         accounts_.protocol_token_a_fee = derived.protocol_token_a_fee;
         accounts_.protocol_token_b_fee = derived.protocol_token_b_fee;
         accounts_.payer = config.payer;
@@ -1079,7 +1078,7 @@ contract ERC20DAMMv1Pool {
     ) external {
         bytes32 tokenA_account = tokenA.get_token_account(msg.sender);
         bytes32 tokenB_account = tokenB.get_token_account(msg.sender);
-        bytes32 user = users.get_user(msg.sender).owner;
+        bytes32 user = users.get_user(msg.sender);
 
         DAMMv1Pool.PoolToken in_token = DAMMv1Pool.PoolToken.TokenA;
         bytes32 source_account = tokenA_account;
