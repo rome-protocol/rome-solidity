@@ -26,6 +26,10 @@ function isHex32(value: string): boolean {
     return /^0x[0-9a-fA-F]{64}$/.test(value);
 }
 
+function isZeroBytes32(value: string): boolean {
+    return /^0x0{64}$/i.test(value);
+}
+
 async function waitForSuccess(
     publicClient: {
         waitForTransactionReceipt: (
@@ -56,6 +60,25 @@ async function ensureTokenAccount(token: any, publicClient: any, owner: any, lab
         account: owner.account,
     });
     await waitForSuccess(publicClient, txHash, label);
+}
+
+async function assertSolanaAccountExists(
+    cpiProgram: any,
+    pubkey: `0x${string}` | string,
+    label: string,
+): Promise<void> {
+    const info = await cpiProgram.read.account_info([pubkey]);
+    assert.ok(info[0] > 0n, `${label} must exist on Solana`);
+}
+
+async function assertSolanaProgramExists(
+    cpiProgram: any,
+    pubkey: `0x${string}` | string,
+    label: string,
+): Promise<void> {
+    const info = await cpiProgram.read.account_info([pubkey]);
+    assert.ok(info[0] > 0n, `${label} program account must exist on Solana`);
+    assert.equal(info[4], true, `${label} program account must be executable`);
 }
 
 async function createSplToken(args: {
@@ -129,6 +152,13 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
     let tokenAFromUser: any;
     let tokenBFromUser: any;
     let userRecord: any;
+    let userTokenAccountA: `0x${string}`;
+    let userTokenAccountB: `0x${string}`;
+    let progDynamicVault: `0x${string}`;
+    let progDynamicAmm: `0x${string}`;
+    let previewVaultA: any;
+    let previewVaultB: any;
+    let previewPool: any;
 
     let poolPubkey: `0x${string}`;
     let wrappedPoolAddress: `0x${string}`;
@@ -211,8 +241,17 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
 
         const cpiProgramAddress = await factory.read.cpi_program();
         cpiProgram = await viem.getContractAt("ICrossProgramInvocation", cpiProgramAddress);
-        const payerAccountInfo = await cpiProgram.read.account_info([userRecord.payer]);
-        assert.ok(payerAccountInfo[0] > 0n, "User.payer Solana account must exist and be funded");
+        progDynamicVault = await factory.read.prog_dynamic_vault();
+        progDynamicAmm = await factory.read.prog_dynamic_amm();
+
+        assert.ok(isHex32(progDynamicVault), "prog_dynamic_vault must be bytes32");
+        assert.ok(isHex32(progDynamicAmm), "prog_dynamic_amm must be bytes32");
+        assert.ok(!isZeroBytes32(progDynamicVault), "prog_dynamic_vault must not be zero");
+        assert.ok(!isZeroBytes32(progDynamicAmm), "prog_dynamic_amm must not be zero");
+
+        await assertSolanaAccountExists(cpiProgram, userRecord.payer, "User.payer");
+        await assertSolanaProgramExists(cpiProgram, progDynamicVault, "prog_dynamic_vault");
+        await assertSolanaProgramExists(cpiProgram, progDynamicAmm, "prog_dynamic_amm");
 
         const uniqueSuffix = `${Date.now()}${Math.floor(Math.random() * 1_000_000)
             .toString()
@@ -242,13 +281,24 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
         tokenAFromUser = tokenA.token;
         tokenBFromUser = tokenB.token;
 
+        await assertSolanaAccountExists(cpiProgram, tokenAMint, "token A mint");
+        await assertSolanaAccountExists(cpiProgram, tokenBMint, "token B mint");
+
         await ensureTokenAccount(tokenAFromUser, publicClient, deployer, "ensure token A account");
         await ensureTokenAccount(tokenBFromUser, publicClient, deployer, "ensure token B account");
 
-        const previewVaultA = await factory.read.previewInitializeVault([tokenAMint, deployer.account.address]);
-        const previewVaultB = await factory.read.previewInitializeVault([tokenBMint, deployer.account.address]);
+        userTokenAccountA = await tokenAFromUser.read.get_token_account([deployer.account.address]);
+        userTokenAccountB = await tokenBFromUser.read.get_token_account([deployer.account.address]);
+
+        await assertSolanaAccountExists(cpiProgram, userTokenAccountA, "user token A account");
+        await assertSolanaAccountExists(cpiProgram, userTokenAccountB, "user token B account");
+
+        previewVaultA = await factory.read.previewInitializeVault([tokenAMint, deployer.account.address]);
+        previewVaultB = await factory.read.previewInitializeVault([tokenBMint, deployer.account.address]);
         assert.equal(previewVaultA[1].payer.toLowerCase(), userRecord.payer.toLowerCase(), "vault A payer must match User.payer");
         assert.equal(previewVaultB[1].payer.toLowerCase(), userRecord.payer.toLowerCase(), "vault B payer must match User.payer");
+        assert.equal(previewVaultA[1].token_mint.toLowerCase(), tokenAMint.toLowerCase(), "vault A token mint must match");
+        assert.equal(previewVaultB[1].token_mint.toLowerCase(), tokenBMint.toLowerCase(), "vault B token mint must match");
 
         const mintTokenATxHash = await tokenAFromUser.write.mint_to([deployer.account.address, mintAmount], {
             account: deployer.account,
@@ -270,13 +320,28 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
         });
         await waitForSuccess(publicClient, initVaultBTxHash, "initialize vault B");
 
-        poolPubkey = await factory.read.derivePermissionlessPoolKeyWithFeeTier([
+        await assertSolanaAccountExists(cpiProgram, previewVaultA[1].vault, "vault A");
+        await assertSolanaAccountExists(cpiProgram, previewVaultA[1].token_vault, "vault A token vault");
+        await assertSolanaAccountExists(cpiProgram, previewVaultA[1].lp_mint, "vault A lp mint");
+        await assertSolanaAccountExists(cpiProgram, previewVaultB[1].vault, "vault B");
+        await assertSolanaAccountExists(cpiProgram, previewVaultB[1].token_vault, "vault B token vault");
+        await assertSolanaAccountExists(cpiProgram, previewVaultB[1].lp_mint, "vault B lp mint");
+
+        previewPool = await factory.read.previewInitializePermissionlessPoolWithFeeTier([
             tokenAMint,
             tokenBMint,
             tradeFeeBps,
+            poolTokenAAmount,
+            poolTokenBAmount,
+            deployer.account.address,
         ]);
+        assert.equal(previewPool[0], false, "pool must not exist before initialization");
+        assert.equal(previewPool[1], true, "vault A must exist before pool initialization");
+        assert.equal(previewPool[2], true, "vault B must exist before pool initialization");
 
-        const createPoolTxHash = await factoryFromUser.write.createPermissionlessPoolWithFeeTier(
+        poolPubkey = previewPool[3].pool;
+
+        const createPoolTxHash = await factoryFromUser.write.processNewDynamicPool(
             [
                 tokenAMint,
                 tokenBMint,
@@ -288,28 +353,15 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
                 account: deployer.account,
             },
         );
-        await waitForSuccess(publicClient, createPoolTxHash, "create permissionless pool");
+        await waitForSuccess(publicClient, createPoolTxHash, "processNewDynamicPool");
 
-        const addPoolSimulation = await factoryFromUser.simulate.addPool([poolPubkey], {
-            account: deployer.account,
-        });
-        const rawPoolAddress = getAddress(addPoolSimulation.result);
+        await assertSolanaAccountExists(cpiProgram, poolPubkey, "damm v1 pool");
+        await assertSolanaAccountExists(cpiProgram, previewPool[3].lp_mint, "damm v1 pool lp mint");
+        await assertSolanaAccountExists(cpiProgram, previewPool[3].a_vault_lp, "damm v1 pool vault A lp");
+        await assertSolanaAccountExists(cpiProgram, previewPool[3].b_vault_lp, "damm v1 pool vault B lp");
 
-        const addPoolTxHash = await factoryFromUser.write.addPool(addPoolSimulation.request);
-        await waitForSuccess(publicClient, addPoolTxHash, "register wrapped pool");
-
-        const poolCount = await factory.read.allPoolsLength();
-        wrappedPoolAddress = getAddress(await factory.read.allPools([poolCount - 1n]));
-        assert.notEqual(rawPoolAddress, zeroAddress, "raw pool address must not be zero");
-
-        console.log("Testing MeteoraDAMMv1Factory at:", factoryAddress);
-        console.log("Testing MeteoraDAMMv1Router at:", routerAddress);
-        console.log("Using ERC20SPLFactory at:", erc20SplFactoryAddress);
-        console.log("Created token A mint:", tokenAMint);
-        console.log("Created token B mint:", tokenBMint);
-        console.log("Created pool pubkey:", poolPubkey);
-        console.log("Created wrapped pool:", wrappedPoolAddress);
-        console.log("Swap user:", deployer.account.address);
+        wrappedPoolAddress = await factory.read.getPool([tokenAAddress, tokenBAddress]);
+        assert.notEqual(wrappedPoolAddress, zeroAddress, "wrapped pool must be registered");
     });
 
     it("creates two SPL_ERC20 tokens and registers a wrapped pool", async function () {
@@ -338,6 +390,8 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
         const tokenAccountB = await tokenBFromUser.read.get_token_account([deployer.account.address]);
         assert.ok(isHex32(tokenAccountA), "user token A account must exist");
         assert.ok(isHex32(tokenAccountB), "user token B account must exist");
+        assert.equal(tokenAccountA.toLowerCase(), userTokenAccountA.toLowerCase(), "cached token A account must match");
+        assert.equal(tokenAccountB.toLowerCase(), userTokenAccountB.toLowerCase(), "cached token B account must match");
     });
 
     it("executes swapExactTokensForTokens on the router", async function () {

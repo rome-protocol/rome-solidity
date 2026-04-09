@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {DAMMv1Lib, DAMMv1Pool, ERC20DAMMv1Pool} from "./damm_v1_pool.sol";
 import {ERC20SPLFactory} from "../erc20spl/erc20spl_factory.sol";
 import {ERC20Users} from "../erc20spl/erc20spl.sol";
+import {ICrossProgramInvocation} from "../interface.sol";
 import {SystemProgramLib} from "../system_program/system_program.sol";
 import {Convert} from "../convert.sol";
 
@@ -76,37 +77,18 @@ contract MeteoraDAMMv1Factory {
         DAMMv1Lib.InitializeVaultAccounts memory accounts_
     ) {
         ERC20Users.User memory initiator = ERC20Users(token_factory.users()).get_user(user);
-        (should_initialize, , accounts_) = DAMMv1Lib.prepare_initialize_vault(
+        accounts_ = DAMMv1Lib.derive_initialize_vault_accounts(
             token_mint,
             initiator.payer,
             prog_dynamic_vault,
-            vault_override_network,
-            cpi_program
+            vault_override_network
         );
+        should_initialize = _account_missing(accounts_.vault);
     }
 
     function initializeVaultIfMissing(bytes32 token_mint) external returns (bytes32 vault, bool initialized_) {
         ERC20Users.User memory initiator = ERC20Users(token_factory.users()).get_user(msg.sender);
-
-        (
-            bool should_initialize,
-            SystemProgramLib.Instruction memory ix,
-            DAMMv1Lib.InitializeVaultAccounts memory accounts_
-        ) = DAMMv1Lib.prepare_initialize_vault(
-            token_mint,
-            initiator.payer,
-            prog_dynamic_vault,
-            vault_override_network,
-            cpi_program
-        );
-
-        vault = accounts_.vault;
-        if (!should_initialize) {
-            return (vault, false);
-        }
-
-        _invoke_signed(ix, initiator.seed);
-        return (vault, true);
+        return _initialize_vault_if_missing(token_mint, initiator);
     }
 
     function previewInitializePermissionlessPoolWithFeeTier(
@@ -126,26 +108,63 @@ contract MeteoraDAMMv1Factory {
         DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_
     ) {
         ERC20Users.User memory initiator = ERC20Users(token_factory.users()).get_user(user);
-        DAMMv1Lib.InitializePermissionlessPoolConfig memory config =
-            DAMMv1Lib.InitializePermissionlessPoolConfig({
-                curve_type: DAMMv1Lib.CurveType.ConstantProduct,
-                token_a_mint: token_a_mint,
-                token_b_mint: token_b_mint,
-                trade_fee_bps: trade_fee_bps,
-                token_a_amount: token_a_amount,
-                token_b_amount: token_b_amount,
-                payer: initiator.payer,
-                owner: initiator.owner,
-                fee_owner: bytes32(0),
-                dynamic_vault_program: prog_dynamic_vault,
-                dynamic_amm_program: prog_dynamic_amm,
-                override_network: vault_override_network
-            });
-        (pool_exists, a_vault_exists, b_vault_exists, , accounts_) =
-            DAMMv1Lib.prepare_initialize_permissionless_pool_with_fee_tier(
-                config,
-                cpi_program
+        DAMMv1Lib.InitializePermissionlessPoolConfig memory config = _build_initialize_permissionless_pool_config(
+            token_a_mint,
+            token_b_mint,
+            trade_fee_bps,
+            token_a_amount,
+            token_b_amount,
+            initiator
+        );
+        accounts_ = DAMMv1Lib.derive_initialize_permissionless_pool_accounts(config);
+        a_vault_exists = !_account_missing(accounts_.a_vault);
+        b_vault_exists = !_account_missing(accounts_.b_vault);
+        pool_exists = !_account_missing(accounts_.pool);
+    }
+
+    function initializePermissionlessPoolWithFeeTier(
+        bytes32 token_a_mint,
+        bytes32 token_b_mint,
+        uint64 trade_fee_bps,
+        uint64 token_a_amount,
+        uint64 token_b_amount
+    ) external returns (bytes32 pool_pubkey) {
+        ERC20Users.User memory initiator = ERC20Users(token_factory.users()).get_user(msg.sender);
+        DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_ =
+            _initialize_permissionless_pool_with_fee_tier(
+                token_a_mint,
+                token_b_mint,
+                trade_fee_bps,
+                token_a_amount,
+                token_b_amount,
+                initiator
             );
+        return accounts_.pool;
+    }
+
+    function processNewDynamicPool(
+        bytes32 token_a_mint,
+        bytes32 token_b_mint,
+        uint64 trade_fee_bps,
+        uint64 token_a_amount,
+        uint64 token_b_amount
+    ) external returns (bytes32 pool_pubkey, address wrapped_pool) {
+        ERC20Users.User memory initiator = ERC20Users(token_factory.users()).get_user(msg.sender);
+
+        _initialize_vault_if_missing(token_a_mint, initiator);
+        _initialize_vault_if_missing(token_b_mint, initiator);
+
+        DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_ =
+            _initialize_permissionless_pool_with_fee_tier(
+                token_a_mint,
+                token_b_mint,
+                trade_fee_bps,
+                token_a_amount,
+                token_b_amount,
+                initiator
+            );
+        pool_pubkey = accounts_.pool;
+        wrapped_pool = _register_pool(pool_pubkey);
     }
 
     function createPermissionlessPoolWithFeeTier(
@@ -156,43 +175,119 @@ contract MeteoraDAMMv1Factory {
         uint64 token_b_amount
     ) external returns (bytes32 pool_pubkey) {
         ERC20Users.User memory initiator = ERC20Users(token_factory.users()).get_user(msg.sender);
-        DAMMv1Lib.InitializePermissionlessPoolConfig memory config =
-            DAMMv1Lib.InitializePermissionlessPoolConfig({
-                curve_type: DAMMv1Lib.CurveType.ConstantProduct,
-                token_a_mint: token_a_mint,
-                token_b_mint: token_b_mint,
-                trade_fee_bps: trade_fee_bps,
-                token_a_amount: token_a_amount,
-                token_b_amount: token_b_amount,
-                payer: initiator.payer,
-                owner: initiator.owner,
-                fee_owner: bytes32(0),
-                dynamic_vault_program: prog_dynamic_vault,
-                dynamic_amm_program: prog_dynamic_amm,
-                override_network: vault_override_network
-            });
-
-        (
-            bool pool_exists,
-            bool a_vault_exists,
-            bool b_vault_exists,
-            SystemProgramLib.Instruction memory ix,
-            DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_
-        ) = DAMMv1Lib.prepare_initialize_permissionless_pool_with_fee_tier(
-            config,
-            cpi_program
-        );
-
-        require(a_vault_exists, "A_VAULT_MISSING");
-        require(b_vault_exists, "B_VAULT_MISSING");
-        require(!pool_exists, "POOL_EXISTS");
-
-        _invoke_signed(ix, initiator.seed);
+        _initialize_vault_if_missing(token_a_mint, initiator);
+        _initialize_vault_if_missing(token_b_mint, initiator);
+        DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_ =
+            _initialize_permissionless_pool_with_fee_tier(
+                token_a_mint,
+                token_b_mint,
+                trade_fee_bps,
+                token_a_amount,
+                token_b_amount,
+                initiator
+            );
         pool_pubkey = accounts_.pool;
     }
 
     function addPool(bytes32 pubkey) external returns (address pool) {
         return _register_pool(pubkey);
+    }
+
+    function _initialize_vault_if_missing(
+        bytes32 token_mint,
+        ERC20Users.User memory initiator
+    )
+    internal
+    returns (bytes32 vault, bool initialized_)
+    {
+        DAMMv1Lib.InitializeVaultAccounts memory accounts_ = DAMMv1Lib.derive_initialize_vault_accounts(
+            token_mint,
+            initiator.payer,
+            prog_dynamic_vault,
+            vault_override_network
+        );
+
+        vault = accounts_.vault;
+        if (!_account_missing(vault)) {
+            return (vault, false);
+        }
+
+        SystemProgramLib.Instruction memory ix = DAMMv1Lib.build_initialize_vault_instruction(
+            accounts_,
+            prog_dynamic_vault
+        );
+        _invoke_signed(ix, initiator.seed);
+        return (vault, true);
+    }
+
+    function _initialize_permissionless_pool_with_fee_tier(
+        bytes32 token_a_mint,
+        bytes32 token_b_mint,
+        uint64 trade_fee_bps,
+        uint64 token_a_amount,
+        uint64 token_b_amount,
+        ERC20Users.User memory initiator
+    )
+    internal
+    returns (DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_)
+    {
+        DAMMv1Lib.InitializePermissionlessPoolConfig memory config = _build_initialize_permissionless_pool_config(
+            token_a_mint,
+            token_b_mint,
+            trade_fee_bps,
+            token_a_amount,
+            token_b_amount,
+            initiator
+        );
+        accounts_ = DAMMv1Lib.derive_initialize_permissionless_pool_accounts(config);
+
+        require(!_account_missing(accounts_.a_vault), "A_VAULT_MISSING");
+        require(!_account_missing(accounts_.b_vault), "B_VAULT_MISSING");
+        require(_account_missing(accounts_.pool), "POOL_EXISTS");
+
+        SystemProgramLib.Instruction memory ix =
+            DAMMv1Lib.build_initialize_permissionless_pool_with_fee_tier_instruction(
+                accounts_,
+                config.curve_type,
+                config.trade_fee_bps,
+                config.token_a_amount,
+                config.token_b_amount,
+                prog_dynamic_amm
+            );
+        _invoke_signed(ix, initiator.seed);
+    }
+
+    function _build_initialize_permissionless_pool_config(
+        bytes32 token_a_mint,
+        bytes32 token_b_mint,
+        uint64 trade_fee_bps,
+        uint64 token_a_amount,
+        uint64 token_b_amount,
+        ERC20Users.User memory initiator
+    )
+    internal
+    view
+    returns (DAMMv1Lib.InitializePermissionlessPoolConfig memory)
+    {
+        return DAMMv1Lib.InitializePermissionlessPoolConfig({
+            curve_type: DAMMv1Lib.CurveType.ConstantProduct,
+            token_a_mint: token_a_mint,
+            token_b_mint: token_b_mint,
+            trade_fee_bps: trade_fee_bps,
+            token_a_amount: token_a_amount,
+            token_b_amount: token_b_amount,
+            payer: initiator.payer,
+            owner: initiator.owner,
+            fee_owner: bytes32(0),
+            dynamic_vault_program: prog_dynamic_vault,
+            dynamic_amm_program: prog_dynamic_amm,
+            override_network: vault_override_network
+        });
+    }
+
+    function _account_missing(bytes32 pubkey) internal view returns (bool) {
+        (uint64 lamports,,,,,) = ICrossProgramInvocation(cpi_program).account_info(pubkey);
+        return lamports == 0;
     }
 
     function _register_pool(bytes32 pubkey) internal returns (address pool) {

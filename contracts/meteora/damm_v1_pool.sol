@@ -16,6 +16,9 @@ library DAMMv1Lib {
     0xccf802d4cccc84d7fb21b5f73b49d81a16c5b4c88ee32394e1c91d3588cc4080; // Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB
     bytes32 public constant PROG_DYNAMIC_VAULT =
     0x0fbfe8846d685cbdc62cca7e04c7e8f68dcc313ab31277e2e0112a2ec0e052e5; // 24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi
+    bytes32 internal constant DYNAMIC_VAULT_BASE_KEY =
+    0xf569dfde202333598dc7d74b1d94b8624779c1f82f1e25a65b6e4ef8a3be9b9b; // HWzXGcGHy4tcpYfaRDCyLNzXqBTv3E6BttpCH2vJxArv
+
     uint256 internal constant POOL_PREFIX_MIN_LEN = 379;
     uint256 internal constant VAULT_MIN_LEN = 1197;
     uint64 internal constant DEFAULT_TRADE_FEE_BPS = 25;
@@ -24,8 +27,6 @@ library DAMMv1Lib {
     bytes internal constant DYNAMIC_VAULT_LP_MINT_PREFIX = "lp_mint";
     bytes internal constant DYNAMIC_AMM_LP_MINT_PREFIX = "lp_mint";
     bytes internal constant DYNAMIC_AMM_PROTOCOL_FEE_PREFIX = "fee";
-    bytes32 internal constant DYNAMIC_VAULT_BASE_KEY =
-        0xf569dfde202333598dc7d74b1d94b8624779c1f82f1e25a65b6e4ef8a3be9b9b; // HWzXGcGHy4tcpYfaRDCyLNzXqBTv3E6BttpCH2vJxArv
 
     error InvalidVaultDataLength(uint256 actual, uint256 expected);
     error InvalidPoolDataLength(uint256 actual, uint256 expected);
@@ -165,6 +166,22 @@ library DAMMv1Lib {
         bytes32 dynamic_vault_program;
         bytes32 dynamic_amm_program;
         VaultOverrideNetwork override_network;
+    }
+
+    struct PermissionlessPoolDerivedKeys {
+        bytes32 pool;
+        bytes32 lp_mint;
+        bytes32 a_vault;
+        bytes32 b_vault;
+        bytes32 a_token_vault;
+        bytes32 b_token_vault;
+        bytes32 a_vault_lp_mint;
+        bytes32 b_vault_lp_mint;
+        bytes32 a_vault_lp;
+        bytes32 b_vault_lp;
+        bytes32 protocol_token_a_fee;
+        bytes32 protocol_token_b_fee;
+        bytes32 mint_metadata;
     }
 
     // Parses DAMMv1 pool
@@ -314,17 +331,17 @@ library DAMMv1Lib {
         return lpMintKey;
     }
 
-    function derive_vault_lp_key(bytes32 vault_lp_mint, bytes32 pool)
+    function derive_vault_lp_key(bytes32 vault, bytes32 pool, bytes32 dynamic_amm_program)
     internal
     pure
     returns (bytes32)
     {
-        return AssociatedSplToken.get_associated_token_address_with_program_id(
-            pool,
-            vault_lp_mint,
-            SplTokenLib.SPL_TOKEN_PROGRAM,
-            AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
-        );
+        ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](2);
+        seeds[0] = ISystemProgram.Seed(abi.encodePacked(vault));
+        seeds[1] = ISystemProgram.Seed(abi.encodePacked(pool));
+
+        (bytes32 vaultLpKey,) = SystemProgram.find_program_address(dynamic_amm_program, seeds);
+        return vaultLpKey;
     }
 
     function derive_protocol_fee_key(bytes32 token_mint, bytes32 pool, bytes32 dynamic_amm_program)
@@ -376,71 +393,6 @@ library DAMMv1Lib {
         return lpMintKey;
     }
 
-    function prepare_initialize_vault(
-        bytes32 token_mint,
-        bytes32 payer,
-        bytes32 dynamic_vault_program,
-        VaultOverrideNetwork override_network,
-        address cpi_program
-    )
-    internal
-    view
-    returns (
-        bool should_initialize,
-        SystemProgramLib.Instruction memory ix,
-        InitializeVaultAccounts memory accounts_
-    )
-    {
-        accounts_ = derive_initialize_vault_accounts(
-            token_mint,
-            payer,
-            dynamic_vault_program,
-            override_network
-        );
-
-        (uint64 lamports,,,,,) = ICrossProgramInvocation(cpi_program).account_info(accounts_.vault);
-        if (lamports == 0) {
-            should_initialize = true;
-            ix = build_initialize_vault_instruction(accounts_, dynamic_vault_program);
-        }
-    }
-
-    function prepare_initialize_permissionless_pool_with_fee_tier(
-        InitializePermissionlessPoolConfig memory config,
-        address cpi_program
-    )
-    internal
-    view
-    returns (
-        bool pool_exists,
-        bool a_vault_exists,
-        bool b_vault_exists,
-        SystemProgramLib.Instruction memory ix,
-        InitializePermissionlessPoolAccounts memory accounts_
-    )
-    {
-        accounts_ = derive_initialize_permissionless_pool_accounts(config);
-
-        (uint64 aVaultLamports,,,,,) = ICrossProgramInvocation(cpi_program).account_info(accounts_.a_vault);
-        (uint64 bVaultLamports,,,,,) = ICrossProgramInvocation(cpi_program).account_info(accounts_.b_vault);
-        (uint64 poolLamports,,,,,) = ICrossProgramInvocation(cpi_program).account_info(accounts_.pool);
-
-        a_vault_exists = aVaultLamports > 0;
-        b_vault_exists = bVaultLamports > 0;
-        pool_exists = poolLamports > 0;
-
-        if (!pool_exists) {
-            ix = build_initialize_permissionless_pool_with_fee_tier_instruction(
-                accounts_,
-                config.curve_type,
-                config.trade_fee_bps,
-                config.token_a_amount,
-                config.token_b_amount,
-                config.dynamic_amm_program
-            );
-        }
-    }
-
     function derive_initialize_vault_accounts(
         bytes32 token_mint,
         bytes32 payer,
@@ -472,74 +424,102 @@ library DAMMv1Lib {
     pure
     returns (InitializePermissionlessPoolAccounts memory accounts_)
     {
-        bytes32 pool = derive_permissionless_pool_key_with_fee_tier(
+        PermissionlessPoolDerivedKeys memory derived = _derive_permissionless_pool_keys(config);
+
+        accounts_.pool = derived.pool;
+        accounts_.lp_mint = derived.lp_mint;
+        accounts_.token_a_mint = config.token_a_mint;
+        accounts_.token_b_mint = config.token_b_mint;
+        accounts_.a_vault = derived.a_vault;
+        accounts_.b_vault = derived.b_vault;
+        accounts_.a_token_vault = derived.a_token_vault;
+        accounts_.b_token_vault = derived.b_token_vault;
+        accounts_.a_vault_lp_mint = derived.a_vault_lp_mint;
+        accounts_.b_vault_lp_mint = derived.b_vault_lp_mint;
+        accounts_.a_vault_lp = derived.a_vault_lp;
+        accounts_.b_vault_lp = derived.b_vault_lp;
+        accounts_.payer_token_a = _derive_associated_token_account(config.owner, config.token_a_mint);
+        accounts_.payer_token_b = _derive_associated_token_account(config.owner, config.token_b_mint);
+        accounts_.payer_pool_lp = _derive_associated_token_account(config.owner, derived.lp_mint);
+        accounts_.protocol_token_a_fee = derived.protocol_token_a_fee;
+        accounts_.protocol_token_b_fee = derived.protocol_token_b_fee;
+        accounts_.payer = config.payer;
+        accounts_.fee_owner = config.fee_owner;
+        accounts_.rent = SystemProgramLib.RENT_ID;
+        accounts_.vault_program = config.dynamic_vault_program;
+        accounts_.token_program = SplTokenLib.SPL_TOKEN_PROGRAM;
+        accounts_.associated_token_program = AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID;
+        accounts_.system_program = SystemProgramLib.PROGRAM_ID;
+        accounts_.metadata_program = MplTokenMetadataLib.MPL_TOKEN_METADATA_PROGRAM_ID;
+        accounts_.mint_metadata = derived.mint_metadata;
+    }
+
+    function _derive_permissionless_pool_keys(
+        InitializePermissionlessPoolConfig memory config
+    )
+    private
+    pure
+    returns (PermissionlessPoolDerivedKeys memory derived)
+    {
+        derived.pool = derive_permissionless_pool_key_with_fee_tier(
             config.curve_type,
             config.token_a_mint,
             config.token_b_mint,
             config.trade_fee_bps,
             config.dynamic_amm_program
         );
-        bytes32 a_vault = derive_vault_key(config.token_a_mint, config.dynamic_vault_program);
-        bytes32 b_vault = derive_vault_key(config.token_b_mint, config.dynamic_vault_program);
-        bytes32 a_vault_lp_mint = derive_lp_mint_key(
-            a_vault,
+        derived.a_vault = derive_vault_key(config.token_a_mint, config.dynamic_vault_program);
+        derived.b_vault = derive_vault_key(config.token_b_mint, config.dynamic_vault_program);
+        derived.a_token_vault = derive_token_vault_key(derived.a_vault, config.dynamic_vault_program);
+        derived.b_token_vault = derive_token_vault_key(derived.b_vault, config.dynamic_vault_program);
+        derived.a_vault_lp_mint = derive_lp_mint_key(
+            derived.a_vault,
             config.dynamic_vault_program,
             config.override_network
         );
-        bytes32 b_vault_lp_mint = derive_lp_mint_key(
-            b_vault,
+        derived.b_vault_lp_mint = derive_lp_mint_key(
+            derived.b_vault,
             config.dynamic_vault_program,
             config.override_network
         );
-        bytes32 lp_mint = derive_pool_lp_mint_key(pool, config.dynamic_amm_program);
-        (bytes32 mint_metadata,) = MplTokenMetadataLib.find_metadata_pda(
-            lp_mint,
+        derived.lp_mint = derive_pool_lp_mint_key(derived.pool, config.dynamic_amm_program);
+        derived.a_vault_lp = derive_vault_lp_key(
+            derived.a_vault,
+            derived.pool,
+            config.dynamic_amm_program
+        );
+        derived.b_vault_lp = derive_vault_lp_key(
+            derived.b_vault,
+            derived.pool,
+            config.dynamic_amm_program
+        );
+        derived.protocol_token_a_fee = derive_protocol_fee_key(
+            config.token_a_mint,
+            derived.pool,
+            config.dynamic_amm_program
+        );
+        derived.protocol_token_b_fee = derive_protocol_fee_key(
+            config.token_b_mint,
+            derived.pool,
+            config.dynamic_amm_program
+        );
+        (derived.mint_metadata,) = MplTokenMetadataLib.find_metadata_pda(
+            derived.lp_mint,
             MplTokenMetadataLib.MPL_TOKEN_METADATA_PROGRAM_ID
         );
+    }
 
-        accounts_ = InitializePermissionlessPoolAccounts({
-            pool: pool,
-            lp_mint: lp_mint,
-            token_a_mint: config.token_a_mint,
-            token_b_mint: config.token_b_mint,
-            a_vault: a_vault,
-            b_vault: b_vault,
-            a_token_vault: derive_token_vault_key(a_vault, config.dynamic_vault_program),
-            b_token_vault: derive_token_vault_key(b_vault, config.dynamic_vault_program),
-            a_vault_lp_mint: a_vault_lp_mint,
-            b_vault_lp_mint: b_vault_lp_mint,
-            a_vault_lp: derive_vault_lp_key(a_vault_lp_mint, pool),
-            b_vault_lp: derive_vault_lp_key(b_vault_lp_mint, pool),
-            payer_token_a: AssociatedSplToken.get_associated_token_address_with_program_id(
-                config.owner,
-                config.token_a_mint,
-                SplTokenLib.SPL_TOKEN_PROGRAM,
-                AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
-            ),
-            payer_token_b: AssociatedSplToken.get_associated_token_address_with_program_id(
-                config.owner,
-                config.token_b_mint,
-                SplTokenLib.SPL_TOKEN_PROGRAM,
-                AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
-            ),
-            payer_pool_lp: AssociatedSplToken.get_associated_token_address_with_program_id(
-                config.owner,
-                lp_mint,
-                SplTokenLib.SPL_TOKEN_PROGRAM,
-                AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
-            ),
-            protocol_token_a_fee: derive_protocol_fee_key(config.token_a_mint, pool, config.dynamic_amm_program),
-            protocol_token_b_fee: derive_protocol_fee_key(config.token_b_mint, pool, config.dynamic_amm_program),
-            payer: config.payer,
-            fee_owner: config.fee_owner,
-            rent: SystemProgramLib.RENT_ID,
-            vault_program: config.dynamic_vault_program,
-            token_program: SplTokenLib.SPL_TOKEN_PROGRAM,
-            associated_token_program: AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID,
-            system_program: SystemProgramLib.PROGRAM_ID,
-            metadata_program: MplTokenMetadataLib.MPL_TOKEN_METADATA_PROGRAM_ID,
-            mint_metadata: mint_metadata
-        });
+    function _derive_associated_token_account(bytes32 owner, bytes32 mint)
+    private
+    pure
+    returns (bytes32)
+    {
+        return AssociatedSplToken.get_associated_token_address_with_program_id(
+            owner,
+            mint,
+            SplTokenLib.SPL_TOKEN_PROGRAM,
+            AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
+        );
     }
 
     function build_initialize_vault_instruction(
@@ -610,31 +590,31 @@ library DAMMv1Lib {
     {
         metas = new ICrossProgramInvocation.AccountMeta[](26);
         metas[0] = ICrossProgramInvocation.AccountMeta(a.pool, false, true);
-        metas[1] = ICrossProgramInvocation.AccountMeta(a.rent, false, false);
-        metas[2] = ICrossProgramInvocation.AccountMeta(a.system_program, false, false);
-        metas[3] = ICrossProgramInvocation.AccountMeta(a.payer, true, true);
+        metas[1] = ICrossProgramInvocation.AccountMeta(a.lp_mint, false, true);
+        metas[2] = ICrossProgramInvocation.AccountMeta(a.token_a_mint, false, false);
+        metas[3] = ICrossProgramInvocation.AccountMeta(a.token_b_mint, false, false);
         metas[4] = ICrossProgramInvocation.AccountMeta(a.a_vault, false, true);
         metas[5] = ICrossProgramInvocation.AccountMeta(a.b_vault, false, true);
         metas[6] = ICrossProgramInvocation.AccountMeta(a.a_token_vault, false, true);
         metas[7] = ICrossProgramInvocation.AccountMeta(a.b_token_vault, false, true);
         metas[8] = ICrossProgramInvocation.AccountMeta(a.a_vault_lp_mint, false, true);
         metas[9] = ICrossProgramInvocation.AccountMeta(a.b_vault_lp_mint, false, true);
-        metas[10] = ICrossProgramInvocation.AccountMeta(a.lp_mint, false, true);
-        metas[11] = ICrossProgramInvocation.AccountMeta(a.token_a_mint, false, false);
-        metas[12] = ICrossProgramInvocation.AccountMeta(a.token_b_mint, false, false);
-        metas[13] = ICrossProgramInvocation.AccountMeta(a.token_program, false, false);
-        metas[14] = ICrossProgramInvocation.AccountMeta(a.associated_token_program, false, false);
-        metas[15] = ICrossProgramInvocation.AccountMeta(a.a_vault_lp, false, true);
-        metas[16] = ICrossProgramInvocation.AccountMeta(a.b_vault_lp, false, true);
-        metas[17] = ICrossProgramInvocation.AccountMeta(a.payer_token_a, false, true);
-        metas[18] = ICrossProgramInvocation.AccountMeta(a.payer_token_b, false, true);
-        metas[19] = ICrossProgramInvocation.AccountMeta(a.payer_pool_lp, false, true);
-        metas[20] = ICrossProgramInvocation.AccountMeta(a.protocol_token_a_fee, false, true);
-        metas[21] = ICrossProgramInvocation.AccountMeta(a.protocol_token_b_fee, false, true);
-        metas[22] = ICrossProgramInvocation.AccountMeta(a.fee_owner, false, false);
-        metas[23] = ICrossProgramInvocation.AccountMeta(a.vault_program, false, false);
-        metas[24] = ICrossProgramInvocation.AccountMeta(a.metadata_program, false, false);
-        metas[25] = ICrossProgramInvocation.AccountMeta(a.mint_metadata, false, true);
+        metas[10] = ICrossProgramInvocation.AccountMeta(a.a_vault_lp, false, true);
+        metas[11] = ICrossProgramInvocation.AccountMeta(a.b_vault_lp, false, true);
+        metas[12] = ICrossProgramInvocation.AccountMeta(a.payer_token_a, false, true);
+        metas[13] = ICrossProgramInvocation.AccountMeta(a.payer_token_b, false, true);
+        metas[14] = ICrossProgramInvocation.AccountMeta(a.payer_pool_lp, false, true);
+        metas[15] = ICrossProgramInvocation.AccountMeta(a.protocol_token_a_fee, false, true);
+        metas[16] = ICrossProgramInvocation.AccountMeta(a.protocol_token_b_fee, false, true);
+        metas[17] = ICrossProgramInvocation.AccountMeta(a.payer, true, true);
+        metas[18] = ICrossProgramInvocation.AccountMeta(a.fee_owner, false, false);
+        metas[19] = ICrossProgramInvocation.AccountMeta(a.rent, false, false);
+        metas[20] = ICrossProgramInvocation.AccountMeta(a.mint_metadata, false, true);
+        metas[21] = ICrossProgramInvocation.AccountMeta(a.metadata_program, false, false);
+        metas[22] = ICrossProgramInvocation.AccountMeta(a.vault_program, false, false);
+        metas[23] = ICrossProgramInvocation.AccountMeta(a.token_program, false, false);
+        metas[24] = ICrossProgramInvocation.AccountMeta(a.associated_token_program, false, false);
+        metas[25] = ICrossProgramInvocation.AccountMeta(a.system_program, false, false);
     }
 
     function build_initialize_permissionless_pool_with_fee_tier_ix_data(

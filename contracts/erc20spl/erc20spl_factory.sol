@@ -95,19 +95,21 @@ contract ERC20SPLFactory {
     }
 
     /**
-     * Derives the address of the mint account that will be created for the user in the next call to create_token_mint, 
-     * based on the user's current nonce. This can be used by clients to know the mint address before it is created,
-     *  so they can create metadata accounts for it or perform other setup steps on Solana before calling create_token_mint.
-     * @return (bytes32 mint, bytes32 mintSeed) The address of the mint account that will be created for the user in the next call to create_token_mint, 
-     *              and the seed that can be used to derive it.
+     * Derives the address of the mint account that will be created for the user in the next call to create_token_mint,
+     * based on the user's current nonce and this factory's address. This can be used by clients to know the mint
+     * address before it is created, so they can create metadata accounts for it or perform other setup steps on
+     * Solana before calling create_token_mint.
+     * @return (bytes32 mint, bytes32 mintSeed) The address of the mint account that will be created for the user in
+     *              the next call to create_token_mint, and the seed that can be used to derive it.
      */
     function get_current_mint(address user) public view returns (bytes32, bytes32) {
         uint64 nonce = creator_nonce[user];
 
-        // [ "MINT" (4 bytes) | nonce (8 bytes) | 20 zero bytes ]
+        // [ "MINT" (4 bytes) | nonce (8 bytes) | factory address (20 bytes) ]
         bytes32 mintSeed = bytes32(
             (uint256(uint32(bytes4("MINT"))) << 224) |
-            (uint256(nonce) << 160)
+            (uint256(nonce) << 160) |
+            uint160(address(this))
         );
         return (RomeEVMAccount.pda_with_salt(user, mintSeed), mintSeed);
     }

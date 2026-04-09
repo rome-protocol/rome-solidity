@@ -1,6 +1,6 @@
 {
   "MeteoraDAMMv1Factory": {
-    "address": "0xa97cde604b63aba148cdc8b64839061ae101651e"
+    "address": "0x0678b7907a836501135778044f74263c4bfda370"
   },
   "MeteoraDAMMv1Pools": [
     {
@@ -24,7 +24,7 @@
     "associatedTokenProgramId": "0x8c97258f4e2489f1bb3d1029148e0d830b5a1399daff1084048e7bd8dbe9f859"
   },
   "ERC20SPLFactory": {
-    "address": "0xe628cb0006361d93da91088f0683523381e31e48",
+    "address": "0x19afa9cc99222cebf129bd3819fa2c3071ed2988",
     "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
   },
   "ERC20SPLLibraries": {
@@ -82,6 +82,6 @@
     ]
   },
   "MeteoraDAMMv1Router": {
-    "address": "0x4753902521c5e8af874137e969fc395f5be8b9b5"
+    "address": "0x1d2807f38400f5e350f216c71c814118cfbc9b76"
   }
 }

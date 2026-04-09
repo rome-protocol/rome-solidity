@@ -7,7 +7,7 @@ import {RomeEVMAccount} from "../rome_evm_account.sol";
 
 
 library AssociatedSplToken {
-    bytes32 internal constant ASSOCIATED_TOKEN_PROGRAM_ID =
+    bytes32 public constant ASSOCIATED_TOKEN_PROGRAM_ID =
     0x8c97258f4e2489f1bb3d1029148e0d830b5a1399daff1084048e7bd8dbe9f859;
 
     function create_associated_token_account(
@@ -250,7 +250,6 @@ library AssociatedSplToken {
         return SystemProgram.find_program_address(associated_token_program_id, seeds);
     }
 }
-
 
 
 
