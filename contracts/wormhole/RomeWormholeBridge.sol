@@ -234,17 +234,52 @@ contract RomeWormholeBridge is Ownable, Pausable {
         internal
     {
         if (accounts.length == 0) revert EmptyAccounts();
-        ICrossProgramInvocation.AccountMeta[] memory m = new ICrossProgramInvocation.AccountMeta[](accounts.length);
-        for (uint256 i = 0; i < accounts.length; i++) {
-            m[i] = accounts[i];
-        }
-        // delegatecall preserves msg.sender so the CPI precompile signs
-        // for the original caller's PDA, not the bridge contract's PDA.
-        (bool ok, bytes memory ret) = address(CpiProgram).delegatecall(
-            abi.encodeCall(ICrossProgramInvocation.invoke, (programId, m, data))
-        );
-        if (!ok) {
-            assembly { revert(add(ret, 32), mload(ret)) }
+        // Use Yul to build the delegatecall data directly from calldata,
+        // avoiding Solidity's expensive copy+encode cycle for tuple arrays.
+        // Layout: selector(4) + programId(32) + accountsOffset(32) + dataOffset(32) + accounts... + data...
+        address target = address(CpiProgram);
+        bytes4 sel = ICrossProgramInvocation.invoke.selector;
+        assembly {
+            let acLen := accounts.length
+            // Each AccountMeta = (bytes32, bool, bool) = 3 * 32 = 96 bytes
+            let acDataLen := mul(acLen, 96)
+
+            // data is a memory bytes: length at data, content at data+32
+            let dataLen := mload(data)
+
+            // Calculate total size of the delegatecall payload
+            // selector(4) + programId(32) + acOffset(32) + dataOffset(32)
+            // + acArrayLen(32) + acData + dataLen(32) + dataPadded
+            let dataPadded := and(add(dataLen, 31), not(31))
+            let totalLen := add(164, add(acDataLen, add(32, dataPadded)))
+
+            let ptr := mload(0x40)
+            // selector
+            mstore(ptr, sel)
+            // programId
+            mstore(add(ptr, 4), programId)
+            // offset to accounts array (3 * 32 = 96 from start of params)
+            mstore(add(ptr, 36), 96)
+            // offset to data bytes
+            mstore(add(ptr, 68), add(128, acDataLen))
+            // accounts array length
+            mstore(add(ptr, 100), acLen)
+            // copy accounts from calldata
+            calldatacopy(add(ptr, 132), accounts.offset, acDataLen)
+            // data length
+            mstore(add(ptr, add(132, acDataLen)), dataLen)
+            // copy data content from memory
+            let dataSrc := add(data, 32)
+            let dataDst := add(ptr, add(164, acDataLen))
+            for { let i := 0 } lt(i, dataLen) { i := add(i, 32) } {
+                mstore(add(dataDst, i), mload(add(dataSrc, i)))
+            }
+
+            let ok := delegatecall(gas(), target, ptr, totalLen, 0, 0)
+            if iszero(ok) {
+                returndatacopy(ptr, 0, returndatasize())
+                revert(ptr, returndatasize())
+            }
         }
     }
 
@@ -255,19 +290,60 @@ contract RomeWormholeBridge is Ownable, Pausable {
         bytes32 salt
     ) internal {
         if (accounts.length == 0) revert EmptyAccounts();
-        ICrossProgramInvocation.AccountMeta[] memory m = new ICrossProgramInvocation.AccountMeta[](accounts.length);
-        for (uint256 i = 0; i < accounts.length; i++) {
-            m[i] = accounts[i];
-        }
-        bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = salt;
-        // delegatecall preserves msg.sender; invoke_signed adds the salt-derived PDA
-        // as an additional signer alongside the caller's default PDA.
-        (bool ok, bytes memory ret) = address(CpiProgram).delegatecall(
-            abi.encodeCall(ICrossProgramInvocation.invoke_signed, (programId, m, data, seeds))
-        );
-        if (!ok) {
-            assembly { revert(add(ret, 32), mload(ret)) }
+        // Yul-optimized: builds invoke_signed delegatecall data directly.
+        // Layout: selector(4) + programId(32) + acOffset(32) + dataOffset(32) + seedsOffset(32)
+        //       + accounts(len+data) + data(len+padded) + seeds(len+salt)
+        address target = address(CpiProgram);
+        bytes4 sel = ICrossProgramInvocation.invoke_signed.selector;
+        assembly {
+            let acLen := accounts.length
+            let acDataLen := mul(acLen, 96)
+
+            let dataLen := mload(data)
+            let dataPadded := and(add(dataLen, 31), not(31))
+
+            // seeds: 1 element (the salt), each element is bytes32 = 32 bytes
+            let seedsDataLen := 32
+
+            // Calculate offsets (relative to start of params, i.e., after selector)
+            // params start at byte 4
+            // param0: programId at 0
+            // param1: acOffset at 32
+            // param2: dataOffset at 64
+            // param3: seedsOffset at 96
+            let acStart := 128 // 4 params * 32
+            let dataStart := add(acStart, add(32, acDataLen))
+            let seedsStart := add(dataStart, add(32, dataPadded))
+            let totalLen := add(4, add(seedsStart, add(32, seedsDataLen)))
+
+            let ptr := mload(0x40)
+            mstore(ptr, sel)
+            mstore(add(ptr, 4), programId)
+            mstore(add(ptr, 36), acStart)
+            mstore(add(ptr, 68), dataStart)
+            mstore(add(ptr, 100), seedsStart)
+
+            // accounts
+            mstore(add(ptr, add(4, acStart)), acLen)
+            calldatacopy(add(ptr, add(36, acStart)), accounts.offset, acDataLen)
+
+            // data
+            mstore(add(ptr, add(4, dataStart)), dataLen)
+            let dataSrc := add(data, 32)
+            let dataDst := add(ptr, add(36, dataStart))
+            for { let i := 0 } lt(i, dataLen) { i := add(i, 32) } {
+                mstore(add(dataDst, i), mload(add(dataSrc, i)))
+            }
+
+            // seeds array: length 1, element = salt
+            mstore(add(ptr, add(4, seedsStart)), 1)
+            mstore(add(ptr, add(36, seedsStart)), salt)
+
+            let ok := delegatecall(gas(), target, ptr, totalLen, 0, 0)
+            if iszero(ok) {
+                returndatacopy(ptr, 0, returndatasize())
+                revert(ptr, returndatasize())
+            }
         }
     }
 }
