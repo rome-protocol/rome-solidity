@@ -874,10 +874,10 @@ contract DAMMv1Pool {
     error ZeroReserve();
     error DivisionByZero();
 
-    address public immutable pool_factory;
-    address public immutable token_factory;
     bool public initialized;
 
+    address public immutable pool_factory;
+    address public token_factory;
     bytes32 public pool_address;
     bytes32 public prog_dynamic_vault;
     bytes32 public prog_dynamic_amm;
@@ -904,9 +904,9 @@ contract DAMMv1Pool {
     DAMMv1Lib.VaultState public vault_a;
     DAMMv1Lib.VaultState public vault_b;
 
-    constructor(address _token_factory) {
+    constructor() {
+        initialized = false;
         pool_factory = msg.sender;
-        token_factory = _token_factory;
     }
 
     modifier onlyFactory() {
@@ -915,6 +915,7 @@ contract DAMMv1Pool {
     }
 
     function initialize(
+        address _token_factory,
         bytes32 _pool_address,
         bytes32 _prog_dynamic_vault,
         bytes32 _prog_dynamic_amm,
@@ -923,6 +924,7 @@ contract DAMMv1Pool {
         require(!initialized, "ALREADY_INITIALIZED");
         initialized = true;
         
+        token_factory = _token_factory;
         pool_address = _pool_address;
         prog_dynamic_vault = _prog_dynamic_vault;
         prog_dynamic_amm = _prog_dynamic_amm;
@@ -1118,8 +1120,13 @@ contract ERC20DAMMv1Pool {
         DAMMv1Pool _internal_pool,
         ERC20SPLFactory token_factory
     ) {
-        tokenA = SPL_ERC20(token_factory.token_by_mint(_internal_pool.token_a_mint()));
-        tokenB = SPL_ERC20(token_factory.token_by_mint(_internal_pool.token_b_mint()));
+        address toka_a_address = token_factory.token_by_mint(_internal_pool.token_a_mint());
+        require(toka_a_address != address(0), "Token A mint does not exist in factory");
+        address toka_b_address = token_factory.token_by_mint(_internal_pool.token_b_mint());
+        require(toka_b_address != address(0), "Token B mint does not exist in factory");
+
+        tokenA = SPL_ERC20(toka_a_address);
+        tokenB = SPL_ERC20(toka_b_address);
         internal_pool = _internal_pool;
         users = token_factory.users();
     }

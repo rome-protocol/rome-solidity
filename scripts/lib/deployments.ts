@@ -7,6 +7,10 @@ export type PoolDeployment = {
     address: string;
     txHash: string;
     blockNumber: string;
+    tokenAMint?: string;
+    tokenBMint?: string;
+    tokenAAddress?: string;
+    tokenBAddress?: string;
 };
 
 export type FactoryDeployment = {
@@ -141,6 +145,10 @@ export function savePoolDeployment(args: {
     address: `0x${string}`;
     txHash: `0x${string}`;
     blockNumber: bigint;
+    tokenAMint?: `0x${string}`;
+    tokenBMint?: `0x${string}`;
+    tokenAAddress?: `0x${string}`;
+    tokenBAddress?: `0x${string}`;
 }): void {
     const deployments = readDeployments(args.networkName);
 
@@ -158,6 +166,10 @@ export function savePoolDeployment(args: {
             address: args.address,
             txHash: args.txHash,
             blockNumber: args.blockNumber.toString(),
+            tokenAMint: args.tokenAMint,
+            tokenBMint: args.tokenBMint,
+            tokenAAddress: args.tokenAAddress,
+            tokenBAddress: args.tokenBAddress,
         });
     } else {
         for (const pool of pools) {
@@ -169,12 +181,26 @@ export function savePoolDeployment(args: {
                 pool.address = args.address;
                 pool.txHash = args.txHash;
                 pool.blockNumber = args.blockNumber.toString();
+                pool.tokenAMint = args.tokenAMint;
+                pool.tokenBMint = args.tokenBMint;
+                pool.tokenAAddress = args.tokenAAddress;
+                pool.tokenBAddress = args.tokenBAddress;
             }
         }
     }
 
     deployments.MeteoraDAMMv1Pools = pools;
     writeDeployments(args.networkName, deployments);
+}
+
+export function readPoolDeployment(
+    networkName: string,
+    poolPubkey: string,
+): PoolDeployment | null {
+    const deployments = readDeployments(networkName);
+    const pools = deployments.MeteoraDAMMv1Pools ?? [];
+
+    return pools.find((pool) => pool.pubkey.toLowerCase() === poolPubkey.toLowerCase()) ?? null;
 }
 
 export function saveAssociatedSplTokenDeployment(args: {

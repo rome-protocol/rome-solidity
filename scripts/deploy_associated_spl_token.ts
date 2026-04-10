@@ -1,7 +1,8 @@
 import hardhat from "hardhat";
-import { base58 } from "@scure/base";
-import { getAddress, isAddress, toHex } from "viem";
+
+import { getAddress, isAddress } from "viem";
 import { saveAssociatedSplTokenDeployment } from "./lib/deployments.js";
+import { base58ToBytes32Hex } from "./lib/helpers.js";
 
 const DEFAULT_CPI_CONTRACT_ADDRESS = "0xFF00000000000000000000000000000000000008";
 const DEFAULT_SYSTEM_PROGRAM_ID = "11111111111111111111111111111111";
@@ -14,15 +15,6 @@ function resolveAddress(value: string, name: string): `0x${string}` {
     }
 
     return getAddress(value);
-}
-
-function base58ToBytes32Hex(value: string, name: string): `0x${string}` {
-    const decoded = base58.decode(value);
-    if (decoded.length !== 32) {
-        throw new Error(`Invalid ${name}: expected 32-byte base58 public key, received ${value}`);
-    }
-
-    return toHex(decoded) as `0x${string}`;
 }
 
 async function main() {

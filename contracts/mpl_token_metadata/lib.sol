@@ -189,8 +189,6 @@ library MplTokenMetadataLib {
         (md.hasUses, md.uses_, offset) = _read_option_uses(data, offset);
         (md.hasCollectionDetails, md.collectionDetails, offset) = _read_option_collection_details(data, offset);
         (md.hasProgrammableConfig, md.programmableConfig, offset) = _read_option_programmable_config(data, offset);
-
-        require(offset == data.length, "Trailing bytes after Metadata");
         return md;
     }
 

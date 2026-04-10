@@ -1,6 +1,6 @@
 {
   "MeteoraDAMMv1Factory": {
-    "address": "0xd313fca3bd8cab6b6a628ba2e23e822cf999032e"
+    "address": "0x8443240d972c2d059b24697602865f7a80baf43f"
   },
   "MeteoraDAMMv1Pools": [
     {
@@ -14,6 +14,16 @@
       "address": "0x3a3DF0Eb4276c627aE8ef56E8Eaf27A8D4505657",
       "txHash": "0xd0259a0ba944b6d2e459fec27ec618f03fb8b8cbafd8cb0ee4cd6d0cb45b2b24",
       "blockNumber": "1550"
+    },
+    {
+      "pubkey": "0xfdd128b15845945f502b24e6f765902e2d71f07fca3d1f6a5735b29dfa143a7d",
+      "address": "0xd2BE2c220893eFd9Bd52c184CCB655E4415Cc3bA",
+      "txHash": "0x2056b663ca4c78bba458aa4f060f9bfa595f85c6e3024652f8aa29f4c0b9ba0e",
+      "blockNumber": "13605",
+      "tokenAMint": "0x261876ceac91672e4bf69cdd93c46102559c04a3e7e4593959d7fe56afad8619",
+      "tokenBMint": "0xfb2635b94423f9d9e0aa844fb4bd3204a30f65f6c5498aa8499070c579161595",
+      "tokenAAddress": "0x4fB1f0a509f04912cb899DE931E3A17b1ad7317B",
+      "tokenBAddress": "0x6f0cdBC728c436c2FbEe29d6354a12E1e75E27d6"
     }
   ],
   "AssociatedSplToken": {
@@ -24,7 +34,7 @@
     "associatedTokenProgramId": "0x8c97258f4e2489f1bb3d1029148e0d830b5a1399daff1084048e7bd8dbe9f859"
   },
   "ERC20SPLFactory": {
-    "address": "0x9af30fad7750d51679ffe9135e496770cfb9c104",
+    "address": "0x76cf3303df1275332d0be8cf8d315f2c6335188a",
     "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
   },
   "ERC20SPLLibraries": {
@@ -82,6 +92,6 @@
     ]
   },
   "MeteoraDAMMv1Router": {
-    "address": "0x6d40e60f5e05033b4eba83564825e6c85e72a241"
+    "address": "0x223e33fa8dd4305ed2b4003cc0cccf0d5e48d759"
   }
 }

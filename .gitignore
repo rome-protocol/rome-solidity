@@ -23,3 +23,5 @@
 
 # Local deployment artifacts
 deployments/local.json
+
+*/target/*

@@ -178,6 +178,7 @@ contract MeteoraDAMMv1Factory {
         }
 
         DAMMv1Pool(pool).initialize(
+            address(token_factory),
             pubkey,
             prog_dynamic_vault,
             prog_dynamic_amm,
