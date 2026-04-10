@@ -254,6 +254,7 @@ contract RomeWormholeBridge is Ownable, Pausable {
             let totalLen := add(164, add(acDataLen, add(32, dataPadded)))
 
             let ptr := mload(0x40)
+            mstore(0x40, add(ptr, totalLen)) // advance free memory pointer
             // selector
             mstore(ptr, sel)
             // programId
@@ -317,6 +318,7 @@ contract RomeWormholeBridge is Ownable, Pausable {
             let totalLen := add(4, add(seedsStart, add(32, seedsDataLen)))
 
             let ptr := mload(0x40)
+            mstore(0x40, add(ptr, totalLen)) // advance free memory pointer
             mstore(ptr, sel)
             mstore(add(ptr, 4), programId)
             mstore(add(ptr, 36), acStart)
