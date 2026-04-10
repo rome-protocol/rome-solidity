@@ -30,22 +30,6 @@ function isZeroBytes32(value: string): boolean {
     return /^0x0{64}$/i.test(value);
 }
 
-function toHexString(bytesLike: Uint8Array | number[] | string): `0x${string}` {
-    if (typeof bytesLike === "string" && bytesLike.startsWith("0x")) {
-        return bytesLike as `0x${string}`;
-    }
-
-    const bytes = bytesLike instanceof Uint8Array ? bytesLike : Uint8Array.from(bytesLike);
-    return `0x${Buffer.from(bytes).toString("hex")}`;
-}
-
-function formatAccountMeta(meta: { pubkey: string; is_signer: boolean; is_writable: boolean }, index: number): string {
-    const flags: string[] = [];
-    if (meta.is_signer) flags.push("signer");
-    if (meta.is_writable) flags.push("writable");
-    return `#${index + 1} ${meta.pubkey} ${flags.length ? `(${flags.join(", ")})` : "(readonly)"}`;
-}
-
 async function waitForSuccess(
     publicClient: {
         waitForTransactionReceipt: (
@@ -360,41 +344,6 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
             tokenBMint,
             poolConfig,
         ]);
-
-        const debugInstruction = await factory.read.debugCreatePermissionlessConstantProductPoolWithConfig2([
-            tokenAMint,
-            tokenBMint,
-            poolTokenAAmount,
-            poolTokenBAmount,
-            poolConfig,
-            deployer.account.address,
-        ]);
-        console.log("debugCreatePermissionlessConstantProductPoolWithConfig2 program:", debugInstruction[0]);
-        console.log("debugCreatePermissionlessConstantProductPoolWithConfig2 payer:", debugInstruction[3]);
-        console.log("debugCreatePermissionlessConstantProductPoolWithConfig2 pool:", debugInstruction[4]);
-        console.log("debugCreatePermissionlessConstantProductPoolWithConfig2 data:", toHexString(debugInstruction[2]));
-        console.log(
-            "debugCreatePermissionlessConstantProductPoolWithConfig2 accounts:\n" +
-                debugInstruction[1].map((meta: any, index: number) => formatAccountMeta(meta, index)).join("\n"),
-        );
-        const expectedIxData =
-            "0x3095dc823d0b09b20088526a740000000088526a7400000000";
-        assert.equal(
-            toHexString(debugInstruction[2]).toLowerCase(),
-            expectedIxData,
-            "config2 instruction data must match known-good devnet payload",
-        );
-        assert.equal(
-            debugInstruction[3].toLowerCase(),
-            payer.toLowerCase(),
-            "debug payer must match Rome payer",
-        );
-        assert.equal(
-            debugInstruction[4].toLowerCase(),
-            poolPubkey.toLowerCase(),
-            "debug pool pubkey must match derived pool pubkey",
-        );
-        assert.equal(debugInstruction[1].length, 26, "config2 instruction must contain 26 accounts");
 
         const createPoolTxHash = await factoryFromUser.write.createPermissionlessConstantProductPoolWithConfig2(
             [

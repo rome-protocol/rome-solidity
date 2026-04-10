@@ -151,79 +151,8 @@ contract MeteoraDAMMv1Factory {
         pool_pubkey = accounts_.pool;
     }
 
-    function debugCreatePermissionlessConstantProductPoolWithConfig2(
-        bytes32 token_a_mint,
-        bytes32 token_b_mint,
-        uint64 token_a_amount,
-        uint64 token_b_amount,
-        bytes32 config,
-        address user
-    )
-    external
-    view
-    returns (
-        bytes32 program_id,
-        ICrossProgramInvocation.AccountMeta[] memory accounts,
-        bytes memory data,
-        bytes32 payer,
-        bytes32 pool
-    ) {
-        payer = ERC20Users(token_factory.users()).get_user(user);
-        DAMMv1Lib.InitializePermissionlessPoolWithConfigConfig memory pool_config =
-            DAMMv1Lib.InitializePermissionlessPoolWithConfigConfig({
-                token_a_mint: token_a_mint,
-                token_b_mint: token_b_mint,
-                token_a_amount: token_a_amount,
-                token_b_amount: token_b_amount,
-                payer: payer,
-                config: config,
-                dynamic_vault_program: prog_dynamic_vault,
-                dynamic_amm_program: prog_dynamic_amm,
-                override_network: vault_override_network
-            });
-
-        DAMMv1Lib.InitializePermissionlessPoolWithConfigAccounts memory accounts_ =
-            DAMMv1Lib.derive_initialize_permissionless_constant_product_pool_with_config_accounts(pool_config);
-        SystemProgramLib.Instruction memory ix =
-            DAMMv1Lib.build_initialize_permissionless_constant_product_pool_with_config2_instruction(
-                accounts_,
-                token_a_amount,
-                token_b_amount,
-                prog_dynamic_amm
-            );
-
-        return (ix.program_id, ix.accounts, ix.data, payer, accounts_.pool);
-    }
-
     function addPool(bytes32 pubkey) external returns (address pool) {
         return _register_pool(pubkey);
-    }
-
-    function _build_initialize_permissionless_pool_config(
-        bytes32 token_a_mint,
-        bytes32 token_b_mint,
-        uint64 trade_fee_bps,
-        uint64 token_a_amount,
-        uint64 token_b_amount,
-        bytes32 payer
-    )
-    internal
-    view
-    returns (DAMMv1Lib.InitializePermissionlessPoolConfig memory)
-    {
-        return DAMMv1Lib.InitializePermissionlessPoolConfig({
-            curve_type: DAMMv1Lib.CurveType.ConstantProduct,
-            token_a_mint: token_a_mint,
-            token_b_mint: token_b_mint,
-            trade_fee_bps: trade_fee_bps,
-            token_a_amount: token_a_amount,
-            token_b_amount: token_b_amount,
-            payer: payer,
-            fee_owner: bytes32(0),
-            dynamic_vault_program: prog_dynamic_vault,
-            dynamic_amm_program: prog_dynamic_amm,
-            override_network: vault_override_network
-        });
     }
 
     function _account_missing(bytes32 pubkey) internal view returns (bool) {

@@ -1033,8 +1033,6 @@ contract DAMMv1Pool {
     }
 
     function make_swap_accounts_from_pool(
-        bytes32 user_source_token_account,
-        bytes32 user_destination_token_account,
         bytes32 user,
         PoolToken in_token
     ) internal view returns (DAMMv1Lib.SwapAccountsInput memory out) {
@@ -1042,10 +1040,24 @@ contract DAMMv1Pool {
             ? protocol_token_a_fee
             : protocol_token_b_fee;
 
+        (bytes32 in_token_mint, bytes32 out_token_mint) = in_token == PoolToken.TokenA
+            ? (token_a_mint, token_b_mint)
+            : (token_b_mint, token_a_mint);
+
         out = DAMMv1Lib.SwapAccountsInput({
             pool: pool_address,
-            user_source_token: user_source_token_account,
-            user_destination_token: user_destination_token_account,
+            user_source_token: AssociatedSplToken.get_associated_token_address_with_program_id(
+                user,
+                in_token_mint,
+                SplTokenLib.SPL_TOKEN_PROGRAM,
+                AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
+            ),
+            user_destination_token: AssociatedSplToken.get_associated_token_address_with_program_id(
+                user,
+                out_token_mint,
+                SplTokenLib.SPL_TOKEN_PROGRAM,
+                AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
+            ),
             a_vault_lp: a_vault_lp,
             b_vault_lp: b_vault_lp,
             a_vault: a_vault,
@@ -1082,16 +1094,12 @@ contract DAMMv1Pool {
     }
 
     function invoke_swap(
-        bytes32 user_source_token_account,
-        bytes32 user_destination_token_account,
         bytes32 user,
         PoolToken in_token,
         uint64 in_amount,
         uint64 minimum_out_amount
     ) external {
         DAMMv1Lib.SwapAccountsInput memory a = make_swap_accounts_from_pool(
-            user_source_token_account,
-            user_destination_token_account,
             user,
             in_token
         );
@@ -1140,28 +1148,19 @@ contract ERC20DAMMv1Pool {
         uint256 amount_in,
         uint256 min_amount_out
     ) external {
-        bytes32 tokenA_account = tokenA.get_token_account(msg.sender);
-        bytes32 tokenB_account = tokenB.get_token_account(msg.sender);
         bytes32 user = users.get_user(msg.sender);
 
-        DAMMv1Pool.PoolToken in_token = DAMMv1Pool.PoolToken.TokenA;
-        bytes32 source_account = tokenA_account;
-        bytes32 destination_account = tokenB_account;
-
-        if (address(tokenB) == token_in) {
-            in_token = DAMMv1Pool.PoolToken.TokenB;
-            source_account = tokenB_account;
-            destination_account = tokenA_account;
-        }
+        DAMMv1Pool.PoolToken in_token =
+            address(tokenA) == token_in
+            ? DAMMv1Pool.PoolToken.TokenA
+            : DAMMv1Pool.PoolToken.TokenB;
 
         require(amount_in <= type(uint64).max, "amount_in exceeds uint64");
         require(min_amount_out <= type(uint64).max, "min_amount_out exceeds uint64");
 
         (bool success, bytes memory result) = address(internal_pool).delegatecall(
             abi.encodeWithSignature(
-                "invoke_swap(bytes32,bytes32,bytes32,uint8,uint64,uint64)",
-                source_account,
-                destination_account,
+                "invoke_swap(bytes32,uint8,uint64,uint64)",
                 user,
                 uint8(in_token),
                 uint64(amount_in),
