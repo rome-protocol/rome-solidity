@@ -151,7 +151,7 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
     let tokenBAddress: `0x${string}`;
     let tokenAFromUser: any;
     let tokenBFromUser: any;
-    let userRecord: any;
+    let payer: `0x${string}`;
     let userTokenAccountA: `0x${string}`;
     let userTokenAccountB: `0x${string}`;
     let progDynamicVault: `0x${string}`;
@@ -225,7 +225,7 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
         const usersAddress = await erc20SplFactory.read.users();
         users = await viem.getContractAt("ERC20Users", usersAddress);
         await ensureUser(erc20FactoryFromUser, users, publicClient, deployer);
-        userRecord = await users.read.get_user([deployer.account.address]);
+        payer = await users.read.get_user([deployer.account.address]);
 
         const configuredTokenFactoryAddress = getAddress(await factory.read.token_factory());
         assert.equal(
@@ -234,10 +234,8 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
             "MeteoraDAMMv1Factory must be configured with the deployed ERC20SPLFactory",
         );
 
-        assert.ok(isHex32(userRecord.payer), "User.payer must be bytes32");
-        assert.ok(isHex32(userRecord.owner), "User.owner must be bytes32");
-        assert.notEqual(userRecord.payer, `0x${"0".repeat(64)}`, "User.payer must not be zero");
-        assert.notEqual(userRecord.owner, `0x${"0".repeat(64)}`, "User.owner must not be zero");
+        assert.ok(isHex32(payer), "payer must be bytes32");
+        assert.notEqual(payer, `0x${"0".repeat(64)}`, "payer must not be zero");
 
         const cpiProgramAddress = await factory.read.cpi_program();
         cpiProgram = await viem.getContractAt("ICrossProgramInvocation", cpiProgramAddress);
@@ -249,7 +247,7 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
         assert.ok(!isZeroBytes32(progDynamicVault), "prog_dynamic_vault must not be zero");
         assert.ok(!isZeroBytes32(progDynamicAmm), "prog_dynamic_amm must not be zero");
 
-        await assertSolanaAccountExists(cpiProgram, userRecord.payer, "User.payer");
+        await assertSolanaAccountExists(cpiProgram, payer, "payer");
         await assertSolanaProgramExists(cpiProgram, progDynamicVault, "prog_dynamic_vault");
         await assertSolanaProgramExists(cpiProgram, progDynamicAmm, "prog_dynamic_amm");
 
@@ -295,10 +293,10 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
 
         previewVaultA = await factory.read.previewInitializeVault([tokenAMint, deployer.account.address]);
         previewVaultB = await factory.read.previewInitializeVault([tokenBMint, deployer.account.address]);
-        assert.equal(previewVaultA[1].payer.toLowerCase(), userRecord.payer.toLowerCase(), "vault A payer must match User.payer");
-        assert.equal(previewVaultB[1].payer.toLowerCase(), userRecord.payer.toLowerCase(), "vault B payer must match User.payer");
-        assert.equal(previewVaultA[1].token_mint.toLowerCase(), tokenAMint.toLowerCase(), "vault A token mint must match");
-        assert.equal(previewVaultB[1].token_mint.toLowerCase(), tokenBMint.toLowerCase(), "vault B token mint must match");
+        assert.equal(previewVaultA[1].payer, payer, "vault A payer must match payer");
+        assert.equal(previewVaultB[1].payer, payer, "vault B payer must match payer");
+        assert.equal(previewVaultA[1].token_mint, tokenAMint, "vault A token mint must match");
+        assert.equal(previewVaultB[1].token_mint, tokenBMint, "vault B token mint must match");
 
         const mintTokenATxHash = await tokenAFromUser.write.mint_to([deployer.account.address, mintAmount], {
             account: deployer.account,

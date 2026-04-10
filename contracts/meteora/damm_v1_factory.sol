@@ -9,9 +9,6 @@ import {SystemProgramLib} from "../system_program/system_program.sol";
 import {Convert} from "../convert.sol";
 
 contract MeteoraDAMMv1Factory {
-    bytes32 internal constant SDK_FEE_OWNER =
-        0x51ddfa7d35a812124a296e3ab8793edf00c4e7a2b5bd69fea85bd4f56aa89687;
-
     ERC20SPLFactory public immutable token_factory;
     mapping(address => mapping(address => address)) public getPool; // token0 => token1 => pool
     address[] public allPools;
@@ -90,8 +87,25 @@ contract MeteoraDAMMv1Factory {
     }
 
     function initializeVaultIfMissing(bytes32 token_mint) external returns (bytes32 vault, bool initialized_) {
-        bytes32 payer = ERC20Users(token_factory.users()).get_user(msg.sender);
-        return _initialize_vault_if_missing(token_mint, payer);
+        bytes32 payer = token_factory.users().get_user(msg.sender);
+        DAMMv1Lib.InitializeVaultAccounts memory accounts_ = DAMMv1Lib.derive_initialize_vault_accounts(
+            token_mint,
+            payer,
+            prog_dynamic_vault,
+            vault_override_network
+        );
+
+        vault = accounts_.vault;
+        if (!_account_missing(vault)) {
+            return (vault, false);
+        }
+
+        SystemProgramLib.Instruction memory ix = DAMMv1Lib.build_initialize_vault_instruction(
+            accounts_,
+            prog_dynamic_vault
+        );
+        _invoke_signed(ix, token_factory.users().payer_salt());
+        return (vault, true);
     }
 
     function previewInitializePermissionlessPoolWithFeeTier(
@@ -125,26 +139,6 @@ contract MeteoraDAMMv1Factory {
         pool_exists = !_account_missing(accounts_.pool);
     }
 
-    function initializePermissionlessPoolWithFeeTier(
-        bytes32 token_a_mint,
-        bytes32 token_b_mint,
-        uint64 trade_fee_bps,
-        uint64 token_a_amount,
-        uint64 token_b_amount
-    ) external returns (bytes32 pool_pubkey) {
-        bytes32 payer = ERC20Users(token_factory.users()).get_user(msg.sender);
-        DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_ =
-            _initialize_permissionless_pool_with_fee_tier(
-                token_a_mint,
-                token_b_mint,
-                trade_fee_bps,
-                token_a_amount,
-                token_b_amount,
-                payer
-            );
-        return accounts_.pool;
-    }
-
     function createPermissionlessPoolWithFeeTier(
         bytes32 token_a_mint,
         bytes32 token_b_mint,
@@ -153,60 +147,6 @@ contract MeteoraDAMMv1Factory {
         uint64 token_b_amount
     ) external returns (bytes32 pool_pubkey) {
         bytes32 payer = ERC20Users(token_factory.users()).get_user(msg.sender);
-        DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_ =
-            _initialize_permissionless_pool_with_fee_tier(
-                token_a_mint,
-                token_b_mint,
-                trade_fee_bps,
-                token_a_amount,
-                token_b_amount,
-                payer
-            );
-        pool_pubkey = accounts_.pool;
-    }
-
-    function addPool(bytes32 pubkey) external returns (address pool) {
-        return _register_pool(pubkey);
-    }
-
-    function _initialize_vault_if_missing(
-        bytes32 token_mint,
-        bytes32 payer
-    )
-    internal
-    returns (bytes32 vault, bool initialized_)
-    {
-        DAMMv1Lib.InitializeVaultAccounts memory accounts_ = DAMMv1Lib.derive_initialize_vault_accounts(
-            token_mint,
-            payer,
-            prog_dynamic_vault,
-            vault_override_network
-        );
-
-        vault = accounts_.vault;
-        if (!_account_missing(vault)) {
-            return (vault, false);
-        }
-
-        SystemProgramLib.Instruction memory ix = DAMMv1Lib.build_initialize_vault_instruction(
-            accounts_,
-            prog_dynamic_vault
-        );
-        _invoke_signed(ix, token_factory.users().payer_salt());
-        return (vault, true);
-    }
-
-    function _initialize_permissionless_pool_with_fee_tier(
-        bytes32 token_a_mint,
-        bytes32 token_b_mint,
-        uint64 trade_fee_bps,
-        uint64 token_a_amount,
-        uint64 token_b_amount,
-        bytes32 payer
-    )
-    internal
-    returns (DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_)
-    {
         DAMMv1Lib.InitializePermissionlessPoolConfig memory config = _build_initialize_permissionless_pool_config(
             token_a_mint,
             token_b_mint,
@@ -215,14 +155,14 @@ contract MeteoraDAMMv1Factory {
             token_b_amount,
             payer
         );
-        accounts_ = DAMMv1Lib.derive_initialize_permissionless_pool_accounts(config);
+        DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_ = DAMMv1Lib.derive_initialize_permissionless_pool_accounts(config);
 
         require(!_account_missing(accounts_.a_vault), "A_VAULT_MISSING");
         require(!_account_missing(accounts_.b_vault), "B_VAULT_MISSING");
         require(_account_missing(accounts_.pool), "POOL_EXISTS");
 
         SystemProgramLib.Instruction memory ix =
-            DAMMv1Lib.build_initialize_permissionless_pool_with_fee_tier_instruction(
+                            DAMMv1Lib.build_initialize_permissionless_pool_with_fee_tier_instruction(
                 accounts_,
                 config.curve_type,
                 config.trade_fee_bps,
@@ -231,6 +171,11 @@ contract MeteoraDAMMv1Factory {
                 prog_dynamic_amm
             );
         _invoke_signed(ix, token_factory.users().payer_salt());
+        pool_pubkey = accounts_.pool;
+    }
+
+    function addPool(bytes32 pubkey) external returns (address pool) {
+        return _register_pool(pubkey);
     }
 
     function _build_initialize_permissionless_pool_config(
@@ -253,7 +198,7 @@ contract MeteoraDAMMv1Factory {
             token_a_amount: token_a_amount,
             token_b_amount: token_b_amount,
             payer: payer,
-            fee_owner: SDK_FEE_OWNER,
+            fee_owner: bytes32(0),
             dynamic_vault_program: prog_dynamic_vault,
             dynamic_amm_program: prog_dynamic_amm,
             override_network: vault_override_network
