@@ -43,20 +43,23 @@ contract MeteoraDAMMv1Factory {
         return allPools.length;
     }
 
-    function derivePermissionlessPoolKeyWithFeeTier(
+    function deriveConfigKey(uint64 index) public view returns (bytes32) {
+        return DAMMv1Lib.derive_config_key(index, prog_dynamic_amm);
+    }
+
+    function derivePermissionlessConstantProductPoolWithConfigKey(
         bytes32 token_a_mint,
         bytes32 token_b_mint,
-        uint64 trade_fee_bps
+        bytes32 config
     )
     public
     view
     returns (bytes32)
     {
-        return DAMMv1Lib.derive_permissionless_pool_key_with_fee_tier(
-            DAMMv1Lib.CurveType.ConstantProduct,
+        return DAMMv1Lib.derive_permissionless_constant_product_pool_with_config_key(
             token_a_mint,
             token_b_mint,
-            trade_fee_bps,
+            config,
             prog_dynamic_amm
         );
     }
@@ -108,70 +111,88 @@ contract MeteoraDAMMv1Factory {
         return (vault, true);
     }
 
-    function previewInitializePermissionlessPoolWithFeeTier(
+    function createPermissionlessConstantProductPoolWithConfig2(
         bytes32 token_a_mint,
         bytes32 token_b_mint,
-        uint64 trade_fee_bps,
         uint64 token_a_amount,
         uint64 token_b_amount,
-        address user
-    )
-    external
-    view
-    returns (
-        bool pool_exists,
-        bool a_vault_exists,
-        bool b_vault_exists,
-        DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_
-    ) {
-        bytes32 payer = ERC20Users(token_factory.users()).get_user(user);
-        DAMMv1Lib.InitializePermissionlessPoolConfig memory config = _build_initialize_permissionless_pool_config(
-            token_a_mint,
-            token_b_mint,
-            trade_fee_bps,
-            token_a_amount,
-            token_b_amount,
-            payer
-        );
-        accounts_ = DAMMv1Lib.derive_initialize_permissionless_pool_accounts(config);
-        a_vault_exists = !_account_missing(accounts_.a_vault);
-        b_vault_exists = !_account_missing(accounts_.b_vault);
-        pool_exists = !_account_missing(accounts_.pool);
-    }
-
-    function createPermissionlessPoolWithFeeTier(
-        bytes32 token_a_mint,
-        bytes32 token_b_mint,
-        uint64 trade_fee_bps,
-        uint64 token_a_amount,
-        uint64 token_b_amount
+        bytes32 config
     ) external returns (bytes32 pool_pubkey) {
         bytes32 payer = ERC20Users(token_factory.users()).get_user(msg.sender);
-        DAMMv1Lib.InitializePermissionlessPoolConfig memory config = _build_initialize_permissionless_pool_config(
-            token_a_mint,
-            token_b_mint,
-            trade_fee_bps,
-            token_a_amount,
-            token_b_amount,
-            payer
-        );
-        DAMMv1Lib.InitializePermissionlessPoolAccounts memory accounts_ = DAMMv1Lib.derive_initialize_permissionless_pool_accounts(config);
+        DAMMv1Lib.InitializePermissionlessPoolWithConfigConfig memory pool_config =
+            DAMMv1Lib.InitializePermissionlessPoolWithConfigConfig({
+                token_a_mint: token_a_mint,
+                token_b_mint: token_b_mint,
+                token_a_amount: token_a_amount,
+                token_b_amount: token_b_amount,
+                payer: payer,
+                config: config,
+                dynamic_vault_program: prog_dynamic_vault,
+                dynamic_amm_program: prog_dynamic_amm,
+                override_network: vault_override_network
+            });
 
+        DAMMv1Lib.InitializePermissionlessPoolWithConfigAccounts memory accounts_ =
+            DAMMv1Lib.derive_initialize_permissionless_constant_product_pool_with_config_accounts(pool_config);
+
+        require(!_account_missing(config), "CONFIG_MISSING");
         require(!_account_missing(accounts_.a_vault), "A_VAULT_MISSING");
         require(!_account_missing(accounts_.b_vault), "B_VAULT_MISSING");
         require(_account_missing(accounts_.pool), "POOL_EXISTS");
 
         SystemProgramLib.Instruction memory ix =
-                            DAMMv1Lib.build_initialize_permissionless_pool_with_fee_tier_instruction(
+            DAMMv1Lib.build_initialize_permissionless_constant_product_pool_with_config2_instruction(
                 accounts_,
-                config.curve_type,
-                config.trade_fee_bps,
-                config.token_a_amount,
-                config.token_b_amount,
+                token_a_amount,
+                token_b_amount,
                 prog_dynamic_amm
             );
         _invoke_signed(ix, token_factory.users().payer_salt());
         pool_pubkey = accounts_.pool;
+    }
+
+    function debugCreatePermissionlessConstantProductPoolWithConfig2(
+        bytes32 token_a_mint,
+        bytes32 token_b_mint,
+        uint64 token_a_amount,
+        uint64 token_b_amount,
+        bytes32 config,
+        address user
+    )
+    external
+    view
+    returns (
+        bytes32 program_id,
+        ICrossProgramInvocation.AccountMeta[] memory accounts,
+        bytes memory data,
+        bytes32 payer,
+        bytes32 pool
+    ) {
+        payer = ERC20Users(token_factory.users()).get_user(user);
+        DAMMv1Lib.InitializePermissionlessPoolWithConfigConfig memory pool_config =
+            DAMMv1Lib.InitializePermissionlessPoolWithConfigConfig({
+                token_a_mint: token_a_mint,
+                token_b_mint: token_b_mint,
+                token_a_amount: token_a_amount,
+                token_b_amount: token_b_amount,
+                payer: payer,
+                config: config,
+                dynamic_vault_program: prog_dynamic_vault,
+                dynamic_amm_program: prog_dynamic_amm,
+                override_network: vault_override_network
+            });
+
+        DAMMv1Lib.InitializePermissionlessPoolWithConfigAccounts memory accounts_ =
+            DAMMv1Lib.derive_initialize_permissionless_constant_product_pool_with_config_accounts(pool_config);
+        SystemProgramLib.Instruction memory ix =
+            DAMMv1Lib.build_initialize_permissionless_constant_product_pool_with_config2_instruction(
+                accounts_,
+                token_a_amount,
+                token_b_amount,
+                prog_dynamic_amm
+            );
+
+        return (ix.program_id, ix.accounts, ix.data, payer, accounts_.pool);
     }
 
     function addPool(bytes32 pubkey) external returns (address pool) {

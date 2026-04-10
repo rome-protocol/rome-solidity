@@ -30,6 +30,22 @@ function isZeroBytes32(value: string): boolean {
     return /^0x0{64}$/i.test(value);
 }
 
+function toHexString(bytesLike: Uint8Array | number[] | string): `0x${string}` {
+    if (typeof bytesLike === "string" && bytesLike.startsWith("0x")) {
+        return bytesLike as `0x${string}`;
+    }
+
+    const bytes = bytesLike instanceof Uint8Array ? bytesLike : Uint8Array.from(bytesLike);
+    return `0x${Buffer.from(bytes).toString("hex")}`;
+}
+
+function formatAccountMeta(meta: { pubkey: string; is_signer: boolean; is_writable: boolean }, index: number): string {
+    const flags: string[] = [];
+    if (meta.is_signer) flags.push("signer");
+    if (meta.is_writable) flags.push("writable");
+    return `#${index + 1} ${meta.pubkey} ${flags.length ? `(${flags.join(", ")})` : "(readonly)"}`;
+}
+
 async function waitForSuccess(
     publicClient: {
         waitForTransactionReceipt: (
@@ -79,6 +95,18 @@ async function assertSolanaProgramExists(
     const info = await cpiProgram.read.account_info([pubkey]);
     assert.ok(info[0] > 0n, `${label} program account must exist on Solana`);
     assert.equal(info[4], true, `${label} program account must be executable`);
+}
+
+async function findExistingConfig(factory: any, cpiProgram: any, maxIndex = 16): Promise<`0x${string}`> {
+    for (let index = 0n; index < BigInt(maxIndex); index++) {
+        const config = await factory.read.deriveConfigKey([index]);
+        const info = await cpiProgram.read.account_info([config]);
+        if (info[0] > 0n) {
+            return config;
+        }
+    }
+
+    throw new Error(`No existing DAMM config found in first ${maxIndex} config PDAs.`);
 }
 
 async function createSplToken(args: {
@@ -158,7 +186,7 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
     let progDynamicAmm: `0x${string}`;
     let previewVaultA: any;
     let previewVaultB: any;
-    let previewPool: any;
+    let poolConfig: `0x${string}`;
 
     let poolPubkey: `0x${string}`;
     let wrappedPoolAddress: `0x${string}`;
@@ -168,7 +196,6 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
     const poolTokenBAmount = 500_000_000_000n;
     const swapAmountIn = 100_000_000n;
     const minAmountOut = 0n;
-    const tradeFeeBps = 25n;
 
     before(async function () {
         const { viem: connectedViem, networkName: connectedNetworkName } = await hardhat.network.connect() as unknown as {
@@ -251,6 +278,9 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
         await assertSolanaProgramExists(cpiProgram, progDynamicVault, "prog_dynamic_vault");
         await assertSolanaProgramExists(cpiProgram, progDynamicAmm, "prog_dynamic_amm");
 
+        poolConfig = await findExistingConfig(factory, cpiProgram);
+        await assertSolanaAccountExists(cpiProgram, poolConfig, "damm config");
+
         const uniqueSuffix = `${Date.now()}${Math.floor(Math.random() * 1_000_000)
             .toString()
             .padStart(6, "0")}`;
@@ -325,38 +355,68 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
         await assertSolanaAccountExists(cpiProgram, previewVaultB[1].token_vault, "vault B token vault");
         await assertSolanaAccountExists(cpiProgram, previewVaultB[1].lp_mint, "vault B lp mint");
 
-        previewPool = await factory.read.previewInitializePermissionlessPoolWithFeeTier([
+        poolPubkey = await factory.read.derivePermissionlessConstantProductPoolWithConfigKey([
             tokenAMint,
             tokenBMint,
-            tradeFeeBps,
+            poolConfig,
+        ]);
+
+        const debugInstruction = await factory.read.debugCreatePermissionlessConstantProductPoolWithConfig2([
+            tokenAMint,
+            tokenBMint,
             poolTokenAAmount,
             poolTokenBAmount,
+            poolConfig,
             deployer.account.address,
         ]);
-        assert.equal(previewPool[0], false, "pool must not exist before initialization");
-        assert.equal(previewPool[1], true, "vault A must exist before pool initialization");
-        assert.equal(previewPool[2], true, "vault B must exist before pool initialization");
+        console.log("debugCreatePermissionlessConstantProductPoolWithConfig2 program:", debugInstruction[0]);
+        console.log("debugCreatePermissionlessConstantProductPoolWithConfig2 payer:", debugInstruction[3]);
+        console.log("debugCreatePermissionlessConstantProductPoolWithConfig2 pool:", debugInstruction[4]);
+        console.log("debugCreatePermissionlessConstantProductPoolWithConfig2 data:", toHexString(debugInstruction[2]));
+        console.log(
+            "debugCreatePermissionlessConstantProductPoolWithConfig2 accounts:\n" +
+                debugInstruction[1].map((meta: any, index: number) => formatAccountMeta(meta, index)).join("\n"),
+        );
+        const expectedIxData =
+            "0x3095dc823d0b09b20088526a740000000088526a7400000000";
+        assert.equal(
+            toHexString(debugInstruction[2]).toLowerCase(),
+            expectedIxData,
+            "config2 instruction data must match known-good devnet payload",
+        );
+        assert.equal(
+            debugInstruction[3].toLowerCase(),
+            payer.toLowerCase(),
+            "debug payer must match Rome payer",
+        );
+        assert.equal(
+            debugInstruction[4].toLowerCase(),
+            poolPubkey.toLowerCase(),
+            "debug pool pubkey must match derived pool pubkey",
+        );
+        assert.equal(debugInstruction[1].length, 26, "config2 instruction must contain 26 accounts");
 
-        poolPubkey = previewPool[3].pool;
-
-        const createPoolTxHash = await factoryFromUser.write.createPermissionlessPoolWithFeeTier(
+        const createPoolTxHash = await factoryFromUser.write.createPermissionlessConstantProductPoolWithConfig2(
             [
                 tokenAMint,
                 tokenBMint,
-                tradeFeeBps,
                 poolTokenAAmount,
                 poolTokenBAmount,
+                poolConfig,
             ],
             {
                 account: deployer.account,
             },
         );
-        await waitForSuccess(publicClient, createPoolTxHash, "createPermissionlessPoolWithFeeTier");
+        await waitForSuccess(publicClient, createPoolTxHash, "createPermissionlessConstantProductPoolWithConfig2");
 
         await assertSolanaAccountExists(cpiProgram, poolPubkey, "damm v1 pool");
-        await assertSolanaAccountExists(cpiProgram, previewPool[3].lp_mint, "damm v1 pool lp mint");
-        await assertSolanaAccountExists(cpiProgram, previewPool[3].a_vault_lp, "damm v1 pool vault A lp");
-        await assertSolanaAccountExists(cpiProgram, previewPool[3].b_vault_lp, "damm v1 pool vault B lp");
+        const poolState = await factory.read.derivePermissionlessConstantProductPoolWithConfigKey([
+            tokenAMint,
+            tokenBMint,
+            poolConfig,
+        ]);
+        assert.equal(poolState.toLowerCase(), poolPubkey.toLowerCase(), "derived pool key must stay stable");
 
         const addPoolTxHash = await factoryFromUser.write.addPool([poolPubkey], {
             account: deployer.account,
