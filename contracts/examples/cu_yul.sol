@@ -69,6 +69,10 @@ object "cu_example" {
                 mstore(add(seeds_ptr, 32), 3)       // array length
 
                 let data_ptr := add(seeds_ptr, 64)  // where elements (pointers) go
+                // store pointer in array
+                mstore(data_ptr, add(data_ptr, 92))
+                mstore(add(data_ptr, 32), add(data_ptr, 156))
+                mstore(add(data_ptr, 64), add(data_ptr, 220))
 
                 // move pointer forward for array slots
                 let free := add(data_ptr, 96)      // 3 elements * 32 bytes
@@ -80,13 +84,12 @@ object "cu_example" {
 
                 // bytes layout: length + data
                 mstore(s0, 18) // length
-
                 mstore(add(s0, 32),
                     0x45585445524e414c5f415554484f524954590000000000000000000000000000
                 )
 
                 // store pointer in array
-                mstore(data_ptr, s0)
+                // mstore(data_ptr, sub(s0, 4))
 
                 free := add(s0, 64)
 
@@ -100,7 +103,7 @@ object "cu_example" {
                 // store address left-aligned
                 mstore(add(s1, 32), shl(96, caller()))
 
-                mstore(add(data_ptr, 32), s1)
+                // mstore(add(data_ptr, 32), sub(s1, 4))
 
                 free := add(s1, 64)
 
@@ -112,7 +115,7 @@ object "cu_example" {
                 mstore(s2, 32) // length = 32
                 mstore(add(s2, 32), 0x5041594552000000000000000000000000000000000000000000000000000000)
 
-                mstore(add(data_ptr, 64), s2)
+                // mstore(add(data_ptr, 64), sub(s2, 4))
 
                 free := add(s2, 64)
 
@@ -217,9 +220,6 @@ object "cu_example" {
                         and(shr(mul(8, i), value), 0xff)
                     )
                 }
-
-                // mstore(add(call_data, 36), meta_ptr)
-                // mstore(add(call_data, 68), data_ptr)
 
                 success := delegatecall(
                     gas(),
