@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {MeteoraDAMMv1Factory} from "./damm_v1_factory.sol";
 import {DAMMv1Pool, ERC20DAMMv1Pool} from "./damm_v1_pool.sol";
 import {SPL_ERC20} from "../erc20spl/erc20spl.sol";
+import {Convert} from "../convert.sol";
 
 contract MeteoraDAMMv1Router {
     MeteoraDAMMv1Factory public immutable factory;
@@ -23,10 +24,13 @@ contract MeteoraDAMMv1Router {
         address pool = factory.getPool(token_in, token_out);
         require(pool != address(0), "Pool does not exist");
 
-        ERC20DAMMv1Pool(pool).swapExactTokensForTokens(
-            token_in,
-            amount_in,
-            min_amount_out
+        (bool success, bytes memory result) = pool.delegatecall(
+            abi.encodeWithSelector(
+                ERC20DAMMv1Pool.swapExactTokensForTokens.selector,
+                token_in, amount_in, min_amount_out
+            )
         );
+
+        require (success, string(Convert.revert_msg(result)));
     }
 }

@@ -238,8 +238,8 @@ contract MeteoraDAMMv1Factory {
         seeds[0] = seed;
 
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
-            abi.encodeWithSignature(
-                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
+            abi.encodeWithSelector(
+                ICrossProgramInvocation.invoke_signed.selector,
                 ix.program_id,
                 ix.accounts,
                 ix.data,

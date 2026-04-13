@@ -10,6 +10,7 @@ import {ERC20Users, SPL_ERC20} from "../erc20spl/erc20spl.sol";
 import {SystemProgramLib} from "../system_program/system_program.sol";
 import {AssociatedSplToken} from "../spl_token/associated_spl_token.sol";
 import {MplTokenMetadataLib} from "../mpl_token_metadata/lib.sol";
+import {ICrossProgramInvocation} from "../interface.sol";
 
 library DAMMv1Lib {
     bytes32 public constant PROG_DYNAMIC_AMM =
@@ -20,6 +21,7 @@ library DAMMv1Lib {
     0xf569dfde202333598dc7d74b1d94b8624779c1f82f1e25a65b6e4ef8a3be9b9b; // HWzXGcGHy4tcpYfaRDCyLNzXqBTv3E6BttpCH2vJxArv
 
     bytes8 public constant INITIALIZE_CONSTANT_PRODUCT_POOL_WITH_CONFIG2_PREFIX = bytes8(sha256(bytes("global:initialize_permissionless_constant_product_pool_with_config2")));
+    bytes8 public constant SWAP_PREFIX = bytes8(sha256(bytes("global:swap")));
 
     uint256 internal constant POOL_PREFIX_MIN_LEN = 379;
     uint256 internal constant VAULT_MIN_LEN = 1197;
@@ -855,8 +857,7 @@ library DAMMv1Lib {
     pure
     returns (bytes memory)
     {
-        bytes8 disc = bytes8(sha256(bytes("global:swap")));
-        return abi.encodePacked(disc, Convert.u64le(in_amount), Convert.u64le(minimum_out_amount));
+        return abi.encodePacked(SWAP_PREFIX, Convert.u64le(in_amount), Convert.u64le(minimum_out_amount));
     }
 }
 
@@ -1037,7 +1038,7 @@ contract DAMMv1Pool {
     function make_swap_accounts_from_pool(
         bytes32 user,
         PoolToken in_token
-    ) internal view returns (DAMMv1Lib.SwapAccountsInput memory out) {
+    ) public view returns (DAMMv1Lib.SwapAccountsInput memory out) {
         bytes32 protocol_token_fee = in_token == PoolToken.TokenA
             ? protocol_token_a_fee
             : protocol_token_b_fee;
@@ -1073,40 +1074,6 @@ contract DAMMv1Pool {
             token_program: SplTokenLib.SPL_TOKEN_PROGRAM,
             protocol_token_fee: protocol_token_fee
         });
-    }
-
-    function invoke_swap(
-        DAMMv1Lib.SwapAccountsInput memory a,
-        uint64 in_amount,
-        uint64 minimum_out_amount
-    ) internal {
-        ICrossProgramInvocation.AccountMeta[] memory accounts = DAMMv1Lib.build_swap_account_metas(a);
-        bytes memory data = DAMMv1Lib.build_swap_ix_data(in_amount, minimum_out_amount);
-
-        (bool success, bytes memory result) = address(cpi_program).delegatecall(
-            abi.encodeWithSignature(
-                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
-                prog_dynamic_amm,
-                accounts,
-                data
-            )
-        );
-
-        require(success, string(result));
-    }
-
-    function invoke_swap(
-        bytes32 user,
-        PoolToken in_token,
-        uint64 in_amount,
-        uint64 minimum_out_amount
-    ) external {
-        DAMMv1Lib.SwapAccountsInput memory a = make_swap_accounts_from_pool(
-            user,
-            in_token
-        );
-
-        invoke_swap(a, in_amount, minimum_out_amount);
     }
 }
 
@@ -1165,16 +1132,26 @@ contract ERC20DAMMv1Pool {
         require(amount_in <= type(uint64).max, "amount_in exceeds uint64");
         require(min_amount_out <= type(uint64).max, "min_amount_out exceeds uint64");
 
-        (bool success, bytes memory result) = address(internal_pool).delegatecall(
-            abi.encodeWithSignature(
-                "invoke_swap(bytes32,uint8,uint64,uint64)",
+        ICrossProgramInvocation.AccountMeta[] memory accounts = DAMMv1Lib.build_swap_account_metas(
+            internal_pool.make_swap_accounts_from_pool(
                 user,
-                uint8(in_token),
-                uint64(amount_in),
-                uint64(min_amount_out)
+                in_token
             )
         );
 
-        require(success, string(Convert.revert_msg(result)));
+        bytes memory data = DAMMv1Lib.build_swap_ix_data(uint64(amount_in), uint64(min_amount_out));
+        bytes32[] memory seeds = new bytes32[](1);
+        seeds[0] = users.payer_salt();
+
+        (bool success, bytes memory result) = address(internal_pool.cpi_program()).delegatecall(
+            abi.encodeWithSelector(
+                ICrossProgramInvocation.invoke_signed.selector,
+                internal_pool.prog_dynamic_amm,
+                accounts,
+                data
+            )
+        );
+
+        require(success, string(result));
     }
 }
