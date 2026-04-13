@@ -20,3 +20,9 @@
 /coverage
 
 .idea
+
+/contracts/artifacts
+/contracts/.deps
+/contracts/.states
+/contracts/remix.config.json
+
