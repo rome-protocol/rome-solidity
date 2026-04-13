@@ -262,7 +262,7 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
         await assertSolanaProgramExists(cpiProgram, progDynamicVault, "prog_dynamic_vault");
         await assertSolanaProgramExists(cpiProgram, progDynamicAmm, "prog_dynamic_amm");
 
-        poolConfig = await findExistingConfig(factory, cpiProgram);
+        poolConfig = "0x644ca100bdd0fb4a40a19bd736434cec22a01b0f380626464ad69a115df8ef80";
         await assertSolanaAccountExists(cpiProgram, poolConfig, "damm config");
 
         const uniqueSuffix = `${Date.now()}${Math.floor(Math.random() * 1_000_000)
