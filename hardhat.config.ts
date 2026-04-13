@@ -49,7 +49,7 @@ export default defineConfig({
     monti_spl: {
       type: "http",
       chainType: "l1",
-      url: "https://montispl.devnet.romeprotocol.xyz/",
+      url: "https://montispl-i.devnet.romeprotocol.xyz/",
       accounts: [configVariable("MONTI_SPL_PRIVATE_KEY")],
     },
     // Env-var variants for non-interactive use (E2E scripts, CI)
@@ -62,7 +62,7 @@ export default defineConfig({
     monti_spl_env: {
       type: "http",
       chainType: "l1",
-      url: "https://montispl.devnet.romeprotocol.xyz/",
+      url: "https://montispl-i.devnet.romeprotocol.xyz/",
       accounts: process.env.MONTI_SPL_PRIVATE_KEY ? [process.env.MONTI_SPL_PRIVATE_KEY] : [],
     },
     monti_spl_iterative: {

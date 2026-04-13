@@ -30,6 +30,8 @@
  *   VAA_B64                — (optional) base64-encoded signed VAA (skips polling)
  *   BRIDGE                 — (optional) RomeWormholeBridge address override
  *   AMOUNT                 — (optional) amount in base units (default 10000 = 0.0001 WETH)
+ *   USDC_ADDRESS           — (optional) Sepolia USDC (0x...). When set, uses wrapped USDC mint on
+ *                            Solana and claims with completeTransfer (not unwrap ETH).
  */
 import hardhat from "hardhat";
 import {
@@ -61,10 +63,18 @@ const SEPOLIA_WORMHOLE_CHAIN_ID = 10002;
 const ETHEREUM_CHAIN_ID = 2; // Wormhole chain ID for Ethereum
 const SOLANA_EMITTER_CHAIN = 1;
 
-// WETH on Sepolia (the token we're unwrapping back to)
+// WETH on Sepolia (default outbound asset when USDC_ADDRESS is unset)
 const SEPOLIA_WETH_PADDED = Buffer.from(
     "000000000000000000000000eef12a83ee5b7161d3873317c8e0e7b76e0b5d9c", "hex",
 );
+
+function getSepoliaForeignAssetPadded(): Buffer {
+    const addr = process.env.USDC_ADDRESS?.trim();
+    if (addr?.startsWith("0x") && addr.length === 42) {
+        return Buffer.from(addr.replace(/^0x/i, "").padStart(64, "0"), "hex");
+    }
+    return SEPOLIA_WETH_PADDED;
+}
 
 // Solana Devnet
 const SOLANA_DEVNET_RPC = "https://api.devnet.solana.com";
@@ -190,7 +200,8 @@ async function sendFromRome() {
 
     // 3. Check balances
     const connection = new Connection(SOLANA_DEVNET_RPC, "confirmed");
-    const wrappedMint = deriveWrappedMintKey(TOKEN_BRIDGE, SEPOLIA_WORMHOLE_CHAIN_ID, SEPOLIA_WETH_PADDED);
+    const foreignAsset = getSepoliaForeignAssetPadded();
+    const wrappedMint = deriveWrappedMintKey(TOKEN_BRIDGE, SEPOLIA_WORMHOLE_CHAIN_ID, foreignAsset);
     const pdaAta = getAta(wrappedMint, userPda);
     const payerAta = getAta(wrappedMint, payer.publicKey);
 
@@ -204,7 +215,8 @@ async function sendFromRome() {
         return;
     }
     const pdaBalance = pdaAtaInfo.data.readBigUInt64LE(64);
-    console.log("PDA ATA balance:", pdaBalance.toString(), `(${Number(pdaBalance) / 1e8} WETH)`);
+    const unitLabel = process.env.USDC_ADDRESS ? "USDC (6dp)" : "WETH (8dp)";
+    console.log("PDA ATA balance:", pdaBalance.toString(), `(${unitLabel} base units)`);
 
     const amount = BigInt(process.env.AMOUNT || "10000");
     if (pdaBalance < amount) {
@@ -431,15 +443,43 @@ async function claimOnSepolia() {
     const beforeBalance = await publicClient.getBalance({ address: wallet.account.address });
     console.log("ETH balance before:", (Number(beforeBalance) / 1e18).toFixed(6), "ETH");
 
+    const usdcAddr = process.env.USDC_ADDRESS as `0x${string}` | undefined;
+    const claimUsdc = Boolean(usdcAddr && usdcAddr.startsWith("0x") && usdcAddr.length === 42);
+
+    let usdcBefore = 0n;
+    if (claimUsdc) {
+        usdcBefore = await publicClient.readContract({
+            address: usdcAddr!,
+            abi: [{
+                name: "balanceOf",
+                type: "function",
+                stateMutability: "view",
+                inputs: [{ name: "account", type: "address" }],
+                outputs: [{ name: "", type: "uint256" }],
+            }],
+            functionName: "balanceOf",
+            args: [wallet.account.address],
+        });
+        console.log("USDC balance before:", usdcBefore.toString());
+    }
+
     const claimCalldata = encodeFunctionData({
-        abi: [{
-            name: "completeTransferAndUnwrapETH",
-            type: "function" as const,
-            stateMutability: "nonpayable" as const,
-            inputs: [{ name: "encodedVm", type: "bytes" as const }],
-            outputs: [] as const,
-        }],
-        functionName: "completeTransferAndUnwrapETH",
+        abi: claimUsdc
+            ? [{
+                name: "completeTransfer",
+                type: "function" as const,
+                stateMutability: "nonpayable" as const,
+                inputs: [{ name: "encodedVm", type: "bytes" as const }],
+                outputs: [] as const,
+            }]
+            : [{
+                name: "completeTransferAndUnwrapETH",
+                type: "function" as const,
+                stateMutability: "nonpayable" as const,
+                inputs: [{ name: "encodedVm", type: "bytes" as const }],
+                outputs: [] as const,
+            }],
+        functionName: claimUsdc ? "completeTransfer" : "completeTransferAndUnwrapETH",
         args: [`0x${vaaBytes.toString("hex")}` as `0x${string}`],
     });
 
@@ -456,10 +496,27 @@ async function claimOnSepolia() {
 
     if (receipt.status === "success") {
         const afterBalance = await publicClient.getBalance({ address: wallet.account.address });
-        const gained = Number(afterBalance - beforeBalance) / 1e18;
         console.log("\n=== SUCCESS ===");
         console.log("ETH balance after:", (Number(afterBalance) / 1e18).toFixed(6), "ETH");
-        console.log("ETH gained (approx):", gained.toFixed(6), "ETH (minus gas)");
+        if (claimUsdc && usdcAddr) {
+            const usdcAfter = await publicClient.readContract({
+                address: usdcAddr,
+                abi: [{
+                    name: "balanceOf",
+                    type: "function",
+                    stateMutability: "view",
+                    inputs: [{ name: "account", type: "address" }],
+                    outputs: [{ name: "", type: "uint256" }],
+                }],
+                functionName: "balanceOf",
+                args: [wallet.account.address],
+            });
+            console.log("USDC balance after:", usdcAfter.toString(), "(raw)");
+            console.log("USDC gained (raw):", (usdcAfter - usdcBefore).toString());
+        } else {
+            const gained = Number(afterBalance - beforeBalance) / 1e18;
+            console.log("ETH gained (approx):", gained.toFixed(6), "ETH (minus gas)");
+        }
     } else {
         console.log("\nClaim failed. Check transaction on Sepolia explorer.");
     }

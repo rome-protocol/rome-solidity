@@ -24,13 +24,20 @@
  *   VAA_B64                — (optional) base64-encoded signed VAA
  *   BRIDGE                 — (optional) RomeWormholeBridge address override
  *   AMOUNT                 — (optional) ETH amount to send, default "0.001"
+ *   USDC_ADDRESS           — (optional) Sepolia USDC contract (0x...). When set, sends ERC-20 via
+ *                            transferTokens instead of wrapAndTransferETH. Use AMOUNT in token
+ *                            units (e.g. 1 = 1 USDC if USDC_DECIMALS=6).
+ *   USDC_DECIMALS          — (optional) default 6
+ *
+ * USDC end-to-end: PHASE=full in scripts/wormhole_usdc/inbound.ts (see README there).
  */
 import hardhat from "hardhat";
+import { isHardhatOrNodeEntry } from "./lib/helpers.js";
 import {
     Connection, Keypair, PublicKey, Transaction, TransactionInstruction,
     sendAndConfirmTransaction, SYSVAR_RENT_PUBKEY, SystemProgram as SolanaSystemProgram,
 } from "@solana/web3.js";
-import { encodeFunctionData, parseEther } from "viem";
+import { encodeFunctionData, parseEther, parseUnits } from "viem";
 import { deserialize } from "@wormhole-foundation/sdk-connect";
 import {
     publicKeyToBytes32Hex,
@@ -72,6 +79,10 @@ const ATA_PROGRAM = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
 const DEFAULT_BRIDGE = "0x79f34fa78651efa9d24ff8ac526cbd9753e8fc1f";
 const ASSOC_TOKEN_PRECOMPILE = "0xFF00000000000000000000000000000000000006" as const;
 
+/** Hardhat network names (override via env for CI / custom RPC profiles). */
+export const SEPOLIA_NETWORK = process.env.SEPOLIA_NETWORK ?? "sepolia_env";
+export const ROME_NETWORK = process.env.ROME_NETWORK ?? "monti_spl_env";
+
 // Wormholescan API
 const WORMHOLESCAN_API = "https://api.testnet.wormholescan.io/api/v1/vaas";
 
@@ -84,6 +95,11 @@ function getAta(mint: PublicKey, owner: PublicKey): PublicKey {
         [owner.toBuffer(), SPL_TOKEN_PK.toBuffer(), mint.toBuffer()],
         ATA_PROGRAM,
     )[0];
+}
+
+/** Left-pad EVM token address to 32 bytes (Wormhole foreign asset id). */
+function padEvmTokenAddress(token: `0x${string}`): Buffer {
+    return Buffer.from(token.replace(/^0x/i, "").padStart(64, "0"), "hex");
 }
 
 function getEvmPrivateKey(): string {
@@ -123,29 +139,34 @@ async function fetchSignedVaa(seq: number, maxWaitMs = 900_000): Promise<string>
 // Phase 1: Send from Sepolia
 // ---------------------------------------------------------------------------
 
-async function sendFromSepolia() {
-    const { viem } = await hardhat.network.connect();
+export async function sendFromSepolia(): Promise<string | undefined> {
+    const { viem } = await hardhat.network.connect({ network: SEPOLIA_NETWORK });
     const [wallet] = await viem.getWalletClients();
     const publicClient = await viem.getPublicClient();
     if (!wallet?.account) throw new Error("No wallet found");
 
-    console.log("=== Phase 1: Send ETH from Sepolia ===");
+    const usdcAddr = process.env.USDC_ADDRESS as `0x${string}` | undefined;
+    const isUsdc = Boolean(usdcAddr && usdcAddr.startsWith("0x") && usdcAddr.length === 42);
+
+    console.log(isUsdc ? "=== Phase 1: Send USDC from Sepolia ===" : "=== Phase 1: Send ETH from Sepolia ===");
     console.log("Wallet:", wallet.account.address);
     const balance = await publicClient.getBalance({ address: wallet.account.address });
     console.log("ETH Balance:", (Number(balance) / 1e18).toFixed(6), "ETH");
 
-    const sendAmount = parseEther(process.env.AMOUNT || "0.001");
-    if (balance < sendAmount + parseEther("0.005")) {
+    const sendAmount = isUsdc
+        ? parseUnits(process.env.AMOUNT || "1", Number(process.env.USDC_DECIMALS || "6"))
+        : parseEther(process.env.AMOUNT || "0.001");
+
+    if (!isUsdc && balance < sendAmount + parseEther("0.005")) {
         console.log("\nInsufficient ETH. Get Sepolia ETH from a faucet.");
-        return;
+        return undefined;
+    }
+    if (isUsdc && balance < parseEther("0.01")) {
+        console.log("\nNeed a small amount of Sepolia ETH for gas + bridge fee. Fund the wallet.");
+        return undefined;
     }
 
-    // Derive PDA → wrapped mint → ATA
-    const evmKey = getEvmPrivateKey();
-    const payer = Keypair.fromSeed(Buffer.from(evmKey, "hex"));
-    const connection = new Connection(SOLANA_DEVNET_RPC, "confirmed");
-
-    // Derive PDA off-chain (the bridge contract is on Rome, not Sepolia).
+    // Derive PDA → wrapped mint → recipient ATA (bridge contract lives on Rome, not Sepolia).
     // Seeds: ["EXTERNAL_AUTHORITY", <20-byte EVM address>], program: Rome EVM program ID
     // Must match RomeEVMAccount.pda() in contracts/rome_evm_account.sol
     // The program ID must be the actual deployed Rome EVM program for the target rollup.
@@ -156,38 +177,100 @@ async function sendFromSepolia() {
     )[0];
     console.log("Rome PDA:", pda.toBase58());
 
-    const wrappedMint = deriveWrappedMintKey(TOKEN_BRIDGE, SEPOLIA_WORMHOLE_CHAIN_ID, SEPOLIA_WETH_PADDED);
+    const foreignAsset = isUsdc ? padEvmTokenAddress(usdcAddr!) : SEPOLIA_WETH_PADDED;
+    const wrappedMint = deriveWrappedMintKey(TOKEN_BRIDGE, SEPOLIA_WORMHOLE_CHAIN_ID, foreignAsset);
     const recipientAta = getAta(wrappedMint, pda);
     const recipientAtaHex = `0x${Buffer.from(recipientAta.toBytes()).toString("hex")}` as `0x${string}`;
 
     console.log("Wrapped mint:", wrappedMint.toBase58());
     console.log("Recipient ATA:", recipientAta.toBase58());
 
-    console.log(`\nSending ${Number(sendAmount) / 1e18} ETH to Wormhole Token Bridge...`);
+    const feeWei = BigInt(process.env.WORMHOLE_FEE_WEI || "0");
 
-    const calldata = encodeFunctionData({
-        abi: [{
-            name: "wrapAndTransferETH",
-            type: "function" as const,
-            stateMutability: "payable" as const,
-            inputs: [
-                { name: "recipientChain", type: "uint16" as const },
-                { name: "recipient", type: "bytes32" as const },
-                { name: "arbiterFee", type: "uint256" as const },
-                { name: "nonce", type: "uint32" as const },
-            ],
-            outputs: [{ name: "sequence", type: "uint64" as const }],
-        }],
-        functionName: "wrapAndTransferETH",
-        args: [SOLANA_CHAIN_ID, recipientAtaHex, 0n, 0],
-    });
+    let txHash: `0x${string}`;
 
-    const txHash = await wallet.sendTransaction({
-        to: SEPOLIA_TOKEN_BRIDGE as `0x${string}`,
-        data: calldata,
-        value: sendAmount,
-        gas: 500_000n,
-    });
+    if (isUsdc) {
+        console.log(`\nSending ${process.env.AMOUNT || "1"} USDC (raw ${sendAmount}) via Token Bridge...`);
+        const allowance = await publicClient.readContract({
+            address: usdcAddr!,
+            abi: [{
+                name: "allowance",
+                type: "function",
+                stateMutability: "view",
+                inputs: [
+                    { name: "owner", type: "address" },
+                    { name: "spender", type: "address" },
+                ],
+                outputs: [{ name: "", type: "uint256" }],
+            }],
+            functionName: "allowance",
+            args: [wallet.account.address, SEPOLIA_TOKEN_BRIDGE as `0x${string}`],
+        });
+        if (allowance < sendAmount) {
+            const approveHash = await wallet.writeContract({
+                address: usdcAddr!,
+                abi: [{
+                    name: "approve",
+                    type: "function",
+                    stateMutability: "nonpayable",
+                    inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }],
+                    outputs: [{ name: "", type: "bool" }],
+                }],
+                functionName: "approve",
+                args: [SEPOLIA_TOKEN_BRIDGE as `0x${string}`, sendAmount],
+            });
+            await publicClient.waitForTransactionReceipt({ hash: approveHash });
+            console.log("Approve TX:", approveHash);
+        }
+
+        txHash = await wallet.writeContract({
+            address: SEPOLIA_TOKEN_BRIDGE as `0x${string}`,
+            abi: [{
+                name: "transferTokens",
+                type: "function",
+                stateMutability: "payable",
+                inputs: [
+                    { name: "token", type: "address" },
+                    { name: "amount", type: "uint256" },
+                    { name: "recipientChain", type: "uint16" },
+                    { name: "recipient", type: "bytes32" },
+                    { name: "arbiterFee", type: "uint256" },
+                    { name: "nonce", type: "uint32" },
+                ],
+                outputs: [{ name: "sequence", type: "uint64" }],
+            }],
+            functionName: "transferTokens",
+            args: [usdcAddr!, sendAmount, SOLANA_CHAIN_ID, recipientAtaHex, 0n, 0],
+            value: feeWei,
+            gas: 800_000n,
+        });
+    } else {
+        console.log(`\nSending ${Number(sendAmount) / 1e18} ETH to Wormhole Token Bridge...`);
+
+        const calldata = encodeFunctionData({
+            abi: [{
+                name: "wrapAndTransferETH",
+                type: "function" as const,
+                stateMutability: "payable" as const,
+                inputs: [
+                    { name: "recipientChain", type: "uint16" as const },
+                    { name: "recipient", type: "bytes32" as const },
+                    { name: "arbiterFee", type: "uint256" as const },
+                    { name: "nonce", type: "uint32" as const },
+                ],
+                outputs: [{ name: "sequence", type: "uint64" as const }],
+            }],
+            functionName: "wrapAndTransferETH",
+            args: [SOLANA_CHAIN_ID, recipientAtaHex, 0n, 0],
+        });
+
+        txHash = await wallet.sendTransaction({
+            to: SEPOLIA_TOKEN_BRIDGE as `0x${string}`,
+            data: calldata,
+            value: sendAmount,
+            gas: 500_000n,
+        });
+    }
     console.log("TX:", txHash);
 
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
@@ -205,14 +288,15 @@ async function sendFromSepolia() {
     console.log("\n=== Step 1 complete ===");
     console.log("Sequence:", seq);
     console.log("\nRun Step 2 (~15 min after guardians sign):");
-    console.log(`  PHASE=claim SEQ=${seq} npx hardhat run scripts/wormhole_sepolia_to_rome.ts --network monti_spl`);
+    console.log(`  PHASE=claim SEQ=${seq} npx hardhat run scripts/wormhole_sepolia_to_rome.ts --network ${ROME_NETWORK}`);
+    return seq;
 }
 
 // ---------------------------------------------------------------------------
 // Phase 2: Claim on Rome
 // ---------------------------------------------------------------------------
 
-async function claimOnRome() {
+export async function claimOnRome(): Promise<void> {
     // -----------------------------------------------------------------------
     // 1. Get the signed VAA
     // -----------------------------------------------------------------------
@@ -231,6 +315,8 @@ async function claimOnRome() {
 
     const vaaBytes = Buffer.from(vaaB64, "base64");
     const vaa = deserialize("TokenBridge:Transfer", vaaBytes) as any;
+
+    const { viem } = await hardhat.network.connect({ network: ROME_NETWORK });
 
     console.log("\n=== Phase 2: Claim on Rome ===");
     console.log("  Sequence:", vaa.sequence?.toString());
@@ -269,9 +355,8 @@ async function claimOnRome() {
 
         if (solBalance < 10_000_000) {
             console.log("Funding payer from Rome EVM...");
-            const { viem: romeViem } = await hardhat.network.connect();
-            const [romeWallet] = await romeViem.getWalletClients();
-            const romePublic = await romeViem.getPublicClient();
+            const [romeWallet] = await viem.getWalletClients();
+            const romePublic = await viem.getPublicClient();
             if (!romeWallet?.account) throw new Error("No Rome wallet");
 
             const SYSTEM_PRECOMPILE = "0xfF00000000000000000000000000000000000007" as const;
@@ -323,9 +408,8 @@ async function claimOnRome() {
     // 3. Connect to Rome EVM
     // -----------------------------------------------------------------------
     console.log("\n--- Step 2: Connect to Rome EVM ---");
-    const bridgeAddr = process.env.BRIDGE || DEFAULT_BRIDGE;
+    const bridgeAddr = (process.env.BRIDGE || DEFAULT_BRIDGE) as `0x${string}`;
 
-    const { viem } = await hardhat.network.connect();
     const [wallet] = await viem.getWalletClients();
     const publicClient = await viem.getPublicClient();
     if (!wallet?.account) throw new Error("No wallet found");
@@ -412,7 +496,7 @@ async function claimOnRome() {
         console.log("\n=== SUCCESS ===");
         console.log("Wrapped tokens minted to ATA:", recipientAta.toBase58());
         console.log("Mint:", wrappedMint.toBase58());
-        console.log("ATA balance:", balance.toString(), `(${Number(balance) / 1e8} WETH)`);
+        console.log("ATA balance (raw smallest units):", balance.toString());
     } else {
         console.log("Could not read ATA balance.");
     }
@@ -431,7 +515,9 @@ async function main() {
     }
 }
 
-main().catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-});
+if (isHardhatOrNodeEntry(import.meta.url)) {
+    main().catch((error) => {
+        console.error(error);
+        process.exitCode = 1;
+    });
+}
