@@ -65,14 +65,14 @@ object "cu_example" {
 
                 let seeds_ptr := add(ptr, 36)
                 
-                mstore(seeds_ptr, 32)               // offset of len
+                mstore(seeds_ptr, 64)               // offset of len
                 mstore(add(seeds_ptr, 32), 3)       // array length
 
                 let data_ptr := add(seeds_ptr, 64)  // where elements (pointers) go
                 // store pointer in array
-                mstore(data_ptr, add(data_ptr, 92))
-                mstore(add(data_ptr, 32), add(data_ptr, 156))
-                mstore(add(data_ptr, 64), add(data_ptr, 220))
+                mstore(data_ptr, 96)
+                mstore(add(data_ptr, 32), 192)
+                mstore(add(data_ptr, 64), 288)
 
                 // move pointer forward for array slots
                 let free := add(data_ptr, 96)      // 3 elements * 32 bytes
@@ -81,79 +81,32 @@ object "cu_example" {
                 // Seed[0] = "EXTERNAL_AUTHORITY"
                 // ----------------------------------
                 let s0 := free
-
-                // bytes layout: length + data
-                mstore(s0, 18) // length
-                mstore(add(s0, 32),
-                    0x45585445524e414c5f415554484f524954590000000000000000000000000000
-                )
-
-                // store pointer in array
-                // mstore(data_ptr, sub(s0, 4))
-
-                free := add(s0, 64)
-
+                mstore(s0, 32)
+                mstore(add(s0, 32), 18) // length
+                mstore(add(s0, 64), 0x45585445524e414c5f415554484f524954590000000000000000000000000000)
+                free := add(s0, 96)
                 // ----------------------------------
                 // Seed[1] = abi.encodePacked(user)
                 // ----------------------------------
                 let s1 := free
-
-                mstore(s1, 20) // address = 20 bytes
-
-                // store address left-aligned
-                mstore(add(s1, 32), shl(96, caller()))
-
-                // mstore(add(data_ptr, 32), sub(s1, 4))
-
-                free := add(s1, 64)
+                mstore(s1, 32)
+                mstore(add(s1, 32), 20) // address = 20 bytes
+                mstore(add(s1, 64), shl(96, caller()))
+                free := add(s1, 96)
 
                 // ----------------------------------
-                // Seed[2] = bytes32 → bytes
+                // Seed[2] = bytes32 → bytes        salt = "PAYER"
                 // ----------------------------------
                 let s2 := free
-
-                mstore(s2, 32) // length = 32
-                mstore(add(s2, 32), 0x5041594552000000000000000000000000000000000000000000000000000000)
-
-                // mstore(add(data_ptr, 64), sub(s2, 4))
-
-                free := add(s2, 64)
-
-
-                // // ----------------------------------
-                // // salt = "PAYER"
-                // // ----------------------------------
-                // mstore(ptr,
-                    // 0x5041594552000000000000000000000000000000000000000000000000000000
-                // )
-
-                // // ----------------------------------
-                // // seeds (packed)
-                // // ----------------------------------
-                // let seeds_ptr := add(ptr, 32)
-
-                // mstore(seeds_ptr,
-                //     0x45585445524e414c5f415554484f524954590000000000000000000000000000
-                // )
-                // mstore(add(seeds_ptr, 32), caller())
-                // mstore(add(seeds_ptr, 64), mload(ptr))
-
-                // ----------------------------------
-                // find_program_address
-                // ----------------------------------
-                // let call_ptr := add(seeds_ptr, 96)
-
-                // mstore(call_ptr,
-                    // 0x27e3edda00000000000000000000000000000000000000000000000000000000
-                // )
-                // mstore(add(call_ptr, 4), rome_program)
-                // mstore(add(call_ptr, 36), seeds_ptr)
+                mstore(s2, 32)
+                mstore(add(s2, 32), 32)
+                mstore(add(s2, 64), 0x5041594552000000000000000000000000000000000000000000000000000000)
 
                 success := staticcall(
                     gas(),
                     0xfF00000000000000000000000000000000000007,
                     ptr,
-                    388,
+                    484,
                     ptr,
                     64
                 )
