@@ -3,7 +3,7 @@
  *
  * PHASE=full   — Sepolia lock → VAA poll → Rome claim → PDA ATA + balance (requires USDC_ADDRESS, keys)
  * PHASE=setup  — create PDA ATA for wrapped USDC if missing
- * PHASE=balance — CPI account_info balance on PDA ATA
+ * PHASE=balance — wrapped USDC on PDA ATA (Solana devnet getAccountInfo; avoids Rome CPI 403/502)
  * PHASE=all    — setup then balance (default)
  *
  * SKIP_SEND=1 with PHASE=full — skip Sepolia send; set SEQ or VAA_B64 for claim only.
@@ -15,7 +15,7 @@
 import hardhat from "hardhat";
 import { claimOnRome, sendFromSepolia } from "../wormhole_sepolia_to_rome.js";
 import { isHardhatOrNodeEntry } from "../lib/helpers.js";
-import { Keypair, PublicKey } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { encodeFunctionData } from "viem";
 import { publicKeyToBytes32Hex } from "@wormhole-foundation/sdk-solana";
 import { deriveWrappedMintKey } from "@wormhole-foundation/sdk-solana-tokenbridge";
@@ -25,27 +25,14 @@ const TOKEN_BRIDGE = new PublicKey("DZnkkTmCiFWfYTfT41X3Rd1kDgozqzxWaHqsw6W4x2oe
 const SPL_TOKEN = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const ATA_PROGRAM = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 const ASSOC_TOKEN_PRECOMPILE = "0xFF00000000000000000000000000000000000006" as const;
-const CPI_PRECOMPILE = "0xFF00000000000000000000000000000000000008" as const;
 const DEFAULT_USDC = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
+
+/** Same default as wormhole_sepolia_to_rome.ts — public devnet for SPL reads. */
+const SOLANA_RPC = process.env.SOLANA_RPC_URL?.trim() || "https://api.devnet.solana.com";
 
 const ROME_EVM_PROGRAM = new PublicKey(
     process.env.ROME_EVM_PROGRAM || "DP1dshBzmXXVsRxH5kCKMemrDuptg1JvJ1j5AsFV4Hm3",
 );
-
-const accountInfoAbi = [{
-    name: "account_info",
-    type: "function" as const,
-    stateMutability: "view" as const,
-    inputs: [{ name: "pubkey", type: "bytes32" as const }],
-    outputs: [
-        { name: "lamports", type: "uint64" as const },
-        { name: "owner", type: "bytes32" as const },
-        { name: "is_signer", type: "bool" as const },
-        { name: "is_writable", type: "bool" as const },
-        { name: "executable", type: "bool" as const },
-        { name: "data", type: "bytes" as const },
-    ],
-}] as const;
 
 function padEvmTokenAddress(token: string): Buffer {
     return Buffer.from(token.replace(/^0x/i, "").padStart(64, "0"), "hex");
@@ -83,31 +70,20 @@ async function ensureAta(): Promise<void> {
     const payer = Keypair.fromSeed(Buffer.from(evmKey, "hex"));
     const walletOwner = ownerMode === "payer" ? payer.publicKey : pda;
     const ata = getAta(wrappedMint, walletOwner);
-    const ataHex = publicKeyToBytes32Hex(ata) as `0x${string}`;
     const walletBytes32 = publicKeyToBytes32Hex(walletOwner) as `0x${string}`;
     const mintHex = publicKeyToBytes32Hex(wrappedMint) as `0x${string}`;
 
     console.log("=== PHASE: setup (create ATA if needed) ===");
     console.log("Network:", networkName);
+    console.log("Solana RPC (ATA check):", SOLANA_RPC);
     console.log("EVM wallet:", wallet.account.address);
     console.log("OWNER:", ownerMode, "→", walletOwner.toBase58());
     console.log("Wrapped mint:", wrappedMint.toBase58());
     console.log("ATA:", ata.toBase58());
 
-    let data: `0x${string}`;
-    try {
-        const r = await publicClient.readContract({
-            address: CPI_PRECOMPILE,
-            abi: accountInfoAbi,
-            functionName: "account_info",
-            args: [ataHex],
-        });
-        data = r[5] as `0x${string}`;
-    } catch {
-        data = "0x";
-    }
-
-    if (data && data.length > 130) {
+    const sol = new Connection(SOLANA_RPC, "confirmed");
+    const acc = await sol.getAccountInfo(ata, "confirmed");
+    if (acc && acc.data.length >= 72) {
         console.log("ATA already exists — skip create.\n");
         return;
     }
@@ -151,31 +127,30 @@ async function printBalance(): Promise<void> {
     const ata = getAta(mint, pda);
     const ataHex = publicKeyToBytes32Hex(ata) as `0x${string}`;
 
-    console.log("=== PHASE: balance (CPI account_info on PDA ATA) ===");
+    console.log("=== PHASE: balance (Solana devnet — PDA ATA) ===");
     console.log("Network:", networkName);
+    console.log("Solana RPC:", SOLANA_RPC);
     console.log("EVM wallet:", wallet.account.address);
     console.log("User PDA:", pda.toBase58());
     console.log("Wrapped USDC mint:", mint.toBase58());
+    console.log("PDA ATA (base58):", ata.toBase58());
     console.log("PDA ATA bytes32:", ataHex);
 
-    const ethBal = await publicClient.getBalance({ address: wallet.account.address });
-    console.log("Native (gas) wei:", ethBal.toString());
+    try {
+        const ethBal = await publicClient.getBalance({ address: wallet.account.address });
+        console.log("Native (gas) wei:", ethBal.toString());
+    } catch {
+        console.log("Native (gas) wei: (unavailable)");
+    }
 
-    const result = await publicClient.readContract({
-        address: CPI_PRECOMPILE,
-        abi: accountInfoAbi,
-        functionName: "account_info",
-        args: [ataHex],
-    });
-    const data = result[5] as `0x${string}`;
-    const dataBytes = Buffer.from(data.slice(2), "hex");
-
-    if (dataBytes.length < 72) {
-        console.log("\nNo SPL token account data (empty ATA or not created yet). Run PHASE=setup.\n");
+    const sol = new Connection(SOLANA_RPC, "confirmed");
+    const acc = await sol.getAccountInfo(ata, "confirmed");
+    if (!acc || acc.data.length < 72) {
+        console.log("\nNo SPL token account on devnet (empty ATA). Run PHASE=setup.\n");
         return;
     }
 
-    const amount = dataBytes.readBigUInt64LE(64);
+    const amount = acc.data.readBigUInt64LE(64);
     console.log("\nWrapped USDC — raw:", amount.toString());
     console.log("Wrapped USDC — UI (6 dp):", Number(amount) / 1e6, "\n");
 }
@@ -204,7 +179,7 @@ async function runFullPipeline(): Promise<void> {
     console.log("\n========== 2/3 Claim on Rome (poll VAA if needed) ==========\n");
     await claimOnRome();
 
-    console.log("\n========== 3/3 PDA ATA + balance (CPI) ==========\n");
+    console.log("\n========== 3/3 PDA ATA + balance (Solana read) ==========\n");
     await ensureAta();
     await printBalance();
 

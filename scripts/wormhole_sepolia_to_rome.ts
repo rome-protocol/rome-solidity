@@ -2,9 +2,8 @@
  * Inbound Wormhole transfer: Sepolia ETH → Rome EVM (wrapped WETH).
  *
  * Prerequisites:
- *   1. RomeWormholeBridge deployed (scripts/deploy_wormhole_bridge.ts)
- *   2. Sepolia ETH in your wallet (same private key for both networks)
- *   3. SOL in your Rome PDA on Solana devnet (for posting the VAA)
+ *   1. Sepolia ETH in your wallet (same private key for both networks)
+ *   2. Solana devnet SOL on the EVM-derived payer keypair (for posting the VAA on Solana)
  *
  * Usage:
  *   # Step 1 — Lock ETH on Sepolia. Prints the sequence number for Step 2.
@@ -22,7 +21,8 @@
  *   PHASE                  — "send" or "claim"
  *   SEQ                    — Wormhole sequence number (from Step 1 output)
  *   VAA_B64                — (optional) base64-encoded signed VAA
- *   BRIDGE                 — (optional) RomeWormholeBridge address override
+ *   SOLANA_RPC_URL         — (optional) Solana JSON-RPC for post_vaa / claim (default: public devnet)
+ *   ROME_EVM_PROGRAM       — (optional) Rome EVM program id for PDA derivation (must match rollup)
  *   AMOUNT                 — (optional) ETH amount to send, default "0.001"
  *   USDC_ADDRESS           — (optional) Sepolia USDC contract (0x...). When set, sends ERC-20 via
  *                            transferTokens instead of wrapAndTransferETH. Use AMOUNT in token
@@ -68,15 +68,14 @@ const SEPOLIA_WETH_PADDED = Buffer.from(
     "000000000000000000000000eef12a83ee5b7161d3873317c8e0e7b76e0b5d9c", "hex",
 );
 
-// Solana Devnet
-const SOLANA_DEVNET_RPC = "https://api.devnet.solana.com";
+// Solana (default: public devnet; override with SOLANA_RPC_URL)
+const SOLANA_RPC = process.env.SOLANA_RPC_URL?.trim() || "https://api.devnet.solana.com";
 const WORMHOLE_CORE = new PublicKey("3u8hJUVTA4jH1wYAyUur7FFZVQ8H635K3tSHHF4ssjQ5");
 const TOKEN_BRIDGE = new PublicKey("DZnkkTmCiFWfYTfT41X3Rd1kDgozqzxWaHqsw6W4x2oe");
 const SPL_TOKEN_PK = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const ATA_PROGRAM = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
 // Rome EVM
-const DEFAULT_BRIDGE = "0x79f34fa78651efa9d24ff8ac526cbd9753e8fc1f";
 const ASSOC_TOKEN_PRECOMPILE = "0xFF00000000000000000000000000000000000006" as const;
 
 /** Hardhat network names (override via env for CI / custom RPC profiles). */
@@ -337,8 +336,9 @@ export async function claimOnRome(): Promise<void> {
     // 2. Post VAA to Solana devnet
     // -----------------------------------------------------------------------
     console.log("\n--- Step 1: Post VAA to Solana devnet ---");
+    console.log("Solana RPC:", SOLANA_RPC);
 
-    const connection = new Connection(SOLANA_DEVNET_RPC, "confirmed");
+    const connection = new Connection(SOLANA_RPC, "confirmed");
     const vaaHash = Buffer.from(vaa.hash);
     const postedVaaKey = coreUtils.derivePostedVaaKey(WORMHOLE_CORE, vaaHash);
 
@@ -405,20 +405,20 @@ export async function claimOnRome(): Promise<void> {
     }
 
     // -----------------------------------------------------------------------
-    // 3. Connect to Rome EVM
+    // 3. Rome EVM user PDA (derive locally — avoids eth_call to RomeWormholeBridge, which uses
+    //    Rome's internal Solana RPC and can 502 when that backend is unhealthy).
     // -----------------------------------------------------------------------
-    console.log("\n--- Step 2: Connect to Rome EVM ---");
-    const bridgeAddr = (process.env.BRIDGE || DEFAULT_BRIDGE) as `0x${string}`;
-
+    console.log("\n--- Step 2: Rome EVM user PDA ---");
     const [wallet] = await viem.getWalletClients();
     const publicClient = await viem.getPublicClient();
     if (!wallet?.account) throw new Error("No wallet found");
-
-    const bridge = await viem.getContractAt("RomeWormholeBridge", bridgeAddr);
     console.log("Wallet:", wallet.account.address);
 
-    const pdaHex = await bridge.read.bridgeUserPda() as `0x${string}`;
-    const pda = new PublicKey(Buffer.from(pdaHex.slice(2), "hex"));
+    const ROME_EVM_PROGRAM = new PublicKey(process.env.ROME_EVM_PROGRAM || "DP1dshBzmXXVsRxH5kCKMemrDuptg1JvJ1j5AsFV4Hm3");
+    const pda = PublicKey.findProgramAddressSync(
+        [Buffer.from("EXTERNAL_AUTHORITY"), Buffer.from(wallet.account.address.slice(2), "hex")],
+        ROME_EVM_PROGRAM,
+    )[0];
     console.log("PDA:", pda.toBase58());
 
     // -----------------------------------------------------------------------
