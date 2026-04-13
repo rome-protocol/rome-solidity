@@ -216,8 +216,6 @@ library DAMMv1Lib {
     struct InitializePermissionlessPoolWithConfigConfig {
         bytes32 token_a_mint;
         bytes32 token_b_mint;
-        uint64 token_a_amount;
-        uint64 token_b_amount;
         bytes32 payer;
         bytes32 config;
         bytes32 dynamic_vault_program;

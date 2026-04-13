@@ -111,44 +111,47 @@ contract MeteoraDAMMv1Factory {
         return (vault, true);
     }
 
-    function createPermissionlessConstantProductPoolWithConfig2(
+    function preparePermissionlessConstantProductPoolWithConfig2(
         bytes32 token_a_mint,
         bytes32 token_b_mint,
-        uint64 token_a_amount,
-        uint64 token_b_amount,
         bytes32 config
-    ) external returns (bytes32 pool_pubkey) {
-        bytes32 payer = ERC20Users(token_factory.users()).get_user(msg.sender);
+    )
+    external
+    view
+    returns (DAMMv1Lib.InitializePermissionlessPoolWithConfigAccounts memory accounts_)
+    {
         DAMMv1Lib.InitializePermissionlessPoolWithConfigConfig memory pool_config =
-            DAMMv1Lib.InitializePermissionlessPoolWithConfigConfig({
+                            DAMMv1Lib.InitializePermissionlessPoolWithConfigConfig({
                 token_a_mint: token_a_mint,
                 token_b_mint: token_b_mint,
-                token_a_amount: token_a_amount,
-                token_b_amount: token_b_amount,
-                payer: payer,
+                payer: ERC20Users(token_factory.users()).get_user(msg.sender),
                 config: config,
                 dynamic_vault_program: prog_dynamic_vault,
                 dynamic_amm_program: prog_dynamic_amm,
                 override_network: vault_override_network
             });
 
-        DAMMv1Lib.InitializePermissionlessPoolWithConfigAccounts memory accounts_ =
-            DAMMv1Lib.derive_initialize_permissionless_constant_product_pool_with_config_accounts(pool_config);
+        accounts_ = DAMMv1Lib.derive_initialize_permissionless_constant_product_pool_with_config_accounts(pool_config);
+    }
 
-        require(!_account_missing(config), "CONFIG_MISSING");
-        require(!_account_missing(accounts_.a_vault), "A_VAULT_MISSING");
-        require(!_account_missing(accounts_.b_vault), "B_VAULT_MISSING");
-        require(_account_missing(accounts_.pool), "POOL_EXISTS");
+    function createPermissionlessConstantProductPoolWithConfig2(
+        uint64 token_a_amount,
+        uint64 token_b_amount,
+        DAMMv1Lib.InitializePermissionlessPoolWithConfigAccounts memory accounts
+    ) external returns (bytes32 pool_pubkey) {
+        require(!_account_missing(accounts.a_vault), "A_VAULT_MISSING");
+        require(!_account_missing(accounts.b_vault), "B_VAULT_MISSING");
+        require(_account_missing(accounts.pool), "POOL_EXISTS");
 
         SystemProgramLib.Instruction memory ix =
             DAMMv1Lib.build_initialize_permissionless_constant_product_pool_with_config2_instruction(
-                accounts_,
+                accounts,
                 token_a_amount,
                 token_b_amount,
                 prog_dynamic_amm
             );
         _invoke_signed(ix, token_factory.users().payer_salt());
-        pool_pubkey = accounts_.pool;
+        pool_pubkey = accounts.pool;
     }
 
     function addPool(bytes32 pubkey) external returns (address pool) {
@@ -158,6 +161,42 @@ contract MeteoraDAMMv1Factory {
     function _account_missing(bytes32 pubkey) internal view returns (bool) {
         (uint64 lamports,,,,,) = ICrossProgramInvocation(cpi_program).account_info(pubkey);
         return lamports == 0;
+    }
+
+    function _sameInitializePermissionlessPoolWithConfigAccounts(
+        DAMMv1Lib.InitializePermissionlessPoolWithConfigAccounts memory a,
+        DAMMv1Lib.InitializePermissionlessPoolWithConfigAccounts memory b
+    )
+    internal
+    pure
+    returns (bool)
+    {
+        return a.pool == b.pool
+            && a.config == b.config
+            && a.lp_mint == b.lp_mint
+            && a.token_a_mint == b.token_a_mint
+            && a.token_b_mint == b.token_b_mint
+            && a.a_vault == b.a_vault
+            && a.b_vault == b.b_vault
+            && a.a_token_vault == b.a_token_vault
+            && a.b_token_vault == b.b_token_vault
+            && a.a_vault_lp_mint == b.a_vault_lp_mint
+            && a.b_vault_lp_mint == b.b_vault_lp_mint
+            && a.a_vault_lp == b.a_vault_lp
+            && a.b_vault_lp == b.b_vault_lp
+            && a.payer_token_a == b.payer_token_a
+            && a.payer_token_b == b.payer_token_b
+            && a.payer_pool_lp == b.payer_pool_lp
+            && a.protocol_token_a_fee == b.protocol_token_a_fee
+            && a.protocol_token_b_fee == b.protocol_token_b_fee
+            && a.payer == b.payer
+            && a.rent == b.rent
+            && a.vault_program == b.vault_program
+            && a.token_program == b.token_program
+            && a.associated_token_program == b.associated_token_program
+            && a.system_program == b.system_program
+            && a.metadata_program == b.metadata_program
+            && a.mint_metadata == b.mint_metadata;
     }
 
     function _register_pool(bytes32 pubkey) internal returns (address pool) {

@@ -345,13 +345,22 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
             poolConfig,
         ]);
 
+        const preparedPoolAccounts = await factory.read.preparePermissionlessConstantProductPoolWithConfig2([
+            tokenAMint,
+            tokenBMint,
+            poolConfig,
+        ]);
+        assert.equal(
+            preparedPoolAccounts.pool.toLowerCase(),
+            poolPubkey.toLowerCase(),
+            "prepared pool PDA must match derived pool key",
+        );
+
         const createPoolTxHash = await factoryFromUser.write.createPermissionlessConstantProductPoolWithConfig2(
             [
-                tokenAMint,
-                tokenBMint,
                 poolTokenAAmount,
                 poolTokenBAmount,
-                poolConfig,
+                preparedPoolAccounts,
             ],
             {
                 account: deployer.account,
