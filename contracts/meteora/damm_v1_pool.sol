@@ -19,6 +19,8 @@ library DAMMv1Lib {
     bytes32 internal constant DYNAMIC_VAULT_BASE_KEY =
     0xf569dfde202333598dc7d74b1d94b8624779c1f82f1e25a65b6e4ef8a3be9b9b; // HWzXGcGHy4tcpYfaRDCyLNzXqBTv3E6BttpCH2vJxArv
 
+    bytes8 public constant INITIALIZE_CONSTANT_PRODUCT_POOL_WITH_CONFIG2_PREFIX = bytes8(sha256(bytes("global:initialize_permissionless_constant_product_pool_with_config2")));
+
     uint256 internal constant POOL_PREFIX_MIN_LEN = 379;
     uint256 internal constant VAULT_MIN_LEN = 1197;
     uint64 internal constant DEFAULT_TRADE_FEE_BPS = 25;
@@ -690,7 +692,7 @@ library DAMMv1Lib {
     returns (bytes memory)
     {
         return abi.encodePacked(
-            bytes8(sha256(bytes("global:initialize_permissionless_constant_product_pool_with_config2"))),
+            INITIALIZE_CONSTANT_PRODUCT_POOL_WITH_CONFIG2_PREFIX,
             Convert.u64le(token_a_amount),
             Convert.u64le(token_b_amount),
             uint8(0) // Option<u64>::None for activation_point
