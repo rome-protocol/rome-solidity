@@ -57,7 +57,7 @@ object "cu_example" {
 
 
                 // ----------------------------------
-                // Allocate array (length = 3)
+                // SystemProgram.find_program_address()
                 // ----------------------------------
 
                 mstore(ptr, 0x27e3edda00000000000000000000000000000000000000000000000000000000)
@@ -69,30 +69,27 @@ object "cu_example" {
                 mstore(add(seeds_ptr, 32), 3)       // array length
 
                 let data_ptr := add(seeds_ptr, 64)  // where elements (pointers) go
-                // store pointer in array
                 mstore(data_ptr, 96)
                 mstore(add(data_ptr, 32), 192)
                 mstore(add(data_ptr, 64), 288)
 
-                // move pointer forward for array slots
-                let free := add(data_ptr, 96)      // 3 elements * 32 bytes
 
                 // ----------------------------------
                 // Seed[0] = "EXTERNAL_AUTHORITY"
                 // ----------------------------------
-                let s0 := free
+                let s0 := add(data_ptr, 96)
                 mstore(s0, 32)
                 mstore(add(s0, 32), 18) // length
                 mstore(add(s0, 64), 0x45585445524e414c5f415554484f524954590000000000000000000000000000)
-                free := add(s0, 96)
+
                 // ----------------------------------
                 // Seed[1] = abi.encodePacked(user)
                 // ----------------------------------
-                let s1 := free
+                let s1 := add(s0, 96)
                 mstore(s1, 32)
                 mstore(add(s1, 32), 20) // address = 20 bytes
                 mstore(add(s1, 64), shl(96, caller()))
-                free := add(s1, 96)
+                let free := add(s1, 96)
 
                 // ----------------------------------
                 // Seed[2] = bytes32 → bytes        salt = "PAYER"
@@ -111,14 +108,11 @@ object "cu_example" {
                     64
                 )
                 if iszero(success) { revert(0,0) }
-
                 let to := mload(ptr)
 
                 // ----------------------------------
                 // invoke(...)
                 // ----------------------------------
-                // let call_data := add(data_ptr, 9)
-
                 mstore(ptr,
                     0x7480cb8600000000000000000000000000000000000000000000000000000000
                 )
@@ -133,7 +127,6 @@ object "cu_example" {
                 mstore(add(ptr, 68), 320)          // offset data
 
                 let meta_ptr := add(ptr, 100)
-
                 mstore(meta_ptr, 2)
 
                 // meta[0]
@@ -159,17 +152,16 @@ object "cu_example" {
                 let value := 2
                 for { let i := 0 } lt(i, 4) { i := add(i,1) } {
                     mstore8(
-                        add(data_ptr, add(1, i)),
+                        add(data_ptr, i),
                         and(shr(mul(8, i), value), 0xff)
                     )
                 }
 
                 data_ptr := add(data_ptr, 4)
-
                 value := 1000000000
                 for { let i := 0 } lt(i, 8) { i := add(i,1) } {
                     mstore8(
-                        add(data_ptr, add(1, i)),
+                        add(data_ptr, i),
                         and(shr(mul(8, i), value), 0xff)
                     )
                 }
