@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-
 interface ISystemProgram {
     struct Seed{
         bytes item;
@@ -36,6 +35,14 @@ interface ICrossProgramInvocation {
 
 address constant system_program_address = address(0xfF00000000000000000000000000000000000007);
 address constant cpi_program_address = address(0xFF00000000000000000000000000000000000008);
+address constant withdraw_address = address(0x4200000000000000000000000000000000000016);
 
 ISystemProgram constant SystemProgram = ISystemProgram(system_program_address);
 ICrossProgramInvocation constant CpiProgram = ICrossProgramInvocation(cpi_program_address);
+IWithdraw constant Withdraw = IWithdraw(withdraw_address);
+
+
+
+
+
+
