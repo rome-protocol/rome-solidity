@@ -54,6 +54,12 @@ npx hardhat run scripts/oracle/test-feeds-v2.ts --network local
 npx hardhat keystore set MONTI_SPL_PRIVATE_KEY --dev
 ```
 
+## CI & Release Tracking
+
+- **CI** (`.github/workflows/ci.yml`): runs on push/PR to `master` with Node 22. Stages: `npm ci`, `npx hardhat compile`, `npx hardhat test` (oracle parser unit tests — network-independent). Integration tests requiring `local` or `monti_spl` are not run in CI.
+- **CHANGELOG.md** — user-facing changes tracked by session. Update when a PR lands user-visible behaviour changes (new contracts, API shifts, deployment changes). Parser/offset changes also belong here because they affect downstream deployments.
+- **PR / issue templates** live under `.github/` and enforce the session-readiness checklist.
+
 ## Architecture
 
 ### Rome-EVM Precompile Interfaces (`contracts/interface.sol`)
@@ -91,10 +97,11 @@ Global constants (`SplToken`, `AssociatedSplToken`, `SystemProgram`, `CpiProgram
 - Solana pubkeys are `bytes32` throughout; EVM addresses map to Solana PDAs via `RomeEVMAccount.pda(address)`.
 - Cross-program invocation uses `ICrossProgramInvocation.invoke()` / `invoke_signed()` with Solana-style `AccountMeta` arrays.
 - Borsh deserialization (`BorshLib`) decodes raw Solana account data returned by `CpiProgram.account_info()`.
-- Deployment metadata is stored in `deployments/monti_spl.json` and consumed by tests via `scripts/lib/deployments.ts`.
+- Deployment metadata is stored in `deployments/monti_spl.json` and consumed by tests via `scripts/lib/deployments.ts`. Local deployment artifacts (`deployments/local.json`, cached account data) are gitignored.
 - Oracle adapters use EIP-1167 minimal proxy (clone) pattern — one implementation contract per oracle type, thin clones per feed. Factory validates Solana account ownership before deploying.
 - Parser offsets are validated against live Solana accounts using `scripts/oracle/validate-*-offsets.ts` scripts. Always re-validate before redeployment.
 - Oracle test harnesses (`contracts/oracle/test/`) expose internal parser functions for unit testing. Parser tests use mock account data (`tests/oracle/helpers/`).
+- **Internal overload trap:** when a contract has both an external multi-arg overload and an internal 3-arg overload (e.g. `invoke_swap`), call the internal one **without** `this.`. `this.foo()` forces an external call, which resolves to the external overload and fails to compile. Observed on `DAMMv1Pool.invoke_swap` (#23).
 
 ### Deployments
 
@@ -125,13 +132,14 @@ Target: `0.8.28`. Production profile enables optimizer with 200 runs.
 - Oracle Gateway V2 contracts depend on live Pyth/Switchboard feeds — test against montispl for oracle-related changes.
 - Never deploy contracts without running the full Hardhat test suite.
 - ERC-20 SPL wrappers interact with Solana precompiles at fixed addresses — verify precompile addresses match rome-evm-private if changed. Note: SPL Token (0xFF...05) and Associated Token (0xFF...06) dedicated handlers were removed in the Mollusk refactor; these now route through Mollusk SVM/CPI.
+- Update `CHANGELOG.md` when a PR lands user-visible behaviour changes or changes the deployed contract ABIs.
 
 ## Change Impact Map
 
 | If you change... | Also check/update... |
 |-----------------|---------------------|
 | Precompile interface addresses | `rome-solidity-sdk/` interfaces must match `rome-evm-private/` precompile dispatch |
-| Contract ABIs | `rome-deposit-ui/` ABI imports, `tests/` Solidity test contracts |
+| Contract ABIs | `rome-deposit-ui/` ABI imports, `tests/` Solidity test contracts, `CHANGELOG.md` |
 | Oracle adapter interfaces | Consuming contracts in this repo that use the adapters |
 | SPL token wrapper logic | `rome-uniswap-v2/` (uses SPL wrappers for trading pairs) |
 | Hardhat network config | `rome-solidity-sdk/` uses same network definitions |

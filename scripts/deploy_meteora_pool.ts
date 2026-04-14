@@ -1,14 +1,8 @@
 import hardhat from "hardhat";
 import { getAddress, isHex } from "viem";
 import { resolveFactoryAddress, savePoolDeployment } from "./lib/deployments.js";
+import { requireEnv } from "./lib/helpers.js";
 
-function requireEnv(name: string): string {
-    const value = process.env[name];
-    if (!value) {
-        throw new Error(`Missing required environment variable: ${name}`);
-    }
-    return value;
-}
 
 function poolAddressToBytes32(address: string): `0x${string}` {
     if (!address.startsWith("0x")) {

@@ -21,8 +21,10 @@
 
 .idea
 
+# Local deployment artifacts
+deployments/local.json
+
 /contracts/artifacts
 /contracts/.deps
 /contracts/.states
 /contracts/remix.config.json
-

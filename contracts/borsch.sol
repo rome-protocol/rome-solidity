@@ -7,7 +7,7 @@ library Borsch {
     error InvalidOptionTag(uint8 value);
 
     function read_bool(bytes memory data, uint256 offset)
-    public
+    internal
     pure
     returns (bool value, uint256 newOffset)
     {
@@ -23,7 +23,7 @@ library Borsch {
     }
 
     function read_pubkey(bytes memory data, uint256 offset)
-    public
+    internal
     pure
     returns (bytes32 value, uint256 newOffset)
     {
@@ -31,7 +31,7 @@ library Borsch {
     }
 
     function read_bytes32(bytes memory data, uint256 offset)
-    public
+    internal
     pure
     returns (bytes32 value, uint256 newOffset)
     {
@@ -43,7 +43,7 @@ library Borsch {
     }
 
     function read_bytes8(bytes memory data, uint256 offset)
-    public
+    internal
     pure
     returns (bytes8 value, uint256 newOffset)
     {
@@ -57,7 +57,7 @@ library Borsch {
     }
 
     function read_u16(bytes memory data, uint256 offset)
-    public
+    internal
     pure
     returns (uint16 value, uint256 newOffset)
     {
@@ -69,7 +69,7 @@ library Borsch {
     }
 
     function read_u32(bytes memory data, uint256 offset)
-    public
+    internal
     pure
     returns (uint32 value, uint256 newOffset)
     {
@@ -83,7 +83,7 @@ library Borsch {
     }
 
     function read_u64(bytes memory data, uint256 offset)
-    public
+    internal
     pure
     returns (uint64 value, uint256 newOffset)
     {
@@ -101,7 +101,7 @@ library Borsch {
     }
 
     function read_string(bytes memory data, uint256 offset)
-    public
+    internal
     pure
     returns (string memory value, uint256 newOffset)
     {
@@ -123,7 +123,7 @@ library Borsch {
     // =========================
 
     function read_option_u8(bytes memory data, uint256 offset)
-    public
+    internal
     pure
     returns (bool hasValue, uint8 value, uint256 newOffset)
     {
@@ -146,7 +146,7 @@ library Borsch {
     }
 
     function read_option_pubkey(bytes memory data, uint256 offset)
-    public
+    internal
     pure
     returns (bool hasValue, bytes32 value, uint256 newOffset)
     {
@@ -170,7 +170,7 @@ library Borsch {
     // Bounds check
     // =========================
 
-    function ensure(bytes memory data, uint256 offset, uint256 need) public pure {
+    function ensure(bytes memory data, uint256 offset, uint256 need) internal pure {
         if (offset + need > data.length) {
             revert BorshOutOfBounds(offset, need, data.length);
         }
