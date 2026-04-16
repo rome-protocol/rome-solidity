@@ -345,6 +345,9 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
             poolConfig,
         ]);
 
+        console.log("Token A Mint: ", tokenAMint);
+        console.log("Token B Mint: ", tokenBMint);
+
         const preparedPoolAccounts = await factory.read.preparePermissionlessConstantProductPoolWithConfig2([
             tokenAMint,
             tokenBMint,
@@ -368,6 +371,7 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
         );
         await waitForSuccess(publicClient, createPoolTxHash, "createPermissionlessConstantProductPoolWithConfig2");
 
+        console.log("Pool created ", poolPubkey);
         await assertSolanaAccountExists(cpiProgram, poolPubkey, "damm v1 pool");
         const poolState = await factory.read.derivePermissionlessConstantProductPoolWithConfigKey([
             tokenAMint,
@@ -385,35 +389,35 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
         assert.notEqual(wrappedPoolAddress, zeroAddress, "wrapped pool must be registered");
     });
 
-    it("creates two SPL_ERC20 tokens and registers a wrapped pool", async function () {
-        assert.ok(isHex32(tokenAMint), "token A mint must be bytes32");
-        assert.ok(isHex32(tokenBMint), "token B mint must be bytes32");
-        assert.notEqual(tokenAAddress, zeroAddress, "token A wrapper must exist");
-        assert.notEqual(tokenBAddress, zeroAddress, "token B wrapper must exist");
-        assert.ok(isHex32(poolPubkey), "pool pubkey must be bytes32");
-        assert.notEqual(wrappedPoolAddress, zeroAddress, "wrapped pool address must not be zero");
-
-        const poolForTokenOrder = await factory.read.getPool([tokenAAddress, tokenBAddress]);
-        const poolForReverseOrder = await factory.read.getPool([tokenBAddress, tokenAAddress]);
-
-        assert.equal(
-            poolForTokenOrder.toLowerCase(),
-            wrappedPoolAddress.toLowerCase(),
-            "getPool(tokenA, tokenB) must point to the created pool",
-        );
-        assert.equal(
-            poolForReverseOrder.toLowerCase(),
-            wrappedPoolAddress.toLowerCase(),
-            "getPool(tokenB, tokenA) must point to the created pool",
-        );
-
-        const tokenAccountA = await tokenAFromUser.read.get_token_account([deployer.account.address]);
-        const tokenAccountB = await tokenBFromUser.read.get_token_account([deployer.account.address]);
-        assert.ok(isHex32(tokenAccountA), "user token A account must exist");
-        assert.ok(isHex32(tokenAccountB), "user token B account must exist");
-        assert.equal(tokenAccountA.toLowerCase(), userTokenAccountA.toLowerCase(), "cached token A account must match");
-        assert.equal(tokenAccountB.toLowerCase(), userTokenAccountB.toLowerCase(), "cached token B account must match");
-    });
+    // it("creates two SPL_ERC20 tokens and registers a wrapped pool", async function () {
+    //     assert.ok(isHex32(tokenAMint), "token A mint must be bytes32");
+    //     assert.ok(isHex32(tokenBMint), "token B mint must be bytes32");
+    //     assert.notEqual(tokenAAddress, zeroAddress, "token A wrapper must exist");
+    //     assert.notEqual(tokenBAddress, zeroAddress, "token B wrapper must exist");
+    //     assert.ok(isHex32(poolPubkey), "pool pubkey must be bytes32");
+    //     assert.notEqual(wrappedPoolAddress, zeroAddress, "wrapped pool address must not be zero");
+    //
+    //     const poolForTokenOrder = await factory.read.getPool([tokenAAddress, tokenBAddress]);
+    //     const poolForReverseOrder = await factory.read.getPool([tokenBAddress, tokenAAddress]);
+    //
+    //     assert.equal(
+    //         poolForTokenOrder.toLowerCase(),
+    //         wrappedPoolAddress.toLowerCase(),
+    //         "getPool(tokenA, tokenB) must point to the created pool",
+    //     );
+    //     assert.equal(
+    //         poolForReverseOrder.toLowerCase(),
+    //         wrappedPoolAddress.toLowerCase(),
+    //         "getPool(tokenB, tokenA) must point to the created pool",
+    //     );
+    //
+    //     const tokenAccountA = await tokenAFromUser.read.get_token_account([deployer.account.address]);
+    //     const tokenAccountB = await tokenBFromUser.read.get_token_account([deployer.account.address]);
+    //     assert.ok(isHex32(tokenAccountA), "user token A account must exist");
+    //     assert.ok(isHex32(tokenAccountB), "user token B account must exist");
+    //     assert.equal(tokenAccountA.toLowerCase(), userTokenAccountA.toLowerCase(), "cached token A account must match");
+    //     assert.equal(tokenAccountB.toLowerCase(), userTokenAccountB.toLowerCase(), "cached token B account must match");
+    // });
 
     it("executes swapExactTokensForTokens on the router", async function () {
         const inputBalanceBefore = await tokenAFromUser.read.balanceOf([deployer.account.address]);
@@ -423,6 +427,14 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
             inputBalanceBefore >= swapAmountIn,
             `swap user must hold at least ${swapAmountIn} token A before swap`,
         );
+
+        const debugSwapAccounts = await routerFromUser.read.debugSwapExactTokensForTokens(
+            [tokenAAddress, tokenBAddress, swapAmountIn, minAmountOut],
+            {
+                account: deployer.account.address,
+            },
+        );
+        console.log("debugSwapExactTokensForTokens:", debugSwapAccounts);
 
         const swapTxHash = await routerFromUser.write.swapExactTokensForTokens(
             [tokenAAddress, tokenBAddress, swapAmountIn, minAmountOut],

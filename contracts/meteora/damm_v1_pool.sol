@@ -810,10 +810,18 @@ library DAMMv1Lib {
             false,
             true
         );
-        metas[3] = ICrossProgramInvocation.AccountMeta(a.a_vault_lp, false, true);
-        metas[4] = ICrossProgramInvocation.AccountMeta(a.b_vault_lp, false, true);
-        metas[5] = ICrossProgramInvocation.AccountMeta(a.a_vault, false, true);
-        metas[6] = ICrossProgramInvocation.AccountMeta(a.b_vault, false, true);
+        metas[3] = ICrossProgramInvocation.AccountMeta(a.a_vault, false, true);
+        metas[4] = ICrossProgramInvocation.AccountMeta(a.b_vault, false, true);
+        metas[5] = ICrossProgramInvocation.AccountMeta(
+            a.a_token_vault,
+            false,
+            true
+        );
+        metas[6] = ICrossProgramInvocation.AccountMeta(
+            a.b_token_vault,
+            false,
+            true
+        );
         metas[7] = ICrossProgramInvocation.AccountMeta(
             a.a_vault_lp_mint,
             false,
@@ -824,31 +832,23 @@ library DAMMv1Lib {
             false,
             true
         );
-        metas[9] = ICrossProgramInvocation.AccountMeta(
-            a.a_token_vault,
+        metas[9] = ICrossProgramInvocation.AccountMeta(a.a_vault_lp, false, true);
+        metas[10] = ICrossProgramInvocation.AccountMeta(a.b_vault_lp, false, true);
+        metas[11] = ICrossProgramInvocation.AccountMeta(
+            a.protocol_token_fee,
             false,
             true
         );
-        metas[10] = ICrossProgramInvocation.AccountMeta(
-            a.b_token_vault,
-            false,
-            true
-        );
-        metas[11] = ICrossProgramInvocation.AccountMeta(a.user, true, false);
-        metas[12] = ICrossProgramInvocation.AccountMeta(
+        metas[12] = ICrossProgramInvocation.AccountMeta(a.user, true, false);
+        metas[13] = ICrossProgramInvocation.AccountMeta(
             a.vault_program,
             false,
             false
         );
-        metas[13] = ICrossProgramInvocation.AccountMeta(
+        metas[14] = ICrossProgramInvocation.AccountMeta(
             a.token_program,
             false,
             false
-        );
-        metas[14] = ICrossProgramInvocation.AccountMeta(
-            a.protocol_token_fee,
-            false,
-            true
         );
     }
 
@@ -1078,7 +1078,7 @@ contract DAMMv1Pool {
 }
 
 contract ERC20DAMMv1Pool {
-    DAMMv1Pool private immutable internal_pool;
+    DAMMv1Pool public immutable internal_pool;
     ERC20Users private immutable users;
     SPL_ERC20 private immutable tokenA;
     SPL_ERC20 private immutable tokenB;
@@ -1148,10 +1148,33 @@ contract ERC20DAMMv1Pool {
                 ICrossProgramInvocation.invoke_signed.selector,
                 internal_pool.prog_dynamic_amm,
                 accounts,
-                data
+                data,
+                seeds
             )
         );
 
         require(success, string(result));
+    }
+
+    function debugSwapExactTokensForTokens(
+        bytes32 payer,
+        address token_in,
+        uint256 amount_in,
+        uint256 min_amount_out
+    ) external view returns (ICrossProgramInvocation.AccountMeta[] memory accounts) {
+        DAMMv1Pool.PoolToken in_token =
+            address(tokenA) == token_in
+                ? DAMMv1Pool.PoolToken.TokenA
+                : DAMMv1Pool.PoolToken.TokenB;
+
+        require(amount_in <= type(uint64).max, "amount_in exceeds uint64");
+        require(min_amount_out <= type(uint64).max, "min_amount_out exceeds uint64");
+
+        accounts = DAMMv1Lib.build_swap_account_metas(
+            internal_pool.make_swap_accounts_from_pool(
+                payer,
+                in_token
+            )
+        );
     }
 }

@@ -7,10 +7,10 @@ export type PoolDeployment = {
     address: string;
     txHash: string;
     blockNumber: string;
-    tokenAMint?: string;
-    tokenBMint?: string;
-    tokenAAddress?: string;
-    tokenBAddress?: string;
+    tokenAMint: string;
+    tokenBMint: string;
+    tokenAAddress: string;
+    tokenBAddress: string;
 };
 
 export type FactoryDeployment = {
@@ -136,10 +136,10 @@ export function savePoolDeployment(args: {
     address: `0x${string}`;
     txHash: `0x${string}`;
     blockNumber: bigint;
-    tokenAMint?: `0x${string}`;
-    tokenBMint?: `0x${string}`;
-    tokenAAddress?: `0x${string}`;
-    tokenBAddress?: `0x${string}`;
+    tokenAMint: `0x${string}`;
+    tokenBMint: `0x${string}`;
+    tokenAAddress: `0x${string}`;
+    tokenBAddress: `0x${string}`;
 }): void {
     const deployments = readDeployments(args.networkName);
 

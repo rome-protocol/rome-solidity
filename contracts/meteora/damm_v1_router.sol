@@ -5,6 +5,7 @@ import {MeteoraDAMMv1Factory} from "./damm_v1_factory.sol";
 import {DAMMv1Pool, ERC20DAMMv1Pool} from "./damm_v1_pool.sol";
 import {SPL_ERC20} from "../erc20spl/erc20spl.sol";
 import {Convert} from "../convert.sol";
+import {ICrossProgramInvocation} from "../interface.sol";
 
 contract MeteoraDAMMv1Router {
     MeteoraDAMMv1Factory public immutable factory;
@@ -32,5 +33,19 @@ contract MeteoraDAMMv1Router {
         );
 
         require (success, string(Convert.revert_msg(result)));
+    }
+
+    function debugSwapExactTokensForTokens(
+        address token_in,
+        address token_out,
+        uint256 amount_in,
+        uint256 min_amount_out
+    ) external view returns (ICrossProgramInvocation.AccountMeta[] memory accounts) {
+        address pool = factory.getPool(token_in, token_out);
+        require(pool != address(0), "Pool does not exist");
+        bytes32 payer = factory.token_factory().users().get_user(msg.sender);
+        return ERC20DAMMv1Pool(pool).debugSwapExactTokensForTokens(
+            payer, token_in, amount_in, min_amount_out
+        );
     }
 }
