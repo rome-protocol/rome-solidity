@@ -51,7 +51,8 @@ export async function getSolanaEnv(): Promise<SolanaEnv | null> {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function getSolanaConnection(env: SolanaEnv): Promise<any> {
+  // @ts-ignore — @solana/web3.js is an integration-only dep; not in package.json by design
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { Connection } = await import("@solana/web3.js") as any;
+  const { Connection } = (await import("@solana/web3.js")) as any;
   return new Connection(env.rpcUrl, "confirmed");
 }

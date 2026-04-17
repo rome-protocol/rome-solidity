@@ -156,8 +156,9 @@ export async function deriveEventRingPda(
   chainId: bigint,
   emitterHex: string,
 ): Promise<{ pubkey: string; bump: number }> {
+  // @ts-ignore — @solana/web3.js is an integration-only dep; not in package.json by design
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { PublicKey } = await import("@solana/web3.js") as any;
+  const { PublicKey } = (await import("@solana/web3.js")) as any;
   const emitterBytes = hexToBytes(emitterHex);
   const chainIdBytes = new Uint8Array(8);
   writeU64LE(chainIdBytes, 0, chainId);

@@ -14,12 +14,12 @@
  *   npx hardhat test tests/event-pda.integration.ts --network local
  */
 
-import { describe, it, before } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import hardhat from "hardhat";
-import { keccak256, encodeAbiParameters, parseAbiParameters } from "viem";
+import { keccak256 } from "viem";
 import { getSolanaEnv, getSolanaConnection } from "./helpers/solana.js";
-import { deriveEventRingPda, parseRingHeader, parseEntry, hexToBytes } from "./helpers/eventRing.js";
+import { deriveEventRingPda, parseRingHeader, parseEntry } from "./helpers/eventRing.js";
 
 const INTEGRATION = process.env["RUN_EVENT_PDA_INTEGRATION"] === "1";
 
@@ -97,8 +97,9 @@ describe("RomeEvents", () => {
       );
 
       const conn = await getSolanaConnection(env);
+      // @ts-ignore — @solana/web3.js is an integration-only dep; not in package.json by design
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { PublicKey } = await import("@solana/web3.js") as any;
+      const { PublicKey } = (await import("@solana/web3.js")) as any;
       const info = await conn.getAccountInfo(new PublicKey(pubkey), "confirmed");
 
       assert.ok(info !== null, `ring PDA ${pubkey} must exist after first emit`);
@@ -122,19 +123,12 @@ describe("RomeEvents", () => {
       // topic[1] = msg.sender (deployer), topic[2] = recipient — 3 topics total
       assert.equal(entry!.topics.length, 3, "must have 3 topics: sig + 2 indexed");
 
-      // data must ABI-decode to 12345n
-      const [decodedValue] = encodeAbiParameters
-        ? (() => {
-            // decode: just read it as uint256 LE from the 32-byte ABI word
-            const word = entry!.data;
-            let v = 0n;
-            // ABI-encoded uint256 is big-endian 32 bytes
-            for (let i = 0; i < 32 && i < word.length; i++) {
-              v = (v << 8n) | BigInt(word[i]);
-            }
-            return [v];
-          })()
-        : [0n];
+      // data must ABI-decode to 12345n (uint256 is big-endian 32 bytes).
+      const word = entry!.data;
+      let decodedValue = 0n;
+      for (let i = 0; i < 32 && i < word.length; i++) {
+        decodedValue = (decodedValue << 8n) | BigInt(word[i]);
+      }
       assert.equal(decodedValue, 12345n, "ABI-encoded value must decode to 12345");
     },
   );
