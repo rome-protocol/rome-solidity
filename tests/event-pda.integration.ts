@@ -35,14 +35,18 @@ describe("RomeEvents", () => {
     { skip: !INTEGRATION ? "requires RUN_EVENT_PDA_INTEGRATION=1 and local Rome stack" : false },
     async () => {
       const { viem } = await hardhat.network.connect();
-      const [, recipient] = await viem.getWalletClients();
+      // Local Rome chain only provides one signer (LOCAL_PRIVATE_KEY).
+      // Use a stable dummy address as the transfer recipient.
+      const recipientAddr = "0x000000000000000000000000000000000000dEaD" as `0x${string}`;
 
-      const emitter = await viem.deployContract("EventEmitter", []);
+      // Local Rome chain rejects very low gas prices; force 1 gwei.
+      const gasPrice = 1_000_000_000n;
+      const emitter = await viem.deployContract("EventEmitter", [], { gasPrice });
 
-      const txHash = await emitter.write.fireTransfer([
-        recipient.account.address,
-        12345n,
-      ]);
+      const txHash = await emitter.write.fireTransfer(
+        [recipientAddr, 12345n],
+        { gasPrice },
+      );
 
       const publicClient = await viem.getPublicClient();
       const rcpt = await publicClient.waitForTransactionReceipt({ hash: txHash });
@@ -77,15 +81,19 @@ describe("RomeEvents", () => {
       if (!env) return;
 
       const { viem } = await hardhat.network.connect();
-      const [, recipient] = await viem.getWalletClients();
+      // Local Rome chain only provides one signer (LOCAL_PRIVATE_KEY).
+      // Use a stable dummy address as the transfer recipient.
+      const recipientAddr = "0x000000000000000000000000000000000000dEaD" as `0x${string}`;
 
-      const emitter = await viem.deployContract("EventEmitter", []);
+      // Local Rome chain rejects very low gas prices; force 1 gwei.
+      const gasPrice = 1_000_000_000n;
+      const emitter = await viem.deployContract("EventEmitter", [], { gasPrice });
       const contractAddr = emitter.address;
 
-      const txHash = await emitter.write.fireTransfer([
-        recipient.account.address,
-        12345n,
-      ]);
+      const txHash = await emitter.write.fireTransfer(
+        [recipientAddr, 12345n],
+        { gasPrice },
+      );
       const publicClient = await viem.getPublicClient();
       await publicClient.waitForTransactionReceipt({ hash: txHash });
 
