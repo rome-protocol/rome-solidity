@@ -1,12 +1,22 @@
 // scripts/bridge/constants.ts
+// Canonical Solana program IDs and mint addresses for Rome Bridge Phase 1.
+// Keep this file in sync with on-chain addresses at deploy time.
 export const SOLANA_PROGRAM_IDS = {
+  // Wormhole Core (attestation bridge — VAA producer)
   WORMHOLE_CORE: "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
+  // Wormhole Token Bridge (lock/mint token transfers across chains)
   WORMHOLE_TOKEN_BRIDGE: "wormDTUJ6AWPNvk59vGQbDvGJmqbDTdgWgAqcLBCgUb",
+  // CCTP Message Transmitter (burns/mints USDC cross-chain messages)
   CCTP_MESSAGE_TRANSMITTER: "CCTPmbSD7gX1bxKPAmg77w8oFzNFpaQiQUWD43TKaecd",
+  // CCTP Token Messenger (initiates depositForBurn and receiveMessage flows)
   CCTP_TOKEN_MESSENGER: "CCTPiPYPc6AsJuwueEnWgSgucamXDZwBd53dQ11YiKX3",
-  CCTP_TOKEN_MINTER: "CCTPmbSD7gX1bxKPAmg77w8oFzNFpaQiQUWD43TKaecd",
+  // CCTP Token Minter (mints/burns USDC under Token Messenger authority)
+  CCTP_TOKEN_MINTER: "11111111111111111111111111111111", // FIXME: replace with real CCTP Token Minter program ID — Phase 1.5 derivation script overrides.
+  // SPL Token program (standard Solana fungible token operations)
   SPL_TOKEN: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  // Associated Token Account program (creates deterministic ATAs)
   ASSOCIATED_TOKEN: "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+  // Solana System Program (account creation, SOL transfers)
   SYSTEM_PROGRAM: "11111111111111111111111111111111",
 } as const;
 

@@ -15,9 +15,12 @@ library WormholeTokenBridgeLib {
     uint8 internal constant TRANSFER_TOKENS_TAG = 0x04;
 
     /// @notice Parameters for the transfer_tokens instruction.
+    /// @dev amount and fee are u64 — Wormhole Token Bridge native format.
+    ///      Callers accepting uint256 from the ERC-20 boundary must range-check
+    ///      before constructing this struct (truncation guard belongs at the call site).
     struct TransferParams {
-        uint256 amount;
-        uint256 fee;
+        uint64 amount;
+        uint64 fee;
         bytes32 targetAddress;
         uint16 targetChain;
         uint32 nonce;
@@ -33,8 +36,8 @@ library WormholeTokenBridgeLib {
         return abi.encodePacked(
             TRANSFER_TOKENS_TAG,
             _u32le(p.nonce),
-            _u64le(uint64(p.amount)),
-            _u64le(uint64(p.fee)),
+            _u64le(p.amount),
+            _u64le(p.fee),
             p.targetAddress,
             _u16le(p.targetChain)
         );
