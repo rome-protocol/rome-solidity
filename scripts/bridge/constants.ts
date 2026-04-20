@@ -20,10 +20,23 @@ export const SOLANA_PROGRAM_IDS = {
   SYSTEM_PROGRAM: "11111111111111111111111111111111",
 } as const;
 
-export const SPL_MINTS = {
+// Canonical Phase 1 mainnet mints (Solana mainnet-beta) — used on mainnet deploys.
+export const SPL_MINTS_MAINNET = {
   USDC_NATIVE: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   WETH_WORMHOLE: "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",
 } as const;
+
+// Devnet mints — USDC is Circle's devnet USDC; wETH is a test mint owned by
+// the Rome devnet registration authority (created manually until Wormhole
+// publishes a canonical devnet wETH mint we can reuse).
+export const SPL_MINTS_DEVNET = {
+  USDC_NATIVE: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+  WETH_WORMHOLE: "2kCwKGBvGfoY7EKHPmCwsZXamxzDMbqn1uDZMqXfve6i",
+} as const;
+
+// Default export — points at devnet for now since active deploys target
+// marcus/monti_spl. Switch to SPL_MINTS_MAINNET for mainnet.
+export const SPL_MINTS = SPL_MINTS_DEVNET;
 
 export const CCTP_DOMAINS = { ETHEREUM: 0, SOLANA: 5 } as const;
 export const WORMHOLE_CHAIN_IDS = { ETHEREUM: 2, SOLANA: 1 } as const;

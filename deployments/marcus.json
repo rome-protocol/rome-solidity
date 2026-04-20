@@ -1,0 +1,21 @@
+{
+  "RomeBridgePaymaster": {
+    "address": "0xcaf1fbcf60c3686d87d0a5111f340a99250ce4ef",
+    "deployedAt": 1776718058
+  },
+  "ERC20Users": {
+    "address": "0x803f6923bcc776db1d0aa6fcdbd8ceddf35ad6f3"
+  },
+  "SPL_ERC20_USDC": {
+    "address": "0x6ed2944bba4cb5b1cb295541f315c648658dd67c",
+    "mintId": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+  },
+  "SPL_ERC20_WETH": {
+    "address": "0x6f1c49fced4d98bec4aeca70ef112d5365069ee3",
+    "mintId": "2kCwKGBvGfoY7EKHPmCwsZXamxzDMbqn1uDZMqXfve6i"
+  },
+  "RomeBridgeWithdraw": {
+    "address": "0x3e94a473f65b2603edbefca2583f7f5dcfa6986d",
+    "deployedAt": 1776718088
+  }
+}

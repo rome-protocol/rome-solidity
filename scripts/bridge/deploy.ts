@@ -205,9 +205,7 @@ async function main() {
   await deployWithdraw(paymaster.address, usdc.address, weth.address);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
-}
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
