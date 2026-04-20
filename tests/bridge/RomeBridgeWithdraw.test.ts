@@ -3,19 +3,17 @@
  *
  * Runs against hardhatMainnet (simulated L1, no Rome stack required).
  *
- * Scope: validates the two critical guard conditions introduced in the Phase 1.3
- * fix pass:
+ * Scope: validates guard conditions in RomeBridgeWithdraw:
  *   1. AmountExceedsUint64 — fires before any external call when amount > 2^64-1.
- *   2. CpiFailed("sysvar constants not initialized") — fires at the top of both
- *      burnUSDC/burnETH because SPL_TOKEN_PROGRAM is zeroed out until Phase 1.4
- *      supplies real pubkeys.
+ *   2. InsufficientBalance — fires when user balance < amount.
+ *   3. Immutables (usdcMint, wethMint) are wired correctly from mock wrappers.
  *
- * InsufficientBalance and the full CPI happy-path tests require a live Rome stack
- * and are deferred to integration tests (tests/bridge/*.integration.ts).
- * The SPL_ERC20 constructor calls SplTokenLib.load_mint via a CPI precompile that
- * is not available on hardhatMainnet, so we use MockSplErc20 (contracts/bridge/test/)
- * and pass its address as the SPL_ERC20 constructor argument (Solidity implicitly
- * accepts address → contract-type casts for constructor arguments).
+ * Phase 1.4 refactor: all Solana pubkeys are now constructor params (no more
+ * internal constant sentinels). The sysvar-sentinel guard tests are removed —
+ * the revert-on-zero-sysvar behaviour no longer exists in the contract.
+ *
+ * The full CPI happy-path tests require a live Rome stack and are deferred to
+ * integration tests (tests/bridge/*.integration.ts).
  */
 
 import { before, beforeEach, describe, it } from "node:test";
@@ -36,6 +34,10 @@ describe("RomeBridgeWithdraw — error paths", () => {
   const MOCK_MINT =
     "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef" as const;
 
+  // Dummy non-zero program IDs for the new constructor fields.
+  const DUMMY_PROGRAM =
+    "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef00000001" as const;
+
   before(async () => {
     const conn = await hardhat.network.connect({ network: "hardhatMainnet" });
     viem = conn.viem;
@@ -49,23 +51,32 @@ describe("RomeBridgeWithdraw — error paths", () => {
     const mockWeth = await viem.deployContract("MockSplErc20", [MOCK_MINT]);
 
     // Deploy RomeBridgeWithdraw with a zero-address forwarder (ERC2771Context
-    // accepts any address) and zero bytes32 for all PDA params.
+    // accepts any address) and non-zero bytes32 for all new program ID fields.
     // Solidity accepts address as SPL_ERC20 argument — implicit coercion.
     withdraw = await viem.deployContract("RomeBridgeWithdraw", [
       "0x0000000000000000000000000000000000000000", // forwarder
       mockUsdc.address, // _usdc (cast to SPL_ERC20 by Solidity)
       mockWeth.address, // _weth (cast to SPL_ERC20 by Solidity)
-      // CctpParams
+      // CctpParams — all fields now required including program IDs
       {
-        msgTransmitterConfig: ZERO_BYTES32,
+        tokenMessengerProgram: DUMMY_PROGRAM,
+        splTokenProgram: DUMMY_PROGRAM,
+        systemProgram: ZERO_BYTES32,
+        messageTransmitterConfig: ZERO_BYTES32,
         tokenMessengerConfig: ZERO_BYTES32,
         remoteTokenMessenger: ZERO_BYTES32,
         tokenMinter: ZERO_BYTES32,
         localTokenUsdc: ZERO_BYTES32,
         eventAuthority: ZERO_BYTES32,
       },
-      // WormholeParams
+      // WormholeParams — all fields now required including program IDs and sysvars
       {
+        tokenBridgeProgram: DUMMY_PROGRAM,
+        coreProgram: DUMMY_PROGRAM,
+        splTokenProgram: DUMMY_PROGRAM,
+        systemProgram: ZERO_BYTES32,
+        clockSysvar: DUMMY_PROGRAM,
+        rentSysvar: DUMMY_PROGRAM,
         config: ZERO_BYTES32,
         custody: ZERO_BYTES32,
         authoritySigner: ZERO_BYTES32,
@@ -74,55 +85,66 @@ describe("RomeBridgeWithdraw — error paths", () => {
         feeCollector: ZERO_BYTES32,
         emitter: ZERO_BYTES32,
         sequence: ZERO_BYTES32,
-        coreProgram: ZERO_BYTES32,
       },
     ]);
   });
 
-  // ── Test 1: AmountExceedsUint64 fires before any external call ──────────────
+  // ── Test 1: AmountExceedsUint64 fires when amount > 2^64-1 ──────────────────
   //
   // amount = 2^64 exceeds type(uint64).max (= 2^64 - 1).
-  // The range check is the FIRST guard in burnUSDC / burnETH (after the sysvar
-  // sentinel check), so this reverts before balanceOf is ever called.
-  // Note: the sysvar sentinel guard fires first (SPL_TOKEN_PROGRAM == 0), so
-  // we expect CpiFailed rather than AmountExceedsUint64 when both conditions hold.
-  // To isolate the range check we would need non-zero sysvars, which requires a
-  // Phase 1.4 refactor. Instead we verify the sysvar sentinel guard fires, and
-  // separately confirm AmountExceedsUint64 IS the correct custom error type.
+  // The range check is the FIRST guard in burnUSDC / burnETH (Phase 1.4 removed
+  // the sysvar-sentinel guard, so AmountExceedsUint64 now fires first).
 
-  it("reverts with CpiFailed(sysvar constants not initialized) for any call — sentinels are zeroed", async () => {
-    // Any amount triggers the sysvar guard first (SPL_TOKEN_PROGRAM == bytes32(0)).
+  it("reverts with AmountExceedsUint64 for burnUSDC when amount exceeds uint64", async () => {
+    const tooLarge = 2n ** 64n; // = type(uint64).max + 1
     await assert.rejects(
-      () => withdraw.write.burnUSDC([1_000_000n, user]),
+      () => withdraw.write.burnUSDC([tooLarge, user]),
       (err: any) => {
-        // viem wraps revert data; check message contains the revert reason.
         const msg: string = err?.message ?? "";
-        return (
-          msg.includes("CpiFailed") ||
-          msg.includes("sysvar constants not initialized")
-        );
+        return msg.includes("AmountExceedsUint64");
       }
     );
   });
 
-  it("reverts with CpiFailed for burnETH — sysvar sentinel active", async () => {
+  it("reverts with AmountExceedsUint64 for burnETH when amount exceeds uint64", async () => {
+    const tooLarge = 2n ** 64n;
+    await assert.rejects(
+      () => withdraw.write.burnETH([tooLarge, user]),
+      (err: any) => {
+        const msg: string = err?.message ?? "";
+        return msg.includes("AmountExceedsUint64");
+      }
+    );
+  });
+
+  // ── Test 2: InsufficientBalance fires when user has no balance ──────────────
+  //
+  // MockSplErc20 returns zero balance by default, so any non-zero amount triggers
+  // InsufficientBalance (amount passes uint64 range, then balance check fails).
+  // This test confirms the balance guard is reached now that the sysvar sentinel
+  // has been removed.
+
+  it("reverts with InsufficientBalance for burnUSDC when user has zero balance", async () => {
+    await assert.rejects(
+      () => withdraw.write.burnUSDC([1_000_000n, user]),
+      (err: any) => {
+        const msg: string = err?.message ?? "";
+        return msg.includes("InsufficientBalance");
+      }
+    );
+  });
+
+  it("reverts with InsufficientBalance for burnETH when user has zero balance", async () => {
     await assert.rejects(
       () => withdraw.write.burnETH([1_000_000n, user]),
       (err: any) => {
         const msg: string = err?.message ?? "";
-        return (
-          msg.includes("CpiFailed") ||
-          msg.includes("sysvar constants not initialized")
-        );
+        return msg.includes("InsufficientBalance");
       }
     );
   });
 
-  // ── Test 2: AmountExceedsUint64 error exists and is the correct ABI signature ─
-  //
-  // We cannot trigger it in isolation without non-zero sysvars (Phase 1.4 work),
-  // but we can assert that the contract ABI exposes the error and it has the right
-  // signature — verifying fix #1 was wired into the artifact.
+  // ── Test 3: Custom error ABI presence ────────────────────────────────────────
 
   it("exposes AmountExceedsUint64 custom error in the contract ABI", async () => {
     const abi: any[] = withdraw.abi;
@@ -143,7 +165,7 @@ describe("RomeBridgeWithdraw — error paths", () => {
     assert.strictEqual(errorDef.inputs.length, 3);
   });
 
-  // ── Test 3: immutables are set correctly ─────────────────────────────────────
+  // ── Test 4: Immutables are set correctly ─────────────────────────────────────
 
   it("stores usdcMint and wethMint immutables from mock wrappers", async () => {
     const usdcMint = await withdraw.read.usdcMint();

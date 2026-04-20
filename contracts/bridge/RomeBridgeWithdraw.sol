@@ -15,11 +15,9 @@ import {RomeBridgeEvents} from "./RomeBridgeEvents.sol";
 /// @dev CCTP path:     burnUSDC → depositForBurn CPI (path=0)
 ///      Wormhole path: burnETH  → transfer_tokens CPI  (path=1)
 ///
-///      Solana program PDAs (CCTP configs, Wormhole custody etc.) are supplied
-///      at construction from the deploy script after off-chain derivation.
-///      Many bytes32 pubkeys below are placeholder values marked FIXME —
-///      the Phase 1.5 deploy script will supply real values derived via
-///      find_program_address / known Solana constants.
+///      All Solana program IDs, sysvars, and PDAs are supplied at construction
+///      from the deploy script. No pubkeys are hardcoded in this contract —
+///      it is fully network-agnostic.
 contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     SPL_ERC20 public immutable usdcWrapper;
     SPL_ERC20 public immutable wethWrapper;
@@ -27,8 +25,11 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     bytes32 public immutable wethMint;
 
     // -------------------------------------------------------------------------
-    // CCTP Solana-side PDA references (set at construction from deploy script)
+    // CCTP Solana-side immutables (set at construction from deploy script)
     // -------------------------------------------------------------------------
+    bytes32 public immutable cctpTokenMessengerProgram;
+    bytes32 public immutable cctpSplTokenProgram;
+    bytes32 public immutable cctpSystemProgram;
     bytes32 public immutable cctpMessageTransmitterConfig;
     bytes32 public immutable cctpTokenMessengerConfig;
     bytes32 public immutable cctpRemoteTokenMessenger;
@@ -37,45 +38,22 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     bytes32 public immutable cctpEventAuthority;
 
     // -------------------------------------------------------------------------
-    // Wormhole Solana-side PDA references (set at construction from deploy script)
+    // Wormhole Solana-side immutables (set at construction from deploy script)
     // -------------------------------------------------------------------------
+    bytes32 public immutable wormholeTokenBridgeProgram;
+    bytes32 public immutable wormholeCoreProgram;
+    bytes32 public immutable whSplTokenProgram;
+    bytes32 public immutable whSystemProgram;
+    bytes32 public immutable whClockSysvar;
+    bytes32 public immutable whRentSysvar;
     bytes32 public immutable wormholeConfig;
     bytes32 public immutable wormholeCustody;
     bytes32 public immutable wormholeAuthoritySigner;
     bytes32 public immutable wormholeCustodySigner;
     bytes32 public immutable wormholeBridgeConfig;
     bytes32 public immutable wormholeFeeCollector;
-    /// @dev FIXME: supply real emitter PDA from deploy; Phase 1.5 will derive on-chain
     bytes32 public immutable wormholeEmitter;
-    /// @dev FIXME: supply real sequence PDA from deploy; Phase 1.5 will derive on-chain
     bytes32 public immutable wormholeSequence;
-    bytes32 public immutable wormholeCoreProgram;
-
-    // -------------------------------------------------------------------------
-    // Well-known Solana program / sysvar pubkeys
-    // -------------------------------------------------------------------------
-
-    /// @dev SPL Token program pubkey (TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA).
-    /// FIXME: Replace with real pubkey in Phase 1.4 deploy refactor; currently sentinel zero
-    ///        forces CpiFailed rather than silent miswrite.
-    bytes32 internal constant SPL_TOKEN_PROGRAM =
-        0x0000000000000000000000000000000000000000000000000000000000000000;
-
-    /// @dev System program pubkey — 11111111111111111111111111111111 decodes to 32 zero bytes.
-    bytes32 internal constant SYSTEM_PROGRAM =
-        0x0000000000000000000000000000000000000000000000000000000000000000;
-
-    /// @dev Clock sysvar pubkey (SysvarC1ock11111111111111111111111111111111).
-    /// FIXME: Replace with real pubkey in Phase 1.4 deploy refactor; currently sentinel zero
-    ///        forces CpiFailed rather than silent miswrite.
-    bytes32 internal constant CLOCK_SYSVAR =
-        0x0000000000000000000000000000000000000000000000000000000000000000;
-
-    /// @dev Rent sysvar pubkey (SysvarRent111111111111111111111111111111111).
-    /// FIXME: Replace with real pubkey in Phase 1.4 deploy refactor; currently sentinel zero
-    ///        forces CpiFailed rather than silent miswrite.
-    bytes32 internal constant RENT_SYSVAR =
-        0x0000000000000000000000000000000000000000000000000000000000000000;
 
     // -------------------------------------------------------------------------
     // Errors
@@ -85,11 +63,21 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     error CpiFailed(bytes reason);
 
     // -------------------------------------------------------------------------
-    // Constructor params structs (avoids stack-too-deep with 19 constructor args)
+    // Constructor params structs (avoids stack-too-deep with many constructor args)
     // -------------------------------------------------------------------------
 
+    /// @notice CCTP-path Solana accounts. Includes all program IDs and PDAs needed
+    ///         for the deposit_for_burn CPI. All fields come from the deploy script.
     struct CctpParams {
-        bytes32 msgTransmitterConfig;
+        /// @dev CCTP Token Messenger Solana program ID
+        ///      (CCTPiPYPc6AsJuwueEnWgSgucamXDZwBd53dQ11YiKX3)
+        bytes32 tokenMessengerProgram;
+        /// @dev SPL Token program ID (TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA)
+        bytes32 splTokenProgram;
+        /// @dev Solana System Program (11111111111111111111111111111111 → zero bytes)
+        bytes32 systemProgram;
+        // PDAs — derived per-deployment in Phase 1.5
+        bytes32 messageTransmitterConfig;
         bytes32 tokenMessengerConfig;
         bytes32 remoteTokenMessenger;
         bytes32 tokenMinter;
@@ -97,7 +85,22 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 eventAuthority;
     }
 
+    /// @notice Wormhole-path Solana accounts. Includes all program IDs, sysvars, and
+    ///         PDAs needed for the transfer_tokens CPI. All fields come from the deploy script.
     struct WormholeParams {
+        /// @dev Wormhole Token Bridge program ID (wormDTUJ6AWPNvk59vGQbDvGJmqbDTdgWgAqcLBCgUb)
+        bytes32 tokenBridgeProgram;
+        /// @dev Wormhole Core Bridge program ID (worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth)
+        bytes32 coreProgram;
+        /// @dev SPL Token program ID (TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA)
+        bytes32 splTokenProgram;
+        /// @dev Solana System Program (11111111111111111111111111111111 → zero bytes)
+        bytes32 systemProgram;
+        /// @dev Clock sysvar (SysvarC1ock11111111111111111111111111111111)
+        bytes32 clockSysvar;
+        /// @dev Rent sysvar (SysvarRent111111111111111111111111111111111)
+        bytes32 rentSysvar;
+        // PDAs — derived per-deployment in Phase 1.5
         bytes32 config;
         bytes32 custody;
         bytes32 authoritySigner;
@@ -106,7 +109,6 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 feeCollector;
         bytes32 emitter;
         bytes32 sequence;
-        bytes32 coreProgram;
     }
 
     // -------------------------------------------------------------------------
@@ -124,22 +126,30 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         usdcMint = _usdc.mint_id();
         wethMint = _weth.mint_id();
         // CCTP
-        cctpMessageTransmitterConfig = cctp.msgTransmitterConfig;
+        cctpTokenMessengerProgram    = cctp.tokenMessengerProgram;
+        cctpSplTokenProgram          = cctp.splTokenProgram;
+        cctpSystemProgram            = cctp.systemProgram;
+        cctpMessageTransmitterConfig = cctp.messageTransmitterConfig;
         cctpTokenMessengerConfig     = cctp.tokenMessengerConfig;
         cctpRemoteTokenMessenger     = cctp.remoteTokenMessenger;
         cctpTokenMinter              = cctp.tokenMinter;
         cctpLocalTokenUsdc           = cctp.localTokenUsdc;
         cctpEventAuthority           = cctp.eventAuthority;
         // Wormhole
-        wormholeConfig          = wh.config;
-        wormholeCustody         = wh.custody;
-        wormholeAuthoritySigner = wh.authoritySigner;
-        wormholeCustodySigner   = wh.custodySigner;
-        wormholeBridgeConfig    = wh.bridgeConfig;
-        wormholeFeeCollector    = wh.feeCollector;
-        wormholeEmitter         = wh.emitter;
-        wormholeSequence        = wh.sequence;
-        wormholeCoreProgram     = wh.coreProgram;
+        wormholeTokenBridgeProgram = wh.tokenBridgeProgram;
+        wormholeCoreProgram        = wh.coreProgram;
+        whSplTokenProgram          = wh.splTokenProgram;
+        whSystemProgram            = wh.systemProgram;
+        whClockSysvar              = wh.clockSysvar;
+        whRentSysvar               = wh.rentSysvar;
+        wormholeConfig             = wh.config;
+        wormholeCustody            = wh.custody;
+        wormholeAuthoritySigner    = wh.authoritySigner;
+        wormholeCustodySigner      = wh.custodySigner;
+        wormholeBridgeConfig       = wh.bridgeConfig;
+        wormholeFeeCollector       = wh.feeCollector;
+        wormholeEmitter            = wh.emitter;
+        wormholeSequence           = wh.sequence;
     }
 
     // -------------------------------------------------------------------------
@@ -151,9 +161,6 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     /// @param amount           Token amount in SPL decimals (must fit uint64).
     /// @param ethereumRecipient Destination address on Ethereum.
     function burnUSDC(uint256 amount, address ethereumRecipient) external {
-        if (SPL_TOKEN_PROGRAM == bytes32(0) || CLOCK_SYSVAR == bytes32(0) || RENT_SYSVAR == bytes32(0)) {
-            revert CpiFailed(bytes("sysvar constants not initialized"));
-        }
         if (amount > type(uint64).max) {
             revert AmountExceedsUint64(amount);
         }
@@ -188,10 +195,10 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
                 cctpTokenMinter,
                 cctpLocalTokenUsdc,
                 messageSentEventData,
-                SPL_TOKEN_PROGRAM,
-                SYSTEM_PROGRAM,
+                cctpSplTokenProgram,
+                cctpSystemProgram,
                 cctpEventAuthority,
-                CCTPLib.TOKEN_MESSENGER_PROGRAM
+                cctpTokenMessengerProgram
             );
 
         // Signing salt for the per-tx event-data PDA (signed alongside the user PDA
@@ -202,7 +209,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         (bool ok, bytes memory result) = address(CpiProgram).delegatecall(
             abi.encodeWithSignature(
                 "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
-                CCTPLib.TOKEN_MESSENGER_PROGRAM,
+                cctpTokenMessengerProgram,
                 metas,
                 ixData,
                 salts
@@ -222,9 +229,6 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     /// @param amount           Token amount in SPL decimals (must fit uint64).
     /// @param ethereumRecipient Destination address on Ethereum.
     function burnETH(uint256 amount, address ethereumRecipient) external {
-        if (SPL_TOKEN_PROGRAM == bytes32(0) || CLOCK_SYSVAR == bytes32(0) || RENT_SYSVAR == bytes32(0)) {
-            revert CpiFailed(bytes("sysvar constants not initialized"));
-        }
         if (amount > type(uint64).max) {
             revert AmountExceedsUint64(amount);
         }
@@ -268,10 +272,10 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
                     emitter:          wormholeEmitter,
                     sequence:         wormholeSequence,
                     fee_collector:    wormholeFeeCollector,
-                    clock:            CLOCK_SYSVAR,
-                    rent:             RENT_SYSVAR,
-                    system:           SYSTEM_PROGRAM,
-                    token:            SPL_TOKEN_PROGRAM,
+                    clock:            whClockSysvar,
+                    rent:             whRentSysvar,
+                    system:           whSystemProgram,
+                    token:            whSplTokenProgram,
                     wormhole_core:    wormholeCoreProgram
                 })
             );
@@ -283,7 +287,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         (bool ok, bytes memory result) = address(CpiProgram).delegatecall(
             abi.encodeWithSignature(
                 "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
-                WormholeTokenBridgeLib.PROGRAM_ID,
+                wormholeTokenBridgeProgram,
                 metas,
                 ixData,
                 salts

@@ -7,11 +7,6 @@ import {ICrossProgramInvocation} from "../interface.sol";
 /// @notice Encodes transfer_tokens instructions and account lists for the Wormhole Token Bridge
 ///         Solana program, to be invoked via Rome's CPI precompile.
 library WormholeTokenBridgeLib {
-    /// @dev Placeholder — replaced at deploy time by the base58-decoded pubkey of
-    ///      wormDTUJ6AWPNvk59vGQbDvGJmqbDTdgWgAqcLBCgUb
-    bytes32 internal constant PROGRAM_ID =
-        0x0000000000000000000000000000000000000000000000000000000000000001;
-
     uint8 internal constant TRANSFER_TOKENS_TAG = 0x04;
 
     /// @notice Parameters for the transfer_tokens instruction.

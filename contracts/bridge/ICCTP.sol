@@ -7,16 +7,6 @@ import {ICrossProgramInvocation} from "../interface.sol";
 /// @notice Encodes deposit_for_burn instructions and account lists for the Circle CCTP
 ///         Token Messenger program, to be invoked via Rome's CPI precompile.
 library CCTPLib {
-    /// @dev Placeholder — replaced at deploy time by the base58-decoded pubkey of
-    ///      CCTPiPYPc6AsJuwueEnWgSgucamXDZwBd53dQ11YiKX3
-    bytes32 internal constant TOKEN_MESSENGER_PROGRAM =
-        0x0000000000000000000000000000000000000000000000000000000000000002;
-
-    /// @dev Placeholder — replaced at deploy time by the base58-decoded pubkey of
-    ///      CCTPmbSD7gX1bxKPAmg77w8oFzNFpaQiQUWD43TKaecd
-    bytes32 internal constant MESSAGE_TRANSMITTER_PROGRAM =
-        0x0000000000000000000000000000000000000000000000000000000000000003;
-
     uint32 internal constant DOMAIN_ETHEREUM = 0;
     uint32 internal constant DOMAIN_SOLANA   = 5;
 
