@@ -20,8 +20,9 @@ library CCTPLib {
     uint32 internal constant DOMAIN_ETHEREUM = 0;
     uint32 internal constant DOMAIN_SOLANA   = 5;
 
-    /// @dev Anchor discriminator for deposit_for_burn — verify against live IDL at deploy time.
-    bytes8 internal constant DISCRIMINATOR_DEPOSIT_FOR_BURN = 0x6d8ab0e1d8a34c4e;
+    /// @dev Anchor discriminator for deposit_for_burn.
+    ///      sha256("global:deposit_for_burn")[0..8] = d73c3d2e723780b0
+    bytes8 internal constant DISCRIMINATOR_DEPOSIT_FOR_BURN = 0xd73c3d2e723780b0;
 
     /// @notice Parameters for the deposit_for_burn instruction.
     struct DepositForBurnParams {

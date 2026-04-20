@@ -7,7 +7,6 @@ import {CCTPLib} from "./ICCTP.sol";
 import {WormholeTokenBridgeLib} from "./IWormholeTokenBridge.sol";
 import {ICrossProgramInvocation, CpiProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
-import {Convert} from "../convert.sol";
 import {RomeBridgeEvents} from "./RomeBridgeEvents.sol";
 
 /// @title RomeBridgeWithdraw
@@ -24,6 +23,8 @@ import {RomeBridgeEvents} from "./RomeBridgeEvents.sol";
 contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     SPL_ERC20 public immutable usdcWrapper;
     SPL_ERC20 public immutable wethWrapper;
+    bytes32 public immutable usdcMint;
+    bytes32 public immutable wethMint;
 
     // -------------------------------------------------------------------------
     // CCTP Solana-side PDA references (set at construction from deploy script)
@@ -55,27 +56,31 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     // -------------------------------------------------------------------------
 
     /// @dev SPL Token program pubkey (TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA).
-    /// FIXME: replace with correct base58-decoded bytes32 at deploy time.
+    /// FIXME: Replace with real pubkey in Phase 1.4 deploy refactor; currently sentinel zero
+    ///        forces CpiFailed rather than silent miswrite.
     bytes32 internal constant SPL_TOKEN_PROGRAM =
-        0x06ddf6e67c10cff9aec90a3e1c30c8cde45934f8c7f5e8e3a5aa1d2cfb83d5f8;
+        0x0000000000000000000000000000000000000000000000000000000000000000;
 
-    /// @dev System program pubkey — 11111111111111111111111111111111.
+    /// @dev System program pubkey — 11111111111111111111111111111111 decodes to 32 zero bytes.
     bytes32 internal constant SYSTEM_PROGRAM =
         0x0000000000000000000000000000000000000000000000000000000000000000;
 
     /// @dev Clock sysvar pubkey (SysvarC1ock11111111111111111111111111111111).
-    /// FIXME: replace with correct base58-decoded bytes32 at deploy time.
+    /// FIXME: Replace with real pubkey in Phase 1.4 deploy refactor; currently sentinel zero
+    ///        forces CpiFailed rather than silent miswrite.
     bytes32 internal constant CLOCK_SYSVAR =
-        0x000000000000000000000000000000000000000000000000000000000000000c;
+        0x0000000000000000000000000000000000000000000000000000000000000000;
 
     /// @dev Rent sysvar pubkey (SysvarRent111111111111111111111111111111111).
-    /// FIXME: replace with correct base58-decoded bytes32 at deploy time.
+    /// FIXME: Replace with real pubkey in Phase 1.4 deploy refactor; currently sentinel zero
+    ///        forces CpiFailed rather than silent miswrite.
     bytes32 internal constant RENT_SYSVAR =
-        0x000000000000000000000000000000000000000000000000000000000000000d;
+        0x0000000000000000000000000000000000000000000000000000000000000000;
 
     // -------------------------------------------------------------------------
     // Errors
     // -------------------------------------------------------------------------
+    error AmountExceedsUint64(uint256 amount);
     error InsufficientBalance(address user, uint256 requested, uint256 available);
     error CpiFailed(bytes reason);
 
@@ -116,6 +121,8 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ) ERC2771Context(forwarder) {
         usdcWrapper = _usdc;
         wethWrapper = _weth;
+        usdcMint = _usdc.mint_id();
+        wethMint = _weth.mint_id();
         // CCTP
         cctpMessageTransmitterConfig = cctp.msgTransmitterConfig;
         cctpTokenMessengerConfig     = cctp.tokenMessengerConfig;
@@ -144,18 +151,20 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     /// @param amount           Token amount in SPL decimals (must fit uint64).
     /// @param ethereumRecipient Destination address on Ethereum.
     function burnUSDC(uint256 amount, address ethereumRecipient) external {
+        if (SPL_TOKEN_PROGRAM == bytes32(0) || CLOCK_SYSVAR == bytes32(0) || RENT_SYSVAR == bytes32(0)) {
+            revert CpiFailed(bytes("sysvar constants not initialized"));
+        }
+        if (amount > type(uint64).max) {
+            revert AmountExceedsUint64(amount);
+        }
         address user = _msgSender();
         uint256 balance = usdcWrapper.balanceOf(user);
         if (balance < amount) {
             revert InsufficientBalance(user, amount, balance);
         }
-        if (amount > type(uint64).max) {
-            revert InsufficientBalance(user, amount, type(uint64).max);
-        }
 
         bytes32 userPda  = RomeEVMAccount.pda(user);
         bytes32 userAta  = usdcWrapper.getAta(user);
-        bytes32 usdcMint = usdcWrapper.mint_id();
 
         bytes memory ixData = CCTPLib.encodeDepositForBurn(CCTPLib.DepositForBurnParams({
             amount:            uint64(amount),
@@ -164,10 +173,9 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         }));
 
         // Per-tx message data account derived as a PDA under the user.
-        bytes32 messageSentEventData = RomeEVMAccount.pda_with_salt(
-            user,
-            Convert.bytes_to_bytes32(bytes("CCTP_MSG"))
-        );
+        // Includes block.number in the salt so concurrent same-slot txs don't collide.
+        bytes32 cctpSalt = keccak256(abi.encodePacked("CCTP_MSG", block.number));
+        bytes32 messageSentEventData = RomeEVMAccount.pda_with_salt(user, cctpSalt);
 
         ICrossProgramInvocation.AccountMeta[] memory metas =
             CCTPLib.buildDepositForBurnAccounts(
@@ -189,7 +197,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         // Signing salt for the per-tx event-data PDA (signed alongside the user PDA
         // which is derived implicitly from the caller's EVM address).
         bytes32[] memory salts = new bytes32[](1);
-        salts[0] = Convert.bytes_to_bytes32(bytes("CCTP_MSG"));
+        salts[0] = cctpSalt;
 
         (bool ok, bytes memory result) = address(CpiProgram).delegatecall(
             abi.encodeWithSignature(
@@ -214,24 +222,25 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     /// @param amount           Token amount in SPL decimals (must fit uint64).
     /// @param ethereumRecipient Destination address on Ethereum.
     function burnETH(uint256 amount, address ethereumRecipient) external {
+        if (SPL_TOKEN_PROGRAM == bytes32(0) || CLOCK_SYSVAR == bytes32(0) || RENT_SYSVAR == bytes32(0)) {
+            revert CpiFailed(bytes("sysvar constants not initialized"));
+        }
+        if (amount > type(uint64).max) {
+            revert AmountExceedsUint64(amount);
+        }
         address user = _msgSender();
         uint256 balance = wethWrapper.balanceOf(user);
         if (balance < amount) {
             revert InsufficientBalance(user, amount, balance);
         }
-        if (amount > type(uint64).max) {
-            revert InsufficientBalance(user, amount, type(uint64).max);
-        }
 
         bytes32 userPda  = RomeEVMAccount.pda(user);
         bytes32 userAta  = wethWrapper.getAta(user);
-        bytes32 wethMint = wethWrapper.mint_id();
 
         // Per-tx Wormhole message account derived as a PDA under the user.
-        bytes32 messageAccount = RomeEVMAccount.pda_with_salt(
-            user,
-            Convert.bytes_to_bytes32(bytes("WH_MSG"))
-        );
+        // Includes block.number in the salt so concurrent same-slot txs don't collide.
+        bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", block.number));
+        bytes32 messageAccount = RomeEVMAccount.pda_with_salt(user, whSalt);
 
         bytes memory ixData = WormholeTokenBridgeLib.encodeTransferTokens(
             WormholeTokenBridgeLib.TransferParams({
@@ -269,7 +278,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
 
         // Signing salt for the per-tx Wormhole message account PDA.
         bytes32[] memory salts = new bytes32[](1);
-        salts[0] = Convert.bytes_to_bytes32(bytes("WH_MSG"));
+        salts[0] = whSalt;
 
         (bool ok, bytes memory result) = address(CpiProgram).delegatecall(
             abi.encodeWithSignature(
