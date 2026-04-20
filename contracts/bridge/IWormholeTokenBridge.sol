@@ -26,6 +26,29 @@ library WormholeTokenBridgeLib {
         uint32 nonce;
     }
 
+    /// @notice Aggregated account references for the transfer_tokens instruction.
+    /// @dev Passed as a single struct to avoid stack-too-deep in buildAccounts.
+    struct TransferAccounts {
+        bytes32 payer;
+        bytes32 config;
+        bytes32 from_owner;
+        bytes32 from;
+        bytes32 mint;
+        bytes32 custody;
+        bytes32 authority_signer;
+        bytes32 custody_signer;
+        bytes32 bridge_config;
+        bytes32 message;
+        bytes32 emitter;
+        bytes32 sequence;
+        bytes32 fee_collector;
+        bytes32 clock;
+        bytes32 rent;
+        bytes32 system;
+        bytes32 token;
+        bytes32 wormhole_core;
+    }
+
     /// @notice Encodes a transfer_tokens instruction payload.
     /// @dev Layout: [tag:1][nonce:4 LE][amount:8 LE][fee:8 LE][target_address:32][target_chain:2 LE]
     function encodeTransferTokens(TransferParams memory p)
@@ -44,68 +67,32 @@ library WormholeTokenBridgeLib {
     }
 
     /// @notice Builds the ordered account list for the transfer_tokens instruction.
-    /// @param payer          Fee-payer — signer, mutable
-    /// @param config         Token Bridge config PDA — readonly
-    /// @param from_owner     From-account owner PDA — signer, readonly
-    /// @param from           Source SPL token account — mutable
-    /// @param mint           SPL mint — mutable
-    /// @param custody        Custody token account — mutable
-    /// @param authority_signer Token Bridge authority signer PDA — readonly
-    /// @param custody_signer   Custody signer PDA — readonly
-    /// @param bridge_config  Wormhole bridge config — mutable
-    /// @param message        Wormhole message account — signer, mutable
-    /// @param emitter        Token Bridge emitter PDA — readonly
-    /// @param sequence       Emitter sequence PDA — mutable
-    /// @param fee_collector  Wormhole fee collector — mutable
-    /// @param clock          Sysvar clock — readonly
-    /// @param rent           Sysvar rent — readonly
-    /// @param system         System program — readonly
-    /// @param token          SPL Token program — readonly
-    /// @param wormhole_core  Wormhole Core Bridge program — readonly
-    function buildAccounts(
-        bytes32 payer,
-        bytes32 config,
-        bytes32 from_owner,
-        bytes32 from,
-        bytes32 mint,
-        bytes32 custody,
-        bytes32 authority_signer,
-        bytes32 custody_signer,
-        bytes32 bridge_config,
-        bytes32 message,
-        bytes32 emitter,
-        bytes32 sequence,
-        bytes32 fee_collector,
-        bytes32 clock,
-        bytes32 rent,
-        bytes32 system,
-        bytes32 token,
-        bytes32 wormhole_core
-    )
+    /// @dev Accepts a TransferAccounts struct to avoid stack-too-deep with 18 accounts.
+    function buildAccounts(TransferAccounts memory a)
         internal
         pure
         returns (ICrossProgramInvocation.AccountMeta[] memory metas)
     {
         metas = new ICrossProgramInvocation.AccountMeta[](18);
 
-        metas[0]  = ICrossProgramInvocation.AccountMeta(payer,            true,  true);   // payer
-        metas[1]  = ICrossProgramInvocation.AccountMeta(config,           false, false);  // config
-        metas[2]  = ICrossProgramInvocation.AccountMeta(from_owner,       true,  false);  // from_owner
-        metas[3]  = ICrossProgramInvocation.AccountMeta(from,             false, true);   // from
-        metas[4]  = ICrossProgramInvocation.AccountMeta(mint,             false, true);   // mint
-        metas[5]  = ICrossProgramInvocation.AccountMeta(custody,          false, true);   // custody
-        metas[6]  = ICrossProgramInvocation.AccountMeta(authority_signer, false, false);  // authority_signer
-        metas[7]  = ICrossProgramInvocation.AccountMeta(custody_signer,   false, false);  // custody_signer
-        metas[8]  = ICrossProgramInvocation.AccountMeta(bridge_config,    false, true);   // bridge_config
-        metas[9]  = ICrossProgramInvocation.AccountMeta(message,          true,  true);   // message
-        metas[10] = ICrossProgramInvocation.AccountMeta(emitter,          false, false);  // emitter
-        metas[11] = ICrossProgramInvocation.AccountMeta(sequence,         false, true);   // sequence
-        metas[12] = ICrossProgramInvocation.AccountMeta(fee_collector,    false, true);   // fee_collector
-        metas[13] = ICrossProgramInvocation.AccountMeta(clock,            false, false);  // clock
-        metas[14] = ICrossProgramInvocation.AccountMeta(rent,             false, false);  // rent
-        metas[15] = ICrossProgramInvocation.AccountMeta(system,           false, false);  // system
-        metas[16] = ICrossProgramInvocation.AccountMeta(token,            false, false);  // token
-        metas[17] = ICrossProgramInvocation.AccountMeta(wormhole_core,    false, false);  // wormhole_core
+        metas[0]  = ICrossProgramInvocation.AccountMeta(a.payer,            true,  true);   // payer
+        metas[1]  = ICrossProgramInvocation.AccountMeta(a.config,           false, false);  // config
+        metas[2]  = ICrossProgramInvocation.AccountMeta(a.from_owner,       true,  false);  // from_owner
+        metas[3]  = ICrossProgramInvocation.AccountMeta(a.from,             false, true);   // from
+        metas[4]  = ICrossProgramInvocation.AccountMeta(a.mint,             false, true);   // mint
+        metas[5]  = ICrossProgramInvocation.AccountMeta(a.custody,          false, true);   // custody
+        metas[6]  = ICrossProgramInvocation.AccountMeta(a.authority_signer, false, false);  // authority_signer
+        metas[7]  = ICrossProgramInvocation.AccountMeta(a.custody_signer,   false, false);  // custody_signer
+        metas[8]  = ICrossProgramInvocation.AccountMeta(a.bridge_config,    false, true);   // bridge_config
+        metas[9]  = ICrossProgramInvocation.AccountMeta(a.message,          true,  true);   // message
+        metas[10] = ICrossProgramInvocation.AccountMeta(a.emitter,          false, false);  // emitter
+        metas[11] = ICrossProgramInvocation.AccountMeta(a.sequence,         false, true);   // sequence
+        metas[12] = ICrossProgramInvocation.AccountMeta(a.fee_collector,    false, true);   // fee_collector
+        metas[13] = ICrossProgramInvocation.AccountMeta(a.clock,            false, false);  // clock
+        metas[14] = ICrossProgramInvocation.AccountMeta(a.rent,             false, false);  // rent
+        metas[15] = ICrossProgramInvocation.AccountMeta(a.system,           false, false);  // system
+        metas[16] = ICrossProgramInvocation.AccountMeta(a.token,            false, false);  // token
+        metas[17] = ICrossProgramInvocation.AccountMeta(a.wormhole_core,    false, false);  // wormhole_core
     }
 
     // -------------------------------------------------------------------------
