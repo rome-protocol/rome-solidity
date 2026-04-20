@@ -82,6 +82,7 @@ Global constants (`SplToken`, `AssociatedSplToken`, `SystemProgram`, `CpiProgram
 - **`contracts/erc20spl/`** — `SPL_ERC20` wraps an SPL mint as an ERC20 token with deposit/withdraw. `ERC20SPLFactory` deploys these wrappers. Uses OpenZeppelin IERC20.
 - **`contracts/meteora/`** — `MeteoraDAMMv1Factory` and `DAMMv1Pool` implement a Uniswap-style factory/pool pattern that delegates swaps to Meteora's on-chain Solana program via CPI.
 - **`contracts/oracle/`** — Oracle Gateway V2: Chainlink-compatible adapters for both Pyth Pull and Switchboard V3 price feeds. `OracleAdapterFactory` deploys `PythPullAdapter` and `SwitchboardV3Adapter` instances via EIP-1167 minimal proxy clones. Each adapter reads Solana account data via CPI precompile, parses Borsh-encoded price data (`PythPullParser` / `SwitchboardParser`), and normalizes to 8-decimal Chainlink format. `IExtendedOracleAdapter` extends `IAggregatorV3Interface` with confidence intervals, EMA data, and price status. `BatchReader` reads multiple feeds in one call. The factory includes owner-controlled pause/unpause emergency controls. Includes `examples/SampleLendingOracle.sol`.
+- **`contracts/bridge/`** — Rome Bridge Phase 1 (Solana ↔ Ethereum cross-chain). `RomeBridgePaymaster` is an EIP-2771 trusted forwarder with per-user 3-tx sponsorship cap + (target, selector) allowlist. `RomeBridgeWithdraw` accepts ERC-20 input on Rome EVM and emits Wormhole Token Bridge (`transfer_tokens`) or CCTP (`deposit_for_burn`) outbound messages via CPI signed as the user's PDA. `IWormholeTokenBridge.sol` and `ICCTP.sol` encode the native/Anchor Solana instructions. All Solana pubkeys are supplied via constructor params so the contract is network-agnostic. See `rome-product/specs/rome-bridge-phase1.md` for the full design.
 - **`contracts/system_program/`** — Solana System Program helpers. `instruction_data.sol` encodes System Program instructions (create account, transfer, assign, nonce operations, allocate) as little-endian bytes. `system_program.sol` wraps these as CPI calls.
 - **`contracts/mpl_token_metadata/`** — Deserializes Metaplex Token Metadata V2 accounts from Borsh-encoded binary. Parses creators, token standards, collection details, uses, and programmable config. Provides `find_metadata_pda()` and `load_metadata()`.
 - **`contracts/rome_evm_account.sol`** — PDA derivation helpers for Rome-EVM user accounts (maps `address` → Solana `bytes32` pubkey).
@@ -110,6 +111,7 @@ Deployment metadata is tracked in `deployments/{network}.json`. `monti_spl.json`
 - **PythAggregatorFactory** — Pyth v1 feed factory (legacy)
 - **PythAggregatorFeeds** — SOL/USD, BTC/USD, ETH/USD Pyth v1 adapters
 - **OracleGatewayV2** — PythPullAdapter, SwitchboardV3Adapter implementations, OracleAdapterFactory (defaultMaxStaleness=60), BatchReader, and SwitchboardFeeds (SOL/USD)
+- **RomeBridgePaymaster**, **RomeBridgeWithdraw**, **SPL_ERC20 (rUSDC, rETH)** — Rome Bridge Phase 1 (to be deployed via `scripts/bridge/deploy.ts`; addresses recorded in `deployments/monti_spl.json` when deploy runs).
 
 ### Networks
 
