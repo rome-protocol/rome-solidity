@@ -14,10 +14,13 @@
 // CPI precompile address: 0xFF00000000000000000000000000000000000008
 // (confirmed from contracts/interface.sol: `cpi_program_address`)
 
+import { PublicKey } from "@solana/web3.js";
 import hardhat from "hardhat";
 import { readDeployments, writeDeployments } from "../lib/deployments.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
 import { SOLANA_PROGRAM_IDS, SPL_MINTS } from "./constants.js";
+import { deriveCctpAccounts } from "./derive/cctp-accounts.js";
+import { deriveWormholeAccounts } from "./derive/wormhole-accounts.js";
 
 // CPI precompile at 0xff..08 as defined in contracts/interface.sol.
 const CPI_PROGRAM_ADDRESS = "0xFF00000000000000000000000000000000000008" as const;
@@ -57,13 +60,17 @@ interface SolanaPdaAccounts {
   wormholeSequence:        `0x${string}`;
 }
 
-/// Phase 1.5 will replace this with real PDA derivation via @solana/web3.js.
-/// See scripts/bridge/derive/cctp-accounts.ts and wormhole-accounts.ts (Phase 1.5).
-function loadSolanaPdas(networkName: string): SolanaPdaAccounts {
-  throw new Error(
-    `[Phase 1.5 TODO] PDAs not yet derived for ${networkName}. ` +
-    `Implement scripts/bridge/derive/{cctp,wormhole}-accounts.ts and call them here.`
-  );
+/// Derives all Solana PDAs required for the RomeBridgeWithdraw constructor.
+/// Uses canonical mainnet program IDs from constants.ts — correct for local,
+/// monti_spl (devnet), and mainnet as long as those programs are deployed at
+/// the same addresses (rome-setup seeds them on local).
+function loadSolanaPdas(_networkName: string): SolanaPdaAccounts {
+  const usdcMint = new PublicKey(SPL_MINTS.USDC_NATIVE);
+  const wethMint = new PublicKey(SPL_MINTS.WETH_WORMHOLE);
+  return {
+    ...deriveCctpAccounts(usdcMint),
+    ...deriveWormholeAccounts(wethMint),
+  };
 }
 
 // -------------------------------------------------------------------------
