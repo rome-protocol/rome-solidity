@@ -469,4 +469,72 @@ describe("RomeBridgePaymaster", () => {
     assert.strictEqual(events.length, 1);
     assert.strictEqual(events[0].args.allowed, true);
   });
+
+  // ─── C1 regression: executeBatch drain fix ───────────────────────────────
+
+  it("does NOT charge sponsorship budget in executeBatch when signature is invalid (C1 regression)", async () => {
+    // victim = third wallet; attacker = fourth wallet
+    const allWallets = await viem.getWalletClients();
+    const victimWallet = allWallets[2];
+    const attackerWallet = allWallets[3];
+    const victim = victimWallet.account.address;
+
+    // Deploy a fresh allowlisted target
+    const allowlistedTarget = await viem.deployContract("MockBridgeTarget", [
+      paymaster.address,
+    ]);
+    await paymaster.write.setAllowlistEntry(
+      [allowlistedTarget.address, TOUCH_SELECTOR, true],
+      { account: adminWallet.account }
+    );
+
+    // Build a forged request: from = victim, nonce from victim's slot,
+    // but signed by attacker — the signature is invalid for this request.
+    const nonce = await paymaster.read.nonces([victim]);
+    const deadline = Math.floor(Date.now() / 1000) + 3600;
+
+    const badSignature = await attackerWallet.signTypedData({
+      account: attackerWallet.account!,
+      domain: {
+        name: "RomeBridgePaymaster",
+        version: "1",
+        chainId,
+        verifyingContract: paymaster.address,
+      },
+      types: FORWARD_REQUEST_TYPES,
+      primaryType: "ForwardRequest",
+      message: {
+        from: victim,
+        to: allowlistedTarget.address as `0x${string}`,
+        value: 0n,
+        gas: 100_000n,
+        nonce,
+        deadline,
+        data: TOUCH_SELECTOR,
+      },
+    });
+
+    // The ForwardRequestData struct that the contract receives (no nonce field —
+    // nonce is encoded inside the signature's EIP-712 typed data only).
+    const forgedRequest = {
+      from: victim,
+      to: allowlistedTarget.address as `0x${string}`,
+      value: 0n,
+      gas: 100_000n,
+      deadline,
+      data: TOUCH_SELECTOR,
+      signature: badSignature,
+    };
+
+    // executeBatch with a non-zero refundReceiver (admin) => requireValidRequest=false.
+    // OZ skips the invalid request silently (returns success=false per request).
+    // After the fix, victim's budget must NOT be charged.
+    await paymaster.write.executeBatch([[forgedRequest], admin], {
+      account: adminWallet.account,
+    });
+
+    // Victim's budget MUST remain at 0.
+    const count = await paymaster.read.sponsoredTxCount([victim]);
+    assert.strictEqual(count, 0);
+  });
 });
