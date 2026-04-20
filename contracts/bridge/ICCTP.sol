@@ -6,6 +6,9 @@ import {ICrossProgramInvocation} from "../interface.sol";
 /// @title CCTPLib
 /// @notice Encodes deposit_for_burn instructions and account lists for the Circle CCTP
 ///         Token Messenger program, to be invoked via Rome's CPI precompile.
+///         Matches the on-chain Anchor IDL (17-account layout) — earlier 13-account
+///         layout was missing event_rent_payer, sender_authority_pda, and
+///         message_transmitter_program and failed with AnchorError 3010 (AccountNotSigner).
 library CCTPLib {
     uint32 internal constant DOMAIN_ETHEREUM = 0;
     uint32 internal constant DOMAIN_SOLANA   = 5;
@@ -19,6 +22,28 @@ library CCTPLib {
         uint64 amount;
         uint32 destinationDomain;
         bytes32 mintRecipient;
+    }
+
+    /// @notice All 17 accounts required by the Anchor IDL for deposit_for_burn,
+    ///         grouped into a struct to avoid stack-too-deep at the call site.
+    struct DepositForBurnAccounts {
+        bytes32 owner;                      // 1  signer, writable — user's Rome PDA
+        bytes32 eventRentPayer;             // 2  signer, writable — pays rent for event data account
+        bytes32 senderAuthorityPda;         // 3  readonly — PDA ["sender_authority"] under Token Messenger
+        bytes32 burnTokenAccount;           // 4  writable — user's SPL ATA of the burn mint
+        bytes32 messageTransmitter;         // 5  writable — MessageTransmitter config PDA
+        bytes32 tokenMessenger;             // 6  readonly — TokenMessenger config PDA
+        bytes32 remoteTokenMessenger;       // 7  readonly — destination-domain remote token messenger PDA
+        bytes32 tokenMinter;                // 8  readonly — Token Minter PDA
+        bytes32 localToken;                 // 9  writable — Local token PDA for the mint
+        bytes32 burnTokenMint;              // 10 writable — SPL mint being burned
+        bytes32 messageSentEventData;       // 11 signer, writable — event data account
+        bytes32 messageTransmitterProgram;  // 12 readonly — MessageTransmitter program ID
+        bytes32 tokenMessengerMinterProgram;// 13 readonly — Token Messenger Minter program ID
+        bytes32 tokenProgram;               // 14 readonly — SPL Token program
+        bytes32 systemProgram;              // 15 readonly — System program
+        bytes32 eventAuthority;             // 16 readonly — Anchor event authority PDA
+        bytes32 program;                    // 17 readonly — Token Messenger Minter program ID (again, as "program")
     }
 
     /// @notice Encodes a deposit_for_burn instruction payload.
@@ -36,54 +61,31 @@ library CCTPLib {
         );
     }
 
-    /// @notice Builds the ordered account list for the deposit_for_burn instruction.
-    /// @param sender                      User PDA — signer, mutable
-    /// @param burn_token_mint             SPL mint to burn — mutable
-    /// @param burn_token_account          User's SPL token account — mutable
-    /// @param message_transmitter_config  Message Transmitter config PDA — mutable
-    /// @param token_messenger_config      Token Messenger config PDA — readonly
-    /// @param remote_token_messenger      Remote chain token messenger PDA — readonly
-    /// @param token_minter                Token Minter PDA — mutable
-    /// @param local_token                 Local token PDA — mutable
-    /// @param message_sent_event_data     Event data account — signer, mutable
-    /// @param token_program               SPL Token program — readonly
-    /// @param system_program              System program — readonly
-    /// @param event_authority             Anchor event authority PDA — readonly
-    /// @param program                     Token Messenger program itself — readonly
-    function buildDepositForBurnAccounts(
-        bytes32 sender,
-        bytes32 burn_token_mint,
-        bytes32 burn_token_account,
-        bytes32 message_transmitter_config,
-        bytes32 token_messenger_config,
-        bytes32 remote_token_messenger,
-        bytes32 token_minter,
-        bytes32 local_token,
-        bytes32 message_sent_event_data,
-        bytes32 token_program,
-        bytes32 system_program,
-        bytes32 event_authority,
-        bytes32 program
-    )
+    /// @notice Builds the ordered account list for deposit_for_burn per Circle's IDL.
+    function buildDepositForBurnAccounts(DepositForBurnAccounts memory a)
         internal
         pure
         returns (ICrossProgramInvocation.AccountMeta[] memory metas)
     {
-        metas = new ICrossProgramInvocation.AccountMeta[](13);
+        metas = new ICrossProgramInvocation.AccountMeta[](17);
 
-        metas[0]  = ICrossProgramInvocation.AccountMeta(sender,                      true,  true);   // sender
-        metas[1]  = ICrossProgramInvocation.AccountMeta(burn_token_mint,             false, true);   // burn_token_mint
-        metas[2]  = ICrossProgramInvocation.AccountMeta(burn_token_account,          false, true);   // burn_token_account
-        metas[3]  = ICrossProgramInvocation.AccountMeta(message_transmitter_config,  false, true);   // message_transmitter_config
-        metas[4]  = ICrossProgramInvocation.AccountMeta(token_messenger_config,      false, false);  // token_messenger_config
-        metas[5]  = ICrossProgramInvocation.AccountMeta(remote_token_messenger,      false, false);  // remote_token_messenger
-        metas[6]  = ICrossProgramInvocation.AccountMeta(token_minter,                false, true);   // token_minter
-        metas[7]  = ICrossProgramInvocation.AccountMeta(local_token,                 false, true);   // local_token
-        metas[8]  = ICrossProgramInvocation.AccountMeta(message_sent_event_data,     true,  true);   // message_sent_event_data
-        metas[9]  = ICrossProgramInvocation.AccountMeta(token_program,               false, false);  // token_program
-        metas[10] = ICrossProgramInvocation.AccountMeta(system_program,              false, false);  // system_program
-        metas[11] = ICrossProgramInvocation.AccountMeta(event_authority,             false, false);  // event_authority
-        metas[12] = ICrossProgramInvocation.AccountMeta(program,                     false, false);  // program
+        metas[0]  = ICrossProgramInvocation.AccountMeta(a.owner,                       true,  true);
+        metas[1]  = ICrossProgramInvocation.AccountMeta(a.eventRentPayer,              true,  true);
+        metas[2]  = ICrossProgramInvocation.AccountMeta(a.senderAuthorityPda,          false, false);
+        metas[3]  = ICrossProgramInvocation.AccountMeta(a.burnTokenAccount,            false, true);
+        metas[4]  = ICrossProgramInvocation.AccountMeta(a.messageTransmitter,          false, true);
+        metas[5]  = ICrossProgramInvocation.AccountMeta(a.tokenMessenger,              false, false);
+        metas[6]  = ICrossProgramInvocation.AccountMeta(a.remoteTokenMessenger,        false, false);
+        metas[7]  = ICrossProgramInvocation.AccountMeta(a.tokenMinter,                 false, false);
+        metas[8]  = ICrossProgramInvocation.AccountMeta(a.localToken,                  false, true);
+        metas[9]  = ICrossProgramInvocation.AccountMeta(a.burnTokenMint,               false, true);
+        metas[10] = ICrossProgramInvocation.AccountMeta(a.messageSentEventData,        true,  true);
+        metas[11] = ICrossProgramInvocation.AccountMeta(a.messageTransmitterProgram,   false, false);
+        metas[12] = ICrossProgramInvocation.AccountMeta(a.tokenMessengerMinterProgram, false, false);
+        metas[13] = ICrossProgramInvocation.AccountMeta(a.tokenProgram,                false, false);
+        metas[14] = ICrossProgramInvocation.AccountMeta(a.systemProgram,               false, false);
+        metas[15] = ICrossProgramInvocation.AccountMeta(a.eventAuthority,              false, false);
+        metas[16] = ICrossProgramInvocation.AccountMeta(a.program,                     false, false);
     }
 
     // -------------------------------------------------------------------------

@@ -7,6 +7,7 @@ import {CCTPLib} from "./ICCTP.sol";
 import {WormholeTokenBridgeLib} from "./IWormholeTokenBridge.sol";
 import {ICrossProgramInvocation, CpiProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
+import {Convert} from "../convert.sol";
 import {RomeBridgeEvents} from "./RomeBridgeEvents.sol";
 
 /// @title RomeBridgeWithdraw
@@ -28,6 +29,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     // CCTP Solana-side immutables (set at construction from deploy script)
     // -------------------------------------------------------------------------
     bytes32 public immutable cctpTokenMessengerProgram;
+    bytes32 public immutable cctpMessageTransmitterProgram;
     bytes32 public immutable cctpSplTokenProgram;
     bytes32 public immutable cctpSystemProgram;
     bytes32 public immutable cctpMessageTransmitterConfig;
@@ -35,6 +37,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     bytes32 public immutable cctpRemoteTokenMessenger;
     bytes32 public immutable cctpTokenMinter;
     bytes32 public immutable cctpLocalTokenUsdc;
+    bytes32 public immutable cctpSenderAuthorityPda;
     bytes32 public immutable cctpEventAuthority;
 
     // -------------------------------------------------------------------------
@@ -69,9 +72,12 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     /// @notice CCTP-path Solana accounts. Includes all program IDs and PDAs needed
     ///         for the deposit_for_burn CPI. All fields come from the deploy script.
     struct CctpParams {
-        /// @dev CCTP Token Messenger Solana program ID
+        /// @dev CCTP Token Messenger Minter Solana program ID
         ///      (CCTPiPYPc6AsJuwueEnWgSgucamXDZwBd53dQ11YiKX3)
         bytes32 tokenMessengerProgram;
+        /// @dev CCTP Message Transmitter Solana program ID
+        ///      (CCTPmbSD7gX1bxKPAmg77w8oFzNFpaQiQUWD43TKaecd)
+        bytes32 messageTransmitterProgram;
         /// @dev SPL Token program ID (TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA)
         bytes32 splTokenProgram;
         /// @dev Solana System Program (11111111111111111111111111111111 → zero bytes)
@@ -82,6 +88,8 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 remoteTokenMessenger;
         bytes32 tokenMinter;
         bytes32 localTokenUsdc;
+        /// @dev ["sender_authority"] PDA under Token Messenger Minter program
+        bytes32 senderAuthorityPda;
         bytes32 eventAuthority;
     }
 
@@ -126,15 +134,17 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         usdcMint = _usdc.mint_id();
         wethMint = _weth.mint_id();
         // CCTP
-        cctpTokenMessengerProgram    = cctp.tokenMessengerProgram;
-        cctpSplTokenProgram          = cctp.splTokenProgram;
-        cctpSystemProgram            = cctp.systemProgram;
-        cctpMessageTransmitterConfig = cctp.messageTransmitterConfig;
-        cctpTokenMessengerConfig     = cctp.tokenMessengerConfig;
-        cctpRemoteTokenMessenger     = cctp.remoteTokenMessenger;
-        cctpTokenMinter              = cctp.tokenMinter;
-        cctpLocalTokenUsdc           = cctp.localTokenUsdc;
-        cctpEventAuthority           = cctp.eventAuthority;
+        cctpTokenMessengerProgram     = cctp.tokenMessengerProgram;
+        cctpMessageTransmitterProgram = cctp.messageTransmitterProgram;
+        cctpSplTokenProgram           = cctp.splTokenProgram;
+        cctpSystemProgram             = cctp.systemProgram;
+        cctpMessageTransmitterConfig  = cctp.messageTransmitterConfig;
+        cctpTokenMessengerConfig      = cctp.tokenMessengerConfig;
+        cctpRemoteTokenMessenger      = cctp.remoteTokenMessenger;
+        cctpTokenMinter               = cctp.tokenMinter;
+        cctpLocalTokenUsdc            = cctp.localTokenUsdc;
+        cctpSenderAuthorityPda        = cctp.senderAuthorityPda;
+        cctpEventAuthority            = cctp.eventAuthority;
         // Wormhole
         wormholeTokenBridgeProgram = wh.tokenBridgeProgram;
         wormholeCoreProgram        = wh.coreProgram;
@@ -170,8 +180,19 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
             revert InsufficientBalance(user, amount, balance);
         }
 
-        bytes32 userPda  = RomeEVMAccount.pda(user);
-        bytes32 userAta  = usdcWrapper.getAta(user);
+        bytes32 userPda = RomeEVMAccount.pda(user);
+        bytes32 userAta = usdcWrapper.getAta(user);
+
+        // Rome PDAs created by ERC20Users.ensure_user.
+        // The "PAYER" salt PDA is pre-funded with 1 SOL in ERC20Users.ensure_user,
+        // giving it rent to pay for the transient message_sent_event_data account.
+        bytes32 payerSalt = Convert.bytes_to_bytes32(bytes("PAYER"));
+        bytes32 userPayer = RomeEVMAccount.pda_with_salt(user, payerSalt);
+
+        // Per-tx message data account derived as a PDA under the user.
+        // Includes block.number in the salt so concurrent same-slot txs don't collide.
+        bytes32 cctpSalt = keccak256(abi.encodePacked("CCTP_MSG", block.number));
+        bytes32 messageSentEventData = RomeEVMAccount.pda_with_salt(user, cctpSalt);
 
         bytes memory ixData = CCTPLib.encodeDepositForBurn(CCTPLib.DepositForBurnParams({
             amount:            uint64(amount),
@@ -179,32 +200,36 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
             mintRecipient:     bytes32(uint256(uint160(ethereumRecipient)))
         }));
 
-        // Per-tx message data account derived as a PDA under the user.
-        // Includes block.number in the salt so concurrent same-slot txs don't collide.
-        bytes32 cctpSalt = keccak256(abi.encodePacked("CCTP_MSG", block.number));
-        bytes32 messageSentEventData = RomeEVMAccount.pda_with_salt(user, cctpSalt);
-
         ICrossProgramInvocation.AccountMeta[] memory metas =
             CCTPLib.buildDepositForBurnAccounts(
-                userPda,
-                usdcMint,
-                userAta,
-                cctpMessageTransmitterConfig,
-                cctpTokenMessengerConfig,
-                cctpRemoteTokenMessenger,
-                cctpTokenMinter,
-                cctpLocalTokenUsdc,
-                messageSentEventData,
-                cctpSplTokenProgram,
-                cctpSystemProgram,
-                cctpEventAuthority,
-                cctpTokenMessengerProgram
+                CCTPLib.DepositForBurnAccounts({
+                    owner:                       userPda,
+                    eventRentPayer:              userPayer,
+                    senderAuthorityPda:          cctpSenderAuthorityPda,
+                    burnTokenAccount:            userAta,
+                    messageTransmitter:          cctpMessageTransmitterConfig,
+                    tokenMessenger:              cctpTokenMessengerConfig,
+                    remoteTokenMessenger:        cctpRemoteTokenMessenger,
+                    tokenMinter:                 cctpTokenMinter,
+                    localToken:                  cctpLocalTokenUsdc,
+                    burnTokenMint:               usdcMint,
+                    messageSentEventData:        messageSentEventData,
+                    messageTransmitterProgram:   cctpMessageTransmitterProgram,
+                    tokenMessengerMinterProgram: cctpTokenMessengerProgram,
+                    tokenProgram:                cctpSplTokenProgram,
+                    systemProgram:               cctpSystemProgram,
+                    eventAuthority:              cctpEventAuthority,
+                    program:                     cctpTokenMessengerProgram
+                })
             );
 
-        // Signing salt for the per-tx event-data PDA (signed alongside the user PDA
-        // which is derived implicitly from the caller's EVM address).
-        bytes32[] memory salts = new bytes32[](1);
-        salts[0] = cctpSalt;
+        // Signing salts for Rome's invoke_signed — we need the user's "PAYER"
+        // salt (to sign for eventRentPayer) and the per-tx CCTP_MSG salt (to
+        // sign for messageSentEventData). The base user PDA (owner) is signed
+        // implicitly from the tx-caller's EVM address, per orra.sol convention.
+        bytes32[] memory salts = new bytes32[](2);
+        salts[0] = payerSalt;
+        salts[1] = cctpSalt;
 
         (bool ok, bytes memory result) = address(CpiProgram).delegatecall(
             abi.encodeWithSignature(

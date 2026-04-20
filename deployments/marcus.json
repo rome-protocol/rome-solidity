@@ -15,7 +15,10 @@
     "mintId": "2kCwKGBvGfoY7EKHPmCwsZXamxzDMbqn1uDZMqXfve6i"
   },
   "RomeBridgeWithdraw": {
-    "address": "0x3e94a473f65b2603edbefca2583f7f5dcfa6986d",
-    "deployedAt": 1776718088
+    "address": "0x924726a02a6cf27f10904442fd2199a5b5e81a25",
+    "deployedAt": 1776723988
+  },
+  "archive": {
+    "RomeBridgeWithdrawPrevious": null
   }
 }

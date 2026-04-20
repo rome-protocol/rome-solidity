@@ -27,11 +27,12 @@ const CPI_PROGRAM_ADDRESS = "0xFF00000000000000000000000000000000000008" as cons
 
 // Universal Solana constants — same across mainnet / devnet / local (network-invariant).
 const UNIVERSAL = {
-  splTokenProgram:           base58ToBytes32(SOLANA_PROGRAM_IDS.SPL_TOKEN),
-  systemProgram:             base58ToBytes32(SOLANA_PROGRAM_IDS.SYSTEM_PROGRAM),
-  wormholeTokenBridgeProgram: base58ToBytes32(SOLANA_PROGRAM_IDS.WORMHOLE_TOKEN_BRIDGE),
-  cctpTokenMessengerProgram: base58ToBytes32(SOLANA_PROGRAM_IDS.CCTP_TOKEN_MESSENGER),
-  wormholeCoreProgram:       base58ToBytes32(SOLANA_PROGRAM_IDS.WORMHOLE_CORE),
+  splTokenProgram:             base58ToBytes32(SOLANA_PROGRAM_IDS.SPL_TOKEN),
+  systemProgram:               base58ToBytes32(SOLANA_PROGRAM_IDS.SYSTEM_PROGRAM),
+  wormholeTokenBridgeProgram:  base58ToBytes32(SOLANA_PROGRAM_IDS.WORMHOLE_TOKEN_BRIDGE),
+  cctpTokenMessengerProgram:   base58ToBytes32(SOLANA_PROGRAM_IDS.CCTP_TOKEN_MESSENGER),
+  cctpMessageTransmitterProgram: base58ToBytes32(SOLANA_PROGRAM_IDS.CCTP_MESSAGE_TRANSMITTER),
+  wormholeCoreProgram:         base58ToBytes32(SOLANA_PROGRAM_IDS.WORMHOLE_CORE),
   // Sysvars — well-known fixed addresses on all Solana clusters.
   clockSysvar: base58ToBytes32("SysvarC1ock11111111111111111111111111111111"),
   rentSysvar:  base58ToBytes32("SysvarRent111111111111111111111111111111111"),
@@ -48,6 +49,7 @@ interface SolanaPdaAccounts {
   cctpRemoteTokenMessenger:     `0x${string}`;
   cctpTokenMinter:              `0x${string}`;
   cctpLocalTokenUsdc:           `0x${string}`;
+  cctpSenderAuthorityPda:       `0x${string}`;
   cctpEventAuthority:           `0x${string}`;
   // Wormhole PDAs
   wormholeConfig:          `0x${string}`;
@@ -136,15 +138,17 @@ export async function deployWithdraw(
   const pdas = loadSolanaPdas(networkName);
 
   const cctpParams = {
-    tokenMessengerProgram:    UNIVERSAL.cctpTokenMessengerProgram,
-    splTokenProgram:          UNIVERSAL.splTokenProgram,
-    systemProgram:            UNIVERSAL.systemProgram,
-    messageTransmitterConfig: pdas.cctpMessageTransmitterConfig,
-    tokenMessengerConfig:     pdas.cctpTokenMessengerConfig,
-    remoteTokenMessenger:     pdas.cctpRemoteTokenMessenger,
-    tokenMinter:              pdas.cctpTokenMinter,
-    localTokenUsdc:           pdas.cctpLocalTokenUsdc,
-    eventAuthority:           pdas.cctpEventAuthority,
+    tokenMessengerProgram:     UNIVERSAL.cctpTokenMessengerProgram,
+    messageTransmitterProgram: UNIVERSAL.cctpMessageTransmitterProgram,
+    splTokenProgram:           UNIVERSAL.splTokenProgram,
+    systemProgram:             UNIVERSAL.systemProgram,
+    messageTransmitterConfig:  pdas.cctpMessageTransmitterConfig,
+    tokenMessengerConfig:      pdas.cctpTokenMessengerConfig,
+    remoteTokenMessenger:      pdas.cctpRemoteTokenMessenger,
+    tokenMinter:               pdas.cctpTokenMinter,
+    localTokenUsdc:            pdas.cctpLocalTokenUsdc,
+    senderAuthorityPda:        pdas.cctpSenderAuthorityPda,
+    eventAuthority:            pdas.cctpEventAuthority,
   };
 
   const wormholeParams = {
