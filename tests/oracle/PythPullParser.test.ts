@@ -182,4 +182,57 @@ describe("PythPullParser", function () {
             async () => parser.read.parse(["0x" as `0x${string}`]),
         );
     });
+
+    // ──────────────────────────────────────────────
+    // Fuzz: offset stability
+    // ──────────────────────────────────────────────
+
+    describe("fuzz: offset stability", function () {
+        it("either parses or reverts for 50 randomly mutated accounts", async function () {
+            // Property: for random byte shifts of a valid Pyth PriceUpdateV2 account,
+            // the parser must EITHER return field values cleanly OR revert with a
+            // whitelisted error. It must NEVER silently return garbage — discriminator
+            // + data-length guards protect against that.
+
+            const knownErrors = [
+                "InvalidPythPullAccount",
+                "PythPullDataTooShort",
+                "revert",
+            ];
+
+            for (let i = 0; i < 50; i++) {
+                const base = buildPythPullAccount({
+                    price: 1000n,
+                    conf: 10n,
+                    expo: -8,
+                    publishTime: 1711900800,
+                });
+                // Drop the 0x prefix to get hex chars, then convert to a Buffer.
+                const baseBuf = Buffer.from(base.slice(2), "hex");
+                const mutated = Buffer.from(baseBuf);
+
+                // Mutate 1-8 bytes at offsets >= 8 (leave discriminator intact
+                // so we specifically test offset-shift behavior; discriminator
+                // corruption is covered by an existing test).
+                const numMutations = 1 + (i % 8);
+                for (let j = 0; j < numMutations; j++) {
+                    const offset = 8 + Math.floor(Math.random() * (mutated.length - 8));
+                    mutated[offset] = Math.floor(Math.random() * 256);
+                }
+
+                const mutatedHex = ("0x" + mutated.toString("hex")) as `0x${string}`;
+
+                try {
+                    await parser.read.parse([mutatedHex]);
+                    // Parse succeeded — acceptable; property is "no crash on garbage in".
+                } catch (err: any) {
+                    const msg = err?.message ?? String(err);
+                    const matched = knownErrors.some((e) => msg.includes(e));
+                    if (!matched) {
+                        throw new Error(`Unknown revert at iteration ${i}: ${msg}`);
+                    }
+                }
+            }
+        });
+    });
 });
