@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Changed — Rome Bridge Phase 1 bring-up fixes (marcus devnet)
+- `contracts/bridge/RomeBridgeWithdraw` — split outbound Wormhole into two EVM txs: new `approveBurnETH(uint256)` does the SPL Token Approve CPI; existing `burnETH(uint256,address)` now does only `transfer_wrapped`. Single-tx flow exceeded Solana's 1.4M compute-unit budget (Rome DoTx overhead ~1.3M CU leaves too little for Wormhole + SPL Token burn). Matches the standard "approve then bridge" pattern.
+- `scripts/bridge/constants.ts` — `SPL_MINTS_DEVNET.WETH_WORMHOLE` updated to the canonical wrapped-Sepolia-ETH mint `6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs` (was a stale test mint `2kCwKG…`). Derived from `deriveCanonicalWrappedMint({ tokenChain: 10002, tokenAddress: "eef12a83…" })` and verified on chain. Keeps `wrappedMeta` PDA in sync with the deployed rETH wrapper; stops Wormhole returning "Unexpected length of input" on an empty PDA.
+- `scripts/bridge/submit-burnETH.ts` — sends `approveBurnETH` then `burnETH` (two-step E2E). Reads addresses from `deployments/marcus.json`.
+
+### Added — Bridge setup + diagnostics
+- `contracts/bridge/README.md` — architecture overview, flow diagrams, and a problems-and-fixes runbook (8 real incidents with root cause and fix), redeploy procedure.
+- `scripts/bridge/allowlist-approve-selector.ts` — one-shot that allowlists `approveBurnETH(uint256)` on the paymaster for the current `RomeBridgeWithdraw`. Run after redeploy so ERC-2771 sponsorship works for the two-step outbound Wh flow.
+- `scripts/bridge/smoke-emulate-all.ts` — verifies `burnUSDC` and `approveBurnETH` emulate cleanly on the current deployment.
+
 ### Added — Rome Bridge Phase 1 (Solidity contracts)
 - `contracts/bridge/RomeBridgePaymaster` — EIP-2771 trusted forwarder. Sponsors up to 3 Rome EVM transactions per user via a `(target, selector)` allowlist. Budget is only consumed when a request is actually dispatched (fixes `executeBatch` drain vector).
 - `contracts/bridge/RomeBridgeWithdraw` — accepts rUSDC / rETH burn from a Rome EVM user, emits outbound Wormhole Token Bridge or CCTP `depositForBurn` messages via CPI signed as the user's Rome-derived PDA.

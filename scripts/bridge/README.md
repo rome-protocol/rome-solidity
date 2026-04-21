@@ -1,13 +1,29 @@
 # Rome Bridge Phase 1 — Deploy Scripts
 
-Deploy script for the Rome Bridge contracts: paymaster, SPL_ERC20 wrappers (rUSDC, rETH), and withdraw. See `rome-product/specs/rome-bridge-phase1.md` for the design.
+Deploy and ops scripts for the Rome Bridge contracts: paymaster, SPL_ERC20 wrappers (rUSDC, rETH), and withdraw.
 
-## Files
+**Read `contracts/bridge/README.md` first** — it covers the architecture, the four bridge flows, and the non-obvious problems that shaped the design (single-tx compute-budget limit, missing SPL Approve, stale canonical mints, etc.). This file is the operational companion.
 
-- `constants.ts` — canonical Solana program IDs, SPL mint pubkeys, CCTP domains, Wormhole chain IDs.
-- `deploy.ts` — one-shot deploy for paymaster + SPL_ERC20 (rUSDC, rETH) + withdraw. Allowlists the `burnUSDC` and `burnETH` selectors on the paymaster. Writes deployment addresses to `deployments/{network}.json`.
+## Deploy scripts
+
+- `constants.ts` — canonical Solana program IDs (mainnet + devnet), SPL mint pubkeys, CCTP domains, Wormhole chain IDs. `SPL_MINTS_DEVNET.WETH_WORMHOLE` must match the canonical wrapped-ETH mint for the Ethereum chain you are bridging from.
+- `deploy.ts` — one-shot fresh deploy: paymaster + SPL_ERC20 (rUSDC, rETH) + withdraw. Allowlists `burnUSDC` and `burnETH` on the paymaster. Writes to `deployments/{network}.json`.
+- `redeploy-withdraw-devnet-wh.ts` — redeploy only the withdraw contract against devnet Wormhole programs; reuses paymaster + wrappers.
+- `redeploy-withdraw-canonical-weth.ts` — redeploy withdraw + new rETH wrapper bound to the canonical wrapped-ETH mint (used when refreshing on a chain where the rETH wrapper still points at a stale mint).
+- `redeploy-withdraw-only.ts` — redeploy withdraw with mainnet Wormhole programs (production path).
+- `allowlist-approve-selector.ts` — run after any withdraw redeploy; allowlists `approveBurnETH(uint256)` on the paymaster so ERC-2771 sponsorship works for the two-step outbound Wh flow.
 - `derive/cctp-accounts.ts` — derives the 6 CCTP PDAs via `PublicKey.findProgramAddressSync`.
-- `derive/wormhole-accounts.ts` — derives the 8 Wormhole PDAs.
+- `derive/wormhole-accounts.ts` — derives the 8 Wormhole PDAs (including `wrappedMeta`, which is per-mint).
+- `lib/canonical-mint.ts` — derives the canonical wrapped-ETH mint from `(tokenChain, tokenAddress, tokenBridgeProgramId)` per Wormhole's seed scheme. Always use this to resolve the wETH mint rather than hard-coding.
+- `lib/verify-mint-on-chain.ts` — verifies the derived mint exists on Solana.
+
+## Flow / test scripts
+
+- `submit-burn.ts` — outbound CCTP: single `burnUSDC(amount, ethRecipient)` tx on Rome.
+- `submit-burnETH.ts` — outbound Wormhole E2E: sends `approveBurnETH(amount)` then `burnETH(amount, ethRecipient)` in sequence. Requires two EVM txs (see `contracts/bridge/README.md` § "Two CPIs in a single Rome EVM transaction exceed Solana's compute budget").
+- `smoke-emulate-all.ts` — quick `rome_emulateTx` health check for `burnUSDC` and `approveBurnETH`. `burnETH` is skipped because it requires a prior on-chain approve to emulate cleanly.
+- `inbound/` — scripts for Sepolia → Rome inbound flows (CCTP deposit, Wormhole transfer, manual VAA complete).
+- `do-full-test.ts`, `try-burn.ts`, `smoke-test-canonical.ts` — legacy integration helpers used during initial bring-up; kept for reference.
 
 ## Usage
 

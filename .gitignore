@@ -23,3 +23,6 @@
 
 # Local deployment artifacts
 deployments/local.json
+
+# Demo-only Sepolia signer key (CCTP inbound)
+.secrets/
