@@ -22,13 +22,20 @@ async function main() {
   const amount = (10_000n).toString(16).padStart(64, "0");
   const recipient = sepWallet.address.slice(2).toLowerCase().padStart(64, "0");
 
+  // Use a low gasPrice (2 gwei instead of the proxy's default ~10 gwei).
+  // The native-balance preflight check on marcus rejects tx's whose
+  // gasLimit * gasPrice exceeds the Meteora-derived balance, which is often
+  // under 0.01 ETH-equivalent even with many tens of rUSDC. At 2 gwei a
+  // 1.5M-gas burn costs 3e15 wei (well within normal deployer balances).
+  const GAS_PRICE = 2_000_000_000n;
+
   console.log("Submitting approveBurnETH…");
-  const app = await romeWallet.sendTransaction({ to: WITHDRAW, data: sel("approveBurnETH(uint256)") + amount, gasLimit: 400_000n });
+  const app = await romeWallet.sendTransaction({ to: WITHDRAW, data: sel("approveBurnETH(uint256)") + amount, gasLimit: 400_000n, gasPrice: GAS_PRICE });
   await app.wait();
   console.log("  approve:", app.hash);
 
   console.log("Submitting burnETH…");
-  const burn = await romeWallet.sendTransaction({ to: WITHDRAW, data: sel("burnETH(uint256,address)") + amount + recipient, gasLimit: 400_000n });
+  const burn = await romeWallet.sendTransaction({ to: WITHDRAW, data: sel("burnETH(uint256,address)") + amount + recipient, gasLimit: 1_500_000n, gasPrice: GAS_PRICE });
   const rcpt = await burn.wait();
   if (!rcpt || rcpt.status !== 1) throw new Error("burnETH reverted");
   console.log("  burn:", burn.hash);

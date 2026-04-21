@@ -197,7 +197,15 @@ For a fresh deploy on a new Rome chain or to refresh marcus:
 - **Inbound Wormhole** (Sepolia → Rome rETH): `scripts/bridge/inbound/01b-submit-whETH.mjs` → relayer advances → balance appears.
 - **Outbound Wormhole** (Rome rETH → Sepolia): `scripts/bridge/submit-burnETH.ts` sends `approveBurnETH` then `burnETH`, waits for Sepolia completion.
 
-All four have been verified E2E on marcus against Sepolia with real funds.
+All four have been verified E2E on marcus against Sepolia with real funds:
+- Inbound CCTP: Sepolia `0x484c00f5...` → Solana `WS6QkvCJ...`
+- Outbound CCTP: Rome `0xb7d70b64...` → Solana `37iR6YNA...` → Sepolia `0x45a67f6d...`
+- Inbound Wh: Sepolia `0xe9d25c2e...` (seq 343916) → Solana `nPKVXZ3m...`
+- Outbound Wh: Rome `0x22e85b5f...` → Solana `5hdP2zTh...` (seq 56746) → Sepolia `0x72252591...`
+
+### Note: gas price on marcus devnet
+
+marcus's gas token is rUSDC, priced against rSOL via a Meteora pool. The proxy reports a default `eth_gasPrice` of ~10 gwei — but because the pool price can swing, the resulting **Wei balance per rUSDC is variable**. If the native balance check rejects a tx with `"User does not have sufficient funds (Wei)"` despite having plenty of rUSDC, override `gasPrice` downward (1-2 gwei works on marcus). The submit-burnETH runner uses 2 gwei by default for this reason.
 
 ---
 
