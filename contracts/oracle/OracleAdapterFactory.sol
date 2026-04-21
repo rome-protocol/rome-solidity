@@ -25,6 +25,9 @@ contract OracleAdapterFactory {
     mapping(bytes32 => address) public switchboardAdapters;
     address[] public allAdapters;
     mapping(address => bool) public pausedAdapters;
+    /// @notice Reverse lookup so pause/unpause ops can reject arbitrary
+    ///         addresses. Populated in `createPythFeed` / `createSwitchboardFeed`.
+    mapping(address => bool) public isRegisteredAdapter;
 
     // --- Events ---
     event PythFeedCreated(address indexed adapter, bytes32 indexed pythAccount, string description);
@@ -40,6 +43,7 @@ contract OracleAdapterFactory {
     error OnlyOwner();
     error StalenessOutOfRange(uint256 staleness);
     error ZeroAddress();
+    error AdapterNotRegistered();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert OnlyOwner();
@@ -94,6 +98,7 @@ contract OracleAdapterFactory {
         // Register
         pythAdapters[pythAccountPubkey] = adapter;
         allAdapters.push(adapter);
+        isRegisteredAdapter[adapter] = true;
 
         emit PythFeedCreated(adapter, pythAccountPubkey, desc);
     }
@@ -124,6 +129,7 @@ contract OracleAdapterFactory {
         // Register
         switchboardAdapters[sbAccountPubkey] = adapter;
         allAdapters.push(adapter);
+        isRegisteredAdapter[adapter] = true;
 
         emit SwitchboardFeedCreated(adapter, sbAccountPubkey, desc);
     }
@@ -134,13 +140,18 @@ contract OracleAdapterFactory {
     }
 
     /// @notice Pause an adapter (owner only)
+    /// @dev Only adapters registered via `createPythFeed` /
+    ///      `createSwitchboardFeed` are permitted targets — prevents typos
+    ///      from toggling paused-state on arbitrary addresses.
     function pauseAdapter(address adapter) external onlyOwner {
+        if (!isRegisteredAdapter[adapter]) revert AdapterNotRegistered();
         pausedAdapters[adapter] = true;
         emit AdapterPaused(adapter);
     }
 
     /// @notice Unpause an adapter (owner only)
     function unpauseAdapter(address adapter) external onlyOwner {
+        if (!isRegisteredAdapter[adapter]) revert AdapterNotRegistered();
         pausedAdapters[adapter] = false;
         emit AdapterUnpaused(adapter);
     }
