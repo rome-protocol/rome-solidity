@@ -1,4 +1,26 @@
 {
+  "RomeBridgePaymaster": {
+    "address": "0xcaf1fbcf60c3686d87d0a5111f340a99250ce4ef",
+    "deployedAt": 1776718058
+  },
+  "ERC20Users": {
+    "address": "0x803f6923bcc776db1d0aa6fcdbd8ceddf35ad6f3"
+  },
+  "SPL_ERC20_USDC": {
+    "address": "0x6ed2944bba4cb5b1cb295541f315c648658dd67c",
+    "mintId": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+  },
+  "SPL_ERC20_WETH": {
+    "address": "0x3e52cfb38ca1639f3c95aef6dccff2b36c230f22",
+    "mintId": "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs"
+  },
+  "RomeBridgeWithdraw": {
+    "address": "0x513f76e39cfd7008f1e143ae37148608cddfcaaf",
+    "deployedAt": 1776768105
+  },
+  "archive": {
+    "RomeBridgeWithdrawPrevious": null
+  },
   "OracleGatewayV2Polished": {
     "deployedAt": "2026-04-21T04:50:23.176Z",
     "defaultMaxStaleness": 86400,

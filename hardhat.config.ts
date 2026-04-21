@@ -7,14 +7,16 @@ export default defineConfig({
     profiles: {
       default: {
         version: "0.8.28",
+        settings: {
+          optimizer: { enabled: true, runs: 200 },
+          viaIR: true,
+        },
       },
       production: {
         version: "0.8.28",
         settings: {
-          optimizer: {
-            enabled: true,
-            runs: 200,
-          },
+          optimizer: { enabled: true, runs: 200 },
+          viaIR: true,
         },
       },
     },
@@ -51,6 +53,12 @@ export default defineConfig({
       chainType: "l1",
       url: "http://localhost:9090",
       accounts: [configVariable("LOCAL_PRIVATE_KEY")],
+    },
+    marcus: {
+      type: "http",
+      chainType: "l1",
+      url: "https://marcus.devnet.romeprotocol.xyz/",
+      accounts: [configVariable("MARCUS_PRIVATE_KEY")],
     }
   },
 });
