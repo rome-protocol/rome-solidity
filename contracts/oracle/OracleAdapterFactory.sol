@@ -17,6 +17,8 @@ contract OracleAdapterFactory {
     address public immutable switchboardImplementation;
     bytes32 public immutable pythReceiverProgramId;
     bytes32 public immutable switchboardProgramId;
+    uint256 public constant MIN_STALENESS = 1;
+    uint256 public constant MAX_STALENESS = 24 hours;
     uint256 public defaultMaxStaleness;
 
     mapping(bytes32 => address) public pythAdapters;
@@ -36,6 +38,7 @@ contract OracleAdapterFactory {
     error FeedAlreadyExists();
     error InvalidAccountOwner();
     error OnlyOwner();
+    error StalenessOutOfRange(uint256 staleness);
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert OnlyOwner();
@@ -54,6 +57,8 @@ contract OracleAdapterFactory {
         bytes32 _switchboardProgramId,
         uint256 _defaultMaxStaleness
     ) {
+        if (_defaultMaxStaleness < MIN_STALENESS || _defaultMaxStaleness > MAX_STALENESS)
+            revert StalenessOutOfRange(_defaultMaxStaleness);
         owner = msg.sender;
         pythImplementation = _pythImpl;
         switchboardImplementation = _switchboardImpl;
@@ -82,6 +87,7 @@ contract OracleAdapterFactory {
 
         // Initialize atomically (no front-running gap)
         uint256 maxStale = staleness > 0 ? staleness : defaultMaxStaleness;
+        _requireStalenessInRange(maxStale);
         PythPullAdapter(adapter).initialize(pythAccountPubkey, desc, maxStale, address(this));
 
         // Register
@@ -111,6 +117,7 @@ contract OracleAdapterFactory {
 
         // Initialize atomically
         uint256 maxStale = staleness > 0 ? staleness : defaultMaxStaleness;
+        _requireStalenessInRange(maxStale);
         SwitchboardV3Adapter(adapter).initialize(sbAccountPubkey, desc, maxStale, address(this));
 
         // Register
@@ -145,6 +152,7 @@ contract OracleAdapterFactory {
 
     /// @notice Update default max staleness (owner only)
     function setDefaultMaxStaleness(uint256 newStaleness) external onlyOwner {
+        _requireStalenessInRange(newStaleness);
         emit DefaultMaxStalenessUpdated(defaultMaxStaleness, newStaleness);
         defaultMaxStaleness = newStaleness;
     }
@@ -152,5 +160,9 @@ contract OracleAdapterFactory {
     /// @notice Total number of deployed adapters
     function adapterCount() external view returns (uint256) {
         return allAdapters.length;
+    }
+
+    function _requireStalenessInRange(uint256 s) private pure {
+        if (s < MIN_STALENESS || s > MAX_STALENESS) revert StalenessOutOfRange(s);
     }
 }

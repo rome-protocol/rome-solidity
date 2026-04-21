@@ -28,6 +28,11 @@ library SwitchboardParser {
 
     /// @notice Anchor discriminator for AggregatorAccountData
     /// sha256("account:AggregatorAccountData")[0..8]
+    // Switchboard V3 AggregatorAccountData Anchor discriminator.
+    // Derivation: bytes8(sha256("account:AggregatorAccountData")) = 0xd9e64165c9a21b7d.
+    // If Switchboard renames the account type, update this constant AND the
+    // byte layout. Run scripts/oracle/validate-switchboard-offsets.ts against
+    // a live Solana devnet aggregator to confirm post-change.
     bytes8 constant DISCRIMINATOR = 0xd9e64165c9a21b7d;
 
     /// @notice Byte offset of latest_confirmed_round.round_open_slot

@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./IExtendedOracleAdapter.sol";
 import "./IAdapterFactory.sol";
+import "./IAdapterMetadata.sol";
 import "./SwitchboardParser.sol";
 import "../interface.sol";
 
@@ -10,12 +11,13 @@ import "../interface.sol";
 /// @notice Per-feed adapter that reads AggregatorAccountData from Switchboard V3
 ///         via Rome's CPI precompile. Same interface as PythPullAdapter.
 ///         Deployed as EIP-1167 clone by OracleAdapterFactory.
-contract SwitchboardV3Adapter is IExtendedOracleAdapter {
+contract SwitchboardV3Adapter is IExtendedOracleAdapter, IAdapterMetadata {
     bytes32 public switchboardAccount;
     string private _description;
     uint256 public maxStaleness;
     address public factory;
     bool public initialized;
+    uint64 public createdAt;
 
     error StalePriceFeed();
     error AdapterPaused();
@@ -24,6 +26,7 @@ contract SwitchboardV3Adapter is IExtendedOracleAdapter {
     error AlreadyInitialized();
     error OnlyFactory();
     error EMANotSupported();
+    error StalenessOutOfRange(uint256 staleness);
 
     /// @notice Initialize the adapter (called once by factory after clone deployment)
     function initialize(
@@ -33,12 +36,14 @@ contract SwitchboardV3Adapter is IExtendedOracleAdapter {
         address _factory
     ) external {
         if (initialized) revert AlreadyInitialized();
+        if (_maxStaleness < 1 || _maxStaleness > 24 hours) revert StalenessOutOfRange(_maxStaleness);
         initialized = true;
 
         switchboardAccount = _switchboardAccount;
         _description = desc;
         maxStaleness = _maxStaleness;
         factory = _factory;
+        createdAt = uint64(block.timestamp);
     }
 
     /// @notice Always 8 — prices are normalized to 10^-8
@@ -120,6 +125,19 @@ contract SwitchboardV3Adapter is IExtendedOracleAdapter {
     /// @notice Oracle source type: 1 = SwitchboardV3
     function oracleType() external pure returns (uint8) {
         return 1;
+    }
+
+    /// @inheritdoc IAdapterMetadata
+    function metadata() external view override returns (AdapterMetadata memory) {
+        return AdapterMetadata({
+            description: _description,
+            sourceType: OracleSource.Switchboard,
+            solanaAccount: switchboardAccount,
+            maxStaleness: maxStaleness,
+            createdAt: createdAt,
+            factory: factory,
+            paused: IAdapterFactory(factory).isPaused(address(this))
+        });
     }
 
     // --- Internal helpers ---

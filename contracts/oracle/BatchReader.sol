@@ -2,6 +2,8 @@
 pragma solidity ^0.8.20;
 
 import "./IAggregatorV3Interface.sol";
+import "./IAdapterFactory.sol";
+import "./IAdapterMetadata.sol";
 
 /// @title BatchReader
 /// @notice Stateless contract for reading multiple oracle feeds in one call.
@@ -12,6 +14,16 @@ contract BatchReader {
         int256 answer;
         uint256 updatedAt;
         bool success;
+    }
+
+    struct FeedHealth {
+        address adapter;
+        bool isHealthy;             // fresh && !paused && price > 0
+        bool isStale;
+        bool isPaused;
+        uint256 lastUpdate;
+        int256 latestPrice;
+        uint256 secondsSinceUpdate;
     }
 
     /// @notice Read latest prices from multiple adapters
@@ -80,6 +92,60 @@ contract BatchReader {
             } catch {
                 successes[i] = false;
             }
+        }
+    }
+
+    /// @notice Read per-feed health for a batch. Isolates failures via try/catch.
+    /// @param adapters Array of adapter addresses to query.
+    /// @return results Per-adapter FeedHealth structs in the same order as input.
+    function getFeedHealth(address[] calldata adapters) external view returns (FeedHealth[] memory results) {
+        uint256 n = adapters.length;
+        results = new FeedHealth[](n);
+
+        for (uint256 i = 0; i < n; i++) {
+            address a = adapters[i];
+            FeedHealth memory h;
+            h.adapter = a;
+
+            // Short-circuit for EOAs / empty addresses: no code means no adapter.
+            // Prevents "unexpected return data" reverts that escape try/catch
+            // when the target has no code but returns are declared.
+            if (a.code.length == 0) {
+                h.isHealthy = false;
+                results[i] = h;
+                continue;
+            }
+
+            uint256 maxStale = 0;
+            try IAdapterMetadata(a).metadata() returns (IAdapterMetadata.AdapterMetadata memory m) {
+                h.isPaused = m.paused;
+                maxStale = m.maxStaleness;
+            } catch {
+                // Adapter doesn't implement metadata() — mark unhealthy, skip rest.
+                h.isHealthy = false;
+                results[i] = h;
+                continue;
+            }
+
+            try IAggregatorV3Interface(a).latestRoundData() returns (
+                uint80,
+                int256 answer,
+                uint256,
+                uint256 updatedAt,
+                uint80
+            ) {
+                h.lastUpdate = updatedAt;
+                h.latestPrice = answer;
+                uint256 elapsed = block.timestamp > updatedAt ? block.timestamp - updatedAt : 0;
+                h.secondsSinceUpdate = elapsed;
+                h.isStale = (maxStale > 0 && elapsed > maxStale);
+                h.isHealthy = (!h.isPaused) && (!h.isStale) && (answer > 0);
+            } catch {
+                // Read reverted — feed unhealthy. Leave price/timestamp at zero.
+                h.isHealthy = false;
+            }
+
+            results[i] = h;
         }
     }
 }
