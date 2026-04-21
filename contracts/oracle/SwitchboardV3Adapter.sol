@@ -123,11 +123,14 @@ contract SwitchboardV3Adapter is IExtendedOracleAdapter, IAdapterMetadata {
     }
 
     /// @notice Derived price status: 0 = Trading, 1 = Stale, 2 = Paused
+    /// @dev Clock skew (timestamp > block.timestamp) is treated as stale, not
+    ///      a panic — see _checkStaleness for the underflow guard rationale.
     function priceStatus() external view returns (uint8) {
         if (IAdapterFactory(factory).isPaused(address(this))) return 2;
 
         SwitchboardParser.SwitchboardPrice memory parsed = _readAndParse();
-        if (block.timestamp - uint256(uint64(parsed.timestamp)) > maxStaleness) return 1;
+        uint256 ts = uint256(uint64(parsed.timestamp));
+        if (ts > block.timestamp || block.timestamp - ts > maxStaleness) return 1;
         return 0;
     }
 
@@ -156,8 +159,17 @@ contract SwitchboardV3Adapter is IExtendedOracleAdapter, IAdapterMetadata {
         return SwitchboardParser.parse(data);
     }
 
+    /// @dev Guards against two failure modes:
+    ///      1. `timestamp > block.timestamp` — Solana clock runs a few seconds
+    ///         ahead of EVM on devnet. Without the explicit check, the subtraction
+    ///         would panic with 0x11 (arithmetic underflow), which is swallowed
+    ///         by BatchReader's `catch{}` and indistinguishable from other errors.
+    ///      2. `block.timestamp - timestamp > maxStaleness` — data too old.
     function _checkStaleness(int64 timestamp) internal view {
-        if (block.timestamp - uint256(uint64(timestamp)) > maxStaleness) revert StalePriceFeed();
+        uint256 ts = uint256(uint64(timestamp));
+        if (ts > block.timestamp || block.timestamp - ts > maxStaleness) {
+            revert StalePriceFeed();
+        }
     }
 
     function _checkPaused() internal view {

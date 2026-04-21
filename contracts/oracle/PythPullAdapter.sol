@@ -124,11 +124,16 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
     }
 
     /// @notice Derived price status: 0 = Trading, 1 = Stale, 2 = Paused
+    /// @dev Clock skew (publishTime > block.timestamp) is treated as stale, not
+    ///      a panic — see _checkStaleness for the underflow guard rationale.
     function priceStatus() external view returns (uint8) {
         if (IAdapterFactory(factory).isPaused(address(this))) return 2;
 
         PythPullParser.PythPullPrice memory parsed = _readAndParse();
-        if (block.timestamp - parsed.publishTime > maxStaleness) return 1;
+        if (
+            parsed.publishTime > block.timestamp ||
+            block.timestamp - parsed.publishTime > maxStaleness
+        ) return 1;
         return 0;
     }
 
@@ -157,8 +162,16 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
         return PythPullParser.parse(data);
     }
 
+    /// @dev Guards against two failure modes:
+    ///      1. `publishTime > block.timestamp` — Solana clock runs a few seconds
+    ///         ahead of EVM on devnet. Without the explicit check, the subtraction
+    ///         would panic with 0x11 (arithmetic underflow), which is swallowed
+    ///         by BatchReader's `catch{}` and indistinguishable from other errors.
+    ///      2. `block.timestamp - publishTime > maxStaleness` — data too old.
     function _checkStaleness(uint64 publishTime) internal view {
-        if (block.timestamp - publishTime > maxStaleness) revert StalePriceFeed();
+        if (publishTime > block.timestamp || block.timestamp - publishTime > maxStaleness) {
+            revert StalePriceFeed();
+        }
     }
 
     function _checkPaused() internal view {
