@@ -27,6 +27,11 @@ on:
         type: boolean
         required: false
         default: true
+      force_redeploy:
+        description: Redeploy core contracts even if OracleGatewayV2 block already exists
+        type: boolean
+        required: false
+        default: false
       open_pr:
         description: Open a bot PR with the updated deployments/<network>.json
         type: boolean
@@ -75,6 +80,7 @@ jobs:
       - name: Deploy core (implementations + factory + reader)
         env:
           DEFAULT_MAX_STALENESS: ${{ inputs.default_max_staleness }}
+          FORCE_REDEPLOY: ${{ inputs.force_redeploy && '1' || '' }}
         run: npx hardhat run scripts/oracle/deploy-v2-polish.ts --network ${{ inputs.network }}
 
       - name: Seed feeds

@@ -4,15 +4,15 @@ import path from "node:path";
 import bs58 from "bs58";
 
 /**
- * Deploy seed Pyth Pull + Switchboard V3 adapters against the polished
- * OracleAdapterFactory on monti_spl.
+ * Deploy seed Pyth Pull + Switchboard V3 adapters against the deployed
+ * OracleAdapterFactory.
  *
  * REQUIRES: `deploy-v2-polish.ts` has been run first so
- * `deployments/<network>.json` contains the `OracleGatewayV2Polished` block
+ * `deployments/<network>.json` contains the `OracleGatewayV2` block
  * (PythPullAdapterImpl / SwitchboardV3AdapterImpl / OracleAdapterFactory).
  *
  * Writes the resulting adapter addresses back into the `feeds.pyth` /
- * `feeds.switchboard` arrays under `OracleGatewayV2Polished`. Idempotent:
+ * `feeds.switchboard` arrays under `OracleGatewayV2`. Idempotent:
  * pubkeys already registered in the factory's `pythAdapters` /
  * `switchboardAdapters` mappings are skipped.
  *
@@ -107,7 +107,7 @@ async function main() {
     }
     const publicClient = await viem.getPublicClient();
 
-    // Read the deployments artifact for this network and pull the polished block.
+    // Read the deployments artifact for this network and pull the V2 block.
     const deploymentsDir = path.resolve(process.cwd(), "deployments");
     const deployPath = path.resolve(deploymentsDir, `${networkName}.json`);
     if (!fs.existsSync(deployPath)) {
@@ -116,16 +116,16 @@ async function main() {
         );
     }
     const deployments = JSON.parse(fs.readFileSync(deployPath, "utf8"));
-    const polished = deployments.OracleGatewayV2Polished;
-    if (!polished) {
+    const v2 = deployments.OracleGatewayV2;
+    if (!v2) {
         throw new Error(
-            "OracleGatewayV2Polished block missing — run deploy-v2-polish.ts first.",
+            "OracleGatewayV2 block missing — run deploy-v2-polish.ts first.",
         );
     }
-    const factoryAddr = polished.OracleAdapterFactory as `0x${string}`;
+    const factoryAddr = v2.OracleAdapterFactory as `0x${string}`;
     if (!factoryAddr) {
         throw new Error(
-            "OracleGatewayV2Polished.OracleAdapterFactory address missing.",
+            "OracleGatewayV2.OracleAdapterFactory address missing.",
         );
     }
 
@@ -273,7 +273,7 @@ async function main() {
     }
 
     // ─── Persist ───
-    polished.feeds = {
+    v2.feeds = {
         pyth: pythResults.map(({ pair, adapter, pubkey, pubkeyBytes32 }) => ({
             pair,
             adapter,
