@@ -290,9 +290,13 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 userPda  = RomeEVMAccount.pda(user);
         bytes32 userAta  = wethWrapper.getAta(user);
 
+        // PAYER salt PDA — pre-funded by ERC20Users.ensure_user with enough
+        // SOL to cover the transient message account rent in Wormhole's
+        // init_if_needed. userPda itself has no SOL.
+        bytes32 payerSalt = Convert.bytes_to_bytes32(bytes("PAYER"));
+        bytes32 userPayer = RomeEVMAccount.pda_with_salt(user, payerSalt);
+
         // Per-tx Wormhole message account derived as a PDA under the user.
-        // Same per-user nonce used for the CCTP path — unique across txs,
-        // stable across emulation/execution (block.number isn't).
         uint64 nonce = burnNonce[user];
         burnNonce[user] = nonce + 1;
         bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", address(this), nonce));
@@ -311,12 +315,12 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         ICrossProgramInvocation.AccountMeta[] memory metas =
             WormholeTokenBridgeLib.buildTransferWrappedAccounts(
                 WormholeTokenBridgeLib.TransferWrappedAccounts({
-                    payer:            userPda,
+                    payer:            userPayer,
                     config:           wormholeConfig,
                     from:             userAta,
                     from_owner:       userPda,
-                    from_token_meta:  wormholeWrappedMeta,
                     mint:             wethMint,
+                    wrapped_meta:     wormholeWrappedMeta,
                     authority_signer: wormholeAuthoritySigner,
                     bridge_config:    wormholeBridgeConfig,
                     message:          messageAccount,
@@ -324,17 +328,18 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
                     sequence:         wormholeSequence,
                     fee_collector:    wormholeFeeCollector,
                     clock:            whClockSysvar,
-                    sender:           userPda,
                     rent:             whRentSysvar,
                     system:           whSystemProgram,
-                    token:            whSplTokenProgram,
-                    wormhole_core:    wormholeCoreProgram
+                    wormhole_core:    wormholeCoreProgram,
+                    token:            whSplTokenProgram
                 })
             );
 
-        // Signing salt for the per-tx Wormhole message account PDA.
-        bytes32[] memory salts = new bytes32[](1);
-        salts[0] = whSalt;
+        // Signing salts: PAYER (pre-funded sub-account used as payer) + WH_MSG
+        // (per-tx Wormhole message account).
+        bytes32[] memory salts = new bytes32[](2);
+        salts[0] = payerSalt;
+        salts[1] = whSalt;
 
         (bool ok, bytes memory result) = address(CpiProgram).delegatecall(
             abi.encodeWithSignature(
