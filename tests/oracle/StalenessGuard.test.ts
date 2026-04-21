@@ -4,18 +4,32 @@ import hardhat from "hardhat";
 
 describe("StalenessGuard", function () {
     let viem: any;
+    let cloneHelper: any;
+    let pythImplAddr: `0x${string}`;
 
     before(async function () {
         const conn = await hardhat.network.connect();
         viem = conn.viem;
+        cloneHelper = await viem.deployContract("AdapterCloneFactory", []);
+        const impl = await viem.deployContract("PythPullAdapter", []);
+        pythImplAddr = impl.address;
     });
 
     const ACCT = ("0x" + "aa".repeat(32)) as `0x${string}`;
     const DESC = "TEST";
     const FACTORY = "0x1234567890123456789012345678901234567890" as `0x${string}`;
 
+    // Deploy an EIP-1167 clone of the PythPullAdapter implementation. The
+    // implementation itself is locked (initialized=true in constructor) per
+    // C-1, so tests that exercise `initialize()` must run against a clone.
     async function deployAdapter() {
-        return await viem.deployContract("PythPullAdapter", []);
+        const publicClient = await viem.getPublicClient();
+        const hash = await cloneHelper.write.cloneOf([pythImplAddr]);
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        // The Cloned(impl, clone) event's `clone` address lives in topic[2].
+        const topic = receipt.logs[0].topics[2] as `0x${string}`;
+        const cloneAddr = ("0x" + topic.slice(-40)) as `0x${string}`;
+        return await viem.getContractAt("PythPullAdapter", cloneAddr);
     }
 
     async function deployFactory(defaultStaleness: bigint) {

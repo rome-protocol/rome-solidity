@@ -28,6 +28,15 @@ contract SwitchboardV3Adapter is IExtendedOracleAdapter, IAdapterMetadata {
     error EMANotSupported();
     error StalenessOutOfRange(uint256 staleness);
 
+    /// @notice Lock the implementation contract from direct initialization.
+    ///         Clones deployed via `Clones.clone` have independent storage and
+    ///         are unaffected; this prevents an attacker from calling
+    ///         `initialize()` directly on the implementation that
+    ///         `OracleAdapterFactory.switchboardImplementation` points to.
+    constructor() {
+        initialized = true;
+    }
+
     /// @notice Initialize the adapter (called once by factory after clone deployment)
     function initialize(
         bytes32 _switchboardAccount,

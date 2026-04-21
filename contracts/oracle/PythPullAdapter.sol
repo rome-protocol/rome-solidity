@@ -27,6 +27,15 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
     error OnlyFactory();
     error StalenessOutOfRange(uint256 staleness);
 
+    /// @notice Lock the implementation contract from direct initialization.
+    ///         Clones deployed via `Clones.clone` have independent storage and
+    ///         are unaffected; this prevents an attacker from calling
+    ///         `initialize()` directly on the implementation that
+    ///         `OracleAdapterFactory.pythImplementation` points to.
+    constructor() {
+        initialized = true;
+    }
+
     /// @notice Initialize the adapter (called once by factory after clone deployment)
     /// @param _pythAccount Pyth Pull receiver PDA pubkey
     /// @param desc Human-readable description (e.g., "SOL / USD")
