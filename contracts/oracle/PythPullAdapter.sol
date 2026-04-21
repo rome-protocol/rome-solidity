@@ -26,6 +26,18 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
     error AlreadyInitialized();
     error OnlyFactory();
     error StalenessOutOfRange(uint256 staleness);
+    error ConfidenceExceedsThreshold();
+
+    /// @notice Maximum permitted `conf / price` ratio, in basis points.
+    /// @dev Pyth's canonical consumer guidance is to reject price updates
+    ///      where the 1-sigma confidence interval exceeds a fraction of the
+    ///      price. 2% (200 bps) is a widely-used default used by other
+    ///      Chainlink-compat adapters (Synthetix, Aave) and balances data
+    ///      availability vs. accepting wide-conf prices during market
+    ///      dislocations. Applies to the Chainlink-compat `latestRoundData`
+    ///      path only — `latestPriceData()` still returns raw conf for
+    ///      informed consumers who want to enforce a custom threshold.
+    uint256 public constant MAX_CONF_BPS = 200;
 
     /// @notice Lock the implementation contract from direct initialization.
     ///         Clones deployed via `Clones.clone` have independent storage and
@@ -88,6 +100,7 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
         _checkStaleness(parsed.publishTime);
 
         if (parsed.price <= 0) revert NonPositivePrice();
+        _checkConfidence(parsed.price, parsed.conf);
 
         answer = _normalize(parsed.price, parsed.expo);
         roundId = 1;
@@ -176,6 +189,17 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
 
     function _checkPaused() internal view {
         if (IAdapterFactory(factory).isPaused(address(this))) revert AdapterPaused();
+    }
+
+    /// @dev Reverts if `conf / price > MAX_CONF_BPS / 10_000`. Caller must
+    ///      ensure `price > 0` first so the cast to uint64 is safe. The
+    ///      multiplication uses uint256 to prevent overflow — conf is up to
+    ///      uint64 max (~1.8e19) and MAX_CONF_BPS is 200, so
+    ///      `conf * 10_000` fits comfortably in uint256.
+    function _checkConfidence(int64 price, uint64 conf) internal pure {
+        if (uint256(conf) * 10_000 > uint256(uint64(price)) * MAX_CONF_BPS) {
+            revert ConfidenceExceedsThreshold();
+        }
     }
 
     /// @dev Normalize Pyth price to 8 decimals.

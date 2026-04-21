@@ -32,3 +32,16 @@ contract SwitchboardStalenessHarness is SwitchboardV3Adapter {
         _checkStaleness(timestamp);
     }
 }
+
+/// @title PythConfidenceHarness
+/// @notice Exposes `PythPullAdapter._checkConfidence` externally so the
+///         confidence-interval guard (H-3) can be unit-tested directly.
+contract PythConfidenceHarness is PythPullAdapter {
+    constructor() PythPullAdapter() {
+        initialized = false;
+    }
+
+    function checkConfidenceExt(int64 price, uint64 conf) external pure {
+        _checkConfidence(price, conf);
+    }
+}
