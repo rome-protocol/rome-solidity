@@ -36,6 +36,11 @@ library PythPullParser {
 
     /// @notice Anchor discriminator for PriceUpdateV2
     /// sha256("account:PriceUpdateV2")[0..8]
+    // Pyth PriceUpdateV2 Anchor discriminator.
+    // Derivation: bytes8(sha256("account:PriceUpdateV2")) = 0x22f123639d7ef4cd.
+    // If Pyth migrates to PriceUpdateV3 or similar, update this constant AND
+    // the byte layout below. Run scripts/oracle/validate-pyth-pull-offsets.ts
+    // against a live Solana devnet feed to confirm post-change.
     bytes8 constant DISCRIMINATOR = 0x22f123639d7ef4cd;
 
     struct PythPullPrice {
