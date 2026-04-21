@@ -25,6 +25,7 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
     error NonPositivePrice();
     error AlreadyInitialized();
     error OnlyFactory();
+    error StalenessOutOfRange(uint256 staleness);
 
     /// @notice Initialize the adapter (called once by factory after clone deployment)
     /// @param _pythAccount Pyth Pull receiver PDA pubkey
@@ -38,6 +39,7 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
         address _factory
     ) external {
         if (initialized) revert AlreadyInitialized();
+        if (_maxStaleness < 1 || _maxStaleness > 24 hours) revert StalenessOutOfRange(_maxStaleness);
         initialized = true;
 
         pythAccount = _pythAccount;
