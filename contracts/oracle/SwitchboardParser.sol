@@ -4,7 +4,16 @@ pragma solidity ^0.8.20;
 import "../convert.sol";
 
 /// @title SwitchboardParser
-/// @notice Parses AggregatorAccountData from Switchboard V2 on Solana.
+/// @notice Parses AggregatorAccountData from Switchboard V2 on Solana
+///         (program SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f).
+/// @dev Despite the adjacent `SwitchboardV3Adapter` name, this parser and
+///      the adapter's Solana program ID both target the V2 legacy aggregator
+///      schema — V3 (Switchboard On-Demand, program
+///      SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv) uses a different layout
+///      and is not supported here. Renaming the adapter contract was out of
+///      scope for the M-6 audit fix because the contract name is wired into
+///      the deploy / test scripts we agreed not to touch.
+///
 /// @dev Switchboard stores results as SwitchboardDecimal:
 ///   - mantissa: i128 (16 bytes, little-endian)
 ///   - scale: u32 (4 bytes, little-endian)
@@ -26,13 +35,14 @@ library SwitchboardParser {
     error InvalidSwitchboardAccount();
     error SwitchboardDataTooShort();
 
-    /// @notice Anchor discriminator for AggregatorAccountData
+    /// @notice Anchor discriminator for Switchboard V2 AggregatorAccountData
+    ///         (program SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f).
     /// sha256("account:AggregatorAccountData")[0..8]
-    // Switchboard V3 AggregatorAccountData Anchor discriminator.
     // Derivation: bytes8(sha256("account:AggregatorAccountData")) = 0xd9e64165c9a21b7d.
-    // If Switchboard renames the account type, update this constant AND the
-    // byte layout. Run scripts/oracle/validate-switchboard-offsets.ts against
-    // a live Solana devnet aggregator to confirm post-change.
+    // If Switchboard renames the account type or migrates to V3 On-Demand,
+    // update this constant AND the byte layout. Run
+    // scripts/oracle/validate-switchboard-offsets.ts against a live Solana
+    // devnet aggregator to confirm post-change.
     bytes8 constant DISCRIMINATOR = 0xd9e64165c9a21b7d;
 
     /// @notice Byte offset of latest_confirmed_round.round_open_slot
@@ -54,7 +64,8 @@ library SwitchboardParser {
         uint64 slot;
     }
 
-    /// @notice Parse a Switchboard V2 AggregatorAccountData
+    /// @notice Parse a Switchboard V2 AggregatorAccountData (program
+    ///         SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f)
     /// @param data Raw account data from CPI precompile
     /// @return parsed The parsed price data
     function parse(bytes memory data) internal pure returns (SwitchboardPrice memory parsed) {

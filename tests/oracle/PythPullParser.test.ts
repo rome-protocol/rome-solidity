@@ -183,6 +183,39 @@ describe("PythPullParser", function () {
         );
     });
 
+    it("reverts with UnsupportedVerificationVariant when variant byte is 0x00 (Partial)", async function () {
+        // M-1: the parser's fixed offsets are calibrated for the Full variant
+        // (0x01). A Partial account (0x00) shifts every subsequent field by
+        // at least 1 byte, silently producing garbage.
+        const mockData = buildPythPullAccount({
+            verificationVariant: 0x00,
+            price: 100n,
+            conf: 10n,
+            expo: -8,
+            publishTime: 1711902000,
+        });
+
+        await assert.rejects(
+            async () => parser.read.parse([mockData]),
+            (err: any) => err?.message?.includes("UnsupportedVerificationVariant") ?? false,
+        );
+    });
+
+    it("reverts with UnsupportedVerificationVariant for an unknown variant byte", async function () {
+        const mockData = buildPythPullAccount({
+            verificationVariant: 0x42,
+            price: 100n,
+            conf: 10n,
+            expo: -8,
+            publishTime: 1711902100,
+        });
+
+        await assert.rejects(
+            async () => parser.read.parse([mockData]),
+            (err: any) => err?.message?.includes("UnsupportedVerificationVariant") ?? false,
+        );
+    });
+
     // ──────────────────────────────────────────────
     // Fuzz: offset stability
     // ──────────────────────────────────────────────
@@ -197,6 +230,7 @@ describe("PythPullParser", function () {
             const knownErrors = [
                 "InvalidPythPullAccount",
                 "PythPullDataTooShort",
+                "UnsupportedVerificationVariant",
                 "revert",
             ];
 

@@ -31,6 +31,7 @@ import "../convert.sol";
 library PythPullParser {
     error InvalidPythPullAccount();
     error PythPullDataTooShort();
+    error UnsupportedVerificationVariant();
 
     uint256 constant MIN_DATA_LENGTH = 133;
 
@@ -42,6 +43,13 @@ library PythPullParser {
     // the byte layout below. Run scripts/oracle/validate-pyth-pull-offsets.ts
     // against a live Solana devnet feed to confirm post-change.
     bytes8 constant DISCRIMINATOR = 0x22f123639d7ef4cd;
+
+    /// @notice Borsh enum tag for `VerificationLevel::Full`. The PriceUpdateV2
+    /// layout this parser targets is defined only for the Full variant; a
+    /// Partial account (tag 0x00) is followed by `num_signatures: u8`, shifting
+    /// every subsequent field by one byte. Reject such accounts explicitly so
+    /// we never silently read from shifted offsets.
+    bytes1 constant VERIFICATION_LEVEL_FULL = 0x01;
 
     struct PythPullPrice {
         int64 price;
@@ -64,6 +72,11 @@ library PythPullParser {
             disc := mload(add(data, 0x20))
         }
         if (disc != DISCRIMINATOR) revert InvalidPythPullAccount();
+
+        // Validate verification_level at offset 40 is Full (0x01). Any other
+        // value (Partial = 0x00, or an unknown future variant) shifts the
+        // remaining fields and would produce silent garbage.
+        if (data[40] != VERIFICATION_LEVEL_FULL) revert UnsupportedVerificationVariant();
 
         // price at offset 73 (int64, LE)
         (parsed.price,) = Convert.read_i64le(data, 73);

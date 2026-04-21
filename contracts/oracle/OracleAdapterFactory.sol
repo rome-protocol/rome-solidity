@@ -7,9 +7,10 @@ import "./SwitchboardV3Adapter.sol";
 import "../interface.sol";
 
 /// @title OracleAdapterFactory
-/// @notice Unified factory deploying both Pyth Pull and Switchboard V3 adapters
-///         via EIP-1167 minimal proxy clones. Maintains a registry and provides
-///         pause/unpause emergency controls.
+/// @notice Unified factory deploying both Pyth Pull and Switchboard V2 adapters
+///         (the latter is named `SwitchboardV3Adapter` for legacy reasons; see
+///         SwitchboardV3Adapter.sol) via EIP-1167 minimal proxy clones.
+///         Maintains a registry and provides pause/unpause emergency controls.
 contract OracleAdapterFactory {
     // --- State ---
     address public owner;
@@ -25,6 +26,9 @@ contract OracleAdapterFactory {
     mapping(bytes32 => address) public switchboardAdapters;
     address[] public allAdapters;
     mapping(address => bool) public pausedAdapters;
+    /// @notice Reverse lookup so pause/unpause ops can reject arbitrary
+    ///         addresses. Populated in `createPythFeed` / `createSwitchboardFeed`.
+    mapping(address => bool) public isRegisteredAdapter;
 
     // --- Events ---
     event PythFeedCreated(address indexed adapter, bytes32 indexed pythAccount, string description);
@@ -39,6 +43,8 @@ contract OracleAdapterFactory {
     error InvalidAccountOwner();
     error OnlyOwner();
     error StalenessOutOfRange(uint256 staleness);
+    error ZeroAddress();
+    error AdapterNotRegistered();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert OnlyOwner();
@@ -47,8 +53,10 @@ contract OracleAdapterFactory {
 
     /// @param _pythImpl Address of the PythPullAdapter logic contract
     /// @param _switchboardImpl Address of the SwitchboardV3Adapter logic contract
+    ///                         (name retained for legacy; targets Switchboard V2)
     /// @param _pythReceiverProgramId Pyth Solana Receiver program ID (rec5EKM...)
-    /// @param _switchboardProgramId Switchboard program ID (SW1TCH...)
+    /// @param _switchboardProgramId Switchboard V2 program ID
+    ///                              (SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f)
     /// @param _defaultMaxStaleness Default staleness threshold in seconds
     constructor(
         address _pythImpl,
@@ -88,16 +96,25 @@ contract OracleAdapterFactory {
         // Initialize atomically (no front-running gap)
         uint256 maxStale = staleness > 0 ? staleness : defaultMaxStaleness;
         _requireStalenessInRange(maxStale);
-        PythPullAdapter(adapter).initialize(pythAccountPubkey, desc, maxStale, address(this));
+        PythPullAdapter(adapter).initialize(
+            pythAccountPubkey,
+            desc,
+            maxStale,
+            address(this),
+            pythReceiverProgramId
+        );
 
         // Register
         pythAdapters[pythAccountPubkey] = adapter;
         allAdapters.push(adapter);
+        isRegisteredAdapter[adapter] = true;
 
         emit PythFeedCreated(adapter, pythAccountPubkey, desc);
     }
 
-    /// @notice Deploy a new Switchboard V3 adapter (permissionless)
+    /// @notice Deploy a new Switchboard V2 adapter (permissionless; contract
+    ///         name retains "V3" for legacy reasons — see
+    ///         SwitchboardV3Adapter.sol for details)
     /// @param sbAccountPubkey Switchboard aggregator account pubkey
     /// @param desc Human-readable description
     /// @param staleness Max staleness in seconds (0 = use defaultMaxStaleness)
@@ -118,11 +135,18 @@ contract OracleAdapterFactory {
         // Initialize atomically
         uint256 maxStale = staleness > 0 ? staleness : defaultMaxStaleness;
         _requireStalenessInRange(maxStale);
-        SwitchboardV3Adapter(adapter).initialize(sbAccountPubkey, desc, maxStale, address(this));
+        SwitchboardV3Adapter(adapter).initialize(
+            sbAccountPubkey,
+            desc,
+            maxStale,
+            address(this),
+            switchboardProgramId
+        );
 
         // Register
         switchboardAdapters[sbAccountPubkey] = adapter;
         allAdapters.push(adapter);
+        isRegisteredAdapter[adapter] = true;
 
         emit SwitchboardFeedCreated(adapter, sbAccountPubkey, desc);
     }
@@ -133,19 +157,28 @@ contract OracleAdapterFactory {
     }
 
     /// @notice Pause an adapter (owner only)
+    /// @dev Only adapters registered via `createPythFeed` /
+    ///      `createSwitchboardFeed` are permitted targets — prevents typos
+    ///      from toggling paused-state on arbitrary addresses.
     function pauseAdapter(address adapter) external onlyOwner {
+        if (!isRegisteredAdapter[adapter]) revert AdapterNotRegistered();
         pausedAdapters[adapter] = true;
         emit AdapterPaused(adapter);
     }
 
     /// @notice Unpause an adapter (owner only)
     function unpauseAdapter(address adapter) external onlyOwner {
+        if (!isRegisteredAdapter[adapter]) revert AdapterNotRegistered();
         pausedAdapters[adapter] = false;
         emit AdapterUnpaused(adapter);
     }
 
     /// @notice Transfer ownership (owner only)
+    /// @dev Disallows the zero address to avoid permanently bricking the
+    ///      factory (no pause/unpause, no staleness updates, no further
+    ///      ownership transfer possible). Single-step typo protection.
     function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert ZeroAddress();
         emit OwnershipTransferred(owner, newOwner);
         owner = newOwner;
     }
