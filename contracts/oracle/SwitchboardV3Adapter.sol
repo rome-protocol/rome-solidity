@@ -18,6 +18,10 @@ contract SwitchboardV3Adapter is IExtendedOracleAdapter, IAdapterMetadata {
     address public factory;
     bool public initialized;
     uint64 public createdAt;
+    /// @notice Solana program that must own `switchboardAccount` on every
+    ///         read. See PythPullAdapter for the rationale; the same storage
+    ///         pattern applies (clones preclude `immutable`).
+    bytes32 public expectedProgramId;
 
     error StalePriceFeed();
     error AdapterPaused();
@@ -27,6 +31,7 @@ contract SwitchboardV3Adapter is IExtendedOracleAdapter, IAdapterMetadata {
     error OnlyFactory();
     error EMANotSupported();
     error StalenessOutOfRange(uint256 staleness);
+    error AccountOwnerChanged();
 
     /// @notice Lock the implementation contract from direct initialization.
     ///         Clones deployed via `Clones.clone` have independent storage and
@@ -38,11 +43,15 @@ contract SwitchboardV3Adapter is IExtendedOracleAdapter, IAdapterMetadata {
     }
 
     /// @notice Initialize the adapter (called once by factory after clone deployment)
+    /// @param _expectedProgramId Solana program that must own `_switchboardAccount`
+    ///        on every read (validated at each `_readAndParse` to detect
+    ///        account ownership reassignment via `assign` — M-5).
     function initialize(
         bytes32 _switchboardAccount,
         string calldata desc,
         uint256 _maxStaleness,
-        address _factory
+        address _factory,
+        bytes32 _expectedProgramId
     ) external {
         if (initialized) revert AlreadyInitialized();
         if (_maxStaleness < 1 || _maxStaleness > 24 hours) revert StalenessOutOfRange(_maxStaleness);
@@ -52,6 +61,7 @@ contract SwitchboardV3Adapter is IExtendedOracleAdapter, IAdapterMetadata {
         _description = desc;
         maxStaleness = _maxStaleness;
         factory = _factory;
+        expectedProgramId = _expectedProgramId;
         createdAt = uint64(block.timestamp);
     }
 
@@ -154,8 +164,17 @@ contract SwitchboardV3Adapter is IExtendedOracleAdapter, IAdapterMetadata {
 
     // --- Internal helpers ---
 
+    /// @dev Fetches the current owner and data for `switchboardAccount`.
+    ///      Split out as `virtual` so test harnesses can override the CPI
+    ///      precompile call (unavailable on hardhat's simulated network).
+    function _fetchAccount() internal view virtual returns (bytes32 owner, bytes memory data) {
+        (, owner,,,, data) = CpiProgram.account_info(switchboardAccount);
+    }
+
     function _readAndParse() internal view returns (SwitchboardParser.SwitchboardPrice memory) {
-        (,,,,, bytes memory data) = CpiProgram.account_info(switchboardAccount);
+        (bytes32 owner, bytes memory data) = _fetchAccount();
+        // M-5: revalidate owner on every read — see PythPullAdapter rationale.
+        if (owner != expectedProgramId) revert AccountOwnerChanged();
         return SwitchboardParser.parse(data);
     }
 

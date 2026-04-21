@@ -93,7 +93,13 @@ contract OracleAdapterFactory {
         // Initialize atomically (no front-running gap)
         uint256 maxStale = staleness > 0 ? staleness : defaultMaxStaleness;
         _requireStalenessInRange(maxStale);
-        PythPullAdapter(adapter).initialize(pythAccountPubkey, desc, maxStale, address(this));
+        PythPullAdapter(adapter).initialize(
+            pythAccountPubkey,
+            desc,
+            maxStale,
+            address(this),
+            pythReceiverProgramId
+        );
 
         // Register
         pythAdapters[pythAccountPubkey] = adapter;
@@ -124,7 +130,13 @@ contract OracleAdapterFactory {
         // Initialize atomically
         uint256 maxStale = staleness > 0 ? staleness : defaultMaxStaleness;
         _requireStalenessInRange(maxStale);
-        SwitchboardV3Adapter(adapter).initialize(sbAccountPubkey, desc, maxStale, address(this));
+        SwitchboardV3Adapter(adapter).initialize(
+            sbAccountPubkey,
+            desc,
+            maxStale,
+            address(this),
+            switchboardProgramId
+        );
 
         // Register
         switchboardAdapters[sbAccountPubkey] = adapter;

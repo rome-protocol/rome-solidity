@@ -21,7 +21,13 @@ describe("PythConfidence", function () {
 
     async function deployHarness() {
         const h = await viem.deployContract("PythConfidenceHarness", []);
-        await h.write.initialize([ACCT, DESC, MAX_STALENESS, FACTORY]);
+        await h.write.initialize([
+            ACCT,
+            DESC,
+            MAX_STALENESS,
+            FACTORY,
+            ("0x" + "bb".repeat(32)) as `0x${string}`,
+        ]);
         return h;
     }
 

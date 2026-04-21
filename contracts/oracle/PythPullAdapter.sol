@@ -18,6 +18,10 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
     address public factory;
     bool public initialized;
     uint64 public createdAt;
+    /// @notice Solana program that must own `pythAccount` on every read.
+    ///         Cannot be `immutable` because adapters are EIP-1167 clones
+    ///         (storage inherited from the implementation's init path).
+    bytes32 public expectedProgramId;
 
     error StalePriceFeed();
     error AdapterPaused();
@@ -27,6 +31,7 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
     error OnlyFactory();
     error StalenessOutOfRange(uint256 staleness);
     error ConfidenceExceedsThreshold();
+    error AccountOwnerChanged();
 
     /// @notice Maximum permitted `conf / price` ratio, in basis points.
     /// @dev Pyth's canonical consumer guidance is to reject price updates
@@ -53,11 +58,15 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
     /// @param desc Human-readable description (e.g., "SOL / USD")
     /// @param _maxStaleness Maximum acceptable age of price data in seconds
     /// @param _factory OracleAdapterFactory address
+    /// @param _expectedProgramId Solana program that must own `_pythAccount`
+    ///        on every read (validated at each `_readAndParse` to detect
+    ///        account ownership reassignment via `assign` — M-5).
     function initialize(
         bytes32 _pythAccount,
         string calldata desc,
         uint256 _maxStaleness,
-        address _factory
+        address _factory,
+        bytes32 _expectedProgramId
     ) external {
         if (initialized) revert AlreadyInitialized();
         if (_maxStaleness < 1 || _maxStaleness > 24 hours) revert StalenessOutOfRange(_maxStaleness);
@@ -67,6 +76,7 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
         _description = desc;
         maxStaleness = _maxStaleness;
         factory = _factory;
+        expectedProgramId = _expectedProgramId;
         createdAt = uint64(block.timestamp);
     }
 
@@ -170,8 +180,21 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
 
     // --- Internal helpers ---
 
+    /// @dev Fetches the current owner and data for `pythAccount`. Split out
+    ///      as `virtual` so test harnesses can override the CPI precompile
+    ///      call — the precompile is unavailable on hardhat's simulated
+    ///      network. Production code uses the real precompile.
+    function _fetchAccount() internal view virtual returns (bytes32 owner, bytes memory data) {
+        (, owner,,,, data) = CpiProgram.account_info(pythAccount);
+    }
+
     function _readAndParse() internal view returns (PythPullParser.PythPullPrice memory) {
-        (,,,,, bytes memory data) = CpiProgram.account_info(pythAccount);
+        (bytes32 owner, bytes memory data) = _fetchAccount();
+        // M-5: revalidate owner on every read. An attacker-controlled program
+        // could reassign the account via Solana's `assign` syscall and start
+        // producing bytes with the same discriminator + layout but arbitrary
+        // prices. The factory's one-time check at createPythFeed is not enough.
+        if (owner != expectedProgramId) revert AccountOwnerChanged();
         return PythPullParser.parse(data);
     }
 

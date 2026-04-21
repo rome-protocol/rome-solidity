@@ -41,7 +41,13 @@ describe("StalenessUnderflow", function () {
     describe("PythPullAdapter._checkStaleness", function () {
         async function deployHarness() {
             const h = await viem.deployContract("PythStalenessHarness", []);
-            await h.write.initialize([ACCT, DESC, MAX_STALENESS, FACTORY]);
+            await h.write.initialize([
+                ACCT,
+                DESC,
+                MAX_STALENESS,
+                FACTORY,
+                ("0x" + "bb".repeat(32)) as `0x${string}`,
+            ]);
             return h;
         }
 
@@ -75,7 +81,13 @@ describe("StalenessUnderflow", function () {
     describe("SwitchboardV3Adapter._checkStaleness", function () {
         async function deployHarness() {
             const h = await viem.deployContract("SwitchboardStalenessHarness", []);
-            await h.write.initialize([ACCT, DESC, MAX_STALENESS, FACTORY]);
+            await h.write.initialize([
+                ACCT,
+                DESC,
+                MAX_STALENESS,
+                FACTORY,
+                ("0x" + "bb".repeat(32)) as `0x${string}`,
+            ]);
             return h;
         }
 

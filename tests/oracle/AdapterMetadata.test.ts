@@ -56,7 +56,13 @@ describe("AdapterMetadata", function () {
             const description = "SOL / USD";
             const maxStaleness = 60n;
 
-            await adapter.write.initialize([account, description, maxStaleness, factoryAddress]);
+            await adapter.write.initialize([
+                account,
+                description,
+                maxStaleness,
+                factoryAddress,
+                ("0x" + "77".repeat(32)) as `0x${string}`,
+            ]);
 
             const m: any = await adapter.read.metadata();
             assert.equal(m.description, description);
@@ -77,7 +83,13 @@ describe("AdapterMetadata", function () {
             const description = "BTC / USD";
             const maxStaleness = 120n;
 
-            await adapter.write.initialize([account, description, maxStaleness, factoryAddress]);
+            await adapter.write.initialize([
+                account,
+                description,
+                maxStaleness,
+                factoryAddress,
+                ("0x" + "88".repeat(32)) as `0x${string}`,
+            ]);
 
             const m: any = await adapter.read.metadata();
             assert.equal(m.description, description);

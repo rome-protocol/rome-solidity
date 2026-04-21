@@ -26,7 +26,13 @@ describe("ImplementationLock", function () {
     it("PythPullAdapter implementation reverts initialize() on freshly deployed contract", async function () {
         const impl = await viem.deployContract("PythPullAdapter", []);
         await assert.rejects(
-            async () => impl.write.initialize([ACCT, DESC, 60n, FACTORY]),
+            async () => impl.write.initialize([
+                ACCT,
+                DESC,
+                60n,
+                FACTORY,
+                ("0x" + "bb".repeat(32)) as `0x${string}`,
+            ]),
             expectAlreadyInitialized,
         );
     });
@@ -34,7 +40,13 @@ describe("ImplementationLock", function () {
     it("SwitchboardV3Adapter implementation reverts initialize() on freshly deployed contract", async function () {
         const impl = await viem.deployContract("SwitchboardV3Adapter", []);
         await assert.rejects(
-            async () => impl.write.initialize([ACCT, DESC, 60n, FACTORY]),
+            async () => impl.write.initialize([
+                ACCT,
+                DESC,
+                60n,
+                FACTORY,
+                ("0x" + "bb".repeat(32)) as `0x${string}`,
+            ]),
             expectAlreadyInitialized,
         );
     });

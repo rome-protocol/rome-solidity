@@ -18,6 +18,7 @@ describe("StalenessGuard", function () {
     const ACCT = ("0x" + "aa".repeat(32)) as `0x${string}`;
     const DESC = "TEST";
     const FACTORY = "0x1234567890123456789012345678901234567890" as `0x${string}`;
+    const PROGRAM_ID = ("0x" + "bb".repeat(32)) as `0x${string}`;
 
     // Deploy an EIP-1167 clone of the PythPullAdapter implementation. The
     // implementation itself is locked (initialized=true in constructor) per
@@ -52,7 +53,7 @@ describe("StalenessGuard", function () {
         it("rejects staleness = 0", async function () {
             const a = await deployAdapter();
             await assert.rejects(
-                async () => a.write.initialize([ACCT, DESC, 0n, FACTORY]),
+                async () => a.write.initialize([ACCT, DESC, 0n, FACTORY, PROGRAM_ID]),
                 expectStalenessOutOfRange,
             );
         });
@@ -61,24 +62,24 @@ describe("StalenessGuard", function () {
             const a = await deployAdapter();
             const TOO_LONG = 24n * 60n * 60n + 1n;
             await assert.rejects(
-                async () => a.write.initialize([ACCT, DESC, TOO_LONG, FACTORY]),
+                async () => a.write.initialize([ACCT, DESC, TOO_LONG, FACTORY, PROGRAM_ID]),
                 expectStalenessOutOfRange,
             );
         });
 
         it("accepts staleness = 1", async function () {
             const a = await deployAdapter();
-            await a.write.initialize([ACCT, DESC, 1n, FACTORY]);
+            await a.write.initialize([ACCT, DESC, 1n, FACTORY, PROGRAM_ID]);
         });
 
         it("accepts staleness = 24 hours (86400)", async function () {
             const a = await deployAdapter();
-            await a.write.initialize([ACCT, DESC, 86400n, FACTORY]);
+            await a.write.initialize([ACCT, DESC, 86400n, FACTORY, PROGRAM_ID]);
         });
 
         it("accepts staleness = 60", async function () {
             const a = await deployAdapter();
-            await a.write.initialize([ACCT, DESC, 60n, FACTORY]);
+            await a.write.initialize([ACCT, DESC, 60n, FACTORY, PROGRAM_ID]);
         });
     });
 
