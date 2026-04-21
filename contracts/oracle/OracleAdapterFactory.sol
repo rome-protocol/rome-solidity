@@ -39,6 +39,7 @@ contract OracleAdapterFactory {
     error InvalidAccountOwner();
     error OnlyOwner();
     error StalenessOutOfRange(uint256 staleness);
+    error ZeroAddress();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert OnlyOwner();
@@ -145,7 +146,11 @@ contract OracleAdapterFactory {
     }
 
     /// @notice Transfer ownership (owner only)
+    /// @dev Disallows the zero address to avoid permanently bricking the
+    ///      factory (no pause/unpause, no staleness updates, no further
+    ///      ownership transfer possible). Single-step typo protection.
     function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert ZeroAddress();
         emit OwnershipTransferred(owner, newOwner);
         owner = newOwner;
     }
