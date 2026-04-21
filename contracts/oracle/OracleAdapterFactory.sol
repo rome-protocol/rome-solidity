@@ -7,9 +7,10 @@ import "./SwitchboardV3Adapter.sol";
 import "../interface.sol";
 
 /// @title OracleAdapterFactory
-/// @notice Unified factory deploying both Pyth Pull and Switchboard V3 adapters
-///         via EIP-1167 minimal proxy clones. Maintains a registry and provides
-///         pause/unpause emergency controls.
+/// @notice Unified factory deploying both Pyth Pull and Switchboard V2 adapters
+///         (the latter is named `SwitchboardV3Adapter` for legacy reasons; see
+///         SwitchboardV3Adapter.sol) via EIP-1167 minimal proxy clones.
+///         Maintains a registry and provides pause/unpause emergency controls.
 contract OracleAdapterFactory {
     // --- State ---
     address public owner;
@@ -52,8 +53,10 @@ contract OracleAdapterFactory {
 
     /// @param _pythImpl Address of the PythPullAdapter logic contract
     /// @param _switchboardImpl Address of the SwitchboardV3Adapter logic contract
+    ///                         (name retained for legacy; targets Switchboard V2)
     /// @param _pythReceiverProgramId Pyth Solana Receiver program ID (rec5EKM...)
-    /// @param _switchboardProgramId Switchboard program ID (SW1TCH...)
+    /// @param _switchboardProgramId Switchboard V2 program ID
+    ///                              (SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f)
     /// @param _defaultMaxStaleness Default staleness threshold in seconds
     constructor(
         address _pythImpl,
@@ -109,7 +112,9 @@ contract OracleAdapterFactory {
         emit PythFeedCreated(adapter, pythAccountPubkey, desc);
     }
 
-    /// @notice Deploy a new Switchboard V3 adapter (permissionless)
+    /// @notice Deploy a new Switchboard V2 adapter (permissionless; contract
+    ///         name retains "V3" for legacy reasons — see
+    ///         SwitchboardV3Adapter.sol for details)
     /// @param sbAccountPubkey Switchboard aggregator account pubkey
     /// @param desc Human-readable description
     /// @param staleness Max staleness in seconds (0 = use defaultMaxStaleness)

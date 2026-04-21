@@ -8,9 +8,16 @@ import "./SwitchboardParser.sol";
 import "../interface.sol";
 
 /// @title SwitchboardV3Adapter
-/// @notice Per-feed adapter that reads AggregatorAccountData from Switchboard V3
-///         via Rome's CPI precompile. Same interface as PythPullAdapter.
-///         Deployed as EIP-1167 clone by OracleAdapterFactory.
+/// @notice Per-feed adapter that reads AggregatorAccountData from Switchboard V2
+///         (program SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f) via Rome's CPI
+///         precompile. Same interface as PythPullAdapter. Deployed as EIP-1167
+///         clone by OracleAdapterFactory.
+/// @dev The contract name keeps "V3" for backwards compatibility with the
+///      deploy scripts and cached ABIs, but both the program ID passed by
+///      the factory and the byte layout consumed by SwitchboardParser target
+///      the Switchboard V2 legacy aggregator. See SwitchboardParser.sol for
+///      the underlying layout; see the M-6 fix commit for the naming-fix
+///      rationale.
 contract SwitchboardV3Adapter is IExtendedOracleAdapter, IAdapterMetadata {
     bytes32 public switchboardAccount;
     string private _description;
@@ -144,7 +151,8 @@ contract SwitchboardV3Adapter is IExtendedOracleAdapter, IAdapterMetadata {
         return 0;
     }
 
-    /// @notice Oracle source type: 1 = SwitchboardV3
+    /// @notice Oracle source type: 1 = Switchboard V2 (see contract-level
+    ///         NatSpec for the name-retention rationale)
     function oracleType() external pure returns (uint8) {
         return 1;
     }
