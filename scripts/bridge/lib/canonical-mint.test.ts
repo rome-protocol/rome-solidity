@@ -12,9 +12,6 @@ describe("deriveCanonicalWrappedMint", () => {
       tokenBridgeProgramId: "DZnkkTmCiFWfYTfT41X3Rd1kDgozqzxWaHqsw6W4x2oe",
     });
 
-    // The derived pubkey is deterministic; this is what
-    // PublicKey.findProgramAddressSync returns on any correct implementation.
-    expect(mint.toBase58()).toMatch(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
     // Exact value — regenerate once and pin. Computed via:
     //   PublicKey.findProgramAddressSync(
     //     [Buffer.from("wrapped"), u16be(10002), pad32("eef12a83...")],
