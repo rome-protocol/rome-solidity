@@ -9,6 +9,7 @@ import {ICrossProgramInvocation, CpiProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {Convert} from "../convert.sol";
 import {RomeBridgeEvents} from "./RomeBridgeEvents.sol";
+import {SplTokenLib} from "../spl_token/spl_token.sol";
 
 
 /// @title RomeBridgeWithdraw
@@ -273,10 +274,56 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     // Wormhole path — path=1
     // -------------------------------------------------------------------------
 
+    /// @notice Delegates the Wormhole Token Bridge `authority_signer` PDA as
+    ///         the burn delegate on the caller's wETH ATA. Must be invoked in
+    ///         a separate EVM transaction before `burnETH` — splitting the two
+    ///         CPIs across transactions keeps each Rome atomic DoTx within the
+    ///         1.4M Solana compute budget.
+    /// @param amount Burn allowance to delegate (base units; uint64-bounded).
+    function approveBurnETH(uint256 amount) external {
+        if (amount > type(uint64).max) {
+            revert AmountExceedsUint64(amount);
+        }
+        address user = _msgSender();
+
+        bytes32 userPda = RomeEVMAccount.pda(user);
+        bytes32 userAta = wethWrapper.getAta(user);
+
+        bytes32[] memory emptySigners = new bytes32[](0);
+        (, ICrossProgramInvocation.AccountMeta[] memory approveMetas, bytes memory approveIx) =
+            SplTokenLib.approve(
+                whSplTokenProgram,
+                userAta,
+                wormholeAuthoritySigner,
+                userPda,
+                emptySigners,
+                uint64(amount)
+            );
+        bytes32[] memory noSalts = new bytes32[](0);
+        (bool ok, bytes memory result) = address(CpiProgram).delegatecall(
+            abi.encodeWithSignature(
+                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
+                whSplTokenProgram,
+                approveMetas,
+                approveIx,
+                noSalts
+            )
+        );
+        if (!ok) revert CpiFailed(result);
+    }
+
     /// @notice Burns rWETH on the Rome EVM and initiates a Wormhole transfer_tokens
     ///         CPI on Solana, bridging funds to `ethereumRecipient` on Ethereum.
     /// @param amount           Token amount in SPL decimals (must fit uint64).
     /// @param ethereumRecipient Destination address on Ethereum.
+    /// @dev Split into two EVM transactions for compute-budget reasons:
+    ///      (1) caller first invokes `approveBurnETH(amount)` — a single CPI
+    ///          that delegates Wormhole's authority_signer to burn the user's
+    ///          ATA. Kept out of burnETH because atomic Rome DoTx + two Solana
+    ///          CPIs consumes the full 1.4M CU budget before transfer_wrapped
+    ///          finishes its inner burn/post-message CPIs.
+    ///      (2) then invokes `burnETH` which does only the transfer_wrapped
+    ///          CPI (requires the delegation from step 1 to be in place).
     function burnETH(uint256 amount, address ethereumRecipient) external {
         if (amount > type(uint64).max) {
             revert AmountExceedsUint64(amount);
