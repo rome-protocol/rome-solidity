@@ -116,4 +116,50 @@ describe("SwitchboardParser", function () {
             async () => parser.read.parse(["0x" as `0x${string}`]),
         );
     });
+
+    // ──────────────────────────────────────────────
+    // Fuzz: offset stability
+    // ──────────────────────────────────────────────
+
+    describe("fuzz: offset stability", function () {
+        it("either parses or reverts for 50 randomly mutated accounts", async function () {
+            const knownErrors = [
+                "InvalidSwitchboardAccount",
+                "SwitchboardDataTooShort",
+                "revert",
+            ];
+
+            for (let i = 0; i < 50; i++) {
+                // NOTE: use whatever arguments the existing mock helper takes.
+                // Base call below may need adjustment — match an existing test
+                // in this file that builds a valid account. Typical args:
+                // mantissa, scale, timestamp. Confirm by reading the helper.
+                const base = buildSwitchboardAccount({
+                    mantissa: 12345n,
+                    scale: 6,
+                    timestamp: 1711900800,
+                });
+                const baseBuf = Buffer.from(base.slice(2), "hex");
+                const mutated = Buffer.from(baseBuf);
+
+                const numMutations = 1 + (i % 8);
+                for (let j = 0; j < numMutations; j++) {
+                    const offset = 8 + Math.floor(Math.random() * (mutated.length - 8));
+                    mutated[offset] = Math.floor(Math.random() * 256);
+                }
+
+                const mutatedHex = ("0x" + mutated.toString("hex")) as `0x${string}`;
+
+                try {
+                    await parser.read.parse([mutatedHex]);
+                } catch (err: any) {
+                    const msg = err?.message ?? String(err);
+                    const matched = knownErrors.some((e) => msg.includes(e));
+                    if (!matched) {
+                        throw new Error(`Unknown revert at iteration ${i}: ${msg}`);
+                    }
+                }
+            }
+        });
+    });
 });

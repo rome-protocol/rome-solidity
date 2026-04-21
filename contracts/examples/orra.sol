@@ -5,6 +5,52 @@ import "../rome_evm_account.sol";
 import "../system_program/system_program.sol";
 import {ICrossProgramInvocation as icpi, CpiProgram as cpi} from "../interface.sol";
 
+contract example {
+    function create_payer_account() external {
+        // bytes32 salt = Convert.bytes_to_bytes32(bytes("PAYER"));
+        bytes32 salt = bytes32(uint256(10));
+        // bytes32 key = pda_with_salt(msg.sender, salt);
+
+        // bytes32 rome_program = SystemProgram.rome_evm_program_id();
+        create_payer(msg.sender, 1000000000, salt);
+    }
+    
+    function create_payer(address user, uint64 lamports, bytes32 salt)  public {
+        bytes32 key = pda_with_salt(user, salt);
+
+        (uint64 lamports_,,,,,) = CpiProgram.account_info(key);
+        if (lamports_ == 0) {
+            require(lamports >= minimum_balance(0), "insufficient lamports, rent-exemption value is 890880");
+        }
+
+        bytes32 from = SystemProgram.operator();
+        SystemProgramLib.transfer(from, key, lamports);
+    }
+
+    function pda_with_salt(address user, bytes32 salt) internal view returns (bytes32) {
+        bytes32 rome_program = SystemProgram.rome_evm_program_id();
+        ISystemProgram.Seed[] memory seeds = authority_seeds_with_salt(user, salt);
+        (bytes32 key,) = SystemProgram.find_program_address(rome_program, seeds);
+        return key;
+    }
+
+    function authority_seeds_with_salt(address user, bytes32 salt) internal pure returns(ISystemProgram.Seed[] memory) {
+        bytes memory salt_ = Convert.bytes32_to_bytes(salt);
+
+        ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](3);
+        seeds[0] = ISystemProgram.Seed(bytes("EXTERNAL_AUTHORITY"));
+        seeds[1] = ISystemProgram.Seed(abi.encodePacked(user));
+        seeds[2] = ISystemProgram.Seed(salt_);
+
+        return seeds;
+    }
+
+    function minimum_balance(uint64 len) internal pure returns(uint64) {
+        // (ACCOUNT_STORAGE_OVERHEAD + len) * LAMPORTS_PER_BYTE_YEAR * EXEMPTION_THRESHOLD
+        return (128 + len) * 3480 * 2;
+    }
+}
+
 contract orra_example {
     bytes32 public constant ORRA_PROGRAM_ID = 0x0c011697d4d36ab9571d6cfd88c3c45c6c9249cece2756ccd780781bb1f981d2;
 

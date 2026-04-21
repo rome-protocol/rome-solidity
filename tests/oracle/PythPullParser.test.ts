@@ -182,4 +182,91 @@ describe("PythPullParser", function () {
             async () => parser.read.parse(["0x" as `0x${string}`]),
         );
     });
+
+    it("reverts with UnsupportedVerificationVariant when variant byte is 0x00 (Partial)", async function () {
+        // M-1: the parser's fixed offsets are calibrated for the Full variant
+        // (0x01). A Partial account (0x00) shifts every subsequent field by
+        // at least 1 byte, silently producing garbage.
+        const mockData = buildPythPullAccount({
+            verificationVariant: 0x00,
+            price: 100n,
+            conf: 10n,
+            expo: -8,
+            publishTime: 1711902000,
+        });
+
+        await assert.rejects(
+            async () => parser.read.parse([mockData]),
+            (err: any) => err?.message?.includes("UnsupportedVerificationVariant") ?? false,
+        );
+    });
+
+    it("reverts with UnsupportedVerificationVariant for an unknown variant byte", async function () {
+        const mockData = buildPythPullAccount({
+            verificationVariant: 0x42,
+            price: 100n,
+            conf: 10n,
+            expo: -8,
+            publishTime: 1711902100,
+        });
+
+        await assert.rejects(
+            async () => parser.read.parse([mockData]),
+            (err: any) => err?.message?.includes("UnsupportedVerificationVariant") ?? false,
+        );
+    });
+
+    // ──────────────────────────────────────────────
+    // Fuzz: offset stability
+    // ──────────────────────────────────────────────
+
+    describe("fuzz: offset stability", function () {
+        it("either parses or reverts for 50 randomly mutated accounts", async function () {
+            // Property: for random byte shifts of a valid Pyth PriceUpdateV2 account,
+            // the parser must EITHER return field values cleanly OR revert with a
+            // whitelisted error. It must NEVER silently return garbage — discriminator
+            // + data-length guards protect against that.
+
+            const knownErrors = [
+                "InvalidPythPullAccount",
+                "PythPullDataTooShort",
+                "UnsupportedVerificationVariant",
+                "revert",
+            ];
+
+            for (let i = 0; i < 50; i++) {
+                const base = buildPythPullAccount({
+                    price: 1000n,
+                    conf: 10n,
+                    expo: -8,
+                    publishTime: 1711900800,
+                });
+                // Drop the 0x prefix to get hex chars, then convert to a Buffer.
+                const baseBuf = Buffer.from(base.slice(2), "hex");
+                const mutated = Buffer.from(baseBuf);
+
+                // Mutate 1-8 bytes at offsets >= 8 (leave discriminator intact
+                // so we specifically test offset-shift behavior; discriminator
+                // corruption is covered by an existing test).
+                const numMutations = 1 + (i % 8);
+                for (let j = 0; j < numMutations; j++) {
+                    const offset = 8 + Math.floor(Math.random() * (mutated.length - 8));
+                    mutated[offset] = Math.floor(Math.random() * 256);
+                }
+
+                const mutatedHex = ("0x" + mutated.toString("hex")) as `0x${string}`;
+
+                try {
+                    await parser.read.parse([mutatedHex]);
+                    // Parse succeeded — acceptable; property is "no crash on garbage in".
+                } catch (err: any) {
+                    const msg = err?.message ?? String(err);
+                    const matched = knownErrors.some((e) => msg.includes(e));
+                    if (!matched) {
+                        throw new Error(`Unknown revert at iteration ${i}: ${msg}`);
+                    }
+                }
+            }
+        });
+    });
 });

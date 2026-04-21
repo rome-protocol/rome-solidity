@@ -31,6 +31,8 @@ interface IExtendedOracleAdapter is IAggregatorV3Interface {
     function maxStaleness() external view returns (uint256);
 
     /// @notice The oracle source type
-    /// @return 0 = PythPull, 1 = SwitchboardV3
+    /// @return 0 = PythPull, 1 = Switchboard V2 (name retained as
+    ///         SwitchboardV3Adapter for legacy compat; see
+    ///         SwitchboardV3Adapter.sol for details)
     function oracleType() external view returns (uint8);
 }
