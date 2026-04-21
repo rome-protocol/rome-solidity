@@ -62,4 +62,37 @@ describe("PythConfidence", function () {
         const h = await deployHarness();
         await h.read.checkConfidenceExt([100_000_000n, 0n]);
     });
+
+    // H-3 quality note: `_checkConfidence` is exposed via the harness
+    // as `checkConfidenceExt`, so the function's safety contract must
+    // hold even when called with price <= 0 directly (not just via
+    // `latestRoundData`, which calls NonPositivePrice first). Without
+    // the explicit guard, `uint64(price)` silently wraps a negative
+    // int64 to a huge unsigned value and the conf comparison passes.
+    it("reverts with NonPositivePrice when price == 0", async function () {
+        const h = await deployHarness();
+        await assert.rejects(
+            async () => h.read.checkConfidenceExt([0n, 0n]),
+            (err: any) => err?.message?.includes("NonPositivePrice") ?? false,
+        );
+    });
+
+    it("reverts with NonPositivePrice when price == -1", async function () {
+        const h = await deployHarness();
+        await assert.rejects(
+            async () => h.read.checkConfidenceExt([-1n, 0n]),
+            (err: any) => err?.message?.includes("NonPositivePrice") ?? false,
+        );
+    });
+
+    it("reverts with NonPositivePrice when price is negative and conf would otherwise pass", async function () {
+        const h = await deployHarness();
+        // Without the guard, `uint64(-1)` == 2^64 - 1, so a tiny conf would
+        // pass the `conf * 10_000 > uint64(price) * 200` comparison. Assert
+        // we reject on price <= 0 up front instead.
+        await assert.rejects(
+            async () => h.read.checkConfidenceExt([-1_000_000_000n, 100n]),
+            (err: any) => err?.message?.includes("NonPositivePrice") ?? false,
+        );
+    });
 });

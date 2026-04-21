@@ -214,12 +214,18 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
         if (IAdapterFactory(factory).isPaused(address(this))) revert AdapterPaused();
     }
 
-    /// @dev Reverts if `conf / price > MAX_CONF_BPS / 10_000`. Caller must
-    ///      ensure `price > 0` first so the cast to uint64 is safe. The
-    ///      multiplication uses uint256 to prevent overflow — conf is up to
-    ///      uint64 max (~1.8e19) and MAX_CONF_BPS is 200, so
-    ///      `conf * 10_000` fits comfortably in uint256.
+    /// @dev Reverts if `conf / price > MAX_CONF_BPS / 10_000`. Guards
+    ///      `price <= 0` up front so `uint64(price)` cannot silently wrap a
+    ///      negative signed value to a large unsigned one — a negative price
+    ///      is always a stale/invalid feed and must fail loudly regardless
+    ///      of whether the caller is `latestRoundData` (which does its own
+    ///      `NonPositivePrice` check) or a direct consumer of this primitive
+    ///      via the test harness / future callers. The uint256
+    ///      multiplication prevents overflow — conf is up to uint64 max
+    ///      (~1.8e19) and MAX_CONF_BPS is 200, so `conf * 10_000` fits
+    ///      comfortably in uint256.
     function _checkConfidence(int64 price, uint64 conf) internal pure {
+        if (price <= 0) revert NonPositivePrice();
         if (uint256(conf) * 10_000 > uint256(uint64(price)) * MAX_CONF_BPS) {
             revert ConfidenceExceedsThreshold();
         }
