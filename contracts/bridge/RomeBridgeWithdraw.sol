@@ -59,6 +59,21 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     bytes32 public immutable wormholeSequence;
 
     // -------------------------------------------------------------------------
+    // Per-user nonce for transient message PDAs
+    // -------------------------------------------------------------------------
+
+    /// @notice Per-user burn counter used to derive unique message PDAs per tx.
+    /// @dev We can't use block.number in the salt — on Rome EVM, block.number
+    ///      returns the Solana slot (rome-evm-private/program/src/state/handler.rs
+    ///      block_number() → self.slot), which changes between eth_call
+    ///      simulation and on-chain execution. That divergence causes the
+    ///      emulator to pass one messageSentEventData PDA and the on-chain
+    ///      program to look up a different one → AccountNotFound. A user-scoped
+    ///      monotonic counter is stable across the emulation/execution boundary
+    ///      within the same tx and unique across txs.
+    mapping(address => uint64) public burnNonce;
+
+    // -------------------------------------------------------------------------
     // Errors
     // -------------------------------------------------------------------------
     error AmountExceedsUint64(uint256 amount);
@@ -190,8 +205,11 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 userPayer = RomeEVMAccount.pda_with_salt(user, payerSalt);
 
         // Per-tx message data account derived as a PDA under the user.
-        // Includes block.number in the salt so concurrent same-slot txs don't collide.
-        bytes32 cctpSalt = keccak256(abi.encodePacked("CCTP_MSG", block.number));
+        // Salt includes per-user nonce instead of block.number — block.number on
+        // Rome EVM = Solana slot, unstable across emulation/execution.
+        uint64 nonce = burnNonce[user];
+        burnNonce[user] = nonce + 1;
+        bytes32 cctpSalt = keccak256(abi.encodePacked("CCTP_MSG", nonce));
         bytes32 messageSentEventData = RomeEVMAccount.pda_with_salt(user, cctpSalt);
 
         bytes memory ixData = CCTPLib.encodeDepositForBurn(CCTPLib.DepositForBurnParams({
@@ -267,8 +285,11 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 userAta  = wethWrapper.getAta(user);
 
         // Per-tx Wormhole message account derived as a PDA under the user.
-        // Includes block.number in the salt so concurrent same-slot txs don't collide.
-        bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", block.number));
+        // Same per-user nonce used for the CCTP path — unique across txs,
+        // stable across emulation/execution (block.number isn't).
+        uint64 nonce = burnNonce[user];
+        burnNonce[user] = nonce + 1;
+        bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", nonce));
         bytes32 messageAccount = RomeEVMAccount.pda_with_salt(user, whSalt);
 
         bytes memory ixData = WormholeTokenBridgeLib.encodeTransferTokens(
