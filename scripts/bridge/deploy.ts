@@ -60,6 +60,7 @@ interface SolanaPdaAccounts {
   wormholeFeeCollector:    `0x${string}`;
   wormholeEmitter:         `0x${string}`;
   wormholeSequence:        `0x${string}`;
+  wormholeWrappedMeta:     `0x${string}`;
 }
 
 /// Derives all Solana PDAs required for the RomeBridgeWithdraw constructor.
@@ -166,6 +167,7 @@ export async function deployWithdraw(
     feeCollector:       pdas.wormholeFeeCollector,
     emitter:            pdas.wormholeEmitter,
     sequence:           pdas.wormholeSequence,
+    wrappedMeta:        pdas.wormholeWrappedMeta,
   };
 
   const withdraw = await viem.deployContract("RomeBridgeWithdraw", [

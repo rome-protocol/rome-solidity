@@ -11,12 +11,12 @@
     "mintId": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
   },
   "SPL_ERC20_WETH": {
-    "address": "0x2f222f6ca9a787adf0ea0f42c51001ebb87e22c0",
+    "address": "0xec5a1b97731817943ac102d980d417d02d304459",
     "mintId": "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs"
   },
   "RomeBridgeWithdraw": {
-    "address": "0xf288163b0cd87515405252fd719a4df25474dd4f",
-    "deployedAt": 1776741087
+    "address": "0x490f6f1efe3b19166c41538d2425f1fab4bc8135",
+    "deployedAt": 1776749901
   },
   "archive": {
     "RomeBridgeWithdrawPrevious": null

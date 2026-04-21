@@ -57,6 +57,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     bytes32 public immutable wormholeFeeCollector;
     bytes32 public immutable wormholeEmitter;
     bytes32 public immutable wormholeSequence;
+    bytes32 public immutable wormholeWrappedMeta;
 
     // -------------------------------------------------------------------------
     // Per-user nonce for transient message PDAs
@@ -125,13 +126,14 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 rentSysvar;
         // PDAs — derived per-deployment in Phase 1.5
         bytes32 config;
-        bytes32 custody;
+        bytes32 custody;          // kept for back-compat; not used by TransferWrapped path
         bytes32 authoritySigner;
-        bytes32 custodySigner;
+        bytes32 custodySigner;    // kept for back-compat; not used by TransferWrapped path
         bytes32 bridgeConfig;
         bytes32 feeCollector;
         bytes32 emitter;
         bytes32 sequence;
+        bytes32 wrappedMeta;      // NEW: [b"meta", wethMint] PDA under Token Bridge
     }
 
     // -------------------------------------------------------------------------
@@ -175,6 +177,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         wormholeFeeCollector       = wh.feeCollector;
         wormholeEmitter            = wh.emitter;
         wormholeSequence           = wh.sequence;
+        wormholeWrappedMeta        = wh.wrappedMeta;
     }
 
     // -------------------------------------------------------------------------
@@ -209,7 +212,9 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         // Rome EVM = Solana slot, unstable across emulation/execution.
         uint64 nonce = burnNonce[user];
         burnNonce[user] = nonce + 1;
-        bytes32 cctpSalt = keccak256(abi.encodePacked("CCTP_MSG", nonce));
+        // Include address(this) so redeploys don't collide with previously-used
+        // event-data PDAs under the same user.
+        bytes32 cctpSalt = keccak256(abi.encodePacked("CCTP_MSG", address(this), nonce));
         bytes32 messageSentEventData = RomeEVMAccount.pda_with_salt(user, cctpSalt);
 
         bytes memory ixData = CCTPLib.encodeDepositForBurn(CCTPLib.DepositForBurnParams({
@@ -289,7 +294,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         // stable across emulation/execution (block.number isn't).
         uint64 nonce = burnNonce[user];
         burnNonce[user] = nonce + 1;
-        bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", nonce));
+        bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", address(this), nonce));
         bytes32 messageAccount = RomeEVMAccount.pda_with_salt(user, whSalt);
 
         bytes memory ixData = WormholeTokenBridgeLib.encodeTransferTokens(
@@ -303,22 +308,22 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         );
 
         ICrossProgramInvocation.AccountMeta[] memory metas =
-            WormholeTokenBridgeLib.buildAccounts(
-                WormholeTokenBridgeLib.TransferAccounts({
+            WormholeTokenBridgeLib.buildTransferWrappedAccounts(
+                WormholeTokenBridgeLib.TransferWrappedAccounts({
                     payer:            userPda,
                     config:           wormholeConfig,
-                    from_owner:       userPda,         // PDA signer
                     from:             userAta,
+                    from_owner:       userPda,
+                    from_token_meta:  wormholeWrappedMeta,
                     mint:             wethMint,
-                    custody:          wormholeCustody,
                     authority_signer: wormholeAuthoritySigner,
-                    custody_signer:   wormholeCustodySigner,
                     bridge_config:    wormholeBridgeConfig,
                     message:          messageAccount,
                     emitter:          wormholeEmitter,
                     sequence:         wormholeSequence,
                     fee_collector:    wormholeFeeCollector,
                     clock:            whClockSysvar,
+                    sender:           userPda,
                     rent:             whRentSysvar,
                     system:           whSystemProgram,
                     token:            whSplTokenProgram,
