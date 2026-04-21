@@ -4,7 +4,7 @@ async function main() {
   const [a] = await viem.getWalletClients();
   const pc = await viem.getPublicClient();
   const deployer = a.account!.address;
-  const NEW_RETH = "0x6d760a0dc359903add707ff604cc4b29c7c05d2a";
+  const NEW_RETH = "0xe9b29ce0716306242de06d11fca91a238fe5e235";
   const users = await viem.getContractAt("ERC20Users", "0x803f6923bcc776db1d0aa6fcdbd8ceddf35ad6f3");
   const rETH = await viem.getContractAt("SPL_ERC20", NEW_RETH);
 
