@@ -60,6 +60,7 @@ describe("RomeBridgeWithdraw — error paths", () => {
       // CctpParams — all fields now required including program IDs
       {
         tokenMessengerProgram: DUMMY_PROGRAM,
+        messageTransmitterProgram: DUMMY_PROGRAM,
         splTokenProgram: DUMMY_PROGRAM,
         systemProgram: ZERO_BYTES32,
         messageTransmitterConfig: ZERO_BYTES32,
@@ -67,6 +68,7 @@ describe("RomeBridgeWithdraw — error paths", () => {
         remoteTokenMessenger: ZERO_BYTES32,
         tokenMinter: ZERO_BYTES32,
         localTokenUsdc: ZERO_BYTES32,
+        senderAuthorityPda: ZERO_BYTES32,
         eventAuthority: ZERO_BYTES32,
       },
       // WormholeParams — all fields now required including program IDs and sysvars
@@ -85,6 +87,8 @@ describe("RomeBridgeWithdraw — error paths", () => {
         feeCollector: ZERO_BYTES32,
         emitter: ZERO_BYTES32,
         sequence: ZERO_BYTES32,
+        wrappedMeta: ZERO_BYTES32,
+        targetChain: 2,
       },
     ]);
   });
