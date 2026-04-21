@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./IExtendedOracleAdapter.sol";
 import "./IAdapterFactory.sol";
+import "./IAdapterMetadata.sol";
 import "./PythPullParser.sol";
 import "../interface.sol";
 
@@ -10,12 +11,13 @@ import "../interface.sol";
 /// @notice Per-feed adapter that reads PriceUpdateV2 from Pyth Solana Receiver
 ///         via Rome's CPI precompile. Implements both IAggregatorV3Interface and
 ///         IExtendedOracleAdapter. Deployed as EIP-1167 clone by OracleAdapterFactory.
-contract PythPullAdapter is IExtendedOracleAdapter {
+contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
     bytes32 public pythAccount;
     string private _description;
     uint256 public maxStaleness;
     address public factory;
     bool public initialized;
+    uint64 public createdAt;
 
     error StalePriceFeed();
     error AdapterPaused();
@@ -42,6 +44,7 @@ contract PythPullAdapter is IExtendedOracleAdapter {
         _description = desc;
         maxStaleness = _maxStaleness;
         factory = _factory;
+        createdAt = uint64(block.timestamp);
     }
 
     /// @notice Always 8 — prices are normalized to 10^-8
@@ -121,6 +124,19 @@ contract PythPullAdapter is IExtendedOracleAdapter {
     /// @notice Oracle source type: 0 = PythPull
     function oracleType() external pure returns (uint8) {
         return 0;
+    }
+
+    /// @inheritdoc IAdapterMetadata
+    function metadata() external view override returns (AdapterMetadata memory) {
+        return AdapterMetadata({
+            description: _description,
+            sourceType: OracleSource.Pyth,
+            solanaAccount: pythAccount,
+            maxStaleness: maxStaleness,
+            createdAt: createdAt,
+            factory: factory,
+            paused: IAdapterFactory(factory).isPaused(address(this))
+        });
     }
 
     // --- Internal helpers ---
