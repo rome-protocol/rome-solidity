@@ -18,4 +18,4 @@ jobs:
           cache: 'npm'
       - run: npm install
       - run: npx hardhat compile
-      - run: npx hardhat test nodejs tests/oracle/*.test.ts
+      - run: npx hardhat test nodejs tests/oracle/*.test.ts tests/bridge/*.test.ts

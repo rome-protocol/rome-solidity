@@ -3,7 +3,7 @@
  *
  * Runs without a Rome stack or live network — pure TypeScript + @solana/web3.js.
  * Verifies that deriveCctpAccounts and deriveWormholeAccounts:
- *   1. Return the correct number of fields (6 CCTP, 8 Wormhole).
+ *   1. Return the correct number of fields (7 CCTP, 9 Wormhole).
  *   2. All field values are well-formed bytes32 (0x + 64 hex digits).
  *   3. Derivations are deterministic (same input → same output).
  *
@@ -20,21 +20,21 @@ import { SPL_MINTS } from "../../scripts/bridge/constants.js";
 const BYTES32_RE = /^0x[0-9a-fA-F]{64}$/;
 
 describe("Bridge PDA derivations", () => {
-  it("deriveCctpAccounts returns 6 well-formed bytes32 values", () => {
+  it("deriveCctpAccounts returns 7 well-formed bytes32 values", () => {
     const usdcMint = new PublicKey(SPL_MINTS.USDC_NATIVE);
     const pdas = deriveCctpAccounts(usdcMint);
     const keys = Object.keys(pdas);
-    assert.strictEqual(keys.length, 6);
+    assert.strictEqual(keys.length, 7);
     for (const [, value] of Object.entries(pdas)) {
       assert.match(value, BYTES32_RE, `Expected bytes32 hex, got: ${value}`);
     }
   });
 
-  it("deriveWormholeAccounts returns 8 well-formed bytes32 values", () => {
+  it("deriveWormholeAccounts returns 9 well-formed bytes32 values", () => {
     const wethMint = new PublicKey(SPL_MINTS.WETH_WORMHOLE);
     const pdas = deriveWormholeAccounts(wethMint);
     const keys = Object.keys(pdas);
-    assert.strictEqual(keys.length, 8);
+    assert.strictEqual(keys.length, 9);
     for (const [, value] of Object.entries(pdas)) {
       assert.match(value, BYTES32_RE, `Expected bytes32 hex, got: ${value}`);
     }
