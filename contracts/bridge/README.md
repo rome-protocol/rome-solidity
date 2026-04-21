@@ -80,7 +80,7 @@ From `deployments/marcus.json`:
 | ERC20Users | `0x803f6923bcc776db1d0aa6fcdbd8ceddf35ad6f3` |
 | SPL_ERC20 rUSDC | `0x6ed2944bba4cb5b1cb295541f315c648658dd67c` |
 | SPL_ERC20 rETH | `0x3e52cfb38ca1639f3c95aef6dccff2b36c230f22` |
-| RomeBridgeWithdraw | `0xa4c113303a3056bbb05e41f7ed539f4ca538bda7` |
+| RomeBridgeWithdraw | `0x513f76e39cfd7008f1e143ae37148608cddfcaaf` (Wormhole target chain = 10002 Sepolia) |
 
 ---
 
@@ -152,7 +152,15 @@ Each tx now fits the budget. This is also the standard ERC-20 bridge pattern (ap
 
 **Fix.** Derive the account list directly from the IDL. `IWormholeTokenBridge.sol: buildTransferWrappedAccounts` mirrors the account layout at `@wormhole-foundation/sdk-solana-tokenbridge: dist/esm/utils/tokenBridge/instructions/transferWrapped.js` exactly: 17 accounts (no `sender`), `from_owner` is **signer + writable**, `authority_signer` is **readonly**, `mint` is **writable**, `wormhole_core` and `token` come at the end. Before changing the layout, diff against `scripts/diff-wh-transfer-wrapped.mjs` in `rome-deposit-ui` which runs the SDK builder and prints the exact accounts Wormhole expects.
 
-### 8. Proxy needed a new RPC method to look up Solana sigs for an EVM tx
+### 8. Wormhole destination chain id was hardcoded to Ethereum mainnet
+
+**Symptom.** Outbound Wormhole E2E: Rome burn succeeded, VAA was emitted, `completeTransferAndUnwrapETH` on Sepolia reverted with `"invalid target chain"`.
+
+**Why.** `RomeBridgeWithdraw.burnETH` hardcoded `targetChain: 2` — Ethereum **mainnet**'s Wormhole chain id. Sepolia has chain id **10002** on the Wormhole testnet. The VAA was produced targeting the wrong chain; the Sepolia Token Bridge refused to redeem it.
+
+**Fix.** Added `wormholeTargetChain` as an immutable constructor param, set per deploy. `deploy.ts` / `redeploy-withdraw-devnet-wh.ts` default to `10002` for marcus/local; `redeploy-withdraw-only.ts` (mainnet path) uses `2`. Future chain swaps just change this constructor arg rather than the contract source.
+
+### 9. Proxy needed a new RPC method to look up Solana sigs for an EVM tx
 
 **Symptom.** The outbound flows need to know the Solana signature of the Rome tx so the relayer can scrape Wormhole logs / poll IRIS. There was no proxy RPC for this — logs had it, but clients couldn't.
 

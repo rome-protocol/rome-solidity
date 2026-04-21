@@ -109,6 +109,7 @@ async function main() {
     emitter:            pdas.wormholeEmitter,
     sequence:           pdas.wormholeSequence,
     wrappedMeta:        pdas.wormholeWrappedMeta,
+    targetChain:        10002, // canonical Sepolia Wormhole chain id
   };
 
   const withdraw = await viem.deployContract("RomeBridgeWithdraw", [

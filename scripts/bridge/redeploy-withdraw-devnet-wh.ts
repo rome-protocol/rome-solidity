@@ -93,6 +93,7 @@ async function main() {
     emitter:            pdas.wormholeEmitter,
     sequence:           pdas.wormholeSequence,
     wrappedMeta:        pdas.wormholeWrappedMeta,
+    targetChain:        10002, // Wormhole testnet chain id for Sepolia
   };
 
   console.log("\nDeploying new RomeBridgeWithdraw with devnet Wormhole params…");

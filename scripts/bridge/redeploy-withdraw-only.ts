@@ -71,6 +71,8 @@ async function main() {
     feeCollector:       pdas.wormholeFeeCollector,
     emitter:            pdas.wormholeEmitter,
     sequence:           pdas.wormholeSequence,
+    wrappedMeta:        pdas.wormholeWrappedMeta,
+    targetChain:        2, // mainnet Wormhole chain id for Ethereum (this script targets mainnet)
   };
 
   console.log("\nDeploying new RomeBridgeWithdraw (17-account CCTP layout)…");

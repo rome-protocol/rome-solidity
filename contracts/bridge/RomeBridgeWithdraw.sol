@@ -60,6 +60,12 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     bytes32 public immutable wormholeEmitter;
     bytes32 public immutable wormholeSequence;
     bytes32 public immutable wormholeWrappedMeta;
+    /// @notice Wormhole destination chain id for outbound ETH transfers.
+    /// @dev Set at construction per deploy-network. Wormhole chain ids are
+    ///      distinct on mainnet and testnet: Ethereum mainnet = 2, Sepolia =
+    ///      10002. Keeping this as a constructor param lets the same contract
+    ///      bytecode deploy to testnet or mainnet without touching the source.
+    uint16 public immutable wormholeTargetChain;
 
     // -------------------------------------------------------------------------
     // Per-user nonce for transient message PDAs
@@ -136,6 +142,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 emitter;
         bytes32 sequence;
         bytes32 wrappedMeta;      // NEW: [b"meta", wethMint] PDA under Token Bridge
+        uint16 targetChain;       // Wormhole destination chain id: 2 mainnet ETH, 10002 Sepolia
     }
 
     // -------------------------------------------------------------------------
@@ -180,6 +187,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         wormholeEmitter            = wh.emitter;
         wormholeSequence           = wh.sequence;
         wormholeWrappedMeta        = wh.wrappedMeta;
+        wormholeTargetChain        = wh.targetChain;
     }
 
     // -------------------------------------------------------------------------
@@ -354,7 +362,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
                 amount:        uint64(amount),
                 fee:           0,
                 targetAddress: bytes32(uint256(uint160(ethereumRecipient))),
-                targetChain:   2, // Ethereum Wormhole chain ID
+                targetChain:   wormholeTargetChain,
                 nonce:         uint32(block.timestamp)
             })
         );
