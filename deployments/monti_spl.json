@@ -53,7 +53,7 @@
       "adapter": "0x8a67386F90b5422D3B61e9a5e4BD1986A216D98D"
     }
   ],
-  "OracleGatewayV2": {
+  "OracleGatewayV2Legacy": {
     "PythPullAdapter": {
       "address": "0x4fd11aed44ee5f71df22fb804cfcbb4c50535db9",
       "type": "implementation"

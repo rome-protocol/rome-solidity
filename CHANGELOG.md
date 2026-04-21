@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added — Oracle Gateway V2 GitHub Actions deploy workflow
+- `.github/workflows/deploy-oracle.yml` — manual-trigger (`workflow_dispatch`) workflow that deploys Oracle Gateway V2 (core + seed feeds + verification) against a selected Rome devnet using a single shared GitHub Secret (`ROME_DEVNET_PRIVATE_KEY`). Posts the resulting `deployments/<network>.json` back as a reviewable bot PR via `peter-evans/create-pull-request` when `open_pr: true`. Toggles: `run_seed_feeds`, `run_verification`, `open_pr`, `force_redeploy`. Closes #33.
+- `hardhat.config.ts` — added `subura` (chainId 121222) and `esquiline` (chainId 121225) network entries; deduplicated the `marcus` block and added its explicit `chainId 121226`.
+- `README.md` — new "Deploy Oracle Gateway V2 via GitHub Actions" section documenting the required secret and trigger flow.
+
+### Changed — Oracle Gateway V2 deploy scripts: idempotency + naming
+- `scripts/oracle/deploy-v2-polish.ts` — now idempotent. If `deployments/<network>.json` already contains a populated `OracleGatewayV2` block, the script prints existing addresses and exits without deploying. Set `FORCE_REDEPLOY=1` to override. Previously every invocation redeployed unconditionally, which wasted gas and orphaned the prior deploy on every CI run.
+- Deploy block renamed: `OracleGatewayV2Polished` → `OracleGatewayV2`. The "Polished" suffix existed only because a parallel legacy `OracleGatewayV2` block was being preserved during the audit refactor; that block is now an artifact and has been renamed to `OracleGatewayV2Legacy` in `deployments/monti_spl.json` (the only file that carried it; `monti_spl` itself is retired). `deploy-seed-feeds.ts` and `test-feeds-v2.ts` updated to the new name. `test-feeds-v2.ts` also fixed to read the current plain-string address shape (previously still expected the old `{address: "0x..."}` nesting from `deploy.ts`).
+- `deployments/marcus.json` — block renamed. Addresses refreshed by a dry-run of the workflow against `marcus`; **downstream consumers (rome-oracle-portal, etc.) must update their marcus V2 addresses**.
+
 ### Changed — Rome Bridge Phase 1 outbound Wormhole target chain
 - `contracts/bridge/RomeBridgeWithdraw` — added `wormholeTargetChain` immutable constructor param; `burnETH` now uses that instead of a hardcoded `2`. Wormhole testnet Sepolia is chain id 10002, not 2 (which is Ethereum mainnet). Without this, outbound VAAs targeted the wrong chain and the Sepolia Token Bridge refused to redeem them with `"invalid target chain"`.
 - `scripts/bridge/deploy.ts`, `redeploy-withdraw-devnet-wh.ts`, `redeploy-withdraw-canonical-weth.ts` — set `targetChain: 10002` for marcus/local (Sepolia). `redeploy-withdraw-only.ts` sets `targetChain: 2` for the mainnet path.

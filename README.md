@@ -33,6 +33,18 @@ npx hardhat compile
 
 ---
 
+## Deploy Oracle Gateway V2 via GitHub Actions
+
+Oracle Gateway V2 can be redeployed to any supported Rome devnet (`esquiline`, `subura`, `marcus`) without local key handling using the [`Deploy Oracle Gateway V2`](.github/workflows/deploy-oracle.yml) workflow.
+
+1. Configure one repo secret in **Settings → Secrets and variables → Actions → New repository secret**: `ROME_DEVNET_PRIVATE_KEY` (hex, `0x…`). The same key is reused across all supported devnets — the account must be funded on whichever network you intend to target.
+2. Trigger the workflow via **Actions → Deploy Oracle Gateway V2 → Run workflow**. Pick a network, an optional `defaultMaxStaleness` override (default `300` seconds), and toggle seed-feed deployment, post-deploy verification, and the bot PR independently.
+3. On success (with `open_pr: true`) the workflow opens a bot PR with the updated `deployments/<network>.json`. Review the addresses and merge. For smoke tests set `open_pr: false` to skip the PR.
+
+The workflow runs `deploy-v2-polish.ts`, `deploy-seed-feeds.ts`, and `test-feeds-v2.ts` in order. Each step is independently toggleable via workflow inputs, so partial re-runs (seeds only, verify only) are straightforward.
+
+---
+
 # Meteora DAMMv1 integration
 
 This integration can be used as an example of how Rome-EVM can provide interoperability with native Solana smart-contracts.
