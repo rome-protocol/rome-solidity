@@ -40,6 +40,12 @@ export default defineConfig({
       url: "https://montispl-i.devnet.romeprotocol.xyz/",
       accounts: [configVariable("MONTI_SPL_PRIVATE_KEY")]
     },
+    marcus: {
+      type: "http",
+      chainType: "l1",
+      url: "https://marcus.devnet.romeprotocol.xyz",
+      accounts: [configVariable("MARCUS_PRIVATE_KEY")]
+    },
     local: {
       type: "http",
       chainType: "l1",
