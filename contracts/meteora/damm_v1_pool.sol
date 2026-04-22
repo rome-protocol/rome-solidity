@@ -1146,7 +1146,7 @@ contract ERC20DAMMv1Pool {
         (bool success, bytes memory result) = address(internal_pool.cpi_program()).delegatecall(
             abi.encodeWithSelector(
                 ICrossProgramInvocation.invoke_signed.selector,
-                internal_pool.prog_dynamic_amm,
+                internal_pool.prog_dynamic_amm(),
                 accounts,
                 data,
                 seeds

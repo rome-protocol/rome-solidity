@@ -4,11 +4,11 @@ import hardhat from "hardhat";
 import {
     createWalletClient,
     getAddress,
-    http,
     isAddress,
     keccak256,
     stringToHex,
     zeroAddress,
+    custom
 } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { readDeployments } from "../scripts/lib/deployments.js";
@@ -27,23 +27,6 @@ function resolveFactoryAddress(networkName: string): `0x${string}` {
     }
 
     return getAddress(address);
-}
-
-function resolveRpcUrl(networkName: string): string {
-    if (process.env.TEST_RPC_URL) {
-        return process.env.TEST_RPC_URL;
-    }
-
-    switch (networkName) {
-        case "monti_spl":
-            return "https://montispl-i.devnet.romeprotocol.xyz/";
-        case "local":
-            return "http://localhost:9090";
-        default:
-            throw new Error(
-                `Unknown RPC URL for network ${networkName}. Set TEST_RPC_URL to run this test.`,
-            );
-    }
 }
 
 function isHex32(value: string): boolean {
@@ -124,10 +107,11 @@ describe("ERC20SPLFactory integration", { concurrency: false }, function () {
         const factoryCode = await publicClient.getCode({ address: factoryAddress });
         assert.ok(factoryCode && factoryCode !== "0x", `No contract code at ${factoryAddress}`);
 
+        const connection = await hardhat.network.connect();
         const accountBPrivateKey = generatePrivateKey();
         accountBWallet = createWalletClient({
             account: privateKeyToAccount(accountBPrivateKey),
-            transport: http(resolveRpcUrl(networkName)),
+            transport: custom(connection.provider),
         });
 
         const accountBBalance = await publicClient.getBalance({

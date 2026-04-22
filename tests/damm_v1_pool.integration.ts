@@ -77,6 +77,10 @@ describe("DAMMv1Pool integration", function () {
             address: selected.address,
             txHash: "",
             blockNumber: "0",
+            tokenAMint: "",
+            tokenBMint: "",
+            tokenAAddress: "",
+            tokenBAddress: "",
         };
 
         poolAddress = selected.address;
@@ -366,15 +370,11 @@ describe("DAMMv1Pool integration", function () {
             [tokenInContract, "token in"],
             [tokenOutContract, "token out"],
         ] as const) {
-            try {
-                await tokenContract.read.get_token_account([deployer.account.address]);
-            } catch {
-                const ensureAccountTxHash = await tokenContract.write.ensure_token_account([deployer.account.address], {
-                    account: deployer.account,
-                });
-                const ensureAccountReceipt = await publicClient.waitForTransactionReceipt({ hash: ensureAccountTxHash });
-                assert.equal(ensureAccountReceipt.status, "success", `ensure ${label} token account tx failed`);
-            }
+            const ensureAccountTxHash = await tokenContract.write.ensure_token_account([deployer.account.address], {
+                account: deployer.account,
+            });
+            const ensureAccountReceipt = await publicClient.waitForTransactionReceipt({ hash: ensureAccountTxHash });
+            assert.equal(ensureAccountReceipt.status, "success", `ensure ${label} token account tx failed`);
         }
 
         const debugSwapAccounts = await erc20pool.read.debugSwapExactTokensForTokens(

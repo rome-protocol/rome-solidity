@@ -45,7 +45,7 @@ export default defineConfig({
     monti_spl: {
       type: "http",
       chainType: "l1",
-      url: "https://montispl-i.devnet.romeprotocol.xyz/",
+      url: "https://subura.devnet.romeprotocol.xyz/proxy",
       accounts: [configVariable("MONTI_SPL_PRIVATE_KEY")]
     },
     local: {
