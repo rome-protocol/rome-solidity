@@ -50,5 +50,24 @@
         }
       ]
     }
+  },
+  "UniswapV2Romeswap": {
+    "deployedAt": "2026-04-21T22:50:12.362Z",
+    "network": "marcus",
+    "chainId": 121226,
+    "deployer": "0x109B92c1B867dbF0955928722Ca46db0a1F6e484",
+    "contracts": {
+      "WETH9": "0xBD0a59183Cd4178b8B000036C64C7AEef4619be1",
+      "Multicall": "0x701c4129394129f2B8244f6A68806EC43AeC5eC1",
+      "UniswapV2Factory": "0xE33fea3DF27D7Bfe28c774b10E8891802eC7Ab04",
+      "UniswapV2Router": "0xddbb7D989B70ED93CA0849c0b9a007F6E0009359",
+      "ERC20Factory": "0x4FeceADDc901ac5b6276D232C88521583485b406",
+      "ERC20SPLFactory": "0x1551cb2767291D033DA2e242FD69bc86428C5D64"
+    },
+    "notes": "Deployed via rome-uniswap-v2 hardhat task. Solana payer wallet 62vCmY73DEHv1rNbWyQQtq5MUR4DiwUyvwf9RrXYqHXf funded with 5 SOL, swapped 3 SOL for USDC on Meteora pool CykBzSN…, bridged 5 USDC to deployer via rome-apps CLI deposit."
+  },
+  "ERC20SPLFactory": {
+    "address": "0x266c57c28fd55ad6b7e3a503ba29eb1510c1574d",
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
   }
 }

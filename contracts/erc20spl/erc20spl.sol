@@ -12,6 +12,14 @@ import {Convert} from "../convert.sol";
 contract ERC20Users {
     bytes32 payer_salt = Convert.bytes_to_bytes32(bytes("PAYER"));
 
+    // Per-user payer PDA prefund. Sized to cover ~5 ATA creations (each ATA
+    // is ~2,040,000 lamports rent-exempt). Was 1e9 (1 SOL) which prefunded
+    // ~500 ATAs — wildly over-provisioned for typical users and an effective
+    // $10 onboarding tax. 1e7 (0.01 SOL) costs ~$0.10 in Rome's current gas
+    // pricing and still leaves headroom above Solana's 890,880-lamport
+    // rent-exempt floor that create_payer's require() enforces.
+    uint64 constant PAYER_PREFUND_LAMPORTS = 10_000_000;
+
     struct User {
         bytes32 payer;
         bytes32 owner;
@@ -27,11 +35,11 @@ contract ERC20Users {
             User memory new_user = User({
                 payer: RomeEVMAccount.get_payer(user, payer_salt),
                 owner: RomeEVMAccount.pda(user),
-                seed: payer_salt 
+                seed: payer_salt
             });
 
             users[user] = new_user;
-            RomeEVMAccount.create_payer(user, 1000000000, payer_salt);
+            RomeEVMAccount.create_payer(user, PAYER_PREFUND_LAMPORTS, payer_salt);
             return new_user;
         } else {
             return existing_user;
