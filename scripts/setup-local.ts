@@ -2,6 +2,12 @@ import hardhat from "hardhat";
 import fs from "node:fs";
 import path from "node:path";
 import { getAddress, isAddress } from "viem";
+import {
+    deployPaymaster,
+    deploySplErc20,
+    deployWithdraw,
+} from "./bridge/deploy.js";
+import { SPL_MINTS } from "./bridge/constants.js";
 
 /**
  * Local Rome stack setup script for rome-solidity testing.
@@ -251,6 +257,43 @@ async function main() {
 
     deployments.OracleGatewayV2.switchboardFeeds = sbFeeds;
 
+    // ─── 6. Bridge contracts ───
+    console.log("\n=== 6/6 Deploying Rome Bridge contracts ===");
+
+    // CPI precompile address — defined in contracts/interface.sol as 0xff..08.
+    const cpiProgramAddress = "0xFF00000000000000000000000000000000000008" as `0x${string}`;
+
+    const paymaster = await deployPaymaster(deployer.account.address);
+    deployments.RomeBridgePaymaster = { address: paymaster.address };
+
+    const usdcWrapper = await deploySplErc20(
+        "SPL_ERC20_USDC",
+        "Rome USDC",
+        "rUSDC",
+        SPL_MINTS.USDC_NATIVE,
+        cpiProgramAddress,
+    );
+    deployments.SPL_ERC20_USDC = { address: usdcWrapper.address, mintId: SPL_MINTS.USDC_NATIVE };
+
+    const wethWrapper = await deploySplErc20(
+        "SPL_ERC20_WETH",
+        "Rome wETH",
+        "rETH",
+        SPL_MINTS.WETH_WORMHOLE,
+        cpiProgramAddress,
+    );
+    deployments.SPL_ERC20_WETH = { address: wethWrapper.address, mintId: SPL_MINTS.WETH_WORMHOLE };
+
+    try {
+        await deployWithdraw(paymaster.address, usdcWrapper.address, wethWrapper.address);
+        deployments.RomeBridgeWithdraw = { address: "(see deployments/local.json)" };
+    } catch (err) {
+        console.warn(
+            "Skipping RomeBridgeWithdraw deploy — Phase 1.5 PDA derivation pending:",
+            (err as Error).message,
+        );
+    }
+
     // ─── Save deployments ───
     const deploymentsDir = path.resolve(process.cwd(), "deployments");
     fs.mkdirSync(deploymentsDir, { recursive: true });
@@ -268,6 +311,7 @@ async function main() {
     console.log(`Meteora: factory + 1 pool`);
     console.log(`Pyth feeds: ${successFeeds.length}/${feeds.length} created`);
     console.log(`Switchboard feeds: ${successSbFeeds.length}/${sbFeeds.length} created`);
+    console.log(`Bridge: paymaster + rUSDC wrapper + rETH wrapper (withdraw deferred to Phase 1.5)`);
     const allFailed = [...failedFeeds, ...failedSbFeeds];
     if (allFailed.length > 0) {
         console.log(`Failed feeds: ${allFailed.map((f: any) => f.pair).join(", ")}`);

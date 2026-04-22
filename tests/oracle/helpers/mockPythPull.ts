@@ -25,6 +25,10 @@ export interface PythPullAccountParams {
     emaPrice?: bigint;
     emaConf?: bigint;
     feedId?: string;
+    /// Verification variant byte at offset 40. Pyth's Anchor enum uses
+    /// 0x00 = Partial, 0x01 = Full. Defaults to Full. Set to 0x00 to exercise
+    /// the parser's variant guard (M-1).
+    verificationVariant?: number;
 }
 
 const DEFAULT_DISCRIMINATOR = 0x22f123639d7ef4cdn;
@@ -65,8 +69,8 @@ export function buildPythPullAccount(params: PythPullAccountParams): `0x${string
         buf[i] = Number((disc >> BigInt((7 - i) * 8)) & 0xffn);
     }
 
-    // verification_level = Full at offset 40
-    buf[40] = 0x01;
+    // verification_level at offset 40 (default 0x01 = Full)
+    buf[40] = params.verificationVariant ?? 0x01;
 
     // price at offset 73 (i64, LE)
     writeInt64LE(buf, 73, params.price);

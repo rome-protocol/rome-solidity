@@ -1,6 +1,11 @@
 {
+  "name": "@rome-protocol/rome-solidity",
+  "version": "0.1.0",
+  "private": true,
   "dependencies": {
     "@openzeppelin/contracts": "^5.6.1",
+    "@solana/web3.js": "^1.98.4",
+    "bs58": "^6.0.0",
     "hardhat": "^3.1.12"
   },
   "type": "module",
@@ -14,6 +19,10 @@
     "forge-std": "github:foundry-rs/forge-std#v1.9.4",
     "mocha": "^11.7.5",
     "typescript": "~5.8.0",
-    "viem": "^2.47.4"
+    "viem": "^2.47.4",
+    "vitest": "^4.1.4"
+  },
+  "overrides": {
+    "utf-8-validate": "^6.0.2"
   }
 }

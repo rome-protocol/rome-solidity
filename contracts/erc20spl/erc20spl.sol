@@ -47,6 +47,11 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     ERC20Users private _users;
     mapping(address => bytes32) private _accounts;
 
+    /// @notice Public reader for the SPL token account owned by this EVM user.
+    /// @dev Returns the cached ATA; callers may treat a zero return as "not yet initialized".
+    function getAta(address user) external view returns (bytes32) {
+        return _accounts[user];
+    }
 
     error ERC20InvalidApprover(address approver);
     error ERC20InvalidSpender(address spender);
@@ -77,7 +82,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     function create_token_account(address user, bytes32 payer) public returns(bytes32) {
         bytes32 new_user = _users.ensure_user(user);
         (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data, bytes32 associated_account_address) = 
-            AssociatedSplToken.create_associated_token_account(
+            AssociatedSplToken.create_associated_token_account_idempotent(
                 payer,
                 new_user,
                 mint_id, 

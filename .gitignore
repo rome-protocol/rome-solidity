@@ -24,4 +24,11 @@
 # Local deployment artifacts
 deployments/local.json
 
-*/target/*
+# Demo-only Sepolia signer key (CCTP inbound)
+.secrets/
+
+# Remix / contracts IDE artifacts
+/contracts/artifacts
+/contracts/.deps
+/contracts/.states
+/contracts/remix.config.json
