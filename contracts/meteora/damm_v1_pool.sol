@@ -1155,26 +1155,4 @@ contract ERC20DAMMv1Pool {
 
         require(success, string(result));
     }
-
-    function debugSwapExactTokensForTokens(
-        bytes32 payer,
-        address token_in,
-        uint256 amount_in,
-        uint256 min_amount_out
-    ) external view returns (ICrossProgramInvocation.AccountMeta[] memory accounts) {
-        DAMMv1Pool.PoolToken in_token =
-            address(tokenA) == token_in
-                ? DAMMv1Pool.PoolToken.TokenA
-                : DAMMv1Pool.PoolToken.TokenB;
-
-        require(amount_in <= type(uint64).max, "amount_in exceeds uint64");
-        require(min_amount_out <= type(uint64).max, "min_amount_out exceeds uint64");
-
-        accounts = DAMMv1Lib.build_swap_account_metas(
-            internal_pool.make_swap_accounts_from_pool(
-                payer,
-                in_token
-            )
-        );
-    }
 }

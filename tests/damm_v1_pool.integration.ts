@@ -377,19 +377,6 @@ describe("DAMMv1Pool integration", function () {
             assert.equal(ensureAccountReceipt.status, "success", `ensure ${label} token account tx failed`);
         }
 
-        const debugSwapAccounts = await erc20pool.read.debugSwapExactTokensForTokens(
-            [payer, tokenInAddress, amountIn, minAmountOut],
-            {
-                account: deployer.account.address,
-            },
-        );
-
-        console.log("Prog dynamic AMM: ", await pool.read.prog_dynamic_amm());
-        assert.equal(debugSwapAccounts.length, 15, "debugSwapExactTokensForTokens must return 15 account metas");
-        assert.equal(debugSwapAccounts[0].pubkey.toLowerCase(), poolPubkey.toLowerCase(), "pool meta must match pool pubkey");
-        assert.equal(debugSwapAccounts[12].is_signer, true, "user meta must be signer");
-        assert.equal(debugSwapAccounts[13].pubkey.toLowerCase(), (await pool.read.prog_dynamic_vault()).toLowerCase(), "vault program meta must match");
-
         console.log("User input token account ", await tokenInContract.read.get_token_account([deployer.account.address]));
 
         const inputBalanceBefore = await tokenInContract.read.balanceOf([deployer.account.address]);
