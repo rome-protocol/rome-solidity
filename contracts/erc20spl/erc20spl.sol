@@ -94,14 +94,21 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
      * Helper function to create an associated token account for a user if it doesn't exist, and return the associated token account address.
      * @param user EVM address of the user for whom to create the associated token account
      * @return associated_account_address The address of the associated token account created or existing for the user
+     *
+     * Uses create_associated_token_account_idempotent so the call succeeds even
+     * when the user's ATA already exists on Solana (common after a bridge
+     * inbound — tokens land in the PDA ATA before the wrapper is ever aware
+     * of them). Without the idempotent variant, the CPI errors on existing
+     * ATAs, which Rome surfaces as "Cannot revert cross-program invocation"
+     * because the CPI is already committed by the time the require() fires.
      */
     function create_token_account(address user, ERC20Users.User memory initiator) public returns(bytes32) {
         ERC20Users.User memory new_user = _users.ensure_user(user);
-        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data, bytes32 associated_account_address) = 
-            AssociatedSplToken.create_associated_token_account(
+        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data, bytes32 associated_account_address) =
+            AssociatedSplToken.create_associated_token_account_idempotent(
                 initiator.payer,
                 new_user.owner,
-                mint_id, 
+                mint_id,
                 system_program_id,
                 SplTokenLib.SPL_TOKEN_PROGRAM,
                 associated_token_program_id

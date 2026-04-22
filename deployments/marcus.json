@@ -67,7 +67,7 @@
     "notes": "Deployed via rome-uniswap-v2 hardhat task. Solana payer wallet 62vCmY73DEHv1rNbWyQQtq5MUR4DiwUyvwf9RrXYqHXf funded with 5 SOL, swapped 3 SOL for USDC on Meteora pool CykBzSN…, bridged 5 USDC to deployer via rome-apps CLI deposit."
   },
   "ERC20SPLFactory": {
-    "address": "0x266c57c28fd55ad6b7e3a503ba29eb1510c1574d",
+    "address": "0x3e78bc1692dd82a9c5a7ca5b745663f5a0c9fc59",
     "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
   }
 }
