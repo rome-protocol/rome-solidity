@@ -81,6 +81,33 @@ async function assertSolanaProgramExists(
     assert.equal(info[4], true, `${label} program account must be executable`);
 }
 
+function readU64LE(data: `0x${string}` | string, offset: number): bigint {
+    const hex = data.startsWith("0x") ? data.slice(2) : data;
+    const start = offset * 2;
+    const end = start + 16;
+    const value = hex.slice(start, end);
+
+    let result = 0n;
+    for (let i = 0; i < 8; i++) {
+        const byteHex = value.slice(i * 2, i * 2 + 2) || "00";
+        result |= BigInt(parseInt(byteHex, 16)) << (8n * BigInt(i));
+    }
+
+    return result;
+}
+
+async function readSplTokenAmount(
+    cpiProgram: any,
+    pubkey: `0x${string}` | string,
+): Promise<bigint> {
+    const info = await cpiProgram.read.account_info([pubkey]);
+    if (info[0] === 0n) {
+        return 0n;
+    }
+
+    return readU64LE(info[5], 64);
+}
+
 async function findExistingConfig(factory: any, cpiProgram: any, maxIndex = 16): Promise<`0x${string}`> {
     for (let index = 0n; index < BigInt(maxIndex); index++) {
         const config = await factory.read.deriveConfigKey([index]);
@@ -174,12 +201,18 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
 
     let poolPubkey: `0x${string}`;
     let wrappedPoolAddress: `0x${string}`;
+    let wrappedPool: any;
+    let internalPool: any;
+    let userPoolLp: `0x${string}`;
+    let addedLiquidityLpAmount = 0n;
 
     const mintAmount = 2_000_000_000_000n;
     const poolTokenAAmount = 500_000_000_000n;
     const poolTokenBAmount = 500_000_000_000n;
     const swapAmountIn = 100_000_000n;
     const minAmountOut = 0n;
+    const addLiquidityTokenAAmount = 100_000_000n;
+    const addLiquidityTokenBAmount = 100_000_000n;
 
     before(async function () {
         const { viem: connectedViem, networkName: connectedNetworkName } = await hardhat.network.connect() as unknown as {
@@ -387,6 +420,17 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
 
         wrappedPoolAddress = await factory.read.getPool([tokenAAddress, tokenBAddress]);
         assert.notEqual(wrappedPoolAddress, zeroAddress, "wrapped pool must be registered");
+
+        wrappedPool = await viem.getContractAt("ERC20DAMMv1Pool", wrappedPoolAddress, {
+            client: {
+                public: publicClient,
+                wallet: deployer,
+            },
+        });
+        internalPool = await viem.getContractAt("DAMMv1Pool", await wrappedPool.read.internal_pool());
+
+        const liquidityAccounts = await internalPool.read.make_balance_liquidity_accounts_from_pool([payer]);
+        userPoolLp = liquidityAccounts.user_pool_lp;
     });
 
     it("executes swapExactTokensForTokens on the router", async function () {
@@ -417,6 +461,114 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
         assert.ok(
             outputBalanceAfter > outputBalanceBefore,
             "output token balance must increase after the router swap",
+        );
+    });
+
+    it("executes addLiquidity on the router", async function () {
+        const ensurePoolLpTokenAccountTxHash = await routerFromUser.write.ensurePoolLpTokenAccount(
+            [tokenAAddress, tokenBAddress],
+            {
+                account: deployer.account,
+            },
+        );
+        await waitForSuccess(publicClient, ensurePoolLpTokenAccountTxHash, "router ensurePoolLpTokenAccount");
+        await assertSolanaAccountExists(cpiProgram, userPoolLp, "user pool LP account");
+
+        const tokenABalanceBefore = await tokenAFromUser.read.balanceOf([deployer.account.address]);
+        const tokenBBalanceBefore = await tokenBFromUser.read.balanceOf([deployer.account.address]);
+        const lpBalanceBefore = await readSplTokenAmount(cpiProgram, userPoolLp);
+
+        const preparedAddLiquidity = await routerFromUser.read.prepareAddLiquidity([
+            tokenAAddress,
+            tokenBAddress,
+            deployer.account.address,
+            addLiquidityTokenAAmount,
+            addLiquidityTokenBAmount,
+            0n,
+        ]);
+        const quotedPoolTokenAmount = preparedAddLiquidity[0];
+        const liquidityAccounts = preparedAddLiquidity[1];
+
+        assert.ok(quotedPoolTokenAmount > 0n, "quoted pool token amount must be positive");
+        assert.equal(
+            liquidityAccounts.user_pool_lp.toLowerCase(),
+            userPoolLp.toLowerCase(),
+            "prepared user_pool_lp must match derived LP ATA",
+        );
+
+        const addLiquidityTxHash = await routerFromUser.write.addLiquidity(
+            [
+                tokenAAddress,
+                tokenBAddress,
+                quotedPoolTokenAmount,
+                addLiquidityTokenAAmount,
+                addLiquidityTokenBAmount,
+                liquidityAccounts,
+            ],
+            {
+                account: deployer.account,
+            },
+        );
+        await waitForSuccess(publicClient, addLiquidityTxHash, "router addLiquidity");
+
+        const tokenABalanceAfter = await tokenAFromUser.read.balanceOf([deployer.account.address]);
+        const tokenBBalanceAfter = await tokenBFromUser.read.balanceOf([deployer.account.address]);
+        const lpBalanceAfter = await readSplTokenAmount(cpiProgram, userPoolLp);
+
+        assert.ok(
+            tokenABalanceAfter < tokenABalanceBefore,
+            "token A balance must decrease after addLiquidity",
+        );
+        assert.ok(
+            tokenBBalanceAfter < tokenBBalanceBefore,
+            "token B balance must decrease after addLiquidity",
+        );
+        assert.ok(
+            lpBalanceAfter > lpBalanceBefore,
+            "LP balance must increase after addLiquidity",
+        );
+
+        addedLiquidityLpAmount = lpBalanceAfter - lpBalanceBefore;
+        assert.ok(addedLiquidityLpAmount > 0n, "minted LP amount must be positive");
+    });
+
+    it("executes removeLiquidity on the router", async function () {
+        assert.ok(addedLiquidityLpAmount > 0n, "removeLiquidity test requires prior addLiquidity");
+
+        const tokenABalanceBefore = await tokenAFromUser.read.balanceOf([deployer.account.address]);
+        const tokenBBalanceBefore = await tokenBFromUser.read.balanceOf([deployer.account.address]);
+        const lpBalanceBefore = await readSplTokenAmount(cpiProgram, userPoolLp);
+
+        const removeLiquidityTxHash = await routerFromUser.write.removeLiquidity(
+            [
+                tokenAAddress,
+                tokenBAddress,
+                addedLiquidityLpAmount,
+                0n,
+                0n,
+            ],
+            {
+                account: deployer.account,
+            },
+        );
+        await waitForSuccess(publicClient, removeLiquidityTxHash, "router removeLiquidity");
+
+        const tokenABalanceAfter = await tokenAFromUser.read.balanceOf([deployer.account.address]);
+        const tokenBBalanceAfter = await tokenBFromUser.read.balanceOf([deployer.account.address]);
+        const lpBalanceAfter = await readSplTokenAmount(cpiProgram, userPoolLp);
+
+        assert.equal(
+            lpBalanceAfter,
+            lpBalanceBefore - addedLiquidityLpAmount,
+            "LP balance must decrease by the removed liquidity amount",
+        );
+        assert.ok(
+            tokenABalanceAfter > tokenABalanceBefore,
+            "token A balance must increase after removeLiquidity",
+        );
+        assert.ok(
+            tokenBBalanceAfter > tokenBBalanceBefore,
+            "token B balance must increase after removeLiquidity",
         );
     });
 });

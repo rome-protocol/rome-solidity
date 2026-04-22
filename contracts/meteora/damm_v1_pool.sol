@@ -22,6 +22,10 @@ library DAMMv1Lib {
 
     bytes8 public constant INITIALIZE_CONSTANT_PRODUCT_POOL_WITH_CONFIG2_PREFIX = bytes8(sha256(bytes("global:initialize_permissionless_constant_product_pool_with_config2")));
     bytes8 public constant SWAP_PREFIX = bytes8(sha256(bytes("global:swap")));
+    bytes8 public constant ADD_BALANCE_LIQUIDITY_PREFIX =
+        bytes8(sha256(bytes("global:add_balance_liquidity")));
+    bytes8 public constant REMOVE_BALANCE_LIQUIDITY_PREFIX =
+        bytes8(sha256(bytes("global:remove_balance_liquidity")));
 
     uint256 internal constant POOL_PREFIX_MIN_LEN = 379;
     uint256 internal constant VAULT_MIN_LEN = 1197;
@@ -116,6 +120,26 @@ library DAMMv1Lib {
         bytes32 vault_program;
         bytes32 token_program;
         bytes32 protocol_token_fee;
+    }
+
+    // Shared account layout for balanced add/remove liquidity.
+    struct BalanceLiquidityAccountsInput {
+        bytes32 pool;
+        bytes32 lp_mint;
+        bytes32 user_pool_lp;
+        bytes32 a_vault_lp;
+        bytes32 b_vault_lp;
+        bytes32 a_vault;
+        bytes32 b_vault;
+        bytes32 a_vault_lp_mint;
+        bytes32 b_vault_lp_mint;
+        bytes32 a_token_vault;
+        bytes32 b_token_vault;
+        bytes32 user_a_token;
+        bytes32 user_b_token;
+        bytes32 user;
+        bytes32 vault_program;
+        bytes32 token_program;
     }
 
     struct InitializeVaultAccounts {
@@ -859,9 +883,71 @@ library DAMMv1Lib {
     {
         return abi.encodePacked(SWAP_PREFIX, Convert.u64le(in_amount), Convert.u64le(minimum_out_amount));
     }
+
+    function build_balance_liquidity_account_metas(BalanceLiquidityAccountsInput memory a)
+    internal
+    pure
+    returns (ICrossProgramInvocation.AccountMeta[] memory metas)
+    {
+        metas = new ICrossProgramInvocation.AccountMeta[](16);
+
+        metas[0] = ICrossProgramInvocation.AccountMeta(a.pool, false, true);
+        metas[1] = ICrossProgramInvocation.AccountMeta(a.lp_mint, false, true);
+        metas[2] = ICrossProgramInvocation.AccountMeta(a.user_pool_lp, false, true);
+        metas[3] = ICrossProgramInvocation.AccountMeta(a.a_vault_lp, false, true);
+        metas[4] = ICrossProgramInvocation.AccountMeta(a.b_vault_lp, false, true);
+        metas[5] = ICrossProgramInvocation.AccountMeta(a.a_vault, false, true);
+        metas[6] = ICrossProgramInvocation.AccountMeta(a.b_vault, false, true);
+        metas[7] = ICrossProgramInvocation.AccountMeta(a.a_vault_lp_mint, false, true);
+        metas[8] = ICrossProgramInvocation.AccountMeta(a.b_vault_lp_mint, false, true);
+        metas[9] = ICrossProgramInvocation.AccountMeta(a.a_token_vault, false, true);
+        metas[10] = ICrossProgramInvocation.AccountMeta(a.b_token_vault, false, true);
+        metas[11] = ICrossProgramInvocation.AccountMeta(a.user_a_token, false, true);
+        metas[12] = ICrossProgramInvocation.AccountMeta(a.user_b_token, false, true);
+        metas[13] = ICrossProgramInvocation.AccountMeta(a.user, true, false);
+        metas[14] = ICrossProgramInvocation.AccountMeta(a.vault_program, false, false);
+        metas[15] = ICrossProgramInvocation.AccountMeta(a.token_program, false, false);
+    }
+
+    function build_add_balance_liquidity_ix_data(
+        uint64 pool_token_amount,
+        uint64 maximum_token_a_amount,
+        uint64 maximum_token_b_amount
+    )
+    internal
+    pure
+    returns (bytes memory)
+    {
+        return abi.encodePacked(
+            ADD_BALANCE_LIQUIDITY_PREFIX,
+            Convert.u64le(pool_token_amount),
+            Convert.u64le(maximum_token_a_amount),
+            Convert.u64le(maximum_token_b_amount)
+        );
+    }
+
+    function build_remove_balance_liquidity_ix_data(
+        uint64 pool_token_amount,
+        uint64 minimum_a_token_out,
+        uint64 minimum_b_token_out
+    )
+    internal
+    pure
+    returns (bytes memory)
+    {
+        return abi.encodePacked(
+            REMOVE_BALANCE_LIQUIDITY_PREFIX,
+            Convert.u64le(pool_token_amount),
+            Convert.u64le(minimum_a_token_out),
+            Convert.u64le(minimum_b_token_out)
+        );
+    }
 }
 
 contract DAMMv1Pool {
+    uint128 internal constant LOCKED_PROFIT_DEGRADATION_DENOMINATOR =
+        1_000_000_000_000;
+
     enum PoolToken {
         TokenA,
         TokenB
@@ -874,6 +960,8 @@ contract DAMMv1Pool {
 
     error ZeroReserve();
     error DivisionByZero();
+    error MathOverflow();
+    error InvalidCurrentTime(uint64 current_time, uint64 last_report);
 
     bool public initialized;
 
@@ -958,10 +1046,111 @@ contract DAMMv1Pool {
         pool_type = pool.pool_type;
     }
 
-    function get_reserves()
+    function calculate_locked_profit(
+        DAMMv1Lib.LockedProfitTracker memory tracker,
+        uint64 current_time
+    )
+    public
+    pure
+    returns (uint64)
+    {
+        if (current_time < tracker.last_report) {
+            revert InvalidCurrentTime(current_time, tracker.last_report);
+        }
+
+        uint128 duration = uint128(current_time - tracker.last_report);
+        uint128 locked_fund_ratio = duration
+            * uint128(tracker.locked_profit_degradation);
+
+        if (locked_fund_ratio > LOCKED_PROFIT_DEGRADATION_DENOMINATOR) {
+            return 0;
+        }
+
+        uint128 locked_profit = uint128(tracker.last_updated_locked_profit)
+            * (LOCKED_PROFIT_DEGRADATION_DENOMINATOR - locked_fund_ratio)
+            / LOCKED_PROFIT_DEGRADATION_DENOMINATOR;
+
+        if (locked_profit > type(uint64).max) {
+            revert MathOverflow();
+        }
+
+        return uint64(locked_profit);
+    }
+
+    function get_unlocked_amount(
+        DAMMv1Lib.VaultState memory vault_state,
+        uint64 current_time
+    )
+    public
+    pure
+    returns (uint64)
+    {
+        uint64 locked_profit = calculate_locked_profit(
+            vault_state.locked_profit_tracker,
+            current_time
+        );
+
+        if (locked_profit > vault_state.total_amount) {
+            revert MathOverflow();
+        }
+
+        return vault_state.total_amount - locked_profit;
+    }
+
+    function get_amount_by_share(
+        DAMMv1Lib.VaultState memory vault_state,
+        uint64 current_time,
+        uint64 share,
+        uint64 total_supply
+    )
+    public
+    pure
+    returns (uint64)
+    {
+        if (total_supply == 0) {
+            revert DivisionByZero();
+        }
+
+        uint64 total_amount = get_unlocked_amount(vault_state, current_time);
+        uint128 amount = uint128(share) * uint128(total_amount)
+            / uint128(total_supply);
+
+        if (amount > type(uint64).max) {
+            revert MathOverflow();
+        }
+
+        return uint64(amount);
+    }
+
+    function get_unmint_amount(
+        DAMMv1Lib.VaultState memory vault_state,
+        uint64 current_time,
+        uint64 out_token,
+        uint64 total_supply
+    )
+    public
+    pure
+    returns (uint64)
+    {
+        uint64 total_amount = get_unlocked_amount(vault_state, current_time);
+        if (total_amount == 0) {
+            revert DivisionByZero();
+        }
+
+        uint128 amount = uint128(out_token) * uint128(total_supply)
+            / uint128(total_amount);
+
+        if (amount > type(uint64).max) {
+            revert MathOverflow();
+        }
+
+        return uint64(amount);
+    }
+
+    function get_pool_token_amounts()
     public
     view
-    returns (Reserves memory r)
+    returns (uint64 token_a_amount, uint64 token_b_amount)
     {
         DAMMv1Lib.VaultState memory vault_a_state = DAMMv1Lib.load_vault(a_vault, cpi_program);
         DAMMv1Lib.VaultState memory vault_b_state = DAMMv1Lib.load_vault(b_vault, cpi_program);
@@ -971,18 +1160,27 @@ contract DAMMv1Pool {
 
         uint64 pool_lp_a = SplTokenLib.load_token_amount(a_vault_lp, cpi_program);
         uint64 pool_lp_b = SplTokenLib.load_token_amount(b_vault_lp, cpi_program);
+        uint64 current_time = uint64(block.timestamp);
 
-        uint128 a_reserve = a_lp_mint.supply == 0
+        token_a_amount = a_lp_mint.supply == 0
             ? 0
-            : uint128(pool_lp_a) * uint128(vault_a_state.total_amount)
-            / uint128(a_lp_mint.supply);
+            : get_amount_by_share(vault_a_state, current_time, pool_lp_a, a_lp_mint.supply);
 
-        uint128 b_reserve = b_lp_mint.supply == 0
+        token_b_amount = b_lp_mint.supply == 0
             ? 0
-            : uint128(pool_lp_b) * uint128(vault_b_state.total_amount)
-            / uint128(b_lp_mint.supply);
+            : get_amount_by_share(vault_b_state, current_time, pool_lp_b, b_lp_mint.supply);
+    }
 
-        r = Reserves({a_reserve: a_reserve, b_reserve: b_reserve});
+    function get_reserves()
+    public
+    view
+    returns (Reserves memory r)
+    {
+        (uint64 token_a_amount, uint64 token_b_amount) = get_pool_token_amounts();
+        r = Reserves({
+            a_reserve: uint128(token_a_amount),
+            b_reserve: uint128(token_b_amount)
+        });
     }
 
     function get_price_e18(PoolToken token)
@@ -1075,6 +1273,48 @@ contract DAMMv1Pool {
             protocol_token_fee: protocol_token_fee
         });
     }
+
+    function make_balance_liquidity_accounts_from_pool(
+        bytes32 user
+    )
+    public
+    view
+    returns (DAMMv1Lib.BalanceLiquidityAccountsInput memory out)
+    {
+        out = DAMMv1Lib.BalanceLiquidityAccountsInput({
+            pool: pool_address,
+            lp_mint: lp_mint,
+            user_pool_lp: AssociatedSplToken.get_associated_token_address_with_program_id(
+                user,
+                lp_mint,
+                SplTokenLib.SPL_TOKEN_PROGRAM,
+                AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
+            ),
+            a_vault_lp: a_vault_lp,
+            b_vault_lp: b_vault_lp,
+            a_vault: a_vault,
+            b_vault: b_vault,
+            a_vault_lp_mint: vault_a.lp_mint,
+            b_vault_lp_mint: vault_b.lp_mint,
+            a_token_vault: vault_a.token_vault,
+            b_token_vault: vault_b.token_vault,
+            user_a_token: AssociatedSplToken.get_associated_token_address_with_program_id(
+                user,
+                token_a_mint,
+                SplTokenLib.SPL_TOKEN_PROGRAM,
+                AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
+            ),
+            user_b_token: AssociatedSplToken.get_associated_token_address_with_program_id(
+                user,
+                token_b_mint,
+                SplTokenLib.SPL_TOKEN_PROGRAM,
+                AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
+            ),
+            user: user,
+            vault_program: prog_dynamic_vault,
+            token_program: SplTokenLib.SPL_TOKEN_PROGRAM
+        });
+    }
 }
 
 contract ERC20DAMMv1Pool {
@@ -1082,6 +1322,9 @@ contract ERC20DAMMv1Pool {
     ERC20Users private immutable users;
     SPL_ERC20 private immutable tokenA;
     SPL_ERC20 private immutable tokenB;
+    
+    error InvalidLiquidityAccountsUser(bytes32 actual, bytes32 expected);
+    error InvalidLiquidityAccountsPool(bytes32 actual, bytes32 expected);
 
     constructor(
         DAMMv1Pool _internal_pool,
@@ -1115,6 +1358,68 @@ contract ERC20DAMMv1Pool {
 
     function get_fees_e18() external view returns (uint256) {
         return internal_pool.get_fees_e18();
+    }
+
+    function quoteAddLiquidity(
+        uint256 max_token_a_amount,
+        uint256 max_token_b_amount,
+        uint256 slippage_rate
+    )
+    public
+    view
+    returns (uint64)
+    {
+        require(max_token_a_amount <= type(uint64).max, "max_token_a_amount exceeds uint64");
+        require(max_token_b_amount <= type(uint64).max, "max_token_b_amount exceeds uint64");
+        require(slippage_rate <= type(uint64).max, "slippage_rate exceeds uint64");
+        require(slippage_rate <= 100, "slippage_rate exceeds 100");
+
+        (uint64 token_a_amount, uint64 token_b_amount) = internal_pool.get_pool_token_amounts();
+        require(token_a_amount != 0, "token_a_amount is zero");
+        require(token_b_amount != 0, "token_b_amount is zero");
+
+        SplTokenLib.SplMint memory pool_lp_mint = SplTokenLib.load_mint(
+            internal_pool.lp_mint(),
+            internal_pool.cpi_program()
+        );
+
+        uint256 pool_token_by_a = max_token_a_amount
+            * uint256(pool_lp_mint.supply)
+            / uint256(token_a_amount);
+
+        uint256 pool_token_by_b = max_token_b_amount
+            * uint256(pool_lp_mint.supply)
+            / uint256(token_b_amount);
+
+        uint256 pool_token_amount = _min(pool_token_by_a, pool_token_by_b)
+            * (100 - slippage_rate)
+            / 100;
+
+        require(pool_token_amount <= type(uint64).max, "pool_token_amount exceeds uint64");
+        return uint64(pool_token_amount);
+    }
+
+    function prepareAddLiquidity(
+        address user_evm,
+        uint256 max_token_a_amount,
+        uint256 max_token_b_amount,
+        uint256 slippage_rate
+    )
+    external
+    view
+    returns (
+        uint64 pool_token_amount,
+        DAMMv1Lib.BalanceLiquidityAccountsInput memory liquidity_accounts
+    )
+    {
+        bytes32 user = users.get_user(user_evm);
+
+        pool_token_amount = quoteAddLiquidity(
+            max_token_a_amount,
+            max_token_b_amount,
+            slippage_rate
+        );
+        liquidity_accounts = internal_pool.make_balance_liquidity_accounts_from_pool(user);
     }
 
     function swapExactTokensForTokens(
@@ -1154,5 +1459,135 @@ contract ERC20DAMMv1Pool {
         );
 
         require(success, string(result));
+    }
+
+    function removeLiquidity(
+        uint256 pool_token_amount,
+        uint256 minimum_a_token_out,
+        uint256 minimum_b_token_out
+    ) external {
+        bytes32 user = users.get_user(msg.sender);
+
+        require(pool_token_amount <= type(uint64).max, "pool_token_amount exceeds uint64");
+        require(minimum_a_token_out <= type(uint64).max, "minimum_a_token_out exceeds uint64");
+        require(minimum_b_token_out <= type(uint64).max, "minimum_b_token_out exceeds uint64");
+
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            DAMMv1Lib.build_balance_liquidity_account_metas(
+                internal_pool.make_balance_liquidity_accounts_from_pool(user)
+            );
+
+        bytes memory data = DAMMv1Lib.build_remove_balance_liquidity_ix_data(
+            uint64(pool_token_amount),
+            uint64(minimum_a_token_out),
+            uint64(minimum_b_token_out)
+        );
+        bytes32[] memory seeds = new bytes32[](1);
+        seeds[0] = users.payer_salt();
+
+        (bool success, bytes memory result) = address(internal_pool.cpi_program()).delegatecall(
+            abi.encodeWithSelector(
+                ICrossProgramInvocation.invoke_signed.selector,
+                internal_pool.prog_dynamic_amm(),
+                accounts,
+                data,
+                seeds
+            )
+        );
+
+        require(success, string(result));
+    }
+
+    function addLiquidity(
+        uint256 pool_token_amount,
+        uint256 max_token_a_amount,
+        uint256 max_token_b_amount,
+        DAMMv1Lib.BalanceLiquidityAccountsInput memory liquidity_accounts
+    ) external {
+        bytes32 user = users.get_user(msg.sender);
+        bytes32 pool_address = internal_pool.pool_address();
+
+        require(pool_token_amount <= type(uint64).max, "pool_token_amount exceeds uint64");
+        require(max_token_a_amount <= type(uint64).max, "max_token_a_amount exceeds uint64");
+        require(max_token_b_amount <= type(uint64).max, "max_token_b_amount exceeds uint64");
+
+        if (liquidity_accounts.user != user) {
+            revert InvalidLiquidityAccountsUser(liquidity_accounts.user, user);
+        }
+        if (liquidity_accounts.pool != pool_address) {
+            revert InvalidLiquidityAccountsPool(liquidity_accounts.pool, pool_address);
+        }
+
+        ICrossProgramInvocation.AccountMeta[] memory accounts =
+            DAMMv1Lib.build_balance_liquidity_account_metas(liquidity_accounts);
+
+        bytes memory data = DAMMv1Lib.build_add_balance_liquidity_ix_data(
+            uint64(pool_token_amount),
+            uint64(max_token_a_amount),
+            uint64(max_token_b_amount)
+        );
+        bytes32[] memory seeds = new bytes32[](1);
+        seeds[0] = users.payer_salt();
+
+        (bool success, bytes memory result) = address(internal_pool.cpi_program()).delegatecall(
+            abi.encodeWithSelector(
+                ICrossProgramInvocation.invoke_signed.selector,
+                internal_pool.prog_dynamic_amm(),
+                accounts,
+                data,
+                seeds
+            )
+        );
+
+        require(success, string(result));
+    }
+
+    function ensurePoolLpTokenAccount() external returns (bytes32) {
+        bytes32 user = users.get_user(msg.sender);
+        return _createAssociatedTokenAccountIdempotent(
+            user,
+            user,
+            internal_pool.lp_mint()
+        );
+    }
+
+    function _createAssociatedTokenAccountIdempotent(
+        bytes32 funding_address,
+        bytes32 wallet_address,
+        bytes32 token_mint_address
+    ) internal returns (bytes32 associated_account_address) {
+        (
+            bytes32 program_id,
+            ICrossProgramInvocation.AccountMeta[] memory accounts,
+            bytes memory data,
+            bytes32 associated_account_address
+        ) = AssociatedSplToken.create_associated_token_account_idempotent(
+            funding_address,
+            wallet_address,
+            token_mint_address,
+            SystemProgramLib.PROGRAM_ID,
+            SplTokenLib.SPL_TOKEN_PROGRAM,
+            AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
+        );
+
+        bytes32[] memory seeds = new bytes32[](1);
+        seeds[0] = users.payer_salt();
+
+        (bool success, bytes memory result) = address(internal_pool.cpi_program()).delegatecall(
+            abi.encodeWithSelector(
+                ICrossProgramInvocation.invoke_signed.selector,
+                program_id,
+                accounts,
+                data,
+                seeds
+            )
+        );
+
+        require(success, string(result));
+        return associated_account_address;
+    }
+
+    function _min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
     }
 }
