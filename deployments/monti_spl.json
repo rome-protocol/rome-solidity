@@ -1,30 +1,21 @@
 {
   "MeteoraDAMMv1Factory": {
-    "address": "0x054b3c6c826ffa58e5047e72c8ae42cc3af51de2"
+    "address": "0x6ab14dfd059f232e996242a8850b7c3bdabdec66"
   },
   "MeteoraDAMMv1Pools": [
     {
-      "pubkey": "0xa4514882d7c6a6b10bc25ba983e7c8d6b077f07241f90755c6fd7831e0eda5e5",
-      "address": "0xA52DeA8D3f512Bf28A0689823A4D9f36A370e7A5",
-      "txHash": "0xda460e72de27951b729120a76866cc690cd9bbace693ca22308031d46a66cdbf",
-      "blockNumber": "1549"
-    },
-    {
-      "pubkey": "0x0419e40f69a48cb96731a2c989b3ab7f33c9a96f5f76f5b86cec8725204cac15",
-      "address": "0x3a3DF0Eb4276c627aE8ef56E8Eaf27A8D4505657",
-      "txHash": "0xd0259a0ba944b6d2e459fec27ec618f03fb8b8cbafd8cb0ee4cd6d0cb45b2b24",
-      "blockNumber": "1550"
+      "pubkey": "0xfdd128b15845945f502b24e6f765902e2d71f07fca3d1f6a5735b29dfa143a7d",
+      "address": "0xFb63A6803961fbd86349bf4F768c3bb441FaDD32",
+      "txHash": "0xc3fa18ad5297ffa1e40d9bc1294ae6c4c5a83650a73e047b546c1936f24f39e2",
+      "blockNumber": "8977",
+      "tokenAMint": "0x261876ceac91672e4bf69cdd93c46102559c04a3e7e4593959d7fe56afad8619",
+      "tokenBMint": "0xfb2635b94423f9d9e0aa844fb4bd3204a30f65f6c5498aa8499070c579161595",
+      "tokenAAddress": "0x0c1CC8806acdE56A6Ce3f3F9759eeE40EC30cE45",
+      "tokenBAddress": "0x1096c3E97d1C9Ea5f6B02CC8D9CbC57B30c41A14"
     }
   ],
-  "AssociatedSplToken": {
-    "address": "0x49609e7159d1590167cfd9694b1d65dd00ee573f",
-    "cpiContractAddress": "0xFF00000000000000000000000000000000000008",
-    "systemProgramId": "0x0000000000000000000000000000000000000000000000000000000000000000",
-    "tokenProgramId": "0x06ddf6e1d765a193d9cbe146ceeb79ac1cb485ed5f5b37913a8cf5857eff00a9",
-    "associatedTokenProgramId": "0x8c97258f4e2489f1bb3d1029148e0d830b5a1399daff1084048e7bd8dbe9f859"
-  },
   "ERC20SPLFactory": {
-    "address": "0xfd21da046c282e1d36cc45e46d9599cff5742f2b",
+    "address": "0x048ce136b0a4df3d25c4ed097bab44d1a32c4269",
     "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
   },
   "ERC20SPLLibraries": {
@@ -80,5 +71,8 @@
         "adapter": "0xF0864572019c295407CF2ed46e6FD3615e10E19d"
       }
     ]
+  },
+  "MeteoraDAMMv1Router": {
+    "address": "0xe2893c3b7d878daf5249a60e947a31fd4574fb17"
   }
 }
