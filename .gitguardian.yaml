@@ -3,9 +3,10 @@
 # ignored_paths — files excluded from secret scanning. Each entry MUST have an
 # inline comment explaining why it is a false-positive; reviewers check this.
 #
-# ignored_matches — specific known-public values whitelisted by SHA256 of the
-# detected secret (scoped tighter than path ignores when we want to keep
-# scanning the file for everything else).
+# ignored_matches — specific known-public values whitelisted by the raw
+# secret (GitGuardian also accepts a SHA256 here). Use this for literals
+# that will recur across the repo (e.g. canonical public Solana program
+# IDs baked into tests, docs, and constants).
 
 version: 2
 
@@ -19,3 +20,13 @@ secret:
     # that false positive without disabling the Generic High Entropy
     # detector for the rest of the repo.
     - tests/cpi/SolanaConstants.test.ts
+  ignored_matches:
+    # Canonical public Solana program IDs. These are NOT secrets — they are
+    # the globally-published program IDs every Solana client must recognize.
+    # Source: Solana docs + Anchor IDLs.
+    - name: SPL Token program ID (public)
+      match: TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+    - name: Associated Token Account program ID (public)
+      match: ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL
+    - name: Token-2022 program ID (public)
+      match: TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
