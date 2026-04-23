@@ -1,0 +1,7 @@
+{
+  "detectors_to_exclude": "reentrancy-eth,reentrancy-events,incorrect-shift",
+  "exclude_low": true,
+  "exclude_informational": true,
+  "exclude_optimization": true,
+  "filter_paths": "node_modules|artifacts|cache"
+}

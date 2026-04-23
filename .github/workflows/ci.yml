@@ -18,4 +18,45 @@ jobs:
           cache: 'npm'
       - run: npm install
       - run: npx hardhat compile
-      - run: npx hardhat test nodejs tests/oracle/*.test.ts tests/bridge/*.test.ts
+      - run: npx hardhat test nodejs tests/oracle/*.test.ts tests/bridge/*.test.ts tests/cpi/*.test.ts
+
+  tx-origin-ban:
+    # Warn-only gate per cardo-foundation §9 Task 1; flipped to strict in Task 14.
+    # Strict mode fails the build on any `tx.origin` reference in contracts/.
+    # rome-solidity has no tx.origin today; this regression-proofs the foundation.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ban tx.origin in contracts/
+        env:
+          CARDO_TX_ORIGIN_BAN: warn
+        run: |
+          if git grep -nE '\btx\.origin\b' -- contracts/; then
+            echo "::error::tx.origin is banned in contracts/ per cardo-foundation §9"
+            if [ "$CARDO_TX_ORIGIN_BAN" = "strict" ]; then
+              exit 1
+            fi
+            echo "CARDO_TX_ORIGIN_BAN not strict; warning only"
+          else
+            echo "No tx.origin references found — clean."
+          fi
+
+  slither:
+    # Slither static analysis per cardo-foundation §10.4. Non-blocking during
+    # Phase 1 (foundation ships clean; adapter refactors land Slither-strict
+    # gates later under Task 14).
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm install
+      - uses: crytic/slither-action@v0.4.0
+        with:
+          node-version: '22'
+          solc-version: '0.8.28'
+          slither-config: '.slither.config.json'
+          fail-on: none
