@@ -6,6 +6,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 rome-solidity is a Solidity smart contract repo for SPL/EVM cross-program interaction within the Rome-EVM program stack. It provides ERC20 wrappers for SPL tokens, a Meteora DAMM v1 AMM integration, and an Oracle Gateway V2 for Pyth Pull and Switchboard V3 price feeds, all running on Solana via Rome-EVM precompiles.
 
+## Design principle (inherited from `/rome/CLAUDE.md`)
+
+**Contracts expose Ethereum-standard interfaces.** External callers should not need to know they're talking to a Rome-specific contract. Enhance freely; don't degrade.
+
+Contract-layer applications already baked in:
+
+- **`SPL_ERC20` implements `IERC20` + `IERC20Metadata` exactly.** `transfer`, `transferFrom`, `approve`, `balanceOf`, `symbol`, `decimals` — standard ERC20 behavior. The CPI-to-SPL machinery is an implementation detail; external callers see a normal ERC20.
+- **Oracle Gateway V2 adapters implement `AggregatorV3Interface`.** `latestRoundData()` returns Chainlink-normalized 8-decimal prices. A consumer written for Chainlink on Ethereum drops in without edits.
+- **`IExtendedOracleAdapter` adds capability beyond the standard** (EMA, confidence, price-status) — a pure enhancement. Consumers that only want `AggregatorV3Interface` still work; consumers that need more can use the extension.
+- **`wrap_gas_to_spl` / `unwrap_spl_to_gas` (when added) must mirror WETH9's `deposit()` / `withdraw()`.** Same call shape, same event semantics, same refund-on-excess-value behavior as Uniswap's canonical WETH. Don't invent a novel API.
+
+When adding new contracts:
+
+- **Start from the Ethereum canonical interface.** If a pattern exists on Ethereum (ERC20, ERC721, AggregatorV3, UniswapV2, etc.), use that interface. **Extend** in a separate `I<Thing>Extended.sol` — never modify the base interface, never replace it with a Rome-specific alternative.
+- **Rome-specific helpers (CPI, PDA derivation, mint layout) go in `*_program.sol` / `*_lib.sol` modules**, not in the public contract surface. Keep the public surface EVM-standard.
+- **Don't write "free to the user" primitives** (airdrop, faucet, subsidized mint). Token issuance goes through explicit bridge flows, swaps, or contract-owned admin — never zero-cost user claims.
+
+**Reference spec**: [`rome-specs/active/technical/2026-04-23-gas-wrapper-split-at-bridge.md`](../rome-specs/active/technical/2026-04-23-gas-wrapper-split-at-bridge.md) — uses the ETH/WETH pattern as the anchor for gas-vs-wrapper decisions.
+
 ## Build & Test Commands
 
 ```bash
