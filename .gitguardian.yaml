@@ -1,0 +1,21 @@
+# GitGuardian configuration for rome-solidity.
+#
+# ignored_paths — files excluded from secret scanning. Each entry MUST have an
+# inline comment explaining why it is a false-positive; reviewers check this.
+#
+# ignored_matches — specific known-public values whitelisted by SHA256 of the
+# detected secret (scoped tighter than path ignores when we want to keep
+# scanning the file for everything else).
+
+version: 2
+
+secret:
+  ignored_paths:
+    # Canonical public Solana program IDs (System Program, SPL Token,
+    # Associated Token, Token-2022, Sysvars) — bs58-decoded to bytes32 and
+    # asserted equal to the Solidity constants. They are global public
+    # identifiers, not secrets. GitGuardian incident 29891132 flagged the
+    # bs58 strings as "Generic High Entropy Secret"; this whitelist clears
+    # that false positive without disabling the Generic High Entropy
+    # detector for the rest of the repo.
+    - tests/cpi/SolanaConstants.test.ts
