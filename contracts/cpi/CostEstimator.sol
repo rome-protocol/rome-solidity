@@ -25,6 +25,14 @@ library CostEstimator {
     // Solana rent constants (genesis-baked; never change on mainnet-beta)
     // ──────────────────────────────────────────────────────────────────
 
+    /// @dev Rent formula + pre-tabulated values are canonical as of 2026-04-22.
+    ///      SIMD-0437 (https://github.com/solana-foundation/solana-improvement-documents/blob/main/proposals/0437-reduce-rent-exemption-lamports-per-byte-year.md)
+    ///      proposes a gradual 10× reduction (6960 → 696 lamports/byte-year)
+    ///      on a schedule. Post-activation these values will drift.
+    ///      Options for forward compatibility:
+    ///        - fetch rent sysvar via accountInfo(SYSVAR_RENT) at quote time, OR
+    ///        - bump library version at SIMD-0437 activation and re-tabulate.
+    ///      Pinned hardcoded for now — simpler + predictable pre-activation.
     uint64 internal constant ACCOUNT_STORAGE_OVERHEAD = 128;
     uint64 internal constant LAMPORTS_PER_BYTE_YEAR = 3480;
     uint64 internal constant EXEMPTION_THRESHOLD_YEARS = 2;
