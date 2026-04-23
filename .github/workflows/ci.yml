@@ -37,30 +37,118 @@ jobs:
             tests/cpi/UserPda.test.ts
 
   tx-origin-ban:
-    # Warn-only gate per cardo-foundation §9 Task 1; flipped to strict in Task 14.
-    # Strict mode fails the build on any `tx.origin` reference in contracts/.
-    # rome-solidity has no tx.origin today; this regression-proofs the foundation.
+    # Strict gate per cardo-foundation section 9 + section 7 Task 14.
+    # All adapters that live in rome-showcase are refactored onto the Cardo
+    # Foundation (PRs #6 / #7 / #8); rome-solidity itself has no tx.origin
+    # site today. This job fails the build on any NEW tx.origin reference
+    # on a non-comment line in contracts/**/*.sol — NatSpec / `//` / `///`
+    # comments that reference the antipattern for documentation stay
+    # allowed (the foundation's UserPda docs describe the fix by name).
+    #
+    # Implementation note: we use plain `grep -rnE --include='*.sol'`
+    # rather than `git grep -nE '\btx\.origin\b'`. git grep's default
+    # regex engines (BRE / ERE) do not honor `\b` word boundaries — the
+    # earlier "warn-only" incarnation of this job matched nothing even
+    # when tx.origin was present. `tx.origin` is unambiguous enough in
+    # Solidity that anchors aren't needed.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Ban tx.origin in contracts/
-        env:
-          CARDO_TX_ORIGIN_BAN: warn
+      - name: Ban tx.origin in contracts/ (strict)
         run: |
-          if git grep -nE '\btx\.origin\b' -- contracts/; then
-            echo "::error::tx.origin is banned in contracts/ per cardo-foundation §9"
-            if [ "$CARDO_TX_ORIGIN_BAN" = "strict" ]; then
-              exit 1
-            fi
-            echo "CARDO_TX_ORIGIN_BAN not strict; warning only"
-          else
-            echo "No tx.origin references found — clean."
+          set -euo pipefail
+          matches=$(grep -rnE 'tx\.origin' --include='*.sol' contracts/ || true)
+          if [ -z "$matches" ]; then
+            echo "No tx.origin references in contracts/**/*.sol — clean."
+            exit 0
           fi
+          echo "$matches" | awk -F: '
+            {
+              line = $3
+              for (i = 4; i <= NF; i++) line = line ":" $i
+              sub(/^[[:space:]]+/, "", line)
+              if (line ~ /^\/\//) next
+              if (line ~ /^\*/) next
+              if (line ~ /^\/\*/) next
+              print $1 ":" $2 ": " line
+              bad = 1
+            }
+            END { if (bad) exit 1 }
+          ' || {
+            echo "::error::tx.origin is banned in production code per cardo-foundation section 9"
+            exit 1
+          }
+          echo "All tx.origin mentions are in comments — clean."
+
+  cu-recon-staleness:
+    # Per cardo-foundation section 4.6 + section 7 Task 14 step 4: every
+    # CU_<OP> constant must carry an adjacent `// recon YYYY-MM-DD`
+    # comment no older than 6 months. "Adjacent" = same line OR within
+    # the 10 lines immediately above (lets authors keep one recon banner
+    # per block of CU constants).
+    #
+    # rome-solidity doesn't ship adapter CU tables today (those live in
+    # rome-showcase per the per-app-silo convention); this job is general-
+    # purpose and passes green when no CU_* constants exist. It's mirrored
+    # from rome-showcase's CI so the two repos share one shell recipe and
+    # any future CU constants in rome-solidity (e.g. an ERC20SPL deposit
+    # CU budget) are caught without a config change.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check CU_* recon comment freshness
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime, pathlib, re, sys
+
+          CU_LINE = re.compile(r'\bCU_[A-Z_]+\s*=\s*[0-9_]+')
+          RECON = re.compile(r'//\s*recon\s+(\d{4})-(\d{2})-(\d{2})')
+          WINDOW = 10  # lines to search above the CU_* line
+          MAX_AGE_DAYS = 183  # ~6 months
+          today = datetime.date.today()
+
+          problems = []
+          files = sorted(pathlib.Path('contracts').rglob('*.sol'))
+          total_cu = 0
+          for f in files:
+              text = f.read_text().splitlines()
+              for idx, line in enumerate(text):
+                  if not CU_LINE.search(line):
+                      continue
+                  total_cu += 1
+                  recon_date = None
+                  for j in range(max(0, idx - WINDOW), idx + 1):
+                      m = RECON.search(text[j])
+                      if m:
+                          recon_date = datetime.date(
+                              int(m.group(1)), int(m.group(2)), int(m.group(3))
+                          )
+                          break
+                  if recon_date is None:
+                      problems.append(
+                          f"{f}:{idx+1}: missing `// recon YYYY-MM-DD` within {WINDOW} lines above: {line.strip()}"
+                      )
+                      continue
+                  age = (today - recon_date).days
+                  if age > MAX_AGE_DAYS:
+                      problems.append(
+                          f"{f}:{idx+1}: recon {recon_date} is {age} days old (> {MAX_AGE_DAYS}): {line.strip()}"
+                      )
+
+          print(f"Scanned {len(files)} .sol files; found {total_cu} CU_* constants.")
+          if problems:
+              print("::error::CU_* constants with stale or missing recon comments:")
+              for p in problems:
+                  print(f"  {p}")
+              sys.exit(1)
+          print("All CU_* constants have fresh recon comments (or none present).")
+          PY
 
   slither:
-    # Slither static analysis per cardo-foundation §10.4. Non-blocking during
-    # Phase 1 (foundation ships clean; adapter refactors land Slither-strict
-    # gates later under Task 14).
+    # Slither static analysis per cardo-foundation section 10.4. Non-blocking
+    # during Phase 1 (foundation ships clean; adapter refactors land
+    # Slither-strict gates later under Task 14).
     #
     # Compatibility shim: Hardhat v3 writes build-info as two files — the
     # `input` lives in `solc-<hash>.json` and the `output` lives in a
@@ -70,8 +158,8 @@ jobs:
     # Hardhat, then merge the two build-info files into a v2-compatible
     # shape so slither's hardhat detection works unchanged.
     #
-    # Detector exclusions (documented per cardo-foundation §10.4) live in
-    # `.slither.config.json`:
+    # Detector exclusions (documented per cardo-foundation section 10.4)
+    # live in `.slither.config.json`:
     #   - reentrancy-eth / reentrancy-events: Solana CPI precompile calls
     #     (0xFF...08) are synchronous with the Solana runtime; there is no
     #     untrusted EVM contract that can re-enter between call and return.
