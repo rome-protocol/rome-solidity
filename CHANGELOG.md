@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `IUnwrapSplToGas` / `IWrapGasToSpl` interfaces + pre-bound `UnwrapSplToGas`
+  / `WrapGasToSpl` constants in `contracts/interface.sol`. Maps to the new
+  non_evm precompiles in rome-evm-private at `0x42..17` and `0x42..18`.
+  Selector parity test at `tests/interface_wrap_unwrap.test.ts` locks the
+  keccak256 bytes against the Rust program's constants.
 - Agent Execution Guide and Change Impact Map in CLAUDE.md
 - PR and issue templates for standardized contributions
 - CI pipeline with Hardhat compile and test stages
