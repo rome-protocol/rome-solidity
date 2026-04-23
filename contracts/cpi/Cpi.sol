@@ -38,6 +38,14 @@ library Cpi {
     address internal constant PRECOMPILE = cpi_program_address;
 
     /// Invoke a Solana program with the CPI precompile as the signer path.
+    /// @dev Solana runtime enforces MAX_INSTRUCTION_STACK_HEIGHT = 5 — i.e. the
+    ///      top-level tx plus up to 4 nested CPIs. Rome's EVM-in-Solana wrapper
+    ///      consumes one frame before Solidity executes, so adapters have at
+    ///      most 3 further nested CPIs before hitting the runtime cap (verify
+    ///      against rome-evm-private precompile semantics).
+    ///      SIMD-0268 (accepted, not yet activated) raises the limit to
+    ///      stack-9 (8 nested CPIs); code calling `invoke` should not
+    ///      special-case the pre-activation bound.
     function invoke(
         bytes32 program,
         ICrossProgramInvocation.AccountMeta[] memory metas,
@@ -47,6 +55,9 @@ library Cpi {
     }
 
     /// Invoke a Solana program with caller-supplied signer seeds (signed CPI).
+    /// @dev Shares the same stack-height model as `invoke` — see the `invoke`
+    ///      NatSpec for MAX_INSTRUCTION_STACK_HEIGHT = 5 and the SIMD-0268
+    ///      forward-compat note.
     function invokeSigned(
         bytes32 program,
         ICrossProgramInvocation.AccountMeta[] memory metas,
