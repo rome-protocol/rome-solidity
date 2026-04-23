@@ -18,7 +18,19 @@ jobs:
           cache: 'npm'
       - run: npm install
       - run: npx hardhat compile
-      - run: npx hardhat test nodejs tests/oracle/*.test.ts tests/bridge/*.test.ts tests/cpi/*.test.ts
+      - name: Run CPI foundation + oracle + bridge tests
+        run: |
+          npx hardhat test nodejs \
+            tests/oracle/*.test.ts \
+            tests/bridge/*.test.ts \
+            tests/cpi/AccountMetaBuilder.test.ts \
+            tests/cpi/AnchorInstruction.test.ts \
+            tests/cpi/Cpi.test.ts \
+            tests/cpi/CostEstimator.test.ts \
+            tests/cpi/CpiError.test.ts \
+            tests/cpi/PdaDeriver.test.ts \
+            tests/cpi/SolanaConstants.test.ts \
+            tests/cpi/UserPda.test.ts
 
   tx-origin-ban:
     # Warn-only gate per cardo-foundation §9 Task 1; flipped to strict in Task 14.
