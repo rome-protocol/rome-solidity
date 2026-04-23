@@ -78,6 +78,7 @@ Global constants (`SplToken`, `AssociatedSplToken`, `SystemProgram`, `CpiProgram
 
 ### Contract Layers
 
+- **`contracts/cpi/`** — Cardo CPI Foundation (library + templates). Shared Solidity helpers every Cardo app adapter builds on top of: `AccountMetaBuilder`, `AnchorInstruction`, `Cpi`, `PdaDeriver`, `SolanaConstants`, `UserPda`, `CpiError`, and the Pillar B cost-transparency trio (`CostEstimate`, `CostEstimator`, `ICostView`). Also ships `templates/CpiAdapterBase.sol` (Ownable+Pausable+ReentrancyGuard+backend pointer scaffold) and `templates/CpiProgramWrapper.sol` (prose scaffold for golden-vector wrappers). See `contracts/cpi/README.md` for the adapter authoring guide, the three-layer pattern, and the `tx.origin`/`msg.sender` rule. Canonical spec: `rome-specs/active/technical/cardo-foundation.md`.
 - **`contracts/spl_token/`** — Low-level SPL token and associated token account libraries (`SplTokenLib`, `AssociatedSplTokenLib`). These use `CpiProgram.account_info()` to deserialize on-chain Solana account data (Borsh-encoded) from within Solidity.
 - **`contracts/erc20spl/`** — `SPL_ERC20` wraps an SPL mint as an ERC20 token with deposit/withdraw. `ERC20SPLFactory` deploys these wrappers. Uses OpenZeppelin IERC20.
 - **`contracts/meteora/`** — `MeteoraDAMMv1Factory` and `DAMMv1Pool` implement a Uniswap-style factory/pool pattern that delegates swaps to Meteora's on-chain Solana program via CPI.
