@@ -74,6 +74,17 @@ library Cpi {
 
     /// Read the 6-tuple from the precompile's `account_info`:
     ///   lamports, owner, is_signer, is_writable, executable, data
+    /// @dev IMPORTANT: `pubkey` must be present in the outer Solana transaction's
+    ///      account list. Rome's precompile handler resolves `pubkey` against the
+    ///      `AccountInfo[]` passed to the Rome EVM program entrypoint — pubkeys
+    ///      the Solana client did not pre-list are not fetched on demand. A
+    ///      missing pubkey reverts with an error indistinguishable from "account
+    ///      does not exist on chain." When probing arbitrary pubkeys (e.g.,
+    ///      oracle-feed accounts not directly listed in the capability's account
+    ///      set), the caller is responsible for including them in the tx account
+    ///      list via the rome-sdk or rome-evm-client tx builder. Executable
+    ///      accounts additionally return empty `data` — `lamports` and `owner`
+    ///      are still canonical.
     function accountInfo(bytes32 pubkey)
         internal
         view
