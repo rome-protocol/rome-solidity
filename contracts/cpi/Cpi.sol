@@ -46,6 +46,11 @@ library Cpi {
     ///      SIMD-0268 (accepted, not yet activated) raises the limit to
     ///      stack-9 (8 nested CPIs); code calling `invoke` should not
     ///      special-case the pre-activation bound.
+    /// @dev CU cost model: ~1000 CU per invoke/invokeSigned call plus
+    ///      ~1 CU per 250 bytes of instruction data. `invokeSigned` is NOT
+    ///      more expensive than `invoke` (invoke wraps invoke_signed with
+    ///      empty seeds). Adapters chaining multiple CPIs under the
+    ///      1,400,000 CU transaction ceiling should budget accordingly.
     function invoke(
         bytes32 program,
         ICrossProgramInvocation.AccountMeta[] memory metas,
