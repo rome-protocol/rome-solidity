@@ -1,0 +1,7 @@
+{
+  "detectors_to_exclude": "reentrancy-eth,reentrancy-events,incorrect-shift",
+  "filter_paths": "node_modules|artifacts|cache|contracts/cpi/test|contracts/oracle/test|contracts/bridge/test",
+  "exclude_low": true,
+  "exclude_informational": true,
+  "exclude_optimization": true
+}

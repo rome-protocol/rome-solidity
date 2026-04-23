@@ -18,4 +18,137 @@ jobs:
           cache: 'npm'
       - run: npm install
       - run: npx hardhat compile
-      - run: npx hardhat test nodejs tests/oracle/*.test.ts tests/bridge/*.test.ts
+      - name: Run CPI foundation + oracle + bridge tests
+        run: |
+          npx hardhat test nodejs \
+            tests/oracle/*.test.ts \
+            tests/bridge/*.test.ts \
+            tests/cpi/AccountMetaBuilder.test.ts \
+            tests/cpi/AnchorInstruction.test.ts \
+            tests/cpi/Cpi.test.ts \
+            tests/cpi/CostEstimator.test.ts \
+            tests/cpi/CpiAdapterBase.test.ts \
+            tests/cpi/CpiError.test.ts \
+            tests/cpi/PdaDeriver.test.ts \
+            tests/cpi/SolanaConstants.test.ts \
+            tests/cpi/UserPda.test.ts
+
+  tx-origin-ban:
+    # Warn-only gate per cardo-foundation §9 Task 1; flipped to strict in Task 14.
+    # Strict mode fails the build on any `tx.origin` reference in contracts/.
+    # rome-solidity has no tx.origin today; this regression-proofs the foundation.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ban tx.origin in contracts/
+        env:
+          CARDO_TX_ORIGIN_BAN: warn
+        run: |
+          if git grep -nE '\btx\.origin\b' -- contracts/; then
+            echo "::error::tx.origin is banned in contracts/ per cardo-foundation §9"
+            if [ "$CARDO_TX_ORIGIN_BAN" = "strict" ]; then
+              exit 1
+            fi
+            echo "CARDO_TX_ORIGIN_BAN not strict; warning only"
+          else
+            echo "No tx.origin references found — clean."
+          fi
+
+  slither:
+    # Slither static analysis per cardo-foundation §10.4. Non-blocking during
+    # Phase 1 (foundation ships clean; adapter refactors land Slither-strict
+    # gates later under Task 14).
+    #
+    # Compatibility shim: Hardhat v3 writes build-info as two files — the
+    # `input` lives in `solc-<hash>.json` and the `output` lives in a
+    # sibling `solc-<hash>.output.json`. crytic-compile's hardhat platform
+    # handler expects the v2-style combined JSON (see crytic-compile#629)
+    # and crashes with `KeyError: 'output'` otherwise. We pre-compile with
+    # Hardhat, then merge the two build-info files into a v2-compatible
+    # shape so slither's hardhat detection works unchanged.
+    #
+    # Detector exclusions (documented per cardo-foundation §10.4) live in
+    # `.slither.config.json`:
+    #   - reentrancy-eth / reentrancy-events: Solana CPI precompile calls
+    #     (0xFF...08) are synchronous with the Solana runtime; there is no
+    #     untrusted EVM contract that can re-enter between call and return.
+    #     Adapter-level flows are additionally guarded by ReentrancyGuard
+    #     in CpiAdapterBase.
+    #   - incorrect-shift: false-positive on endian-conversion helpers in
+    #     contracts/convert.sol under Solidity 0.8.28.
+    #   - contracts/*/test/*: harness contracts that expose library internals
+    #     to mocha tests; never deployed.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm install
+      - name: Hardhat compile
+        run: npx hardhat compile
+      - name: Merge Hardhat v3 build-info into v2 layout for crytic-compile
+        run: |
+          python3 - <<'PY'
+          import glob, json, os, re, sys
+          build_info_dir = 'artifacts/build-info'
+          input_files = [f for f in glob.glob(f'{build_info_dir}/*.json') if not f.endswith('.output.json')]
+          if not input_files:
+              print('No build-info files found; skipping merge')
+              sys.exit(0)
+
+          # Hardhat v3 prefixes project sources with "project/" and npm deps
+          # with "npm/<pkg>@<ver>/...". crytic-compile's convert_filename
+          # treats source names as on-disk paths, so rewrite back to the
+          # v2-compatible layout ("contracts/..." and "node_modules/<pkg>/...").
+          # The AST embedded in the compiler output also references sources
+          # by these names, so we do a textual rewrite on the full JSON to
+          # catch every reference (input sources, output sources, contract
+          # keys, AST ImportDirective nodes, sourceList entries, etc.).
+          NPM_RE = re.compile(r'"npm/(@[^/]+/[^@]+|[^@/]+)@[^/]+/')
+          PROJECT_RE = re.compile(r'"project/')
+
+          def rewrite_json_text(text: str) -> str:
+              # Rewrite npm/<pkg>@<ver>/ -> node_modules/<pkg>/
+              text = NPM_RE.sub(lambda m: f'"node_modules/{m.group(1)}/', text)
+              # Rewrite project/ -> (empty)
+              text = PROJECT_RE.sub('"', text)
+              return text
+
+          for input_path in input_files:
+              output_path = input_path[:-5] + '.output.json'
+              if not os.path.exists(output_path):
+                  print(f'WARN: no matching output for {input_path}')
+                  continue
+              with open(input_path) as f:
+                  inp_text = f.read()
+              with open(output_path) as f:
+                  out_text = f.read()
+              inp_text = rewrite_json_text(inp_text)
+              out_text = rewrite_json_text(out_text)
+              inp = json.loads(inp_text)
+              out = json.loads(out_text)
+              merged = {
+                  '_format': 'hh-sol-build-info-1',
+                  'id': inp.get('id'),
+                  'solcVersion': inp.get('solcVersion'),
+                  'solcLongVersion': inp.get('solcLongVersion'),
+                  'input': inp['input'],
+                  'output': out['output'],
+              }
+              with open(input_path, 'w') as f:
+                  json.dump(merged, f)
+              # Remove the v3 sidecar so crytic-compile doesn't try to parse
+              # it as a standalone build-info (it lacks input/solcVersion).
+              os.remove(output_path)
+              print(f'Merged {os.path.basename(input_path)}')
+          PY
+      - uses: crytic/slither-action@v0.4.0
+        with:
+          node-version: '22'
+          solc-version: '0.8.28'
+          slither-config: '.slither.config.json'
+          ignore-compile: true
+          fail-on: none
