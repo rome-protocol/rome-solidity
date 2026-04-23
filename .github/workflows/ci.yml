@@ -27,6 +27,7 @@ jobs:
             tests/cpi/AnchorInstruction.test.ts \
             tests/cpi/Cpi.test.ts \
             tests/cpi/CostEstimator.test.ts \
+            tests/cpi/CpiAdapterBase.test.ts \
             tests/cpi/CpiError.test.ts \
             tests/cpi/PdaDeriver.test.ts \
             tests/cpi/SolanaConstants.test.ts \
