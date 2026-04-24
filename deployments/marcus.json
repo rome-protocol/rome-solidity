@@ -89,5 +89,9 @@
         "adapter": "0x501239dCe69BD362596dB2501dE530256A4D781E"
       }
     ]
+  },
+  "RomeBridgeInbound": {
+    "address": "0x3972795F001d3c3e562009b3f5B5581e305152d2",
+    "deployedAt": 1777068163
   }
 }
