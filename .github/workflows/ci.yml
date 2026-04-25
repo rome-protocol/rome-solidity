@@ -14,8 +14,8 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
@@ -53,7 +53,7 @@ jobs:
     # Solidity that anchors aren't needed.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Ban tx.origin in contracts/ (strict)
         run: |
           set -euo pipefail
@@ -95,7 +95,7 @@ jobs:
     # CU budget) are caught without a config change.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Check CU_* recon comment freshness
         run: |
           set -euo pipefail
@@ -172,8 +172,8 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
@@ -236,7 +236,7 @@ jobs:
               os.remove(output_path)
               print(f'Merged {os.path.basename(input_path)}')
           PY
-      - uses: crytic/slither-action@v0.4.0
+      - uses: crytic/slither-action@v0.4.2
         with:
           node-version: '22'
           solc-version: '0.8.28'
