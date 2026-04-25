@@ -36,7 +36,7 @@ npx hardhat compile
 #    (Funding floor in deployments/marcus.json's deployer notes.)
 
 # 3. Run the redeploy script.
-npx hardhat run scripts/bridge/redeploy-inbound.ts --network monti_spl
+npx hardhat run scripts/bridge/redeploy-inbound.ts --network marcus
 
 # Expected output:
 #   - Deploys new RomeBridgeInbound at <NEW_ADDRESS>
@@ -68,7 +68,7 @@ After updating `chains.yaml`, restart the rome-ui backend so it re-reads.
 
 ```bash
 # 1. Confirm the new contract picked up the hardening:
-npx hardhat console --network monti_spl
+npx hardhat console --network marcus
 > const i = await viem.getContractAt("RomeBridgeInbound", "<NEW_ADDRESS>")
 > // The reentrancy guard storage slot is _NOT_ENTERED (1) on a fresh deploy.
 > // The slippage error UnexpectedUnwrapDelta is in the ABI:
