@@ -27,4 +27,20 @@ interface RomeBridgeEvents {
         uint8 remainingBudget,
         address indexed target
     );
+
+    /// @notice Emitted when a user settles an inbound-bridge gas-split by
+    ///         converting rUSDC (or any chain-gas-mint wrapper) into native
+    ///         Rome gas via the `unwrap_spl_to_gas` precompile. Mirror of
+    ///         `Withdrawn`; indexers watch both events to reconcile CCTP /
+    ///         Wormhole attestation records against on-Rome settlement.
+    /// @param user            EVM address that received the gas.
+    /// @param mint            SPL mint (bytes32 pubkey) whose wrapper was unwrapped.
+    /// @param wrapperAmount   Mint-unit tokens pulled from user's wrapper balance.
+    /// @param gasAmountWei    Wei credited to user's Rome Balance PDA (18-dec).
+    event SettledInbound(
+        address indexed user,
+        bytes32 indexed mint,
+        uint256 wrapperAmount,
+        uint256 gasAmountWei
+    );
 }
