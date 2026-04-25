@@ -28,8 +28,11 @@
 // "current" at the start of this run. Don't run twice without good reason.
 //
 // Usage:
-//   npx hardhat run scripts/bridge/redeploy-inbound.ts --network monti_spl
+//   npx hardhat run scripts/bridge/redeploy-inbound.ts --network marcus
 //   npx hardhat run scripts/bridge/redeploy-inbound.ts --network local
+//
+// Requires the MARCUS_PRIVATE_KEY hardhat config variable to be set
+// (deployer wallet that funded the original deploy).
 
 import hardhat from "hardhat";
 import fs from "node:fs";

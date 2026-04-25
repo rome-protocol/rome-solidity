@@ -19,7 +19,11 @@
     "deployedAt": 1776768105
   },
   "archive": {
-    "RomeBridgeWithdrawPrevious": null
+    "RomeBridgeWithdrawPrevious": null,
+    "RomeBridgeInboundPrevious": {
+      "address": "0x3972795F001d3c3e562009b3f5B5581e305152d2",
+      "archivedAt": 1777090061
+    }
   },
   "OracleGatewayV2": {
     "deployedAt": "2026-04-21T19:15:31.160Z",
@@ -91,7 +95,7 @@
     ]
   },
   "RomeBridgeInbound": {
-    "address": "0x3972795F001d3c3e562009b3f5B5581e305152d2",
-    "deployedAt": 1777068163
+    "address": "0x01d5cCfb9349F051A2a78bA75285168cbA0D206a",
+    "deployedAt": 1777090061
   }
 }
