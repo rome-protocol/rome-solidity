@@ -34,6 +34,7 @@ const MOCK_MINT =
 const WEI_PER_UNIT = 10n ** 12n;
 
 describe("RomeBridgeInbound — unit tests", () => {
+  let conn: Awaited<ReturnType<typeof hardhat.network.connect>>;
   let viem: Awaited<ReturnType<typeof hardhat.network.connect>>["viem"];
   let publicClient: Awaited<ReturnType<typeof viem.getPublicClient>>;
   let user: Address;
@@ -41,7 +42,7 @@ describe("RomeBridgeInbound — unit tests", () => {
   let inbound: any;
 
   before(async () => {
-    const conn = await hardhat.network.connect({ network: "hardhatMainnet" });
+    conn = await hardhat.network.connect({ network: "hardhatMainnet" });
     viem = conn.viem;
     publicClient = await viem.getPublicClient();
     const [userClient] = await viem.getWalletClients();
@@ -194,5 +195,109 @@ describe("RomeBridgeInbound — unit tests", () => {
       address: inbound.address,
     });
     assert.equal(userBalanceOfInbound, 0n);
+  });
+
+  // ─── Hardening A2: ReentrancyGuard ───────────────────────────────────────
+
+  describe("ReentrancyGuard (A2)", () => {
+    it("blocks re-entry from a malicious receiver during the gas forward", async () => {
+      // Deploy a contract that re-enters settleInbound from receive()
+      const wrapperAmount = 1_000_000n;
+      const replayAmount = 500_000n;
+      const reentrant = await viem.deployContract("ReentrantReceiver", [
+        inbound.address,
+        wrapper.address,
+        replayAmount,
+      ]);
+
+      // Fund the receiver with enough wrapper for both the outer call AND
+      // a hypothetical re-entry, with allowance for the inbound contract.
+      // If the guard is missing, the receive() handler would consume
+      // `replayAmount` more wrapper on re-entry.
+      await wrapper.write.setBalance([reentrant.address, wrapperAmount + replayAmount]);
+      await wrapper.write.setAllowance([
+        reentrant.address,
+        inbound.address,
+        wrapperAmount + replayAmount,
+      ]);
+
+      // The trigger fires the first settleInbound. With ReentrancyGuard
+      // in place, the re-entry inside receive() reverts; the catch
+      // swallows the revert; the outer call still succeeds. The test
+      // proves the guard works by observing that the wrapper balance
+      // dropped by exactly `wrapperAmount` (not `wrapperAmount +
+      // replayAmount`).
+      const txHash = await reentrant.write.trigger([wrapperAmount]);
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+      const after = (await wrapper.read.balanceOf([reentrant.address])) as bigint;
+      // Without the guard, after === replayAmount (only the second call's
+      // tail would remain). With the guard, after === replayAmount because
+      // the re-entry attempted but failed — only the outer wrapperAmount
+      // got consumed.
+      assert.equal(
+        after,
+        replayAmount,
+        `expected receiver to retain ${replayAmount} wrapper after blocked re-entry; got ${after}`,
+      );
+
+      // The receive() captured a revert — confirms it actually attempted.
+      const lastRevertData = (await reentrant.read.lastRevertData()) as `0x${string}`;
+      assert.ok(
+        lastRevertData && lastRevertData !== "0x",
+        "expected ReentrantReceiver to capture a revert during re-entry attempt",
+      );
+    });
+  });
+
+  // ─── Hardening A3: Slippage / balance-delta check ────────────────────────
+
+  describe("Slippage check on unwrap_spl_to_gas (A3)", () => {
+    it("reverts with UnexpectedUnwrapDelta if precompile credits less than expected", async () => {
+      // Deploy a partial-payout mock at the precompile address that only
+      // forwards half the requested amount. This simulates a hypothetical
+      // precompile bug or version mismatch where the unwrap doesn't
+      // produce the expected wei delta.
+      const partialMock = await viem.deployContract("PartialPayoutUnwrap");
+      const code = await publicClient.getCode({ address: partialMock.address });
+      assert.ok(code && code !== "0x", "partial-payout mock not deployed");
+      await conn.provider.request({
+        method: "hardhat_setCode",
+        params: [UNWRAP_PRECOMPILE, code],
+      });
+      await conn.provider.request({
+        method: "hardhat_setBalance",
+        params: [UNWRAP_PRECOMPILE, "0x" + parseEther("100").toString(16)],
+      });
+
+      const wrapperAmount = 1_000_000n;
+      await wrapper.write.setBalance([user, wrapperAmount]);
+      await wrapper.write.setAllowance([user, inbound.address, wrapperAmount]);
+
+      // Should revert because address(this).balance after unwrap will be
+      // half of expected — the slippage check catches it.
+      await assert.rejects(
+        async () => inbound.write.settleInbound([wrapperAmount]),
+        (err: any) => {
+          assert.ok(
+            errorContains(err, "UnexpectedUnwrapDelta"),
+            "expected UnexpectedUnwrapDelta in error tree",
+          );
+          return true;
+        },
+      );
+
+      // Restore the full-payout mock for subsequent tests in the suite.
+      const goodMock = await viem.deployContract("MockUnwrapSplToGas");
+      const goodCode = await publicClient.getCode({ address: goodMock.address });
+      await conn.provider.request({
+        method: "hardhat_setCode",
+        params: [UNWRAP_PRECOMPILE, goodCode],
+      });
+      await conn.provider.request({
+        method: "hardhat_setBalance",
+        params: [UNWRAP_PRECOMPILE, "0x" + parseEther("100").toString(16)],
+      });
+    });
   });
 });

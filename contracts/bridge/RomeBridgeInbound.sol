@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {ERC2771Context} from "@openzeppelin/contracts/metatx/ERC2771Context.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {SPL_ERC20} from "../erc20spl/erc20spl.sol";
 import {IUnwrapSplToGas, UnwrapSplToGas} from "../interface.sol";
 import {RomeBridgeEvents} from "./RomeBridgeEvents.sol";
@@ -49,7 +50,7 @@ import {RomeBridgeEvents} from "./RomeBridgeEvents.sol";
 ///         wrapper balance into the CALLER's gas balance. If we want to
 ///         atomically record events / enforce invariants / emit structured
 ///         audit data, we need a contract wrapper. This is it.
-contract RomeBridgeInbound is ERC2771Context, RomeBridgeEvents {
+contract RomeBridgeInbound is ERC2771Context, ReentrancyGuard, RomeBridgeEvents {
     /// @notice ERC20-SPL wrapper for the chain's gas mint (e.g. rUSDC on Marcus).
     SPL_ERC20 public immutable wrapper;
 
@@ -77,6 +78,12 @@ contract RomeBridgeInbound is ERC2771Context, RomeBridgeEvents {
     ///      silently emitting a no-op event.
     error ZeroAmount();
 
+    /// @dev Slippage check failed: the unwrap precompile credited a
+    ///      different wei amount than expected. Catches a precompile
+    ///      bug or version mismatch where the unwrap doesn't produce
+    ///      the expected `wrapperAmount * scaleWeiPerUnit` delta.
+    error UnexpectedUnwrapDelta(uint256 expected, uint256 actual);
+
     constructor(
         address forwarder,
         SPL_ERC20 wrapper_,
@@ -100,6 +107,7 @@ contract RomeBridgeInbound is ERC2771Context, RomeBridgeEvents {
     /// @return gasAmountWei  Wei the user received.
     function settleInbound(uint256 wrapperAmount)
         external
+        nonReentrant
         returns (uint256 gasAmountWei)
     {
         if (wrapperAmount == 0) revert ZeroAmount();
@@ -131,8 +139,18 @@ contract RomeBridgeInbound is ERC2771Context, RomeBridgeEvents {
         // 2. Unwrap this contract's wrapper balance into this contract's
         //    Balance PDA. The precompile requires wei to be a multiple of
         //    scaleWeiPerUnit; multiplying by scaleWeiPerUnit guarantees that.
+        //
+        //    Slippage check (audit A3): snapshot balance before, assert
+        //    delta exactly matches expected after. Catches a precompile
+        //    bug crediting less than expected — without the check, we'd
+        //    silently underforward to the user.
         gasAmountWei = wrapperAmount * scaleWeiPerUnit;
+        uint256 balanceBefore = address(this).balance;
         UnwrapSplToGas.unwrap_spl_to_gas(gasAmountWei);
+        uint256 actualDelta = address(this).balance - balanceBefore;
+        if (actualDelta != gasAmountWei) {
+            revert UnexpectedUnwrapDelta(gasAmountWei, actualDelta);
+        }
 
         // 3. Forward to the user. `call{value}` uses msg.value semantics
         //    which on Rome EVM = a Balance PDA transfer. If it fails the

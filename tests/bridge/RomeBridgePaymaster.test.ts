@@ -88,8 +88,8 @@ describe("RomeBridgePaymaster", () => {
     assert.strictEqual(count, 0);
   });
 
-  it("exposes the per-user cap as a public constant", async () => {
-    const cap = await paymaster.read.SPONSORED_TX_CAP();
+  it("exposes the per-user cap as a public state var (default 3)", async () => {
+    const cap = await paymaster.read.sponsoredTxCap();
     assert.strictEqual(cap, 3);
   });
 
@@ -536,5 +536,120 @@ describe("RomeBridgePaymaster", () => {
     // Victim's budget MUST remain at 0.
     const count = await paymaster.read.sponsoredTxCount([victim]);
     assert.strictEqual(count, 0);
+  });
+
+  // ─── Hardening A1: Pausable ──────────────────────────────────────────────
+
+  describe("Pausable (A1 — incident response)", () => {
+    it("starts unpaused", async () => {
+      const paused = await paymaster.read.paused();
+      assert.strictEqual(paused, false);
+    });
+
+    it("owner can pause + unpause", async () => {
+      const pc = await viem.getPublicClient();
+      const tx1 = await paymaster.write.pause({ account: adminWallet.account });
+      await pc.waitForTransactionReceipt({ hash: tx1 });
+      assert.strictEqual(await paymaster.read.paused(), true);
+      const tx2 = await paymaster.write.unpause({ account: adminWallet.account });
+      await pc.waitForTransactionReceipt({ hash: tx2 });
+      assert.strictEqual(await paymaster.read.paused(), false);
+    });
+
+    it("non-owner cannot pause", async () => {
+      await assert.rejects(
+        async () => paymaster.write.pause({ account: userWallet.account }),
+        (err: any) => /OwnableUnauthorizedAccount|Ownable/.test(String(err?.message ?? err)),
+      );
+    });
+
+    it("execute() reverts while paused; resumes after unpause", async () => {
+      await paymaster.write.setAllowlistEntry(
+        [mockTarget.address, TOUCH_SELECTOR, true],
+        { account: adminWallet.account },
+      );
+      const pc = await viem.getPublicClient();
+      await pc.waitForTransactionReceipt({
+        hash: await paymaster.write.pause({ account: adminWallet.account }),
+      });
+
+      const nonce = await paymaster.read.nonces([user]);
+      const deadline = Math.floor(Date.now() / 1000) + 3600;
+      const data = encodeFunctionData({
+        abi: parseAbi(["function touch()"]),
+        functionName: "touch",
+      });
+      const request = { from: user, to: mockTarget.address as Address, value: 0n, gas: 100_000n, nonce, deadline, data: data as `0x${string}` };
+      const signature = await signForwardRequest(userWallet, paymaster.address, chainId, request);
+      const fwd = { from: request.from, to: request.to, value: request.value, gas: request.gas, deadline: request.deadline, data: request.data, signature };
+
+      // Paused: must revert
+      await assert.rejects(
+        async () => paymaster.write.execute([fwd], { account: adminWallet.account }),
+        (err: any) => /EnforcedPause|paused/i.test(String(err?.message ?? err)),
+      );
+
+      // Unpause and retry — must succeed (and NOT consume nonce on the failed try
+      // since the revert reverted state)
+      await pc.waitForTransactionReceipt({
+        hash: await paymaster.write.unpause({ account: adminWallet.account }),
+      });
+      const tx = await paymaster.write.execute([fwd], { account: adminWallet.account });
+      await pc.waitForTransactionReceipt({ hash: tx });
+      assert.strictEqual(await paymaster.read.sponsoredTxCount([user]), 1);
+    });
+  });
+
+  // ─── Hardening A4: SPONSORED_TX_CAP — owner-mutable ──────────────────────
+
+  describe("Mutable sponsorship cap (A4)", () => {
+    it("defaults to 3 in constructor", async () => {
+      const cap = await paymaster.read.sponsoredTxCap();
+      assert.strictEqual(cap, 3);
+    });
+
+    it("owner can raise the cap; users with already-exhausted budget can be sponsored again", async () => {
+      const pc = await viem.getPublicClient();
+      // Burn through 3 tx for the user
+      await paymaster.write.setAllowlistEntry(
+        [mockTarget.address, TOUCH_SELECTOR, true],
+        { account: adminWallet.account },
+      );
+      const data = encodeFunctionData({ abi: parseAbi(["function touch()"]), functionName: "touch" });
+      for (let i = 0; i < 3; i++) {
+        const nonce = await paymaster.read.nonces([user]);
+        const deadline = Math.floor(Date.now() / 1000) + 3600;
+        const req = { from: user, to: mockTarget.address as Address, value: 0n, gas: 100_000n, nonce, deadline, data: data as `0x${string}` };
+        const sig = await signForwardRequest(userWallet, paymaster.address, chainId, req);
+        const fwd = { from: req.from, to: req.to, value: req.value, gas: req.gas, deadline: req.deadline, data: req.data, signature: sig };
+        await pc.waitForTransactionReceipt({
+          hash: await paymaster.write.execute([fwd], { account: adminWallet.account }),
+        });
+      }
+      assert.strictEqual(await paymaster.read.sponsoredTxCount([user]), 3);
+
+      // Raise cap to 5 — user can now be sponsored two more times
+      await pc.waitForTransactionReceipt({
+        hash: await paymaster.write.setSponsoredTxCap([5], { account: adminWallet.account }),
+      });
+      assert.strictEqual(await paymaster.read.sponsoredTxCap(), 5);
+
+      const nonce = await paymaster.read.nonces([user]);
+      const deadline = Math.floor(Date.now() / 1000) + 3600;
+      const req = { from: user, to: mockTarget.address as Address, value: 0n, gas: 100_000n, nonce, deadline, data: data as `0x${string}` };
+      const sig = await signForwardRequest(userWallet, paymaster.address, chainId, req);
+      const fwd = { from: req.from, to: req.to, value: req.value, gas: req.gas, deadline: req.deadline, data: req.data, signature: sig };
+      await pc.waitForTransactionReceipt({
+        hash: await paymaster.write.execute([fwd], { account: adminWallet.account }),
+      });
+      assert.strictEqual(await paymaster.read.sponsoredTxCount([user]), 4);
+    });
+
+    it("non-owner cannot change the cap", async () => {
+      await assert.rejects(
+        async () => paymaster.write.setSponsoredTxCap([10], { account: userWallet.account }),
+        (err: any) => /OwnableUnauthorizedAccount|Ownable/.test(String(err?.message ?? err)),
+      );
+    });
   });
 });
