@@ -1,12 +1,54 @@
+# Sourced from: rome-protocol/rome-ops/templates/dependabot/node.yml
+# Solidity contracts repo with Hardhat (Node.js dev tooling).
+#
+# Replaces the previous thin config (only had npm + github-actions
+# weekly with no grouping or ignores). New config adds grouping for
+# patch+minor and the framework split for the Hardhat ecosystem.
+
 version: 2
+
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: npm
+    directory: /
     schedule:
-      interval: "weekly"
+      interval: weekly
+      day: friday
+    open-pull-requests-limit: 8
+    labels:
+      - dependencies
+      - node
+    groups:
+      npm-patch-and-minor:
+        update-types:
+          - patch
+          - minor
+        exclude-patterns:
+          - "hardhat"
+          - "@nomicfoundation/*"
+          - "ethers"
+      framework:
+        patterns:
+          - "hardhat"
+          - "@nomicfoundation/*"
+          - "ethers"
+        update-types:
+          - patch
+          - minor
+    ignore:
+      - dependency-name: "picomatch"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: friday
     open-pull-requests-limit: 5
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - ci
+    groups:
+      gh-actions:
+        update-types:
+          - patch
+          - minor
+          - major
