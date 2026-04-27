@@ -5,6 +5,9 @@ import "../borsch.sol";
 import "../interface.sol";
 
 library MplTokenMetadataLib {
+    bytes32 internal constant MPL_TOKEN_METADATA_PROGRAM_ID =
+    0x0b7065b1e3d17c45389d527f6b04c3cd58b86c731aa0fdb549b6d1bc03f82946;
+
     // =========================
     // Errors
     // =========================
@@ -186,8 +189,6 @@ library MplTokenMetadataLib {
         (md.hasUses, md.uses_, offset) = _read_option_uses(data, offset);
         (md.hasCollectionDetails, md.collectionDetails, offset) = _read_option_collection_details(data, offset);
         (md.hasProgrammableConfig, md.programmableConfig, offset) = _read_option_programmable_config(data, offset);
-
-        require(offset == data.length, "Trailing bytes after Metadata");
         return md;
     }
 

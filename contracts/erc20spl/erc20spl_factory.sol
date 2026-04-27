@@ -21,7 +21,7 @@ contract ERC20SPLFactory {
 
     bytes32 public immutable mpl_token_metadata_program;
     address public immutable cpi_program;
-    ERC20Users private _users;
+    ERC20Users public immutable users;
 
     event TokenCreated(
         address indexed creator,
@@ -32,10 +32,12 @@ contract ERC20SPLFactory {
         uint64 nonce
     );
 
+    error MintAccountAlreadyExists(bytes32 mint);
+
     constructor(address _cpi_program) {
         cpi_program = _cpi_program;
         mpl_token_metadata_program = SystemProgram.base58_to_bytes32(bytes(METAPLEX_TOKEN_METADATA_PROGRAM_NAME));
-        _users = new ERC20Users();
+        users = new ERC20Users();
     }
 
     function _check_symbol_hash_exists(bytes32 symbolHash) internal view {
@@ -47,7 +49,7 @@ contract ERC20SPLFactory {
         bytes32 symbolHash = keccak256(bytes(symbol));
         _check_symbol_hash_exists(symbolHash);
 
-        SPL_ERC20 new_contract = new SPL_ERC20(mint, cpi_program, name, symbol, _users);
+        SPL_ERC20 new_contract = new SPL_ERC20(mint, cpi_program, name, symbol, users);
         token_by_mint[mint] = address(new_contract);
         mint_by_symbol_hash[symbolHash] = mint;
         token_by_symbol_hash[symbolHash] = address(new_contract);
@@ -90,25 +92,36 @@ contract ERC20SPLFactory {
 
     function create_user()
     public {
-        _users.ensure_user(msg.sender);
+        users.ensure_user(msg.sender);
+        RomeEVMAccount.create_payer(msg.sender, 1000000000, users.payer_salt());
     }
 
     /**
-     * Derives the address of the mint account that will be created for the user in the next call to create_token_mint, 
-     * based on the user's current nonce. This can be used by clients to know the mint address before it is created,
-     *  so they can create metadata accounts for it or perform other setup steps on Solana before calling create_token_mint.
-     * @return (bytes32 mint, bytes32 mintSeed) The address of the mint account that will be created for the user in the next call to create_token_mint, 
-     *              and the seed that can be used to derive it.
+     * Derives the address of the mint account that will be created for the user in the next call to create_token_mint,
+     * based on the user's current nonce and this factory's address. This can be used by clients to know the mint
+     * address before it is created, so they can create metadata accounts for it or perform other setup steps on
+     * Solana before calling create_token_mint.
+     * @return (bytes32 mint, bytes32 mintSeed) The address of the mint account that will be created for the user in
+     *              the next call to create_token_mint, and the seed that can be used to derive it.
      */
     function get_current_mint(address user) public view returns (bytes32, bytes32) {
         uint64 nonce = creator_nonce[user];
 
-        // [ "MINT" (4 bytes) | nonce (8 bytes) | 20 zero bytes ]
+        // [ "MINT" (4 bytes) | nonce (8 bytes) | factory address (20 bytes) ]
         bytes32 mintSeed = bytes32(
             (uint256(uint32(bytes4("MINT"))) << 224) |
-            (uint256(nonce) << 160)
+            (uint256(nonce) << 160) |
+            uint160(address(this))
         );
         return (RomeEVMAccount.pda_with_salt(user, mintSeed), mintSeed);
+    }
+
+    function _assert_mint_account_missing(bytes32 mint) internal view {
+        require(token_by_mint[mint] == address(0), "Token exists");
+        (uint64 lamports,,,,,) = ICrossProgramInvocation(cpi_program).account_info(mint);
+        if (lamports != 0) {
+            revert MintAccountAlreadyExists(mint);
+        }
     }
 
     /**
@@ -121,12 +134,12 @@ contract ERC20SPLFactory {
      * @return (bytes32 mint) Address of the created SPL Token mint.
      */
     function create_token_mint() external returns (bytes32) {
-        ERC20Users.User memory user = _users.get_user(msg.sender);
+        bytes32 user = users.get_user(msg.sender);
         (bytes32 mint, bytes32 mintSeed) = get_current_mint(msg.sender);
-        require(token_by_mint[mint] == address(0), "Token exists");
+        _assert_mint_account_missing(mint);
 
         SystemProgramLib.Instruction memory createMintAccount = SystemProgramLib.create_account(
-            user.payer,
+            user,
             mint,
             RomeEVMAccount.minimum_balance(SPL_MINT_LEN),
             SPL_MINT_LEN,
@@ -134,7 +147,7 @@ contract ERC20SPLFactory {
         );
 
         bytes32[] memory seeds = new bytes32[](2);
-        seeds[0] = user.seed;
+        seeds[0] = users.payer_salt();
         seeds[1] = mintSeed;
 
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
@@ -157,7 +170,7 @@ contract ERC20SPLFactory {
      * Initializes previously created mint account.
      */
     function init_token_mint(bytes32 mint) external {
-        ERC20Users.User memory user = _users.get_user(msg.sender);
+        bytes32 user = users.get_user(msg.sender);
 
         (
             bytes32 tokenProgramId,
@@ -166,7 +179,7 @@ contract ERC20SPLFactory {
         ) = SplTokenLib.initialize_mint(
             SplTokenLib.SPL_TOKEN_PROGRAM,
             mint,
-            user.owner,
+            user,
             false,
             bytes32(0),
             DEFAULT_DECIMALS

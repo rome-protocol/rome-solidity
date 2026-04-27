@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Coordinated redeploy of the polished Oracle Gateway V2 stack on monti_spl.
+ * Deploy the Oracle Gateway V2 stack (post-audit, polished) on a Rome devnet.
  *
  * Deploys:
  *   1. New PythPullAdapter implementation (with staleness guards + metadata())
@@ -11,19 +11,22 @@ import path from "node:path";
  *   3. New OracleAdapterFactory wired to the new implementations
  *   4. New BatchReader (with getFeedHealth)
  *
- * Writes the new addresses under `OracleGatewayV2Polished` in
- * `deployments/<network>.json` and preserves the legacy `OracleGatewayV2`
- * block for reference.
+ * Idempotent: if `deployments/<network>.json` already contains a populated
+ * `OracleGatewayV2` block, the script prints the existing addresses and exits
+ * without spending gas. Set `FORCE_REDEPLOY=1` to override.
+ *
+ * Writes the addresses under `OracleGatewayV2` in `deployments/<network>.json`.
  *
  * Does NOT seed feeds — run `deploy-seed-feeds.ts` next.
  *
  * Usage:
- *   npx hardhat run scripts/oracle/deploy-v2-polish.ts --network monti_spl
+ *   npx hardhat run scripts/oracle/deploy-v2-polish.ts --network marcus
  *
  * Override program IDs / staleness via env vars if needed:
  *   PYTH_PRICE_FEED_PROGRAM_ID=0x...
  *   SWITCHBOARD_PROGRAM_ID=0x...
- *   DEFAULT_MAX_STALENESS=60
+ *   DEFAULT_MAX_STALENESS=300
+ *   FORCE_REDEPLOY=1   # bypass idempotency guard
  */
 
 // Pyth Solana Receiver program: rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ
@@ -56,7 +59,7 @@ async function main() {
 
     const publicClient = await viem.getPublicClient();
 
-    console.log("=== Oracle Gateway V2 — Polished Redeploy ===");
+    console.log("=== Oracle Gateway V2 — Deploy ===");
     console.log("Deployer:", deployer.account.address);
     console.log(
         "Balance:",
@@ -67,6 +70,40 @@ async function main() {
     console.log("Switchboard Program ID:", switchboardProgramId);
     console.log("Default Max Staleness:", defaultMaxStaleness, "seconds");
     console.log();
+
+    // Idempotency guard: if the V2 block is already populated, skip redeploy.
+    const deploymentsDir = path.resolve(process.cwd(), "deployments");
+    fs.mkdirSync(deploymentsDir, { recursive: true });
+    const filePath = path.resolve(deploymentsDir, `${networkName}.json`);
+    let content: any = {};
+    if (fs.existsSync(filePath)) {
+        content = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    }
+
+    const existing = content.OracleGatewayV2;
+    const existingComplete =
+        existing &&
+        existing.OracleAdapterFactory &&
+        existing.BatchReader &&
+        existing.PythPullAdapterImpl &&
+        existing.SwitchboardV3AdapterImpl;
+    const forceRedeploy = process.env.FORCE_REDEPLOY === "1";
+    if (existingComplete && !forceRedeploy) {
+        console.log("=== Already deployed — skipping ===");
+        console.log("  OracleAdapterFactory:      ", existing.OracleAdapterFactory);
+        console.log("  BatchReader:               ", existing.BatchReader);
+        console.log("  PythPullAdapterImpl:       ", existing.PythPullAdapterImpl);
+        console.log("  SwitchboardV3AdapterImpl:  ", existing.SwitchboardV3AdapterImpl);
+        console.log("  deployedAt:                ", existing.deployedAt);
+        console.log();
+        console.log("Set FORCE_REDEPLOY=1 to redeploy.");
+        console.log("Next step: run deploy-seed-feeds.ts to add any missing feeds.");
+        return;
+    }
+    if (existingComplete && forceRedeploy) {
+        console.log("FORCE_REDEPLOY=1 — redeploying over existing addresses.");
+        console.log();
+    }
 
     // 1. Deploy PythPullAdapter implementation
     console.log("1/4 Deploying PythPullAdapter implementation...");
@@ -97,19 +134,7 @@ async function main() {
     console.log();
     console.log("=== Deployment Complete ===");
 
-    // Save deployment artifacts — add polished block alongside legacy one.
-    const deploymentsDir = path.resolve(process.cwd(), "deployments");
-    fs.mkdirSync(deploymentsDir, { recursive: true });
-
-    const filePath = path.resolve(deploymentsDir, `${networkName}.json`);
-    let content: any = {};
-    if (fs.existsSync(filePath)) {
-        content = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    }
-
-    // Preserve the legacy OracleGatewayV2 block untouched — we only add a
-    // sibling OracleGatewayV2Polished entry here.
-    content.OracleGatewayV2Polished = {
+    content.OracleGatewayV2 = {
         deployedAt: new Date().toISOString(),
         defaultMaxStaleness,
         pythReceiverProgramId: pythProgramId,

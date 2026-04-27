@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "../interface.sol";
 import {Convert} from "../convert.sol";
+import {SystemProgramLib} from "../system_program/system_program.sol";
 
 library SplTokenLib {
     bytes32 public constant SPL_TOKEN_PROGRAM =
@@ -127,7 +128,6 @@ library SplTokenLib {
 
     // Replace with your actual constants if they already exist elsewhere.
     bytes32 constant SYSVAR_RENT_ID = 0x06a7d517192c5c51218cc94c3d4af17f58daee089ba1fd44e3dbd98a00000000;
-    bytes32 constant SYSTEM_PROGRAM_ID = 0x0000000000000000000000000000000000000000000000000000000000000000;
     bytes32 constant NATIVE_MINT_ID = 0x069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001;
 
     error InvalidSignerCount(uint256 count);
@@ -592,7 +592,7 @@ library SplTokenLib {
             new ICrossProgramInvocation.AccountMeta[](4 + signer_pubkeys.length);
         accounts[0] = _account_meta(account_pubkey, false, true);
         accounts[1] = _account_meta(payer, true, true);
-        accounts[2] = _account_meta(SYSTEM_PROGRAM_ID, false, false);
+        accounts[2] = _account_meta(SystemProgramLib.PROGRAM_ID, false, false);
         accounts[3] = _account_meta(owner_pubkey, signer_pubkeys.length == 0, false);
         for (uint256 i = 0; i < signer_pubkeys.length; i++) {
             accounts[4 + i] = _account_meta(signer_pubkeys[i], true, false);
@@ -608,7 +608,7 @@ library SplTokenLib {
         ICrossProgramInvocation.AccountMeta[] memory accounts = new ICrossProgramInvocation.AccountMeta[](3);
         accounts[0] = _account_meta(payer, true, true);
         accounts[1] = _account_meta(NATIVE_MINT_ID, false, true);
-        accounts[2] = _account_meta(SYSTEM_PROGRAM_ID, false, false);
+        accounts[2] = _account_meta(SystemProgramLib.PROGRAM_ID, false, false);
 
         return (token_program_id, accounts, _pack_tag(31));
     }

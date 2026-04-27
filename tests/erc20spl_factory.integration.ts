@@ -4,11 +4,11 @@ import hardhat from "hardhat";
 import {
     createWalletClient,
     getAddress,
-    http,
     isAddress,
     keccak256,
     stringToHex,
     zeroAddress,
+    custom
 } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { readDeployments } from "../scripts/lib/deployments.js";
@@ -27,23 +27,6 @@ function resolveFactoryAddress(networkName: string): `0x${string}` {
     }
 
     return getAddress(address);
-}
-
-function resolveRpcUrl(networkName: string): string {
-    if (process.env.TEST_RPC_URL) {
-        return process.env.TEST_RPC_URL;
-    }
-
-    switch (networkName) {
-        case "monti_spl":
-            return "https://montispl-i.devnet.romeprotocol.xyz/";
-        case "local":
-            return "http://localhost:9090";
-        default:
-            throw new Error(
-                `Unknown RPC URL for network ${networkName}. Set TEST_RPC_URL to run this test.`,
-            );
-    }
 }
 
 function isHex32(value: string): boolean {
@@ -124,10 +107,11 @@ describe("ERC20SPLFactory integration", { concurrency: false }, function () {
         const factoryCode = await publicClient.getCode({ address: factoryAddress });
         assert.ok(factoryCode && factoryCode !== "0x", `No contract code at ${factoryAddress}`);
 
+        const connection = await hardhat.network.connect();
         const accountBPrivateKey = generatePrivateKey();
         accountBWallet = createWalletClient({
             account: privateKeyToAccount(accountBPrivateKey),
-            transport: http(resolveRpcUrl(networkName)),
+            transport: custom(connection.provider),
         });
 
         const accountBBalance = await publicClient.getBalance({
@@ -281,6 +265,72 @@ describe("ERC20SPLFactory integration", { concurrency: false }, function () {
                     account: accountBWallet.account,
                 }),
             publicClient,
+        );
+    });
+
+    it("auto-creates the recipient ATA on first transfer to a fresh address", async function () {
+        // Reproduces the 2026-04-26 finding: sending an SPL_ERC20
+        // wrapper (wUSDC, wETH, etc.) to an address that has never
+        // received this token reverted with "Token account does not
+        // exist" because `_transfer` resolved the destination via
+        // `get_token_account` (cache-only, reverts on miss). Live
+        // symptom: MetaMask greys out the Send button because its
+        // `eth_call` simulation hits the same revert. Fix: `_transfer`
+        // now calls `ensure_token_account(to)`, which idempotently
+        // creates the recipient PDA-ATA on first transfer. Same UX as
+        // Phantom and every other Solana wallet.
+        const seedAmount = 1_000n;
+
+        const ensureSenderTxHash = await tokenFromA.write.ensure_token_account([
+            accountA.account.address,
+        ], { account: accountA.account });
+        await waitForSuccess(publicClient, ensureSenderTxHash, "ensure sender ATA");
+        const mintToSenderTxHash = await tokenFromA.write.mint_to([
+            accountA.account.address,
+            seedAmount,
+        ], { account: accountA.account });
+        await waitForSuccess(publicClient, mintToSenderTxHash, "seed sender balance");
+
+        // Brand-new EVM address. NO `ensure_token_account` call for
+        // this address — that's the whole point.
+        const freshKey = generatePrivateKey();
+        const freshAddress = privateKeyToAccount(freshKey).address;
+
+        // Pre-fix this reverts with "Token account does not exist".
+        // Post-fix the wrapper creates the ATA inside the transfer.
+        const transferTxHash = await tokenFromA.write.transfer([
+            freshAddress,
+            seedAmount,
+        ], { account: accountA.account });
+        await waitForSuccess(publicClient, transferTxHash, "transfer to fresh recipient");
+
+        const balanceFreshAfter = await tokenFromA.read.balanceOf([freshAddress]);
+        assert.equal(
+            balanceFreshAfter,
+            seedAmount,
+            "fresh recipient must show transferred balance after auto-ATA-create",
+        );
+    });
+
+    it("auto-creates the recipient ATA on mint_to to a fresh address", async function () {
+        // Mint authority calling mint_to into a fresh address used to
+        // hit the same revert as transfer. Same fix path: mint_to now
+        // calls ensure_token_account(to) before the SPL
+        // mint_to_checked CPI.
+        const freshKey = generatePrivateKey();
+        const freshAddress = privateKeyToAccount(freshKey).address;
+        const mintAmt = 500n;
+
+        const mintTxHash = await tokenFromA.write.mint_to([freshAddress, mintAmt], {
+            account: accountA.account,
+        });
+        await waitForSuccess(publicClient, mintTxHash, "mint_to fresh recipient");
+
+        const balanceFresh = await tokenFromA.read.balanceOf([freshAddress]);
+        assert.equal(
+            balanceFresh,
+            mintAmt,
+            "fresh recipient balance must equal minted amount post-ATA-create",
         );
     });
 

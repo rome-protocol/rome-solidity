@@ -60,9 +60,13 @@ library RomeEVMAccount {
     function create_payer(address user, uint64 lamports, bytes32 salt) internal {
         bytes32 key = get_payer(user, salt);
 
-        (uint64 lamports_,,,,,) = CpiProgram.account_info(key);
-        if (lamports_ == 0) {
+        (uint64 current_lamports,,,,,) = CpiProgram.account_info(key);
+        if (current_lamports == 0) {
             require(lamports >= minimum_balance(0), "insufficient lamports, rent-exemption value is 890880");
+        }
+
+        if (current_lamports >= lamports) {
+            return;
         }
 
         //require(false, string(SystemProgram.bytes32_to_base58(key)));

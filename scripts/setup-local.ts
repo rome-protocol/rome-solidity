@@ -1,6 +1,13 @@
 import hardhat from "hardhat";
 import fs from "node:fs";
 import path from "node:path";
+import { getAddress, isAddress } from "viem";
+import {
+    deployPaymaster,
+    deploySplErc20,
+    deployWithdraw,
+} from "./bridge/deploy.js";
+import { SPL_MINTS } from "./bridge/constants.js";
 
 /**
  * Local Rome stack setup script for rome-solidity testing.
@@ -32,6 +39,7 @@ const PROG_DYNAMIC_AMM: `0x${string}` =
 const PROG_DYNAMIC_VAULT: `0x${string}` =
     "0x0fbfe8846d685cbdc62cca7e04c7e8f68dcc313ab31277e2e0112a2ec0e052e5"; // 24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi
 const CPI_ADDRESS: `0x${string}` = "0xFF00000000000000000000000000000000000008";
+const VAULT_OVERRIDE_NETWORK_MAINNET = 0;
 
 // Oracle program IDs
 const PYTH_RECEIVER_PROGRAM_ID: `0x${string}` =
@@ -75,6 +83,14 @@ const SWITCHBOARD_FEEDS: { pair: string; pubkey: `0x${string}`; base58: string }
 // 10 years in seconds — snapshot data is static, so staleness checks must be disabled
 const LOCAL_MAX_STALENESS = 315_360_000n;
 
+function resolveAddress(value: string, name: string): `0x${string}` {
+    if (!isAddress(value)) {
+        throw new Error(`Invalid ${name}: ${value}`);
+    }
+
+    return getAddress(value);
+}
+
 async function main() {
     const { viem, networkName } = await hardhat.network.connect();
 
@@ -95,14 +111,21 @@ async function main() {
     console.log("Balance:", balance.toString());
     console.log();
 
+    const erc20SplFactoryAddress = resolveAddress(
+        process.env.ERC20_SPL_FACTORY_ADDRESS ?? "",
+        "ERC20_SPL_FACTORY_ADDRESS",
+    );
+
     const deployments: Record<string, any> = {};
 
     // ─── 1. Meteora DAMMv1 Factory ───
     console.log("=== 1/5 Deploying MeteoraDAMMv1Factory ===");
     const factory = await viem.deployContract("MeteoraDAMMv1Factory", [
+        erc20SplFactoryAddress,
         PROG_DYNAMIC_VAULT,
         PROG_DYNAMIC_AMM,
         CPI_ADDRESS,
+        VAULT_OVERRIDE_NETWORK_MAINNET,
     ]);
     console.log("  Factory:", factory.address);
     deployments.MeteoraDAMMv1Factory = { address: factory.address };
@@ -234,6 +257,43 @@ async function main() {
 
     deployments.OracleGatewayV2.switchboardFeeds = sbFeeds;
 
+    // ─── 6. Bridge contracts ───
+    console.log("\n=== 6/6 Deploying Rome Bridge contracts ===");
+
+    // CPI precompile address — defined in contracts/interface.sol as 0xff..08.
+    const cpiProgramAddress = "0xFF00000000000000000000000000000000000008" as `0x${string}`;
+
+    const paymaster = await deployPaymaster(deployer.account.address);
+    deployments.RomeBridgePaymaster = { address: paymaster.address };
+
+    const usdcWrapper = await deploySplErc20(
+        "SPL_ERC20_USDC",
+        "Rome USDC",
+        "rUSDC",
+        SPL_MINTS.USDC_NATIVE,
+        cpiProgramAddress,
+    );
+    deployments.SPL_ERC20_USDC = { address: usdcWrapper.address, mintId: SPL_MINTS.USDC_NATIVE };
+
+    const wethWrapper = await deploySplErc20(
+        "SPL_ERC20_WETH",
+        "Rome wETH",
+        "rETH",
+        SPL_MINTS.WETH_WORMHOLE,
+        cpiProgramAddress,
+    );
+    deployments.SPL_ERC20_WETH = { address: wethWrapper.address, mintId: SPL_MINTS.WETH_WORMHOLE };
+
+    try {
+        await deployWithdraw(paymaster.address, usdcWrapper.address, wethWrapper.address);
+        deployments.RomeBridgeWithdraw = { address: "(see deployments/local.json)" };
+    } catch (err) {
+        console.warn(
+            "Skipping RomeBridgeWithdraw deploy — Phase 1.5 PDA derivation pending:",
+            (err as Error).message,
+        );
+    }
+
     // ─── Save deployments ───
     const deploymentsDir = path.resolve(process.cwd(), "deployments");
     fs.mkdirSync(deploymentsDir, { recursive: true });
@@ -251,6 +311,7 @@ async function main() {
     console.log(`Meteora: factory + 1 pool`);
     console.log(`Pyth feeds: ${successFeeds.length}/${feeds.length} created`);
     console.log(`Switchboard feeds: ${successSbFeeds.length}/${sbFeeds.length} created`);
+    console.log(`Bridge: paymaster + rUSDC wrapper + rETH wrapper (withdraw deferred to Phase 1.5)`);
     const allFailed = [...failedFeeds, ...failedSbFeeds];
     if (allFailed.length > 0) {
         console.log(`Failed feeds: ${allFailed.map((f: any) => f.pair).join(", ")}`);

@@ -37,15 +37,28 @@ async function main() {
     const filePath = path.resolve(deploymentsDir, `${networkName}.json`);
     const deployments = JSON.parse(fs.readFileSync(filePath, "utf8"));
     const v2 = deployments.OracleGatewayV2;
+    if (!v2) {
+        throw new Error(
+            `OracleGatewayV2 block not found in ${filePath}. Run deploy-v2-polish.ts first.`,
+        );
+    }
+    // deploy-v2-polish.ts writes plain strings; legacy scripts (setup-local.ts,
+    // deploy.ts) still write { address: ... }. Handle both shapes.
+    const factoryAddress: `0x${string}` =
+        typeof v2.OracleAdapterFactory === "string"
+            ? v2.OracleAdapterFactory
+            : v2.OracleAdapterFactory.address;
+    const batchReaderAddress: `0x${string}` =
+        typeof v2.BatchReader === "string" ? v2.BatchReader : v2.BatchReader.address;
 
     console.log("=== Oracle Gateway V2 Integration Tests ===");
-    console.log("Factory:", v2.OracleAdapterFactory.address);
-    console.log("BatchReader:", v2.BatchReader.address);
+    console.log("Factory:", factoryAddress);
+    console.log("BatchReader:", batchReaderAddress);
     console.log();
 
     const factory = await viem.getContractAt(
         "OracleAdapterFactory",
-        v2.OracleAdapterFactory.address,
+        factoryAddress,
     );
 
     // ─── 1. Create Pyth Pull feeds ───
@@ -199,7 +212,7 @@ async function main() {
 
     // ─── 7. BatchReader ───
     console.log("\n=== 7. BatchReader ===");
-    const batchReader = await viem.getContractAt("BatchReader", v2.BatchReader.address);
+    const batchReader = await viem.getContractAt("BatchReader", batchReaderAddress);
     try {
         const results = await batchReader.read.getLatestPrices([
             adapterAddresses as `0x${string}`[],
@@ -219,7 +232,7 @@ async function main() {
         adapter: adapterAddresses[i] ?? null,
     }));
 
-    deployments.OracleGatewayV2.feeds = feedDeployments;
+    deployments.OracleGatewayV2.feedsVerified = feedDeployments;
     fs.writeFileSync(filePath, JSON.stringify(deployments, null, 2) + "\n", "utf8");
     console.log("\nDeployments updated:", filePath);
 

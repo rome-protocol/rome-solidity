@@ -1,0 +1,71 @@
+{
+  "OracleGatewayV2": {
+    "deployedAt": "2026-04-21T19:50:11.685Z",
+    "defaultMaxStaleness": 300,
+    "pythReceiverProgramId": "0x0cb7fabb52f7a648bb5b317d9a018b9057cb024774fafe01e6c4df98cc385881",
+    "switchboardProgramId": "0x068851c68c6832f02fa581b1bf491b77ca41776ba2b988b5a6faba8ee3a2ec90",
+    "PythPullAdapterImpl": "0xefe4c8edeeb7379c688ce6227b13e16b4f8d7f6f",
+    "SwitchboardV3AdapterImpl": "0x37fcb45465348a3102c56efd1ad210baf23706e6",
+    "OracleAdapterFactory": "0xf543ae0b6cab80a9ea282ee7e706e4eb735d0e72",
+    "BatchReader": "0x6a3bcb3dea144de2609e9841c4a7d875b6cb8a6e",
+    "feeds": {
+      "pyth": [
+        {
+          "pair": "SOL/USD",
+          "adapter": "0x9D01A836CdA49EC579D77D452b2955Dcf2FBcE6c",
+          "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+          "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
+        },
+        {
+          "pair": "BTC/USD",
+          "adapter": "0x32Ecf7fe2B4D0a5Ab571a2a0662b4674BE2c39C9",
+          "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
+          "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
+        },
+        {
+          "pair": "ETH/USD",
+          "adapter": "0x486b1bFfc19153Fb030E5d25ED0FC5a9b57A7992",
+          "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+          "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
+        },
+        {
+          "pair": "USDC/USD",
+          "adapter": "0x9749688C82A3f442456C046655BBb2b12a90B9F9",
+          "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+          "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
+        },
+        {
+          "pair": "USDT/USD",
+          "adapter": "0xE520aFee5b92a9A15a24d8C3A7779c1916D2C796",
+          "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
+          "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
+        }
+      ],
+      "switchboard": [
+        {
+          "pair": "SOL/USD",
+          "adapter": "0x018FdD49E8432f243fB855b1713EDc6773ded14F",
+          "pubkey": "GvDMxPzN1sCj7L26YDK2HnMRXEQmQ2aemov8YBtPS7vR",
+          "pubkeyBytes32": "0xec81105112a257d61df4cf5f13ee0a1b019197c8c5343b4f2a7ec8846ae22c1a"
+        }
+      ]
+    },
+    "feedsVerified": [
+      {
+        "pair": "SOL / USD",
+        "pythAccountBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243",
+        "adapter": "0x9D01A836CdA49EC579D77D452b2955Dcf2FBcE6c"
+      },
+      {
+        "pair": "BTC / USD",
+        "pythAccountBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de",
+        "adapter": "0x32Ecf7fe2B4D0a5Ab571a2a0662b4674BE2c39C9"
+      },
+      {
+        "pair": "ETH / USD",
+        "pythAccountBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb",
+        "adapter": "0x486b1bFfc19153Fb030E5d25ED0FC5a9b57A7992"
+      }
+    ]
+  }
+}

@@ -2,7 +2,6 @@ import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import hardhat from "hardhat";
 import { readDeployments, PoolDeployment, DeploymentsFile } from "../scripts/lib/deployments.js";
-import { encodeFunctionData } from "viem";
 import { requireEnv } from "../scripts/lib/helpers.js";
 
 
@@ -54,7 +53,9 @@ function pickPoolDeployment(deployments: DeploymentsFile): {
 describe("DAMMv1Pool integration", function () {
     let poolAddress: `0x${string}`;
     let poolPubkey: string;
+    let selectedPool: PoolDeployment;
     let pool: any;
+    let erc20pool: any;
     let publicClient: Awaited<ReturnType<(typeof hardhat)["network"]["connect"]>>["viem"] extends infer V
         ? V extends { getPublicClient: () => Promise<infer P> }
             ? P
@@ -67,16 +68,31 @@ describe("DAMMv1Pool integration", function () {
 
         const deployments = readDeployments(networkName);
         const selected = pickPoolDeployment(deployments);
+        selectedPool = deployments.MeteoraDAMMv1Pools?.find(
+            (poolDeployment) =>
+                poolDeployment.pubkey.toLowerCase() === selected.pubkey.toLowerCase()
+                || poolDeployment.address.toLowerCase() === selected.address.toLowerCase(),
+        ) ?? {
+            pubkey: selected.pubkey,
+            address: selected.address,
+            txHash: "",
+            blockNumber: "0",
+            tokenAMint: "",
+            tokenBMint: "",
+            tokenAAddress: "",
+            tokenBAddress: "",
+        };
 
         poolAddress = selected.address;
         poolPubkey = selected.pubkey;
 
-        pool = await viem.getContractAt("DAMMv1Pool", poolAddress);
+        erc20pool = await viem.getContractAt("ERC20DAMMv1Pool", poolAddress);
+        pool = await viem.getContractAt("DAMMv1Pool", await erc20pool.read.internal_pool());
 
         const code = await publicClient.getCode({ address: poolAddress });
         assert.ok(code && code !== "0x", `No contract code at ${poolAddress}`);
 
-        console.log("Testing DAMMv1Pool at:", poolAddress);
+        console.log("Testing ERC20DAMMv1Pool at:", poolAddress);
         console.log("Expected pool pubkey:", poolPubkey);
     });
 
@@ -286,84 +302,111 @@ describe("DAMMv1Pool integration", function () {
     });
 
     it("can invoke_swap via explicit accounts", async function () {
-        const userSourceToken = requireEnv("SWAP_USER_SOURCE_TOKEN");
-        const userDestinationToken = requireEnv("SWAP_USER_DESTINATION_TOKEN");
-        const user = requireEnv("SWAP_USER");
-        const inTokenRaw = requireEnv("SWAP_IN_TOKEN");
-        const inAmountRaw = requireEnv("SWAP_IN_AMOUNT");
-        const minimumOutAmountRaw = requireEnv("SWAP_MIN_OUT");
+        const tokenIn = 0;
+        const amountIn = BigInt(10000);
+        const minAmountOut = 0n;
 
-        if (!isHex32(userSourceToken)) {
-            throw new Error(`SWAP_USER_SOURCE_TOKEN must be bytes32 hex, got: ${userSourceToken}`);
-        }
-        if (!isHex32(userDestinationToken)) {
-            throw new Error(`SWAP_USER_DESTINATION_TOKEN must be bytes32 hex, got: ${userDestinationToken}`);
-        }
-        if (!isHex32(user)) {
-            throw new Error(`SWAP_USER must be bytes32 hex, got: ${user}`);
-        }
-
-        const inToken = Number(inTokenRaw);
-        if (inToken !== 0 && inToken !== 1) {
-            throw new Error(`SWAP_IN_TOKEN must be 0 or 1, got: ${inTokenRaw}`);
-        }
-
-        const inAmount = BigInt(inAmountRaw);
-        const minimumOutAmount = BigInt(minimumOutAmountRaw);
-
-        if (inAmount < 0n || inAmount > 18446744073709551615n) {
-            throw new Error(`SWAP_IN_AMOUNT must fit uint64, got: ${inAmountRaw}`);
-        }
-        if (minimumOutAmount < 0n || minimumOutAmount > 18446744073709551615n) {
-            throw new Error(`SWAP_MIN_OUT must fit uint64, got: ${minimumOutAmountRaw}`);
-        }
-
-        const { viem } = await hardhat.network.connect();
+        const { viem, networkName } = await hardhat.network.connect();
         const [deployer] = await viem.getWalletClients();
         if (!deployer?.account) {
             throw new Error("No deployer wallet available for invoke_swap test.");
         }
 
-        const calldata = encodeFunctionData({
-            abi: pool.abi,
-            functionName: "invoke_swap(bytes32,bytes32,bytes32,uint8,uint64,uint64)",
-            args: [
-                userSourceToken,
-                userDestinationToken,
-                user,
-                inToken,
-                inAmount,
-                minimumOutAmount,
-            ],
+        const deployments = readDeployments(networkName);
+        const erc20SplFactoryAddress = deployments.ERC20SPLFactory?.address;
+        if (!erc20SplFactoryAddress) {
+            console.log("erc20SplFactory deployment not found");
+            this.skip();
+            return;
+        }
+
+        const tokenInAddress = (tokenIn === 0
+            ? selectedPool.tokenAAddress
+            : selectedPool.tokenBAddress) as `0x${string}`;
+        const tokenOutAddress = (tokenIn === 0
+            ? selectedPool.tokenBAddress
+            : selectedPool.tokenAAddress) as `0x${string}`;
+
+        const tokenInContract = await viem.getContractAt("SPL_ERC20", tokenInAddress, {
+            client: {
+                public: publicClient,
+                wallet: deployer,
+            },
+        });
+        const tokenOutContract = await viem.getContractAt("SPL_ERC20", tokenOutAddress, {
+            client: {
+                public: publicClient,
+                wallet: deployer,
+            },
+        });
+        const erc20SplFactory = await viem.getContractAt("ERC20SPLFactory", erc20SplFactoryAddress, {
+            client: {
+                public: publicClient,
+                wallet: deployer,
+            },
+        });
+        const usersAddress = await erc20SplFactory.read.users();
+        const users = await viem.getContractAt("ERC20Users", usersAddress, {
+            client: {
+                public: publicClient,
+                wallet: deployer,
+            },
         });
 
-        const gasPrice = await publicClient.getGasPrice();
-        const nonce = await publicClient.getTransactionCount({
-            address: deployer.account.address,
-        });
+        try {
+            await users.read.get_user([deployer.account.address]);
+        } catch {
+            const createUserTxHash = await erc20SplFactory.write.create_user([], {
+                account: deployer.account,
+            });
+            const createUserReceipt = await publicClient.waitForTransactionReceipt({ hash: createUserTxHash });
+            assert.equal(createUserReceipt.status, "success", "create_user tx failed");
+        }
 
-        console.log("invoke_swap params:");
-        console.log("  userSourceToken:", userSourceToken);
-        console.log("  userDestinationToken:", userDestinationToken);
-        console.log("  user:", user);
-        console.log("  inToken:", inToken);
-        console.log("  inAmount:", inAmount.toString());
-        console.log("  minimumOutAmount:", minimumOutAmount.toString());
-        console.log("  nonce:", nonce);
-        console.log("  gasPrice:", gasPrice.toString());
+        const payer = await users.read.get_user([deployer.account.address]);
+        console.log("Payer is ", payer);
 
-        const txHash = await deployer.sendTransaction({
-            account: deployer.account,
-            to: poolAddress,
-            data: calldata,
-            gas: 5_000_000n,
-            gasPrice,
-            nonce,
-            value: 0n,
-        });
+        for (const [tokenContract, label] of [
+            [tokenInContract, "token in"],
+            [tokenOutContract, "token out"],
+        ] as const) {
+            const ensureAccountTxHash = await tokenContract.write.ensure_token_account([deployer.account.address], {
+                account: deployer.account,
+            });
+            const ensureAccountReceipt = await publicClient.waitForTransactionReceipt({ hash: ensureAccountTxHash });
+            assert.equal(ensureAccountReceipt.status, "success", `ensure ${label} token account tx failed`);
+        }
 
-        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+        console.log("User input token account ", await tokenInContract.read.get_token_account([deployer.account.address]));
 
-        assert.equal(receipt.status, "success", "invoke_swap transaction failed");
+        const inputBalanceBefore = await tokenInContract.read.balanceOf([deployer.account.address]);
+        const outputBalanceBefore = await tokenOutContract.read.balanceOf([deployer.account.address]);
+
+        assert.ok(
+            inputBalanceBefore >= amountIn,
+            `swap user must hold at least ${amountIn} input tokens before swap`,
+        );
+
+        const swapTxHash = await erc20pool.write.swapExactTokensForTokens(
+            [tokenInAddress, amountIn, minAmountOut],
+            {
+                account: deployer.account,
+            },
+        );
+        const swapReceipt = await publicClient.waitForTransactionReceipt({ hash: swapTxHash });
+        assert.equal(swapReceipt.status, "success", "swapExactTokensForTokens tx failed");
+
+        const inputBalanceAfter = await tokenInContract.read.balanceOf([deployer.account.address]);
+        const outputBalanceAfter = await tokenOutContract.read.balanceOf([deployer.account.address]);
+
+        assert.equal(
+            inputBalanceAfter,
+            inputBalanceBefore - amountIn,
+            "input token balance must decrease by the swap amount",
+        );
+        assert.ok(
+            outputBalanceAfter > outputBalanceBefore,
+            "output token balance must increase after swap",
+        );
     });
 });

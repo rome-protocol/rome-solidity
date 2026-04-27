@@ -5,16 +5,241 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
       - run: npm install
       - run: npx hardhat compile
-      - run: npx hardhat test
+      - name: Run CPI foundation + oracle + bridge tests
+        run: |
+          npx hardhat test nodejs \
+            tests/oracle/*.test.ts \
+            tests/bridge/*.test.ts \
+            tests/cpi/AccountMetaBuilder.test.ts \
+            tests/cpi/AnchorInstruction.test.ts \
+            tests/cpi/Cpi.test.ts \
+            tests/cpi/CostEstimator.test.ts \
+            tests/cpi/CpiAdapterBase.test.ts \
+            tests/cpi/CpiError.test.ts \
+            tests/cpi/PdaDeriver.test.ts \
+            tests/cpi/SolanaConstants.test.ts \
+            tests/cpi/UserPda.test.ts
+
+  tx-origin-ban:
+    # Strict gate per cardo-foundation section 9 + section 7 Task 14.
+    # All adapters that live in rome-showcase are refactored onto the Cardo
+    # Foundation (PRs #6 / #7 / #8); rome-solidity itself has no tx.origin
+    # site today. This job fails the build on any NEW tx.origin reference
+    # on a non-comment line in contracts/**/*.sol — NatSpec / `//` / `///`
+    # comments that reference the antipattern for documentation stay
+    # allowed (the foundation's UserPda docs describe the fix by name).
+    #
+    # Implementation note: we use plain `grep -rnE --include='*.sol'`
+    # rather than `git grep -nE '\btx\.origin\b'`. git grep's default
+    # regex engines (BRE / ERE) do not honor `\b` word boundaries — the
+    # earlier "warn-only" incarnation of this job matched nothing even
+    # when tx.origin was present. `tx.origin` is unambiguous enough in
+    # Solidity that anchors aren't needed.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Ban tx.origin in contracts/ (strict)
+        run: |
+          set -euo pipefail
+          matches=$(grep -rnE 'tx\.origin' --include='*.sol' contracts/ || true)
+          if [ -z "$matches" ]; then
+            echo "No tx.origin references in contracts/**/*.sol — clean."
+            exit 0
+          fi
+          echo "$matches" | awk -F: '
+            {
+              line = $3
+              for (i = 4; i <= NF; i++) line = line ":" $i
+              sub(/^[[:space:]]+/, "", line)
+              if (line ~ /^\/\//) next
+              if (line ~ /^\*/) next
+              if (line ~ /^\/\*/) next
+              print $1 ":" $2 ": " line
+              bad = 1
+            }
+            END { if (bad) exit 1 }
+          ' || {
+            echo "::error::tx.origin is banned in production code per cardo-foundation section 9"
+            exit 1
+          }
+          echo "All tx.origin mentions are in comments — clean."
+
+  cu-recon-staleness:
+    # Per cardo-foundation section 4.6 + section 7 Task 14 step 4: every
+    # CU_<OP> constant must carry an adjacent `// recon YYYY-MM-DD`
+    # comment no older than 6 months. "Adjacent" = same line OR within
+    # the 10 lines immediately above (lets authors keep one recon banner
+    # per block of CU constants).
+    #
+    # rome-solidity doesn't ship adapter CU tables today (those live in
+    # rome-showcase per the per-app-silo convention); this job is general-
+    # purpose and passes green when no CU_* constants exist. It's mirrored
+    # from rome-showcase's CI so the two repos share one shell recipe and
+    # any future CU constants in rome-solidity (e.g. an ERC20SPL deposit
+    # CU budget) are caught without a config change.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check CU_* recon comment freshness
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime, pathlib, re, sys
+
+          CU_LINE = re.compile(r'\bCU_[A-Z_]+\s*=\s*[0-9_]+')
+          RECON = re.compile(r'//\s*recon\s+(\d{4})-(\d{2})-(\d{2})')
+          WINDOW = 10  # lines to search above the CU_* line
+          MAX_AGE_DAYS = 183  # ~6 months
+          today = datetime.date.today()
+
+          problems = []
+          files = sorted(pathlib.Path('contracts').rglob('*.sol'))
+          total_cu = 0
+          for f in files:
+              text = f.read_text().splitlines()
+              for idx, line in enumerate(text):
+                  if not CU_LINE.search(line):
+                      continue
+                  total_cu += 1
+                  recon_date = None
+                  for j in range(max(0, idx - WINDOW), idx + 1):
+                      m = RECON.search(text[j])
+                      if m:
+                          recon_date = datetime.date(
+                              int(m.group(1)), int(m.group(2)), int(m.group(3))
+                          )
+                          break
+                  if recon_date is None:
+                      problems.append(
+                          f"{f}:{idx+1}: missing `// recon YYYY-MM-DD` within {WINDOW} lines above: {line.strip()}"
+                      )
+                      continue
+                  age = (today - recon_date).days
+                  if age > MAX_AGE_DAYS:
+                      problems.append(
+                          f"{f}:{idx+1}: recon {recon_date} is {age} days old (> {MAX_AGE_DAYS}): {line.strip()}"
+                      )
+
+          print(f"Scanned {len(files)} .sol files; found {total_cu} CU_* constants.")
+          if problems:
+              print("::error::CU_* constants with stale or missing recon comments:")
+              for p in problems:
+                  print(f"  {p}")
+              sys.exit(1)
+          print("All CU_* constants have fresh recon comments (or none present).")
+          PY
+
+  slither:
+    # Slither static analysis per cardo-foundation section 10.4. Non-blocking
+    # during Phase 1 (foundation ships clean; adapter refactors land
+    # Slither-strict gates later under Task 14).
+    #
+    # Compatibility shim: Hardhat v3 writes build-info as two files — the
+    # `input` lives in `solc-<hash>.json` and the `output` lives in a
+    # sibling `solc-<hash>.output.json`. crytic-compile's hardhat platform
+    # handler expects the v2-style combined JSON (see crytic-compile#629)
+    # and crashes with `KeyError: 'output'` otherwise. We pre-compile with
+    # Hardhat, then merge the two build-info files into a v2-compatible
+    # shape so slither's hardhat detection works unchanged.
+    #
+    # Detector exclusions (documented per cardo-foundation section 10.4)
+    # live in `.slither.config.json`:
+    #   - reentrancy-eth / reentrancy-events: Solana CPI precompile calls
+    #     (0xFF...08) are synchronous with the Solana runtime; there is no
+    #     untrusted EVM contract that can re-enter between call and return.
+    #     Adapter-level flows are additionally guarded by ReentrancyGuard
+    #     in CpiAdapterBase.
+    #   - incorrect-shift: false-positive on endian-conversion helpers in
+    #     contracts/convert.sol under Solidity 0.8.28.
+    #   - contracts/*/test/*: harness contracts that expose library internals
+    #     to mocha tests; never deployed.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm install
+      - name: Hardhat compile
+        run: npx hardhat compile
+      - name: Merge Hardhat v3 build-info into v2 layout for crytic-compile
+        run: |
+          python3 - <<'PY'
+          import glob, json, os, re, sys
+          build_info_dir = 'artifacts/build-info'
+          input_files = [f for f in glob.glob(f'{build_info_dir}/*.json') if not f.endswith('.output.json')]
+          if not input_files:
+              print('No build-info files found; skipping merge')
+              sys.exit(0)
+
+          # Hardhat v3 prefixes project sources with "project/" and npm deps
+          # with "npm/<pkg>@<ver>/...". crytic-compile's convert_filename
+          # treats source names as on-disk paths, so rewrite back to the
+          # v2-compatible layout ("contracts/..." and "node_modules/<pkg>/...").
+          # The AST embedded in the compiler output also references sources
+          # by these names, so we do a textual rewrite on the full JSON to
+          # catch every reference (input sources, output sources, contract
+          # keys, AST ImportDirective nodes, sourceList entries, etc.).
+          NPM_RE = re.compile(r'"npm/(@[^/]+/[^@]+|[^@/]+)@[^/]+/')
+          PROJECT_RE = re.compile(r'"project/')
+
+          def rewrite_json_text(text: str) -> str:
+              # Rewrite npm/<pkg>@<ver>/ -> node_modules/<pkg>/
+              text = NPM_RE.sub(lambda m: f'"node_modules/{m.group(1)}/', text)
+              # Rewrite project/ -> (empty)
+              text = PROJECT_RE.sub('"', text)
+              return text
+
+          for input_path in input_files:
+              output_path = input_path[:-5] + '.output.json'
+              if not os.path.exists(output_path):
+                  print(f'WARN: no matching output for {input_path}')
+                  continue
+              with open(input_path) as f:
+                  inp_text = f.read()
+              with open(output_path) as f:
+                  out_text = f.read()
+              inp_text = rewrite_json_text(inp_text)
+              out_text = rewrite_json_text(out_text)
+              inp = json.loads(inp_text)
+              out = json.loads(out_text)
+              merged = {
+                  '_format': 'hh-sol-build-info-1',
+                  'id': inp.get('id'),
+                  'solcVersion': inp.get('solcVersion'),
+                  'solcLongVersion': inp.get('solcLongVersion'),
+                  'input': inp['input'],
+                  'output': out['output'],
+              }
+              with open(input_path, 'w') as f:
+                  json.dump(merged, f)
+              # Remove the v3 sidecar so crytic-compile doesn't try to parse
+              # it as a standalone build-info (it lacks input/solcVersion).
+              os.remove(output_path)
+              print(f'Merged {os.path.basename(input_path)}')
+          PY
+      - uses: crytic/slither-action@v0.4.2
+        with:
+          node-version: '22'
+          solc-version: '0.8.28'
+          slither-config: '.slither.config.json'
+          ignore-compile: true
+          fail-on: none

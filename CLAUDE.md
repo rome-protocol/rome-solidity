@@ -6,6 +6,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 rome-solidity is a Solidity smart contract repo for SPL/EVM cross-program interaction within the Rome-EVM program stack. It provides ERC20 wrappers for SPL tokens, a Meteora DAMM v1 AMM integration, and an Oracle Gateway V2 for Pyth Pull and Switchboard V3 price feeds, all running on Solana via Rome-EVM precompiles.
 
+## Design principle (inherited from `/rome/CLAUDE.md`)
+
+**Contracts expose Ethereum-standard interfaces.** External callers should not need to know they're talking to a Rome-specific contract. Enhance freely; don't degrade.
+
+Contract-layer applications already baked in:
+
+- **`SPL_ERC20` implements `IERC20` + `IERC20Metadata` exactly.** `transfer`, `transferFrom`, `approve`, `balanceOf`, `symbol`, `decimals` — standard ERC20 behavior. The CPI-to-SPL machinery is an implementation detail; external callers see a normal ERC20.
+- **Oracle Gateway V2 adapters implement `AggregatorV3Interface`.** `latestRoundData()` returns Chainlink-normalized 8-decimal prices. A consumer written for Chainlink on Ethereum drops in without edits.
+- **`IExtendedOracleAdapter` adds capability beyond the standard** (EMA, confidence, price-status) — a pure enhancement. Consumers that only want `AggregatorV3Interface` still work; consumers that need more can use the extension.
+- **`wrap_gas_to_spl` / `unwrap_spl_to_gas` (when added) must mirror WETH9's `deposit()` / `withdraw()`.** Same call shape, same event semantics, same refund-on-excess-value behavior as Uniswap's canonical WETH. Don't invent a novel API.
+
+When adding new contracts:
+
+- **Start from the Ethereum canonical interface.** If a pattern exists on Ethereum (ERC20, ERC721, AggregatorV3, UniswapV2, etc.), use that interface. **Extend** in a separate `I<Thing>Extended.sol` — never modify the base interface, never replace it with a Rome-specific alternative.
+- **Rome-specific helpers (CPI, PDA derivation, mint layout) go in `*_program.sol` / `*_lib.sol` modules**, not in the public contract surface. Keep the public surface EVM-standard.
+- **Don't write "free to the user" primitives** (airdrop, faucet, subsidized mint). Token issuance goes through explicit bridge flows, swaps, or contract-owned admin — never zero-cost user claims.
+
+**Reference spec**: [`rome-specs/active/technical/2026-04-23-gas-wrapper-split-at-bridge.md`](../rome-specs/active/technical/2026-04-23-gas-wrapper-split-at-bridge.md) — uses the ETH/WETH pattern as the anchor for gas-vs-wrapper decisions.
+
 ## Build & Test Commands
 
 ```bash
@@ -78,10 +97,12 @@ Global constants (`SplToken`, `AssociatedSplToken`, `SystemProgram`, `CpiProgram
 
 ### Contract Layers
 
+- **`contracts/cpi/`** — Cardo CPI Foundation (library + templates). Shared Solidity helpers every Cardo app adapter builds on top of: `AccountMetaBuilder`, `AnchorInstruction`, `Cpi`, `PdaDeriver`, `SolanaConstants`, `UserPda`, `CpiError`, and the Pillar B cost-transparency trio (`CostEstimate`, `CostEstimator`, `ICostView`). Also ships `templates/CpiAdapterBase.sol` (Ownable+Pausable+ReentrancyGuard+backend pointer scaffold) and `templates/CpiProgramWrapper.sol` (prose scaffold for golden-vector wrappers). See `contracts/cpi/README.md` for the adapter authoring guide, the three-layer pattern, and the `tx.origin`/`msg.sender` rule. Canonical spec: `rome-specs/active/technical/cardo-foundation.md`.
 - **`contracts/spl_token/`** — Low-level SPL token and associated token account libraries (`SplTokenLib`, `AssociatedSplTokenLib`). These use `CpiProgram.account_info()` to deserialize on-chain Solana account data (Borsh-encoded) from within Solidity.
 - **`contracts/erc20spl/`** — `SPL_ERC20` wraps an SPL mint as an ERC20 token with deposit/withdraw. `ERC20SPLFactory` deploys these wrappers. Uses OpenZeppelin IERC20.
 - **`contracts/meteora/`** — `MeteoraDAMMv1Factory` and `DAMMv1Pool` implement a Uniswap-style factory/pool pattern that delegates swaps to Meteora's on-chain Solana program via CPI.
 - **`contracts/oracle/`** — Oracle Gateway V2: Chainlink-compatible adapters for both Pyth Pull and Switchboard V3 price feeds. `OracleAdapterFactory` deploys `PythPullAdapter` and `SwitchboardV3Adapter` instances via EIP-1167 minimal proxy clones. Each adapter reads Solana account data via CPI precompile, parses Borsh-encoded price data (`PythPullParser` / `SwitchboardParser`), and normalizes to 8-decimal Chainlink format. `IExtendedOracleAdapter` extends `IAggregatorV3Interface` with confidence intervals, EMA data, and price status. `BatchReader` reads multiple feeds in one call. The factory includes owner-controlled pause/unpause emergency controls. Includes `examples/SampleLendingOracle.sol`.
+- **`contracts/bridge/`** — Rome Bridge Phase 1 (Solana ↔ Ethereum cross-chain). `RomeBridgePaymaster` is an EIP-2771 trusted forwarder with per-user 3-tx sponsorship cap + (target, selector) allowlist. `RomeBridgeWithdraw` accepts ERC-20 input on Rome EVM and emits Wormhole Token Bridge or CCTP outbound messages via CPI signed as the user's PDA. Outbound Wormhole is split across two EVM txs (`approveBurnETH` then `burnETH`) because a single atomic Rome DoTx with two CPIs exceeds Solana's 1.4M compute-unit budget. `IWormholeTokenBridge.sol` and `ICCTP.sol` encode the native/Anchor Solana instructions. All Solana pubkeys are supplied via constructor params so the contract is network-agnostic. **See `contracts/bridge/README.md`** for architecture, flow diagrams, and a problems-and-fixes runbook covering the incidents from bring-up. Design spec: `rome-product/specs/rome-bridge-phase1.md`.
 - **`contracts/system_program/`** — Solana System Program helpers. `instruction_data.sol` encodes System Program instructions (create account, transfer, assign, nonce operations, allocate) as little-endian bytes. `system_program.sol` wraps these as CPI calls.
 - **`contracts/mpl_token_metadata/`** — Deserializes Metaplex Token Metadata V2 accounts from Borsh-encoded binary. Parses creators, token standards, collection details, uses, and programmable config. Provides `find_metadata_pda()` and `load_metadata()`.
 - **`contracts/rome_evm_account.sol`** — PDA derivation helpers for Rome-EVM user accounts (maps `address` → Solana `bytes32` pubkey).
@@ -105,11 +126,15 @@ Global constants (`SplToken`, `AssociatedSplToken`, `SystemProgram`, `CpiProgram
 
 ### Deployments
 
-Deployment metadata is tracked in `deployments/{network}.json`. `monti_spl.json` is committed; `local.json` is generated by `scripts/setup-local.ts` and should not be committed (regenerated per local stack restart). Current deployments on monti_spl:
-- **MeteoraDAMMv1Factory** — Factory + 2 pool deployments with SPL token pubkeys and EVM addresses
-- **PythAggregatorFactory** — Pyth v1 feed factory (legacy)
-- **PythAggregatorFeeds** — SOL/USD, BTC/USD, ETH/USD Pyth v1 adapters
-- **OracleGatewayV2** — PythPullAdapter, SwitchboardV3Adapter implementations, OracleAdapterFactory (defaultMaxStaleness=60), BatchReader, and SwitchboardFeeds (SOL/USD)
+Deployment metadata is tracked in `deployments/{network}.json`. `marcus.json` and `monti_spl.json` are committed (devnet deployments); `local.json` is generated by `scripts/setup-local.ts` and should not be committed (regenerated per local stack restart). Current devnet deployments:
+
+**marcus (current V2 target):**
+- **OracleGatewayV2** — PythPullAdapter + SwitchboardV3Adapter implementations, OracleAdapterFactory (`defaultMaxStaleness=300`), BatchReader, + 5 Pyth feeds (SOL/BTC/ETH/USDC/USDT) and 1 Switchboard feed (SOL). Deployed by `scripts/oracle/deploy-v2-polish.ts` (idempotent — set `FORCE_REDEPLOY=1` to override).
+- **MeteoraDAMMv1Factory**, **RomeBridgePaymaster**, **RomeBridgeWithdraw**, **SPL_ERC20** (rUSDC, rETH) — Rome Bridge Phase 1 wrappers.
+
+**monti_spl (retired):**
+- **OracleGatewayV2Legacy** — historical V2 addresses kept for reference only; monti_spl is no longer a deploy target.
+- **MeteoraDAMMv1Factory**, **PythAggregatorFactory**, **PythAggregatorFeeds** — legacy artifacts.
 
 ### Networks
 

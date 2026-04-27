@@ -7,18 +7,18 @@ export type PoolDeployment = {
     address: string;
     txHash: string;
     blockNumber: string;
+    tokenAMint: string;
+    tokenBMint: string;
+    tokenAAddress: string;
+    tokenBAddress: string;
 };
 
 export type FactoryDeployment = {
     address?: string;
 };
 
-export type AssociatedSplTokenDeployment = {
+export type RouterDeployment = {
     address?: string;
-    cpiContractAddress?: string;
-    systemProgramId?: string;
-    tokenProgramId?: string;
-    associatedTokenProgramId?: string;
 };
 
 export type ERC20SPLFactoryDeployment = {
@@ -28,8 +28,8 @@ export type ERC20SPLFactoryDeployment = {
 
 export type DeploymentsFile = {
     MeteoraDAMMv1Factory?: FactoryDeployment;
+    MeteoraDAMMv1Router?: RouterDeployment;
     MeteoraDAMMv1Pools?: PoolDeployment[];
-    AssociatedSplToken?: AssociatedSplTokenDeployment;
     ERC20SPLFactory?: ERC20SPLFactoryDeployment;
 };
 
@@ -103,12 +103,43 @@ export function saveFactoryDeployment(networkName: string, address: string): voi
     writeDeployments(networkName, deployments);
 }
 
+export function readRouterAddressFromDeployments(networkName: string): `0x${string}` | null {
+    const parsed = readDeployments(networkName);
+    const address = parsed.MeteoraDAMMv1Router?.address;
+
+    if (!address) {
+        return null;
+    }
+
+    if (!isAddress(address)) {
+        throw new Error(
+            `Invalid MeteoraDAMMv1Router.address in deployments/${networkName}.json: ${address}`,
+        );
+    }
+
+    return getAddress(address);
+}
+
+export function saveRouterDeployment(networkName: string, address: string): void {
+    const deployments = readDeployments(networkName);
+
+    deployments.MeteoraDAMMv1Router = {
+        address,
+    };
+
+    writeDeployments(networkName, deployments);
+}
+
 export function savePoolDeployment(args: {
     networkName: string;
     pubkey: string;
     address: `0x${string}`;
     txHash: `0x${string}`;
     blockNumber: bigint;
+    tokenAMint: `0x${string}`;
+    tokenBMint: `0x${string}`;
+    tokenAAddress: `0x${string}`;
+    tokenBAddress: `0x${string}`;
 }): void {
     const deployments = readDeployments(args.networkName);
 
@@ -126,6 +157,10 @@ export function savePoolDeployment(args: {
             address: args.address,
             txHash: args.txHash,
             blockNumber: args.blockNumber.toString(),
+            tokenAMint: args.tokenAMint,
+            tokenBMint: args.tokenBMint,
+            tokenAAddress: args.tokenAAddress,
+            tokenBAddress: args.tokenBAddress,
         });
     } else {
         for (const pool of pools) {
@@ -137,6 +172,10 @@ export function savePoolDeployment(args: {
                 pool.address = args.address;
                 pool.txHash = args.txHash;
                 pool.blockNumber = args.blockNumber.toString();
+                pool.tokenAMint = args.tokenAMint;
+                pool.tokenBMint = args.tokenBMint;
+                pool.tokenAAddress = args.tokenAAddress;
+                pool.tokenBAddress = args.tokenBAddress;
             }
         }
     }
@@ -145,25 +184,14 @@ export function savePoolDeployment(args: {
     writeDeployments(args.networkName, deployments);
 }
 
-export function saveAssociatedSplTokenDeployment(args: {
-    networkName: string;
-    address: `0x${string}`;
-    cpiContractAddress: `0x${string}`;
-    systemProgramId: `0x${string}`;
-    tokenProgramId: `0x${string}`;
-    associatedTokenProgramId: `0x${string}`;
-}): void {
-    const deployments = readDeployments(args.networkName);
+export function readPoolDeployment(
+    networkName: string,
+    poolPubkey: string,
+): PoolDeployment | null {
+    const deployments = readDeployments(networkName);
+    const pools = deployments.MeteoraDAMMv1Pools ?? [];
 
-    deployments.AssociatedSplToken = {
-        address: args.address,
-        cpiContractAddress: args.cpiContractAddress,
-        systemProgramId: args.systemProgramId,
-        tokenProgramId: args.tokenProgramId,
-        associatedTokenProgramId: args.associatedTokenProgramId,
-    };
-
-    writeDeployments(args.networkName, deployments);
+    return pools.find((pool) => pool.pubkey.toLowerCase() === poolPubkey.toLowerCase()) ?? null;
 }
 
 export function saveERC20SPLFactoryDeployment(args: {
@@ -181,3 +209,39 @@ export function saveERC20SPLFactoryDeployment(args: {
     writeDeployments(args.networkName, deployments);
 }
 
+export function readERC20SPLFactoryAddressFromDeployments(networkName: string): `0x${string}` | null {
+    const parsed = readDeployments(networkName);
+    const address = parsed.ERC20SPLFactory?.address;
+
+    if (!address) {
+        return null;
+    }
+
+    if (!isAddress(address)) {
+        throw new Error(
+            `Invalid ERC20SPLFactory.address in deployments/${networkName}.json: ${address}`,
+        );
+    }
+
+    return getAddress(address);
+}
+
+export function resolveERC20SPLFactoryAddress(networkName: string): `0x${string}` {
+    const envAddress = process.env.ERC20_SPL_FACTORY_ADDRESS;
+    if (envAddress) {
+        if (!isAddress(envAddress)) {
+            throw new Error(`Invalid ERC20_SPL_FACTORY_ADDRESS: ${envAddress}`);
+        }
+
+        return getAddress(envAddress);
+    }
+
+    const fromFile = readERC20SPLFactoryAddressFromDeployments(networkName);
+    if (fromFile) {
+        return fromFile;
+    }
+
+    throw new Error(
+        `ERC20SPLFactory address not found. Set ERC20_SPL_FACTORY_ADDRESS or create deployments/${networkName}.json`,
+    );
+}
