@@ -61,6 +61,14 @@ See `rome-product/specs/rome-bridge-phase1.md` for the full design spec (Variant
 - PR and issue templates for standardized contributions
 - CI pipeline with Hardhat compile and test stages
 
+### Fixed
+
+- **`SPL_ERC20.transfer` / `transferFrom` / `mint_to` no longer revert when the recipient has never received the wrapper.** Previously the destination ATA was resolved via `get_token_account(to)`, which reverts with `"Token account does not exist"` when the recipient has not been registered. Sending a wrapper to a fresh wallet (no prior bridge inbound, no prior receive) was therefore impossible; MetaMask's `eth_call` simulation surfaced the revert as a greyed-out Send button.
+  - `_transfer` and `mint_to` now call `ensure_token_account(to)` instead, which creates the recipient's PDA-owned ATA via `create_associated_token_account_idempotent` on first encounter and is a no-op on subsequent calls. Same UX model as Phantom and every other Solana wallet — sender pays the one-time ~0.002 SOL rent for the recipient's ATA.
+  - `get_token_account` is still used for the sender's ATA in `_transfer` and for `allowance` / `approve` (sender must already hold tokens to transact, so their ATA is guaranteed to exist).
+  - Test coverage: two new cases in `tests/erc20spl_factory.integration.ts` — transfer to a fresh address and `mint_to` to a fresh address. Pre-fix both reverted with `"Token account does not exist"`; post-fix both land and the recipient's `balanceOf` reflects the move.
+  - Existing wrapper deployments (e.g. wUSDC at `0x1be9bC…` on marcus) carry the pre-fix bytecode and need a redeploy + chain-config swap to pick up this fix; the contract change itself is non-breaking.
+
 ## 2026-04-20 — Oracle Gateway V2 Polish
 
 ### Added
