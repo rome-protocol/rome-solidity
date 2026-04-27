@@ -113,10 +113,10 @@ async function inboundCctp(sepWallet: Wallet, solConn: Connection, solanaPayer: 
   );
   log("inbound-cctp", "attestation ready");
 
-  // Submit receiveMessage on Solana via rome-deposit-ui's helper. We'll use
+  // Submit receiveMessage on Solana via rome-ui's helper. We'll use
   // the Circle CCTP Solana program directly — a thin wrapper.
   // For this E2E runner, we just confirm we have the attestation; the actual
-  // Solana receive is handled by the rome-deposit-ui relayer in production.
+  // Solana receive is handled by the rome-ui relayer in production.
   // To complete locally we'd need the CCTP Solana accounts; we treat
   // "attestation ready + Solana relayer can submit" as the E2E success.
   return { stage: "attestation-ready", sepTx: tx.hash, messageHash, attestation };

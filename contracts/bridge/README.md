@@ -27,7 +27,7 @@ The four flows:
                                     └──────────────────┘                     └────────────────────────┘
 ```
 
-Attestation/VAA fetching and the return-leg submission happen off-chain in the bridge relayer (`rome-deposit-ui/src/server/bridge/`). The on-chain side is four Solana CPIs from Rome plus four Sepolia transactions.
+Attestation/VAA fetching and the return-leg submission happen off-chain in the bridge relayer (`rome-ui/src/server/bridge/`). The on-chain side is four Solana CPIs from Rome plus four Sepolia transactions.
 
 ---
 
@@ -57,7 +57,7 @@ Devnet program IDs, all already deployed by Circle / Wormhole — we only CPI in
 
 The Wormhole devnet programs are different from mainnet IDs — see `scripts/bridge/constants.ts` (`SOLANA_PROGRAM_IDS_DEVNET`).
 
-### Off-chain (bridge relayer and UI — `rome-deposit-ui`)
+### Off-chain (bridge relayer and UI — `rome-ui`)
 
 The four flows are multi-step (source-chain tx → fetch attestation → target-chain tx). The relayer is a Next.js API server with a Redis-backed state machine:
 
@@ -150,7 +150,7 @@ Each tx now fits the budget. This is also the standard ERC-20 bridge pattern (ap
 
 **Symptom.** Multiple redeploy cycles to chase down `InvalidAccountData` errors from Wormhole — wrong number of accounts, wrong mutability flags, wrong order.
 
-**Fix.** Derive the account list directly from the IDL. `IWormholeTokenBridge.sol: buildTransferWrappedAccounts` mirrors the account layout at `@wormhole-foundation/sdk-solana-tokenbridge: dist/esm/utils/tokenBridge/instructions/transferWrapped.js` exactly: 17 accounts (no `sender`), `from_owner` is **signer + writable**, `authority_signer` is **readonly**, `mint` is **writable**, `wormhole_core` and `token` come at the end. Before changing the layout, diff against `scripts/diff-wh-transfer-wrapped.mjs` in `rome-deposit-ui` which runs the SDK builder and prints the exact accounts Wormhole expects.
+**Fix.** Derive the account list directly from the IDL. `IWormholeTokenBridge.sol: buildTransferWrappedAccounts` mirrors the account layout at `@wormhole-foundation/sdk-solana-tokenbridge: dist/esm/utils/tokenBridge/instructions/transferWrapped.js` exactly: 17 accounts (no `sender`), `from_owner` is **signer + writable**, `authority_signer` is **readonly**, `mint` is **writable**, `wormhole_core` and `token` come at the end. Before changing the layout, diff against `scripts/diff-wh-transfer-wrapped.mjs` in `rome-ui` which runs the SDK builder and prints the exact accounts Wormhole expects.
 
 ### 8. Wormhole destination chain id was hardcoded to Ethereum mainnet
 
@@ -188,7 +188,7 @@ For a fresh deploy on a new Rome chain or to refresh marcus:
    ```
    Checks that `burnUSDC` and `approveBurnETH` emulate cleanly. `burnETH` is explicitly skipped in the smoke test — it requires a prior on-chain approve.
 
-7. **Update the frontend** (`rome-deposit-ui`) `MARCUS_WITHDRAW` address in `src/features/bridge/hooks/useOutboundWhSend.ts` and any CCTP hook file.
+7. **Update the frontend** (`rome-ui`) `MARCUS_WITHDRAW` address in `src/features/bridge/hooks/useOutboundWhSend.ts` and any CCTP hook file.
 
 ## Test flows end to end
 
@@ -219,7 +219,7 @@ Start here:
 - `scripts/bridge/derive/wormhole-accounts.ts` — PDA derivations. `wrappedMeta` depends on the mint — keep it in sync with the deployed rETH wrapper.
 - `scripts/bridge/constants.ts` — Solana program IDs (mainnet vs devnet) and SPL mints. **`SPL_MINTS_DEVNET.WETH_WORMHOLE` must match the canonical wrapped-ETH mint for the source chain you're bridging from.**
 
-For the off-chain half, see `rome-deposit-ui/src/server/bridge/` (flows and Wormhole/CCTP helpers) and `rome-deposit-ui/src/features/bridge/` (hooks and UI).
+For the off-chain half, see `rome-ui/src/server/bridge/` (flows and Wormhole/CCTP helpers) and `rome-ui/src/features/bridge/` (hooks and UI).
 
 ---
 

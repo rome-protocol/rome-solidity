@@ -173,7 +173,7 @@ Target: `0.8.28`. Production profile enables optimizer with 200 runs.
 | If you change... | Also check/update... |
 |-----------------|---------------------|
 | Precompile interface addresses | `rome-solidity-sdk/` interfaces must match `rome-evm-private/` precompile dispatch |
-| Contract ABIs | `rome-deposit-ui/` ABI imports, `tests/` Solidity test contracts, `CHANGELOG.md` |
+| Contract ABIs | `rome-ui/` ABI imports, `tests/` Solidity test contracts, `CHANGELOG.md` |
 | Oracle adapter interfaces | Consuming contracts in this repo that use the adapters |
 | SPL token wrapper logic | `rome-uniswap-v2/` (uses SPL wrappers for trading pairs) |
 | Hardhat network config | `rome-solidity-sdk/` uses same network definitions |
