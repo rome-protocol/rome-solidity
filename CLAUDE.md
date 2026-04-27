@@ -25,6 +25,17 @@ When adding new contracts:
 
 **Reference spec**: [`rome-specs/active/technical/2026-04-23-gas-wrapper-split-at-bridge.md`](../rome-specs/active/technical/2026-04-23-gas-wrapper-split-at-bridge.md) — uses the ETH/WETH pattern as the anchor for gas-vs-wrapper decisions.
 
+## Configuration / chain metadata — canonical at rome-registry
+
+Chain ids, contract addresses, token registries, gas pool derivations, oracle feeds, and bridge wiring come from **[`rome-protocol/registry`](https://github.com/rome-protocol/registry)**. Don't hardcode in this repo.
+
+- **`scripts/bridge/constants.ts`** carries Solana program IDs and bridged-mint addresses today. Phase 3 of the registry migration plan converts this to a thin re-export from `@rome-protocol/registry`. Until then, keep aligned with `https://cdn.jsdelivr.net/gh/rome-protocol/registry@v0.2.0/solana/programs/<network>.json` and `protocols/{cctp,wormhole}.json`.
+- **`deployments/<network>.json`** is the local artifact written by deploy scripts. Authoritative copy lives at `rome-protocol/registry` under `chains/<id>-<slug>/contracts.json`. Treat the local file as a deploy receipt; surface canonical addresses via the registry.
+- The `tools/add-chain.ts --deployments-from <path>` CLI in the registry repo accepts these JSON files as input — that's the bridge from local-deploy-artifact → canonical-registry-PR.
+- Browser fetch / NPM import patterns: see [registry README](https://github.com/rome-protocol/registry).
+
+If you find a chain id or contract address hardcoded in this repo that's already in the registry, that's a drift bug — fix it.
+
 ## Build & Test Commands
 
 ```bash
