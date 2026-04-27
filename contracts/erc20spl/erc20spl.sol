@@ -53,6 +53,20 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         return _accounts[user];
     }
 
+    /// Derives the deterministic PDA-owned ATA for a user without
+    /// reading or writing the local `_accounts` cache. Wallet derivation
+    /// matches `create_token_account`'s — the salted PDA from
+    /// `RomeEVMAccount.pda_with_salt(user, _users.payer_salt())` — so
+    /// the derived ATA equals the address `_accounts[user]` would cache
+    /// once `ensure_token_account` runs. Used by `balanceOf` so reads
+    /// for unregistered users return 0 instead of reverting.
+    function derive_token_account(address user) public view returns (bytes32) {
+        bytes32 wallet = RomeEVMAccount.pda_with_salt(user, _users.payer_salt());
+        return AssociatedSplToken.get_associated_token_address_with_program_id(
+            wallet, mint_id, SplTokenLib.SPL_TOKEN_PROGRAM, associated_token_program_id
+        );
+    }
+
     error ERC20InvalidApprover(address approver);
     error ERC20InvalidSpender(address spender);
     error ERC20InsufficientAllowance(address spender, uint256 currentAllowance, uint256 requiredAllowance);
@@ -111,7 +125,11 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
      * @return associated_account_address The address of the associated token account created or existing for the user
      */
     function ensure_token_account(address user) public returns (bytes32) {
-        bytes32 payer = _users.get_user(msg.sender);
+        // ensure_user (not get_user) so a brand-new caller — never
+        // bridged, never wrapped, never registered in ERC20Users — gets
+        // auto-registered on the first call. Self-bootstrapping; no
+        // out-of-band setup tx required.
+        bytes32 payer = _users.ensure_user(msg.sender);
         bytes32 token_account = _accounts[user];
         if (token_account == bytes32(0)) {
             return create_token_account(user, payer);
@@ -144,13 +162,28 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         return uint256(mint.supply);
     }
 
+    /// ERC20 `balanceOf` — never reverts. Resolves the ATA in this order:
+    ///   1. cached `_accounts[account]` (fast path — populated by
+    ///      `ensure_token_account`, called by transfer / approve /
+    ///      mint_to / inbound bridge worker);
+    ///   2. deterministic derivation via `derive_token_account` (fallback
+    ///      so brand-new wallets read 0 instead of reverting).
+    /// If the underlying SPL token account hasn't been created yet,
+    /// `account_info` returns empty data; we short-circuit to 0.
     function balanceOf(address account) public view virtual returns (uint256) {
-        bytes32 token_account = get_token_account(account);
-        return uint256(SplTokenLib.load_token_amount(token_account, cpi_program));
+        bytes32 token_account = _accounts[account];
+        if (token_account == bytes32(0)) {
+            token_account = derive_token_account(account);
+        }
+        (,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(token_account);
+        if (data.length == 0) {
+            return 0;
+        }
+        return uint256(SplTokenLib.parse_token_account_amount(data));
     }
 
     function transfer(address to, uint256 value) public virtual returns (bool) {
-        return _transfer(_users.get_user(msg.sender), msg.sender, to, value);
+        return _transfer(_users.ensure_user(msg.sender), msg.sender, to, value);
     }
 
     /**
@@ -218,8 +251,8 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     function approve(address spender, uint256 value) public virtual returns (bool) {
-        bytes32 ownerUser = _users.get_user(msg.sender);
-        bytes32 spenderUser = _users.get_user(spender);
+        bytes32 ownerUser = _users.ensure_user(msg.sender);
+        bytes32 spenderUser = _users.ensure_user(spender);
 
         (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) = 
         SplTokenLib.approve(
@@ -246,13 +279,13 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
 
     function transferFrom(address from, address to, uint256 value) public virtual returns (bool) {
         address spender = msg.sender;
-        return _transfer(_users.get_user(spender), from, to, value);
+        return _transfer(_users.ensure_user(spender), from, to, value);
     }
 
     function mint_to(address to, uint256 value) public virtual returns (bool) {
         require(value <= type(uint64).max, "Mint amount exceeds uint64");
 
-        bytes32 user = _users.get_user(msg.sender);
+        bytes32 user = _users.ensure_user(msg.sender);
         // Mint to a fresh address: ensure the recipient's PDA-owned
         // ATA exists before the SPL mint_to_checked CPI. Same
         // idempotent pattern as `_transfer` above — no-op when the

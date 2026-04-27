@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Changed — `SPL_ERC20` is fully self-bootstrapping; `balanceOf` never reverts
+- `SPL_ERC20.balanceOf` is now total — returns `0` for unregistered or unfunded accounts instead of reverting with `"Token account does not exist"`. Resolves the ATA via the cache (`_accounts[account]`) when present, otherwise via deterministic derivation, and short-circuits to `0` when the underlying SPL token account hasn't been created on Solana yet. Standard ERC20 contract consumers (DEX routers, allowance checks, wallet UIs) hit `balanceOf` constantly; the prior revert leaked Rome-specific lifecycle into anything that simulated a balance read for a brand-new wallet.
+- `transfer`, `transferFrom`, `approve`, `mint_to`, and `ensure_token_account` now call `_users.ensure_user(msg.sender)` (or `_users.ensure_user(spender)` for `transferFrom`) instead of `get_user`. A first-time caller — never bridged, never wrapped, never registered in `ERC20Users` — gets auto-registered on the first call instead of needing an out-of-band setup tx. Same self-bootstrap model as Phantom and every other Solana wallet.
+- New `SPL_ERC20.derive_token_account(address)` view — the deterministic ATA address for a user (matches `create_token_account`'s salted PDA derivation). Used by the new `balanceOf` fallback; useful to off-chain code that wants the canonical ATA without reading or mutating the cache.
+- View functions (`allowance`, `get_token_account`) still use `_users.get_user` — view functions can't write state, and the sender side already requires a registered user.
+- Existing wrapper deployments (factory-deployed before this change) retain pre-fix bytecode; the fix lands when a fresh chain redeploys the factory or `factory.add_spl_token_no_metadata` is called for a new mint after the upgrade.
+
 ### Added — Bridged-wrapper bootstrap script
 - `scripts/bridge/bootstrap-bridged-wrappers.ts` — registers the canonical bridged SPL mints (USDC, WETH) on a chain's `ERC20SPLFactory` via `add_spl_token_no_metadata`. The factory's `TokenCreated` event is what the rome-ui backend's token watcher consumes to populate Portfolio / Swap / TokenSelectModal; wrappers deployed by direct `new SPL_ERC20(...)` (legacy bridge redeploy scripts) bypass that event and stay invisible in the UI. Run after `scripts/deploy_erc20spl_factory.ts` on a fresh chain — the script is idempotent (skips mints with a non-zero `token_by_mint`) and writes resulting wrapper addresses into `deployments/<network>.json` under `SPL_ERC20_USDC` / `SPL_ERC20_WETH`. Mint set is auto-selected per network (devnet vs mainnet); override via `BRIDGED_SET=devnet|mainnet` for one-offs.
 
