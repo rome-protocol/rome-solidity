@@ -6,12 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`SPL_ERC20` is fully self-bootstrapping for first-time callers.** Every
+  user-side function (`transfer`, `transferFrom`, `approve`, `mint_to`,
+  `ensure_token_account`) now calls `_users.ensure_user(msg.sender)` instead
+  of `_users.get_user(msg.sender)` AND auto-creates the relevant ATA cache
+  entries before the SPL CPI. A brand-new wallet — never bridged, never
+  wrapped — can now `transfer` straight from MetaMask without an
+  out-of-band `ensure_user` / `ensure_token_account` setup tx. Same model as
+  Phantom and every other Solana wallet.
+  - `_transfer` calls `ensure_token_account(from)` AND `ensure_token_account(to)`
+    so both sides' ATAs are present before `transfer_checked`.
+  - `mint_to` / `approve` apply the same auto-ensure pattern.
+  - `balanceOf` is now total: returns `0` for unregistered or unfunded users
+    instead of reverting with `"Token account does not exist"`. Reads from
+    `_accounts` cache when present, otherwise derives the deterministic ATA
+    via the new `derive_token_account` helper. If the underlying SPL token
+    account doesn't yet exist on Solana, `account_info` returns empty data
+    and we short-circuit to `0` via a length check.
+  - Pre-fix symptoms this resolves: MetaMask "Send" greys out for any
+    fresh recipient; first-time callers hit `"Token account does not exist"`
+    on transfer / approve / balanceOf; `RomeBridgeWithdraw.burnUSDC` cannot
+    be invoked by users who hold rUSDC but never registered.
+
 ### Added
 - `IUnwrapSplToGas` / `IWrapGasToSpl` interfaces + pre-bound `UnwrapSplToGas`
   / `WrapGasToSpl` constants in `contracts/interface.sol`. Maps to the new
   non_evm precompiles in rome-evm-private at `0x42..17` and `0x42..18`.
   Selector parity test at `tests/interface_wrap_unwrap.test.ts` locks the
   keccak256 bytes against the Rust program's constants.
+- `SPL_ERC20.derive_token_account(address)` — deterministic ATA derivation
+  helper used by `balanceOf`'s no-revert fallback.
 - Agent Execution Guide and Change Impact Map in CLAUDE.md
 - PR and issue templates for standardized contributions
 - CI pipeline with Hardhat compile and test stages
