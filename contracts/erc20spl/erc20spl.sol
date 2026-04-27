@@ -164,20 +164,32 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
      */
     function _transfer(
         bytes32 user,
-        address from, 
-        address to, 
+        address from,
+        address to,
         uint256 value
     ) internal returns (bool) {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
-        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) = 
+        // Auto-create the recipient's PDA-owned ATA on first transfer.
+        // Without this, sending an SPL_ERC20 wrapper to a fresh address
+        // reverts with "Token account does not exist" because the
+        // recipient never went through the wrapper's
+        // `ensure_token_account` flow (no inbound bridge, no prior
+        // receive). MetaMask's `eth_call` simulation surfaces the
+        // revert as a greyed-out Send button, leaving users unable to
+        // transfer their tokens. Idempotent: returns the cached /
+        // existing ATA when it's already there, costs ~0.002 SOL rent
+        // (paid by the sender / spender) when it's not. Same UX model
+        // as Phantom and every other Solana wallet.
+        bytes32 to_account = ensure_token_account(to);
+        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) =
         SplTokenLib.transfer_checked(
             SplTokenLib.SPL_TOKEN_PROGRAM,
-            get_token_account(from), 
-            mint_id, 
-            get_token_account(to),
+            get_token_account(from),
+            mint_id,
+            to_account,
             user,
             new bytes32[](0),
-            uint64(value), 
+            uint64(value),
             decimals
         );
 
@@ -241,7 +253,11 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         require(value <= type(uint64).max, "Mint amount exceeds uint64");
 
         bytes32 user = _users.get_user(msg.sender);
-        bytes32 to_account = get_token_account(to);
+        // Mint to a fresh address: ensure the recipient's PDA-owned
+        // ATA exists before the SPL mint_to_checked CPI. Same
+        // idempotent pattern as `_transfer` above — no-op when the
+        // ATA already exists.
+        bytes32 to_account = ensure_token_account(to);
         (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data)
             = SplTokenLib.mint_to_checked(
             SplTokenLib.SPL_TOKEN_PROGRAM,
