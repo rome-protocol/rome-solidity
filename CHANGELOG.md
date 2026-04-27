@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added — Bridged-wrapper bootstrap script
+- `scripts/bridge/bootstrap-bridged-wrappers.ts` — registers the canonical bridged SPL mints (USDC, WETH) on a chain's `ERC20SPLFactory` via `add_spl_token_no_metadata`. The factory's `TokenCreated` event is what the rome-ui backend's token watcher consumes to populate Portfolio / Swap / TokenSelectModal; wrappers deployed by direct `new SPL_ERC20(...)` (legacy bridge redeploy scripts) bypass that event and stay invisible in the UI. Run after `scripts/deploy_erc20spl_factory.ts` on a fresh chain — the script is idempotent (skips mints with a non-zero `token_by_mint`) and writes resulting wrapper addresses into `deployments/<network>.json` under `SPL_ERC20_USDC` / `SPL_ERC20_WETH`. Mint set is auto-selected per network (devnet vs mainnet); override via `BRIDGED_SET=devnet|mainnet` for one-offs.
+
 ### Added — Oracle Gateway V2 GitHub Actions deploy workflow
 - `.github/workflows/deploy-oracle.yml` — manual-trigger (`workflow_dispatch`) workflow that deploys Oracle Gateway V2 (core + seed feeds + verification) against a selected Rome devnet using a single shared GitHub Secret (`ROME_DEVNET_PRIVATE_KEY`). Posts the resulting `deployments/<network>.json` back as a reviewable bot PR via `peter-evans/create-pull-request` when `open_pr: true`. Toggles: `run_seed_feeds`, `run_verification`, `open_pr`, `force_redeploy`. Closes #33.
 - `hardhat.config.ts` — added `subura` (chainId 121222) and `esquiline` (chainId 121225) network entries; deduplicated the `marcus` block and added its explicit `chainId 121226`.
