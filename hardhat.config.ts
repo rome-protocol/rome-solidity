@@ -7,15 +7,14 @@ export default defineConfig({
     profiles: {
       default: {
         version: "0.8.28",
-        settings: {
-          optimizer: { enabled: true, runs: 200 },
-          viaIR: true,
-        },
       },
       production: {
         version: "0.8.28",
         settings: {
-          optimizer: { enabled: true, runs: 200 },
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
           viaIR: true,
         },
       },
@@ -39,35 +38,20 @@ export default defineConfig({
     monti_spl: {
       type: "http",
       chainType: "l1",
-      url: "https://subura.devnet.romeprotocol.xyz/proxy",
+      url: "https://montispl-i.devnet.romeprotocol.xyz/",
       accounts: [configVariable("MONTI_SPL_PRIVATE_KEY")]
     },
     marcus: {
       type: "http",
       chainType: "l1",
-      chainId: 121226,
-      url: "https://marcus.devnet.romeprotocol.xyz/",
-      accounts: [configVariable("MARCUS_PRIVATE_KEY")],
-    },
-    subura: {
-      type: "http",
-      chainType: "l1",
-      chainId: 121222,
-      url: "https://subura.devnet.romeprotocol.xyz/",
-      accounts: [configVariable("SUBURA_PRIVATE_KEY")],
-    },
-    esquiline: {
-      type: "http",
-      chainType: "l1",
-      chainId: 121225,
-      url: "https://esquiline.devnet.romeprotocol.xyz/",
-      accounts: [configVariable("ESQUILINE_PRIVATE_KEY")],
+      url: "https://marcus.devnet.romeprotocol.xyz",
+      accounts: [configVariable("MARCUS_PRIVATE_KEY")]
     },
     local: {
       type: "http",
       chainType: "l1",
       url: "http://localhost:9090",
       accounts: [configVariable("LOCAL_PRIVATE_KEY")],
-    },
+    }
   },
 });
