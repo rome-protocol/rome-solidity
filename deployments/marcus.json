@@ -4,25 +4,56 @@
     "deployedAt": 1776718058
   },
   "ERC20Users": {
-    "address": "0x803f6923bcc776db1d0aa6fcdbd8ceddf35ad6f3"
+    "address": "0x803f6923bcc776db1d0aa6fcdbd8ceddf35ad6f3",
+    "notes": "Live on-chain since pre-#28; struct-based User { payer, owner, seed } ABI. Wrappers built from this struct era talk to it cleanly."
   },
   "SPL_ERC20_USDC": {
     "address": "0x6ed2944bba4cb5b1cb295541f315c648658dd67c",
-    "mintId": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+    "mintId": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+    "notes": "Live wrapper used by the bridge. Pre-#63 bytecode (auto-ATA fix not present). Marked for redeploy off PR #52's struct-aligned branch."
   },
   "SPL_ERC20_WETH": {
     "address": "0x3e52cfb38ca1639f3c95aef6dccff2b36c230f22",
-    "mintId": "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs"
+    "mintId": "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs",
+    "notes": "Live wrapper used by the bridge. Pre-#63 bytecode. Marked for redeploy off PR #52's struct-aligned branch."
   },
   "RomeBridgeWithdraw": {
     "address": "0x513f76e39cfd7008f1e143ae37148608cddfcaaf",
-    "deployedAt": 1776768105
+    "deployedAt": 1776768105,
+    "notes": "Live; wired to live wUSDC + wETH above. Will be redeployed alongside the next wrapper redeploy."
   },
   "archive": {
     "RomeBridgeWithdrawPrevious": null,
     "RomeBridgeInboundPrevious": {
       "address": "0x3972795F001d3c3e562009b3f5B5581e305152d2",
       "archivedAt": 1777090061
+    },
+    "orphan_deploys_2026_04_27_master_abi_drift": {
+      "note": "Three redeploys from master's bytecode produced wrappers ABI-incompatible with the live ERC20Users (which uses the struct-based design). Master since refactored ERC20Users from `struct User { payer, owner, seed }` to single bytes32. These contracts live on-chain but are not wired anywhere; the bridge keeps using the live addresses above. Tracked in scripts/bridge/redeploy-wrappers-and-withdraw.ts; the proper fix is to apply the auto-ATA fix on top of PR #52's struct-aligned branch before redeploying.",
+      "attempts": [
+        {
+          "deployedAt": 1777252132,
+          "ERC20Users": "0xbfac8a1cf611f6b95101a5744905f45d7f5140e3",
+          "SPL_ERC20_USDC": "0xe1f85fd1c57e0b81635df5b3eeac7bbd8ba715d6",
+          "SPL_ERC20_WETH": "0x521bec7c47751b7a2927e65d41527f08784b87bd",
+          "RomeBridgeWithdraw": "0x8733c2fc8ddb74b9de591c1698da96a46e6ce1fc"
+        },
+        {
+          "SPL_ERC20_USDC": "0xf0840274b912f6a682399079231c5a9af4e9dc9e",
+          "SPL_ERC20_WETH": "0x0fb0c652610dfe78341af54d388aaab4461bb44b",
+          "RomeBridgeWithdraw": "0x403542ae346fbc74720de87bc1c6d7f8ac1b7a17"
+        },
+        {
+          "SPL_ERC20_USDC": "0x8031e8149d31171a3dd382f5cc8dc4fd60a38aa4",
+          "SPL_ERC20_WETH": "0x20bce6666bda51cd5299255a5c44403c7914c4d2",
+          "RomeBridgeWithdraw": "0x3f73eb30adf805d7bb292cb0418f9422159d5747"
+        },
+        {
+          "SPL_ERC20_USDC": "0xc2fc0992f92b34c97cae4b5cd4084fc1594eb2ea",
+          "SPL_ERC20_WETH": "0xdf29f01163c4de875d503f2072854dd2810c8d5f",
+          "RomeBridgeWithdraw": "0xc607cfc38afbc00df0f3a4292d24428e4d172225"
+        }
+      ]
     }
   },
   "OracleGatewayV2": {
