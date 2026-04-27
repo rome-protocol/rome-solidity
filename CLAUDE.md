@@ -23,8 +23,6 @@ When adding new contracts:
 - **Rome-specific helpers (CPI, PDA derivation, mint layout) go in `*_program.sol` / `*_lib.sol` modules**, not in the public contract surface. Keep the public surface EVM-standard.
 - **Don't write "free to the user" primitives** (airdrop, faucet, subsidized mint). Token issuance goes through explicit bridge flows, swaps, or contract-owned admin — never zero-cost user claims.
 
-**Reference spec**: [`rome-specs/active/technical/2026-04-23-gas-wrapper-split-at-bridge.md`](../rome-specs/active/technical/2026-04-23-gas-wrapper-split-at-bridge.md) — uses the ETH/WETH pattern as the anchor for gas-vs-wrapper decisions.
-
 ## Configuration / chain metadata — canonical at rome-registry
 
 Chain ids, contract addresses, token registries, gas pool derivations, oracle feeds, and bridge wiring come from **[`rome-protocol/registry`](https://github.com/rome-protocol/registry)**. Don't hardcode in this repo.
