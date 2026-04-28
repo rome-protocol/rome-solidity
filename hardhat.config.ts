@@ -70,6 +70,13 @@ export default defineConfig({
       url: "https://maximus.devnet.romeprotocol.xyz/",
       accounts: [configVariable("MAXIMUS_PRIVATE_KEY")],
     },
+    cassius: {
+      type: "http",
+      chainType: "l1",
+      chainId: 121227,
+      url: "https://cassius.devnet.romeprotocol.xyz/",
+      accounts: [configVariable("CASSIUS_PRIVATE_KEY")],
+    },
     local: {
       type: "http",
       chainType: "l1",
