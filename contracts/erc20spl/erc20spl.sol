@@ -249,6 +249,113 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         return _transfer(_users.get_user(spender), from, to, value);
     }
 
+    /// @notice Move this wrapper's underlying SPL out of the caller's
+    /// PDA-owned ATA to an arbitrary Solana wallet. Generic Marcus →
+    /// Solana exit door for ANY wrapper deployed by the factory —
+    /// works the same for WUSDC, WETH, WSOL, JUP, BONK, custom long-tail
+    /// tokens. No Wormhole, no CCTP, no per-asset bridge contract: just
+    /// an SPL transfer_checked CPI signed by the caller's authority PDA.
+    ///
+    /// Asymmetry vs. the EVM-side `transfer(address, uint256)`:
+    ///   - `to` is a raw Solana wallet pubkey, NOT derived from an EVM
+    ///     address. The recipient does not need a Marcus account.
+    ///   - The recipient's ATA for this wrapper's mint is created
+    ///     idempotently if missing — the caller's PAYER PDA pays the
+    ///     ~0.002 SOL rent (matches Phantom's "send to fresh address"
+    ///     model). For repeat sends to the same recipient, the create
+    ///     is a no-op.
+    ///
+    /// Behavior:
+    ///   - The wrapper's `balanceOf(msg.sender)` decreases by `value`
+    ///     since balanceOf reads the underlying SPL token account.
+    ///   - The Solana recipient's wallet shows `value` of the underlying
+    ///     SPL after this tx confirms.
+    ///   - For wSOL specifically (canonical mint
+    ///     So11111111111111111111111111111111111111112), the recipient
+    ///     can `close_account` on their wSOL ATA in a follow-up Solana
+    ///     tx to convert the SPL back to native lamports.
+    ///
+    /// @param solana_recipient The receiving wallet pubkey on Solana.
+    ///        Recipient ATA = ata(solana_recipient, mint_id, spl_token).
+    /// @param value Amount in this wrapper's smallest unit (must fit u64).
+    /// @return success Always returns true on success; reverts otherwise.
+    function bridgeOutToSolana(bytes32 solana_recipient, uint256 value)
+        public
+        virtual
+        returns (bool)
+    {
+        require(value <= type(uint64).max, "Bridge amount exceeds uint64");
+        require(solana_recipient != bytes32(0), "Solana recipient cannot be zero");
+
+        bytes32 user = _users.get_user(msg.sender);
+        bytes32 from_ata = get_token_account(msg.sender);
+
+        // Recipient ATA. Create idempotently — first send to a fresh
+        // recipient pays ~0.002 SOL rent (paid by sender's PAYER PDA);
+        // returning sends are a no-op.
+        (
+            bytes32 ata_program_id,
+            ICrossProgramInvocation.AccountMeta[] memory ata_accounts,
+            bytes memory ata_data,
+            bytes32 to_ata
+        ) = AssociatedSplToken.create_associated_token_account_idempotent(
+            user,                       // funding (sender's PAYER PDA pays rent)
+            solana_recipient,           // wallet that owns the new ATA
+            mint_id,
+            system_program_id,
+            SplTokenLib.SPL_TOKEN_PROGRAM,
+            associated_token_program_id
+        );
+
+        bytes32[] memory seeds = new bytes32[](1);
+        seeds[0] = _users.payer_salt();
+
+        (bool ata_success, bytes memory ata_result) = address(cpi_program).delegatecall(
+            abi.encodeWithSignature(
+                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
+                ata_program_id, ata_accounts, ata_data, seeds
+            )
+        );
+        require(ata_success, string(Convert.revert_msg(ata_result)));
+
+        // SPL transfer_checked from sender's PDA-ATA → recipient's ATA.
+        (
+            bytes32 program_id,
+            ICrossProgramInvocation.AccountMeta[] memory accounts,
+            bytes memory data
+        ) = SplTokenLib.transfer_checked(
+            SplTokenLib.SPL_TOKEN_PROGRAM,
+            from_ata,
+            mint_id,
+            to_ata,
+            user,
+            new bytes32[](0),
+            uint64(value),
+            decimals
+        );
+
+        (bool success, bytes memory result) = address(cpi_program).delegatecall(
+            abi.encodeWithSignature(
+                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
+                program_id, accounts, data, seeds
+            )
+        );
+        require(success, string(Convert.revert_msg(result)));
+
+        emit BridgedOutToSolana(msg.sender, solana_recipient, mint_id, value);
+        return true;
+    }
+
+    /// @notice Emitted on every bridgeOutToSolana call. Indexers / activity
+    /// feeds use this as the canonical "left Marcus" signal — paired
+    /// with on-chain Solana SPL transfer events for the round-trip.
+    event BridgedOutToSolana(
+        address indexed from,
+        bytes32 indexed solana_recipient,
+        bytes32 indexed mint_id,
+        uint256 value
+    );
+
     function mint_to(address to, uint256 value) public virtual returns (bool) {
         require(value <= type(uint64).max, "Mint amount exceeds uint64");
 

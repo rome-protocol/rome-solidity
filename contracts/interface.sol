@@ -12,6 +12,7 @@ interface ISystemProgram {
     function bytes32_to_base58(bytes32) external view returns(bytes memory);
     function base58_to_bytes32(bytes memory) external view returns(bytes32);
     function operator() external view returns(bytes32);
+    function mint_id() external view returns(bytes32);
 }
 
 interface IWithdraw {
