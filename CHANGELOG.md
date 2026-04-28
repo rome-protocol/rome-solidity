@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added — Generic Marcus → Solana SPL outbound (`SPL_ERC20.bridgeOutToSolana` + `ensureRecipientAta`)
+- `contracts/erc20spl/erc20spl.sol` — new `bridgeOutToSolana(bytes32 recipient, uint256 value) → bool`: single CPI `transfer_checked` from `getATA(AUTHORITY_PDA, mint)` → recipient ATA, signed as `AUTHORITY_PDA = find_program_address([EXTERNAL_AUTHORITY, evmAddr])` with empty seeds. Generic outbound for any wrapper deployed by the factory — one method covers WUSDC/WETH/WSOL today and every future Solana-native SPL. Emits `BridgedOutToSolana`.
+- `contracts/erc20spl/erc20spl.sol` — new `ensureRecipientAta(bytes32 recipient) → bytes32`: idempotent single-CPI ATA-create on Solana, paid by sender's pre-funded PAYER PDA. Companion to `bridgeOutToSolana`; the single-tx two-CPI variant fails rome-evm's `eth_call` simulation, so the flow is split. Emits `RecipientAtaEnsured`.
+- `contracts/erc20spl/erc20spl.sol` — `balanceOf(address)` now reads `getATA(AUTHORITY_PDA, mint)` instead of the legacy `_accounts` mapping. Bridged-in users (Wormhole `complete_transfer_wrapped`, native deposits) only have balance in `AUTHORITY_PDA`'s ATA; the legacy path returned 0 for them. Same source `bridgeOutToSolana` spends from.
+- `scripts/bridge/deploy-weth-v9.ts`, `scripts/bridge/deploy-wsol-v9.ts` — minimal canonical SPL_ERC20 deploys carrying the v9 outbound surface. Use to refresh wrappers on a chain after the contract upgrade.
+- `contracts/bridge/README.md` — new "Generic Marcus → Solana SPL outbound" section documenting the asset-origin asymmetry: Ethereum-origin assets need CCTP/Wormhole; Solana-native SPLs need only `bridgeOutToSolana`.
+- `scripts/bridge/README.md` — bifurcated "Adding a new asset" section by origin (Solana-native SPLs are factory-only; Ethereum-origin assets still need per-asset RomeBridgeWithdraw entrypoints).
+- `CLAUDE.md` — "Cross-repo dependencies — rome-ui" section listing every method/event rome-ui consumes and the consumer file path. Mirror section in `rome-ui/CLAUDE.md`.
+
+### Changed — `ERC20SPLFactory.create_user` pre-funds 1,000,000 lamports (was 1,000,000,000)
+- `contracts/erc20spl/erc20spl_factory.sol` — `CREATE_PAYER_LAMPORTS = 1_000_000` (was 1B inline). 1M is above the 0-byte rent-exempt minimum (~890,880) but below subsequent operation costs (~2,039,280 per ATA create). Per `/rome/CLAUDE.md`'s "no faucets, no starter-gas-on-us" rule — bridging / ATA-creation lamports come from user funds going forward. ABI is unchanged; only the internal constant differs. Existing users on the deployed factory keep their previously-pre-funded balance.
+
 ### Added — Bridged-wrapper bootstrap script
 - `scripts/bridge/bootstrap-bridged-wrappers.ts` — registers the canonical bridged SPL mints (USDC, WETH) on a chain's `ERC20SPLFactory` via `add_spl_token_no_metadata`. The factory's `TokenCreated` event is what the rome-ui backend's token watcher consumes to populate Portfolio / Swap / TokenSelectModal; wrappers deployed by direct `new SPL_ERC20(...)` (legacy bridge redeploy scripts) bypass that event and stay invisible in the UI. Run after `scripts/deploy_erc20spl_factory.ts` on a fresh chain — the script is idempotent (skips mints with a non-zero `token_by_mint`) and writes resulting wrapper addresses into `deployments/<network>.json` under `SPL_ERC20_USDC` / `SPL_ERC20_WETH`. Mint set is auto-selected per network (devnet vs mainnet); override via `BRIDGED_SET=devnet|mainnet` for one-offs.
 
