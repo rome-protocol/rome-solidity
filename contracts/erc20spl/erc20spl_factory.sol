@@ -90,10 +90,31 @@ contract ERC20SPLFactory {
         return _register_contract(mint, name, symbol);
     }
 
+    /// @notice Allocates the ERC20Users `users[msg.sender]` slot AND
+    /// the on-Solana PAYER PDA at 1,000,000 lamports (~0.001 SOL).
+    ///
+    /// 1M is above the 0-byte rent-exempt minimum (~890,880 lamports)
+    /// with ~109k lamports of head-room — enough to keep the PAYER PDA
+    /// rent-exempt indefinitely, but NOT enough to fund subsequent
+    /// operations like ATA creates (~2,039,280 lamports each).
+    ///
+    /// Historical note: this previously transferred 1,000,000,000
+    /// lamports (1 SOL) to the PAYER PDA from the operator account —
+    /// a per-user faucet of gifted protocol funds. That violated Rome's
+    /// design rule (no faucets, no "starter gas on us" subsidies — see
+    /// `/rome/CLAUDE.md`). The fixed-1M floor keeps account creation
+    /// possible while sourcing all bridging / ATA-creation lamports
+    /// from user funds going forward.
+    uint64 internal constant CREATE_PAYER_LAMPORTS = 1_000_000;
+
     function create_user()
     public {
         users.ensure_user(msg.sender);
-        RomeEVMAccount.create_payer(msg.sender, 1000000000, users.payer_salt());
+        RomeEVMAccount.create_payer(
+            msg.sender,
+            CREATE_PAYER_LAMPORTS,
+            users.payer_salt()
+        );
     }
 
     /**
