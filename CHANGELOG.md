@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Fixed — Maximus devnet deploys: force legacy tx type
+- `hardhat.config.ts` — added `gasPrice: 1_000_000_000` to the `maximus` network entry. Maximus's RPC currently rejects EIP-1559 (type-2) txs with a generic `-32000` error; setting `gasPrice` forces hardhat-viem to build legacy (type-0) txs, which the RPC accepts. Verified via `eth_getBlockByNumber → transactions[0].type` on each Rome devnet: maximus blocks contain only type-0 txs while marcus / subura / esquiline contain type-2, so the override is intentionally narrow to maximus only.
+
 ### Added — Bridged-wrapper bootstrap script
 - `scripts/bridge/bootstrap-bridged-wrappers.ts` — registers the canonical bridged SPL mints (USDC, WETH) on a chain's `ERC20SPLFactory` via `add_spl_token_no_metadata`. The factory's `TokenCreated` event is what the rome-ui backend's token watcher consumes to populate Portfolio / Swap / TokenSelectModal; wrappers deployed by direct `new SPL_ERC20(...)` (legacy bridge redeploy scripts) bypass that event and stay invisible in the UI. Run after `scripts/deploy_erc20spl_factory.ts` on a fresh chain — the script is idempotent (skips mints with a non-zero `token_by_mint`) and writes resulting wrapper addresses into `deployments/<network>.json` under `SPL_ERC20_USDC` / `SPL_ERC20_WETH`. Mint set is auto-selected per network (devnet vs mainnet); override via `BRIDGED_SET=devnet|mainnet` for one-offs.
 

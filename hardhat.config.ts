@@ -69,6 +69,11 @@ export default defineConfig({
       chainId: 121215,
       url: "https://maximus.devnet.romeprotocol.xyz/",
       accounts: [configVariable("MAXIMUS_PRIVATE_KEY")],
+      // Maximus's RPC currently rejects EIP-1559 (type-2) txs with a generic
+      // -32000 error. Setting gasPrice forces hardhat-viem to build legacy
+      // (type-0) txs, which the RPC accepts. Other Rome devnets (marcus,
+      // subura, esquiline) accept EIP-1559 and don't need this override.
+      gasPrice: 1_000_000_000,
     },
     local: {
       type: "http",
