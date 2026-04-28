@@ -57,6 +57,26 @@ Devnet program IDs, all already deployed by Circle / Wormhole — we only CPI in
 
 The Wormhole devnet programs are different from mainnet IDs — see `scripts/bridge/constants.ts` (`SOLANA_PROGRAM_IDS_DEVNET`).
 
+### Generic Marcus → Solana SPL outbound (`SPL_ERC20.bridgeOutToSolana`)
+
+A complement to Phase 1's CCTP/Wormhole outbound paths. **Solana-native SPL tokens don't need a cross-chain protocol to leave Marcus** — Marcus is a Solidity-on-Solana view layer, so the user's tokens already live on Solana in their PDA-ATA. "Bridging" to Solana is just an SPL transfer with the right authority signing. One pair of methods on the SPL_ERC20 base contract covers every wrapper the factory will ever deploy.
+
+| Method | Role |
+|---|---|
+| `bridgeOutToSolana(bytes32 recipient, uint256 value) → bool` | Single CPI: SPL `transfer_checked` from `getATA(AUTHORITY_PDA, mint)` → recipient ATA. Authority = `AUTHORITY_PDA = find_program_address([EXTERNAL_AUTHORITY, evmAddr])`, signed with **empty seeds** in `invoke_signed`. Recipient ATA must exist (use `ensureRecipientAta` first). Emits `BridgedOutToSolana`. |
+| `ensureRecipientAta(bytes32 recipient) → bytes32` | Single CPI: idempotent `create_associated_token_account_idempotent`. Funded by sender's PAYER PDA — no Solana wallet on the recipient side. Emits `RecipientAtaEnsured`. |
+
+The two-step pattern (preflight → ensureRecipientAta if missing → bridgeOutToSolana) is required because rome-evm's `eth_call` simulation rejects the single-tx two-CPI variant with `"Cannot revert cross-program invocation"`. Splitting is architectural, not just UX.
+
+**Asset-origin asymmetry** — combined with Phase 1:
+
+| Asset origin | Inbound | Outbound | Per-asset Solidity? |
+|---|---|---|---|
+| Originates on Ethereum (USDC, ETH, future ERC20s) | CCTP / Wormhole | `RomeBridgeWithdraw.{burnUSDC, burnETH}` | Yes — one method per protocol |
+| Native to Solana (any SPL deployed via `add_spl_token_no_metadata`) | Send SPL to PDA-ATA | **`bridgeOutToSolana`** | **No — one method covers every wrapper** |
+
+Frontend consumer: `rome-ui/src/features/bridge/hooks/useOutboundSplBridge.ts`. See "Cross-repo dependencies — rome-ui" in `/CLAUDE.md` (rome-solidity root) for the full ABI + behavioral-contract map.
+
 ### Off-chain (bridge relayer and UI — `rome-ui`)
 
 The four flows are multi-step (source-chain tx → fetch attestation → target-chain tx). The relayer is a Next.js API server with a Redis-backed state machine:

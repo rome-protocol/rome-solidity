@@ -12,6 +12,7 @@ Deploy and ops scripts for the Rome Bridge contracts: paymaster, SPL_ERC20 wrapp
 - `redeploy-withdraw-canonical-weth.ts` — redeploy withdraw + new rETH wrapper bound to the canonical wrapped-ETH mint (used when refreshing on a chain where the rETH wrapper still points at a stale mint).
 - `redeploy-withdraw-only.ts` — redeploy withdraw with mainnet Wormhole programs (production path).
 - `allowlist-approve-selector.ts` — run after any withdraw redeploy; allowlists `approveBurnETH(uint256)` on the paymaster so ERC-2771 sponsorship works for the two-step outbound Wh flow.
+- `deploy-weth-v9.ts`, `deploy-wsol-v9.ts` — minimal SPL_ERC20 wrapper redeploys carrying the v9 outbound surface (`bridgeOutToSolana` + `ensureRecipientAta` + `balanceOf` reads from AUTHORITY_PDA). Use these to refresh wrappers on a chain after the contract upgrade. They do not touch the factory or paymaster.
 - `derive/cctp-accounts.ts` — derives the 6 CCTP PDAs via `PublicKey.findProgramAddressSync`.
 - `derive/wormhole-accounts.ts` — derives the 8 Wormhole PDAs (including `wrappedMeta`, which is per-mint).
 - `lib/canonical-mint.ts` — derives the canonical wrapped-ETH mint from `(tokenChain, tokenAddress, tokenBridgeProgramId)` per Wormhole's seed scheme. Always use this to resolve the wETH mint rather than hard-coding.
@@ -65,10 +66,26 @@ npx hardhat test tests/bridge/RomeBridgeWithdraw.integration.ts --network monti_
 
 ## Adding a new asset
 
+The path differs by asset origin:
+
+### Solana-native SPL (any token deployed via the factory) — outbound only
+
+For tokens that originate on Solana (USDT-on-Solana, JUP, BONK, custom long-tail, etc.), you only need an `SPL_ERC20` wrapper on Marcus. No `RomeBridgeWithdraw` change, no new burn entrypoint, no paymaster allowlist update — `SPL_ERC20.bridgeOutToSolana` is the generic outbound for all of them.
+
+1. Call `ERC20SPLFactory.add_spl_token_no_metadata(mint, "Symbol", "Name")` against the deployed factory on the target chain.
+2. The backend's `TokenCreated` event indexer picks up the new wrapper and surfaces it in `rome-ui`'s portfolio + bridge picker. The bridge picker auto-includes it because `useRomeHoldings` filters on `kind === "wrap"`.
+
+That's it. One CPI per outbound transfer, same code path as WETH/WSOL today.
+
+### Ethereum-origin asset — inbound + outbound, requires Solidity work
+
+For tokens that originate on Ethereum (USDC, ETH, future ERC20s reaching Marcus through CCTP/Wormhole), the outbound path needs a per-asset entry on `RomeBridgeWithdraw`:
+
 1. Add the mint base58 to `constants.ts` under `SPL_MINTS`.
 2. Add a `deploySplErc20` call in `main()` for the new symbol.
 3. Extend `RomeBridgeWithdraw` with a new `burnXYZ` entry point that CPI-invokes the right Solana program (Wormhole or CCTP).
 4. Register the new selector via `RomeBridgePaymaster.setAllowlistEntry`.
+5. Inbound side: ensure a Wormhole attestation exists between the source chain and the target Solana cluster (one-time `attestToken` + `create_wrapped`). For CCTP, no attestation is needed — Circle handles all USDC.
 
 ## Verifying PDA derivations
 
