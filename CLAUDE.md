@@ -108,7 +108,7 @@ Global constants (`SplToken`, `AssociatedSplToken`, `SystemProgram`, `CpiProgram
 
 - **`contracts/cpi/`** — Cardo CPI Foundation (library + templates). Shared Solidity helpers every Cardo app adapter builds on top of: `AccountMetaBuilder`, `AnchorInstruction`, `Cpi`, `PdaDeriver`, `SolanaConstants`, `UserPda`, `CpiError`, and the Pillar B cost-transparency trio (`CostEstimate`, `CostEstimator`, `ICostView`). Also ships `templates/CpiAdapterBase.sol` (Ownable+Pausable+ReentrancyGuard+backend pointer scaffold) and `templates/CpiProgramWrapper.sol` (prose scaffold for golden-vector wrappers). See `contracts/cpi/README.md` for the adapter authoring guide, the three-layer pattern, and the `tx.origin`/`msg.sender` rule. Canonical spec: `rome-specs/active/technical/cardo-foundation.md`.
 - **`contracts/spl_token/`** — Low-level SPL token and associated token account libraries (`SplTokenLib`, `AssociatedSplTokenLib`). These use `CpiProgram.account_info()` to deserialize on-chain Solana account data (Borsh-encoded) from within Solidity.
-- **`contracts/erc20spl/`** — `SPL_ERC20` wraps an SPL mint as an ERC20 token with deposit/withdraw. `ERC20SPLFactory` deploys these wrappers. Uses OpenZeppelin IERC20.
+- **`contracts/erc20spl/`** — `SPL_ERC20` wraps an SPL mint as an ERC20 token with deposit/withdraw. `ERC20SPLFactory` deploys these wrappers. Uses OpenZeppelin IERC20. Generic outbound-bridge surface (`bridgeOutToSolana`, `ensureRecipientAta`) lets any deployed wrapper serve as a Marcus → Solana SPL bridge — consumed by **rome-ui's `useOutboundSplBridge` hook** (see Cross-repo dependencies below).
 - **`contracts/meteora/`** — `MeteoraDAMMv1Factory` and `DAMMv1Pool` implement a Uniswap-style factory/pool pattern that delegates swaps to Meteora's on-chain Solana program via CPI.
 - **`contracts/oracle/`** — Oracle Gateway V2: Chainlink-compatible adapters for both Pyth Pull and Switchboard V3 price feeds. `OracleAdapterFactory` deploys `PythPullAdapter` and `SwitchboardV3Adapter` instances via EIP-1167 minimal proxy clones. Each adapter reads Solana account data via CPI precompile, parses Borsh-encoded price data (`PythPullParser` / `SwitchboardParser`), and normalizes to 8-decimal Chainlink format. `IExtendedOracleAdapter` extends `IAggregatorV3Interface` with confidence intervals, EMA data, and price status. `BatchReader` reads multiple feeds in one call. The factory includes owner-controlled pause/unpause emergency controls. Includes `examples/SampleLendingOracle.sol`.
 - **`contracts/bridge/`** — Rome Bridge Phase 1 (Solana ↔ Ethereum cross-chain). `RomeBridgePaymaster` is an EIP-2771 trusted forwarder with per-user 3-tx sponsorship cap + (target, selector) allowlist. `RomeBridgeWithdraw` accepts ERC-20 input on Rome EVM and emits Wormhole Token Bridge or CCTP outbound messages via CPI signed as the user's PDA. Outbound Wormhole is split across two EVM txs (`approveBurnETH` then `burnETH`) because a single atomic Rome DoTx with two CPIs exceeds Solana's 1.4M compute-unit budget. `IWormholeTokenBridge.sol` and `ICCTP.sol` encode the native/Anchor Solana instructions. All Solana pubkeys are supplied via constructor params so the contract is network-agnostic. **See `contracts/bridge/README.md`** for architecture, flow diagrams, and a problems-and-fixes runbook covering the incidents from bring-up. Design spec: `rome-product/specs/rome-bridge-phase1.md`.
@@ -173,10 +173,49 @@ Target: `0.8.28`. Production profile enables optimizer with 200 runs.
 | If you change... | Also check/update... |
 |-----------------|---------------------|
 | Precompile interface addresses | `rome-solidity-sdk/` interfaces must match `rome-evm-private/` precompile dispatch |
-| Contract ABIs | `rome-ui/` ABI imports, `tests/` Solidity test contracts, `CHANGELOG.md` |
+| Contract ABIs | `rome-ui/src/abis/*.json` + parseAbi() call sites, `tests/` Solidity test contracts, `CHANGELOG.md` |
+| `SPL_ERC20.bridgeOutToSolana` / `ensureRecipientAta` / `balanceOf` | **rome-ui** `src/features/bridge/hooks/useOutboundSplBridge.ts`, `useBalances.ts`, `useRomeHoldings.ts`. ABI is parseAbi-encoded inline; no JSON to regenerate. |
+| `ERC20SPLFactory.create_user` / `add_spl_token_no_metadata` / `TokenCreated` event | **rome-ui** `src/features/portfolio/components/ClaimWrapperButton.tsx` (calls `create_user`), `src/abis/ERC20SPLFactory.json` (mirror), backend's token-discovery indexer (watches `TokenCreated`). |
+| `RomeBridgeWithdraw.burnUSDC` / `burnETH` / `approveBurnETH` | **rome-ui** `src/features/bridge/hooks/useOutboundCctpSend.ts`, `useOutboundWhSend.ts`. Inline parseAbi, no JSON regen. |
+| `RomeBridgePaymaster` / `RomeBridgeInbound` | **Legacy** since 2026-04-26 inbound rewrite — superseded by `settle_inbound_bridge` on rome-evm-private. rome-ui keeps these in `chain.contracts` config for back-compat parsing only; no active call sites. |
 | Oracle adapter interfaces | Consuming contracts in this repo that use the adapters |
-| SPL token wrapper logic | `rome-uniswap-v2/` (uses SPL wrappers for trading pairs) |
+| SPL token wrapper logic | `rome-uniswap-v2/` (uses SPL wrappers for trading pairs); `rome-ui/src/features/portfolio` (renders wrapper rows via `useRomeHoldings`) |
 | Hardhat network config | `rome-solidity-sdk/` uses same network definitions |
+
+## Cross-repo dependencies — rome-ui
+
+rome-ui consumes a small, stable surface from this repo. Changes to that surface MUST be cross-checked before merging here, because rome-ui is squash-merged independently and a broken ABI would ship the next time rome-ui redeploys.
+
+### Active surface (consumed every render / every transaction)
+
+| Contract | Method / event | rome-ui consumer |
+|---|---|---|
+| `SPL_ERC20` | `bridgeOutToSolana(bytes32 recipient, uint256 value) → bool` | `src/features/bridge/hooks/useOutboundSplBridge.ts` (Marcus → Solana outbound for any wrapper) |
+| `SPL_ERC20` | `ensureRecipientAta(bytes32 recipient) → bytes32` | same hook (preflight before bridge tx — single CPI ATA-create paid by sender's PAYER PDA) |
+| `SPL_ERC20` | `balanceOf(address) → uint256` (now reads AUTHORITY_PDA's ATA, not `_accounts` map) | wagmi multicall, `useChainTokenBalances`, every Portfolio row |
+| `SPL_ERC20` | `transfer` / `transferFrom` / `approve` / `symbol` / `decimals` (standard IERC20 + IERC20Metadata) | wagmi readContract, TokenList, swap/liquidity flows |
+| `ERC20SPLFactory` | `create_user()` (no args, no return) | `src/features/portfolio/components/ClaimWrapperButton.tsx` (first-time activation) |
+| `ERC20SPLFactory` | `add_spl_token_no_metadata(bytes32 mint, string name, string symbol)` | indirect — backend indexer watches `TokenCreated` event to populate Redis token cache served at `/api/tokens` |
+| `ERC20SPLFactory` | event `TokenCreated(address creator, bytes32 mint, address wrapper, string name, string symbol, uint64 nonce)` | backend token-discovery indexer + rome-ui's `useChainTokenBalances` |
+| `RomeBridgeWithdraw` | `burnUSDC(uint256 amount, address ethereumRecipient)` | `src/features/bridge/hooks/useOutboundCctpSend.ts` (Marcus → Sepolia CCTP outbound) |
+| `RomeBridgeWithdraw` | `approveBurnETH(uint256)` + `burnETH(uint256, address)` (two-tx pattern, CU constraint) | `src/features/bridge/hooks/useOutboundWhSend.ts` (Marcus → Sepolia Wormhole outbound) |
+
+### Legacy / not consumed
+
+`RomeBridgePaymaster` and `RomeBridgeInbound` are kept in `chain.contracts` config for back-compat parsing of older chains.yaml files. The current inbound flow is `settle_inbound_bridge` on rome-evm-private (signed by `SOLANA_SETTLE_PAYER_KEY` after Circle/Wormhole `receiveMessage` confirms) — no Marcus EVM tx involved. Don't expand these contracts; deprecate them.
+
+### Behavioral contracts (not just ABI)
+
+These are observable from the outside but not enforced by the type system. Breaking any silently breaks rome-ui:
+
+- `bridgeOutToSolana` signs as `AUTHORITY_PDA` (`find_program_address([EXTERNAL_AUTHORITY, evmAddr])`), with **empty seeds** in the precompile `invoke_signed`. The source ATA = `getATA(AUTHORITY_PDA, mint)` — the canonical cross-chain location where bridged-in tokens live. rome-ui assumes the recipient ATA already exists; callers MUST run `ensureRecipientAta` first if uncertain (see `useOutboundSplBridge`).
+- `ensureRecipientAta` is **idempotent** — returns the same ATA address whether it pre-existed or was created. rome-ui probes Solana directly first to skip the call when not needed.
+- `balanceOf` reads `getATA(AUTHORITY_PDA, mint)`, NOT the `_accounts` mapping. Bridged-in users (Wormhole / native deposits) only have balance in the AUTHORITY_PDA's ATA; the legacy mapping path returned 0 for them.
+- `factory.create_user` pre-funds the PAYER PDA at exactly **1,000,000 lamports** (~0.001 SOL) — above the rent-exempt floor, below subsequent operation costs. ABI is unchanged from earlier 1B-lamport versions; the deployed factory's lamport amount can be observed by reading lamports on the PAYER PDA after a fresh user calls `create_user`. Per `/rome/CLAUDE.md` "no faucets, no starter-gas-on-us" rule.
+
+### Deployment artifacts rome-ui reads
+
+`deployments/marcus.json` writes addresses on each `npx hardhat run scripts/...` deploy. The mirror canonical copy lives in `rome-protocol/registry`. rome-ui's `chains.yaml` consumes the registry; never hand-edit deployed addresses without updating both sides. See `deploy/README.md` and `deploy/chains.sample.yaml` in rome-ui for the consumer schema.
 
 ## Test Selection Guide
 
