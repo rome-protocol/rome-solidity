@@ -1,15 +1,17 @@
-# Rome Bridge Phase 1 — Deploy Scripts
+# Rome Bridge — Deploy Scripts
 
-Deploy and ops scripts for the Rome Bridge contracts: paymaster, SPL_ERC20 wrappers (rUSDC, rETH), and withdraw.
+Deploy and ops scripts for the Rome Bridge contracts: paymaster (legacy), SPL_ERC20 wrappers (`WUSDC`, `WETH`, `WSOL`, plus per-asset `W{Symbol}` deploys), and `RomeBridgeWithdraw`.
+
+Token nomenclature follows the canonical W-prefix standard documented in [`/CLAUDE.md` § "Token nomenclature"](../../CLAUDE.md#token-nomenclature--canonical-repo-wide).
 
 **Read `contracts/bridge/README.md` first** — it covers the architecture, the four bridge flows, and the non-obvious problems that shaped the design (single-tx compute-budget limit, missing SPL Approve, stale canonical mints, etc.). This file is the operational companion.
 
 ## Deploy scripts
 
 - `constants.ts` — canonical Solana program IDs (mainnet + devnet), SPL mint pubkeys, CCTP domains, Wormhole chain IDs. `SPL_MINTS_DEVNET.WETH_WORMHOLE` must match the canonical wrapped-ETH mint for the Ethereum chain you are bridging from.
-- `deploy.ts` — one-shot fresh deploy: paymaster + SPL_ERC20 (rUSDC, rETH) + withdraw. Allowlists `burnUSDC` and `burnETH` on the paymaster. Writes to `deployments/{network}.json`.
+- `deploy.ts` — one-shot fresh deploy: paymaster + SPL_ERC20 (WUSDC, WETH) + withdraw. Allowlists `burnUSDC` and `burnETH` on the paymaster. Writes to `deployments/{network}.json`.
 - `redeploy-withdraw-devnet-wh.ts` — redeploy only the withdraw contract against devnet Wormhole programs; reuses paymaster + wrappers.
-- `redeploy-withdraw-canonical-weth.ts` — redeploy withdraw + new rETH wrapper bound to the canonical wrapped-ETH mint (used when refreshing on a chain where the rETH wrapper still points at a stale mint).
+- `redeploy-withdraw-canonical-weth.ts` — redeploy withdraw + new WETH wrapper bound to the canonical wrapped-ETH mint (used when refreshing on a chain where the WETH wrapper still points at a stale mint).
 - `redeploy-withdraw-only.ts` — redeploy withdraw with mainnet Wormhole programs (production path).
 - `allowlist-approve-selector.ts` — run after any withdraw redeploy; allowlists `approveBurnETH(uint256)` on the paymaster so ERC-2771 sponsorship works for the two-step outbound Wh flow.
 - `deploy-weth-v9.ts`, `deploy-wsol-v9.ts` — minimal SPL_ERC20 wrapper redeploys carrying the v9 outbound surface (`bridgeOutToSolana` + `ensureRecipientAta` + `balanceOf` reads from AUTHORITY_PDA). Use these to refresh wrappers on a chain after the contract upgrade. They do not touch the factory or paymaster.

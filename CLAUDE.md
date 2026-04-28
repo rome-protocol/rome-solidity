@@ -23,6 +23,33 @@ When adding new contracts:
 - **Rome-specific helpers (CPI, PDA derivation, mint layout) go in `*_program.sol` / `*_lib.sol` modules**, not in the public contract surface. Keep the public surface EVM-standard.
 - **Don't write "free to the user" primitives** (airdrop, faucet, subsidized mint). Token issuance goes through explicit bridge flows, swaps, or contract-owned admin — never zero-cost user claims.
 
+## Token nomenclature — canonical, repo-wide
+
+**This is the standard. Documentation, code comments, error messages, and UI strings all follow it.** When you write about a Rome token, pick the right form:
+
+| Token kind | Display symbol | Example |
+|---|---|---|
+| **Native gas** of a Rome chain | **bare underlying symbol** — no prefix | `USDC` (Marcus's gas mint), `ETH` (a hypothetical ETH-gas chain), `SOL` (a hypothetical SOL-gas chain) |
+| **ERC20-SPL wrapper** (any `SPL_ERC20` deployed via the factory or bridge scripts) | **`W` prefix** (capital W) | `WUSDC` (Marcus's USDC-mint wrapper), `WETH` (Wormhole-wrapped Sepolia-ETH wrapper), `WSOL` (canonical wSOL wrapper), `WJUP`/`WBONK`/`WUSDT` (future long-tails) |
+
+### Rules
+
+1. **Native gas keeps its underlying name.** On Marcus the gas mint is USDC, so the native gas is `USDC`. On a SOL-gas chain it's `SOL`. **No prefix, ever**, on the native gas symbol.
+2. **Every ERC20-SPL wrapper gets `W`.** This is true even for wrappers of the gas mint itself (Marcus has `USDC` native gas AND `WUSDC` as the SPL_ERC20 wrapper of the same SPL — two distinct tokens, two distinct displays).
+3. **Capital `W`.** Matches WETH/WBTC/WMATIC. Not lowercase `w`, not legacy `r`.
+4. **The on-chain `symbol()` of an SPL_ERC20 may not match the display form.** Wrappers are sometimes deployed with `symbol: "USDC"` (matching the underlying), and the W-prefix is a UI/docs convention. The canonical helper is `rome-ui/src/utils/displayTokenSymbol.ts: wrapperSymbolFor(gasSymbol)` which always returns `W{symbol}`.
+5. **Old `r` prefix (Rome) is deprecated.** `rUSDC`, `rETH`, `rSOL` were the legacy forms before alignment with the WETH/WBTC convention. Don't introduce new `r`-prefixed names; when you find an existing one, fix it. Historical CHANGELOG entries that describe past state may keep the old names — don't rewrite history, but flag them as historical.
+
+### Why this matters
+
+Ethereum users coming from MetaMask / Uniswap recognize `WETH` instantly. Using `rETH` forces them to re-learn the convention. The Rome design principle ([`/rome/CLAUDE.md`](../CLAUDE.md) "Ethereum-equivalent, not Ethereum-lite") is to **preserve patterns users already know** — wrapper naming is the most visible application of that principle.
+
+### Cross-repo enforcement
+
+This standard applies to every Rome sub-repo that ships user-visible strings or describes tokens in docs. The mirror reference lives in [`rome-ui/CLAUDE.md`](../rome-ui/CLAUDE.md). When you spot a stale `r`-prefix in any sub-repo, fix it in place — there's no migration window or feature flag, this is a one-edit-then-done change everywhere.
+
+---
+
 ## Configuration / chain metadata — canonical at rome-registry
 
 Chain ids, contract addresses, token registries, gas pool derivations, oracle feeds, and bridge wiring come from **[`rome-protocol/registry`](https://github.com/rome-protocol/registry)**. Don't hardcode in this repo.
@@ -139,7 +166,7 @@ Deployment metadata is tracked in `deployments/{network}.json`. `marcus.json` an
 
 **marcus (current V2 target):**
 - **OracleGatewayV2** — PythPullAdapter + SwitchboardV3Adapter implementations, OracleAdapterFactory (`defaultMaxStaleness=300`), BatchReader, + 5 Pyth feeds (SOL/BTC/ETH/USDC/USDT) and 1 Switchboard feed (SOL). Deployed by `scripts/oracle/deploy-v2-polish.ts` (idempotent — set `FORCE_REDEPLOY=1` to override).
-- **MeteoraDAMMv1Factory**, **RomeBridgePaymaster**, **RomeBridgeWithdraw**, **SPL_ERC20** (rUSDC, rETH) — Rome Bridge Phase 1 wrappers.
+- **MeteoraDAMMv1Factory**, **RomeBridgePaymaster**, **RomeBridgeWithdraw**, **SPL_ERC20** (WUSDC, WETH; WSOL on chains with the canonical wSOL wrapper) — Rome Bridge wrappers.
 
 **monti_spl (retired):**
 - **OracleGatewayV2Legacy** — historical V2 addresses kept for reference only; monti_spl is no longer a deploy target.

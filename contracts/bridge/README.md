@@ -1,6 +1,8 @@
-# Rome Bridge (Phase 1)
+# Rome Bridge
 
-Cross-chain bridge between **Ethereum Sepolia** and **Rome marcus devnet** using **Circle CCTP** for USDC and **Wormhole Token Bridge** for ETH. Four flows total: inbound and outbound for each asset.
+Cross-chain bridge between **Ethereum Sepolia** and **Rome marcus devnet** using **Circle CCTP** for USDC and **Wormhole Token Bridge** for ETH (Phase 1 — Ethereum-origin assets), plus a **generic Marcus → Solana SPL outbound** for any wrapper deployed by `ERC20SPLFactory` (Phase 2 — Solana-native and Solana-bridged SPLs).
+
+Token nomenclature follows the canonical W-prefix standard documented in [`/CLAUDE.md` § "Token nomenclature"](../../CLAUDE.md#token-nomenclature--canonical-repo-wide). Native gas keeps its bare symbol (`USDC` on Marcus); ERC20-SPL wrappers get `W` (e.g. `WUSDC`, `WETH`, `WSOL`).
 
 This document covers what the bridge does, how it's wired, how to redeploy it, and — most importantly — the non-obvious problems that came up during bring-up and the fixes that unblocked them. Read the "Problems faced and fixes" section before touching the code.
 
@@ -8,23 +10,36 @@ This document covers what the bridge does, how it's wired, how to redeploy it, a
 
 ## Assets and flows
 
-| Asset | Rome token | Source of truth on Solana | Bridge mechanism |
+| Asset | Marcus wrapper | Source of truth on Solana | Bridge mechanism |
 |-------|------------|----------------------------|------------------|
-| USDC  | rUSDC (`SPL_ERC20`) | Circle's devnet USDC mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` | **CCTP** (native mint/burn, no wrapped tokens) |
-| ETH   | rETH  (`SPL_ERC20`) | Wormhole-wrapped Sepolia-ETH mint `6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs` | **Wormhole Token Bridge** (lock-and-mint / burn-and-unlock) |
+| USDC  | `WUSDC` (`SPL_ERC20`) | Circle's devnet USDC mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` | **CCTP** (native mint/burn, no wrapped tokens) — Phase 1 |
+| ETH   | `WETH`  (`SPL_ERC20`) | Wormhole-wrapped Sepolia-ETH mint `6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs` | **Wormhole Token Bridge** (lock-and-mint / burn-and-unlock) — Phase 1 |
+| SOL (or any Solana-native SPL) | `WSOL` / `W{Symbol}` (`SPL_ERC20`) | Canonical wSOL `So11…` (or any SPL mint) | **Direct CPI** (`bridgeOutToSolana` for outbound; native deposit for inbound) — Phase 2 |
 
 Both assets flow as SPL tokens between Solana and Ethereum. On the Rome side, an `SPL_ERC20` wrapper exposes each SPL mint as an ERC-20 so users can interact with standard wallets. The wrapper is a 1:1 view over the user's Solana ATA — there is no additional custody.
 
-The four flows:
+**Marcus's gas mint is `USDC` (bare).** The `WUSDC` wrapper above is a distinct token from native gas — same underlying SPL, different surface (BalancePDA vs SPL_ERC20). The bridge picker on rome-ui filters out `WUSDC` from the Marcus → Solana picker because the native gas withdraw path covers the same destination ATA. See [rome-ui CLAUDE.md § "Bridge asset picker"](https://github.com/rome-protocol/rome-ui/blob/main/CLAUDE.md).
+
+The four CCTP/Wormhole flows (Phase 1):
 
 ```
                                          Sepolia                                  Rome marcus (Solana)
                                     ┌──────────────────┐                     ┌────────────────────────┐
-  Inbound CCTP   (user on Sepolia)  │  depositForBurn  │ ── IRIS attest ──►  │  receiveMessage (CPI)  │  → rUSDC minted to user ATA
-  Outbound CCTP  (user on Rome)     │  receiveMessage  │ ◄── IRIS attest ──  │  burnUSDC → CCTP CPI   │  → rUSDC burned
-  Inbound Wh     (user on Sepolia)  │  transferTokens  │ ── Guardian VAA ─►  │  complete_transfer_..  │  → rETH minted
-  Outbound Wh    (user on Rome)     │  completeAndUnw..│ ◄── Guardian VAA ─  │  approveBurnETH+burnETH│  → rETH burned
+  Inbound CCTP   (user on Sepolia)  │  depositForBurn  │ ── IRIS attest ──►  │  receiveMessage (CPI)  │  → WUSDC minted to user ATA
+  Outbound CCTP  (user on Rome)     │  receiveMessage  │ ◄── IRIS attest ──  │  burnUSDC → CCTP CPI   │  → WUSDC burned
+  Inbound Wh     (user on Sepolia)  │  transferTokens  │ ── Guardian VAA ─►  │  complete_transfer_..  │  → WETH minted
+  Outbound Wh    (user on Rome)     │  completeAndUnw..│ ◄── Guardian VAA ─  │  approveBurnETH+burnETH│  → WETH burned
                                     └──────────────────┘                     └────────────────────────┘
+```
+
+The two Phase-2 flows (Marcus ↔ Solana, any SPL):
+
+```
+                                                                                  Rome marcus (Solana)
+                                                                              ┌─────────────────────────────┐
+  Outbound Phase 2 (user on Rome → Solana wallet)                             │ ensureRecipientAta + bridgeOutToSolana │ → SPL minted to recipient ATA
+  Inbound Phase 2  (user on Solana → Rome) — native deposit                  │ user signs Solana SPL transfer ; Hercules indexes; W{Symbol} balance reflects │
+                                                                              └─────────────────────────────┘
 ```
 
 Attestation/VAA fetching and the return-leg submission happen off-chain in the bridge relayer (`rome-ui/src/server/bridge/`). The on-chain side is four Solana CPIs from Rome plus four Sepolia transactions.
@@ -37,9 +52,9 @@ Attestation/VAA fetching and the return-leg submission happen off-chain in the b
 
 Three bridge contracts on the `marcus` devnet EVM:
 
-- **`SPL_ERC20`** (rUSDC, rETH) — existing wrapper. Binds an SPL mint to an ERC-20 interface. Balances, transfers, approvals, and `ensure_token_account` go through Rome's CPI precompile.
+- **`SPL_ERC20`** (`WUSDC`, `WETH`, `WSOL`, plus any future `W{Symbol}` deployed via the factory) — generic ERC-20 wrapper for any SPL mint. Binds the mint to a standard ERC-20 interface (`balanceOf` reads `getATA(AUTHORITY_PDA, mint)`, transfers/approvals go through Rome's CPI precompile). Phase-2 generic outbound (`bridgeOutToSolana` + `ensureRecipientAta`) lives here — see § "Generic Marcus → Solana SPL outbound" below.
 - **`RomeBridgeWithdraw`** — entrypoint for outbound flows. `burnUSDC(amount, ethRecipient)` fires a CCTP `depositForBurn` CPI. `approveBurnETH(amount)` + `burnETH(amount, ethRecipient)` (two separate EVM txs — see "Problems faced") fire an SPL Token Approve CPI then a Wormhole `transferWrapped` CPI. The contract takes all Solana program IDs, sysvars, and PDAs through its constructor so it is network-agnostic.
-- **`RomeBridgePaymaster`** — ERC-2771 trusted forwarder with per-user 3-tx sponsorship cap and a `(target, selector)` allowlist. Lets the UI/frontend sponsor user gas for the bridge entrypoints (`burnUSDC`, `approveBurnETH`, `burnETH`) without the user holding rSOL.
+- **`RomeBridgePaymaster`** — ERC-2771 trusted forwarder with per-user 3-tx sponsorship cap and a `(target, selector)` allowlist. **Legacy — no longer used by the active bridge worker.** The current inbound flow uses `settle_inbound_bridge` on rome-evm-private signed by `SOLANA_SETTLE_PAYER_KEY`, no Marcus EVM tx involved. Kept in chain.contracts config for back-compat parsing only.
 
 `IWormholeTokenBridge.sol` and `ICCTP.sol` encode the Solana instructions and account lists for the two CPI targets. All Solana program IDs and sysvar addresses are constructor params, not constants.
 
@@ -96,11 +111,14 @@ From `deployments/marcus.json`:
 
 | Contract | Address |
 |----------|---------|
-| RomeBridgePaymaster | `0xcaf1fbcf60c3686d87d0a5111f340a99250ce4ef` |
+| RomeBridgePaymaster (legacy, retained for back-compat parsing) | `0xcaf1fbcf60c3686d87d0a5111f340a99250ce4ef` |
 | ERC20Users | `0x803f6923bcc776db1d0aa6fcdbd8ceddf35ad6f3` |
-| SPL_ERC20 rUSDC | `0x6ed2944bba4cb5b1cb295541f315c648658dd67c` |
-| SPL_ERC20 rETH | `0x3e52cfb38ca1639f3c95aef6dccff2b36c230f22` |
+| SPL_ERC20 `WUSDC` (Phase-1 USDC wrapper) | `0x6ed2944bba4cb5b1cb295541f315c648658dd67c` |
+| SPL_ERC20 `WETH` (v9 — bridgeOutToSolana + ensureRecipientAta) | `0x613b22c098b1058d91731dcb15beaa781b45783e` |
+| SPL_ERC20 `WSOL` (v9 — bridgeOutToSolana + ensureRecipientAta) | `0x1b23b52d9c991d580ae6df1b936aff09a5f794a2` |
 | RomeBridgeWithdraw | `0x513f76e39cfd7008f1e143ae37148608cddfcaaf` (Wormhole target chain = 10002 Sepolia) |
+
+The deployed `WUSDC` is still the original Phase-1 wrapper (no `bridgeOutToSolana`); see `rome-ui` BridgePage filter logic for why this is fine — outbound USDC routes through the native Withdraw precompile (`0x42…0016`), not via the wrapper.
 
 ---
 
@@ -136,9 +154,9 @@ Each tx now fits the budget. This is also the standard ERC-20 bridge pattern (ap
 
 **Symptom.** `transfer_wrapped` failed with `Program log: Error: IoError(Custom { kind: InvalidInput, error: "Unexpected length of input" })` — a Borsh deserialization error from inside the token-bridge program.
 
-**Why.** `SPL_MINTS_DEVNET.WETH_WORMHOLE` in `scripts/bridge/constants.ts` was set to an old test mint (`2kCwKGBvGfoY7EKHPmCwsZXamxzDMbqn1uDZMqXfve6i`) while the on-chain rETH wrapper bound to the actual canonical Wormhole-wrapped Sepolia-ETH mint (`6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs`). The deploy script derived `wrappedMeta` from the wrong mint, got a PDA that doesn't exist on chain (empty account data), and Wormhole failed when it tried to deserialize zero bytes as its `WrappedMeta` struct.
+**Why.** `SPL_MINTS_DEVNET.WETH_WORMHOLE` in `scripts/bridge/constants.ts` was set to an old test mint (`2kCwKGBvGfoY7EKHPmCwsZXamxzDMbqn1uDZMqXfve6i`) while the on-chain WETH wrapper bound to the actual canonical Wormhole-wrapped Sepolia-ETH mint (`6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs`). The deploy script derived `wrappedMeta` from the wrong mint, got a PDA that doesn't exist on chain (empty account data), and Wormhole failed when it tried to deserialize zero bytes as its `WrappedMeta` struct.
 
-**Fix.** `SPL_MINTS_DEVNET.WETH_WORMHOLE` now points at the canonical wrapped-Sepolia-ETH mint derived via `deriveCanonicalWrappedMint({ tokenChain: 10002, tokenAddress: "eef12a83..." })`. When you redeploy the rETH wrapper, always derive the mint using `lib/canonical-mint.ts` + `lib/verify-mint-on-chain.ts` rather than hard-coding it.
+**Fix.** `SPL_MINTS_DEVNET.WETH_WORMHOLE` now points at the canonical wrapped-Sepolia-ETH mint derived via `deriveCanonicalWrappedMint({ tokenChain: 10002, tokenAddress: "eef12a83..." })`. When you redeploy the WETH wrapper, always derive the mint using `lib/canonical-mint.ts` + `lib/verify-mint-on-chain.ts` rather than hard-coding it.
 
 **Generalize.** If a Wormhole CPI fails with "Unexpected length of input", suspect an account PDA that doesn't exist on chain long before you suspect instruction-data encoding.
 
@@ -162,7 +180,7 @@ Each tx now fits the budget. This is also the standard ERC-20 bridge pattern (ap
 
 ### 6. ATA creation must be idempotent when the same ATA is touched by multiple paths
 
-**Symptom.** After an inbound Wormhole flow created the user's rETH ATA externally (via `createAssociatedTokenAccount`), subsequent Rome operations tried to create the same ATA via the non-idempotent `create` CPI and reverted with `Cannot revert CPI` — the ATA already existed.
+**Symptom.** After an inbound Wormhole flow created the user's WETH ATA externally (via `createAssociatedTokenAccount`), subsequent Rome operations tried to create the same ATA via the non-idempotent `create` CPI and reverted with `Cannot revert CPI` — the ATA already existed.
 
 **Fix.** `erc20spl.sol` uses `create_associated_token_account_idempotent` for the Rome-side creation. If the ATA exists, this is a no-op.
 
@@ -212,10 +230,10 @@ For a fresh deploy on a new Rome chain or to refresh marcus:
 
 ## Test flows end to end
 
-- **Inbound CCTP** (Sepolia → Rome rUSDC): `scripts/bridge/inbound/01-submit-deposit.mjs` → `02-poll-attestation.mjs` → `03-submit-receive.mjs`.
-- **Outbound CCTP** (Rome rUSDC → Sepolia): `scripts/bridge/submit-burn.ts` then wait for the relayer to advance the record. Or call the UI.
-- **Inbound Wormhole** (Sepolia → Rome rETH): `scripts/bridge/inbound/01b-submit-whETH.mjs` → relayer advances → balance appears.
-- **Outbound Wormhole** (Rome rETH → Sepolia): `scripts/bridge/submit-burnETH.ts` sends `approveBurnETH` then `burnETH`, waits for Sepolia completion.
+- **Inbound CCTP** (Sepolia → Rome WUSDC): `scripts/bridge/inbound/01-submit-deposit.mjs` → `02-poll-attestation.mjs` → `03-submit-receive.mjs`.
+- **Outbound CCTP** (Rome WUSDC → Sepolia): `scripts/bridge/submit-burn.ts` then wait for the relayer to advance the record. Or call the UI.
+- **Inbound Wormhole** (Sepolia → Rome WETH): `scripts/bridge/inbound/01b-submit-whETH.mjs` → relayer advances → balance appears.
+- **Outbound Wormhole** (Rome WETH → Sepolia): `scripts/bridge/submit-burnETH.ts` sends `approveBurnETH` then `burnETH`, waits for Sepolia completion.
 
 All four have been verified E2E on marcus against Sepolia with real funds:
 - Inbound CCTP: Sepolia `0x484c00f5...` → Solana `WS6QkvCJ...`
@@ -225,7 +243,7 @@ All four have been verified E2E on marcus against Sepolia with real funds:
 
 ### Note: gas price on marcus devnet
 
-marcus's gas token is rUSDC, priced against rSOL via a Meteora pool. The proxy reports a default `eth_gasPrice` of ~10 gwei — but because the pool price can swing, the resulting **Wei balance per rUSDC is variable**. If the native balance check rejects a tx with `"User does not have sufficient funds (Wei)"` despite having plenty of rUSDC, override `gasPrice` downward (1-2 gwei works on marcus). The submit-burnETH runner uses 2 gwei by default for this reason.
+marcus's gas token is `USDC` (bare — native gas mint), priced against `SOL` via a Meteora pool between the `WUSDC` and `WSOL` SPL_ERC20 wrappers. The proxy reports a default `eth_gasPrice` of ~10 gwei — but because the pool price can swing, the resulting **Wei balance per USDC is variable**. If the native balance check rejects a tx with `"User does not have sufficient funds (Wei)"` despite having plenty of `USDC`, override `gasPrice` downward (1-2 gwei works on marcus). The submit-burnETH runner uses 2 gwei by default for this reason.
 
 ---
 
@@ -236,7 +254,7 @@ Start here:
 - `contracts/bridge/RomeBridgeWithdraw.sol` — entrypoint contract. The outbound side of both flows lives here. Read the NatSpec on `burnETH` / `approveBurnETH` for the split-tx rationale.
 - `contracts/bridge/IWormholeTokenBridge.sol` — Wormhole account layout. The long comment on `TransferWrappedAccounts` lists the exact order and mutability; match it to the IDL before changing.
 - `contracts/bridge/ICCTP.sol` — CCTP `depositForBurn` layout (17 accounts per Circle's IDL).
-- `scripts/bridge/derive/wormhole-accounts.ts` — PDA derivations. `wrappedMeta` depends on the mint — keep it in sync with the deployed rETH wrapper.
+- `scripts/bridge/derive/wormhole-accounts.ts` — PDA derivations. `wrappedMeta` depends on the mint — keep it in sync with the deployed WETH wrapper.
 - `scripts/bridge/constants.ts` — Solana program IDs (mainnet vs devnet) and SPL mints. **`SPL_MINTS_DEVNET.WETH_WORMHOLE` must match the canonical wrapped-ETH mint for the source chain you're bridging from.**
 
 For the off-chain half, see `rome-ui/src/server/bridge/` (flows and Wormhole/CCTP helpers) and `rome-ui/src/features/bridge/` (hooks and UI).

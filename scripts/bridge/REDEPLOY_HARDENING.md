@@ -32,7 +32,7 @@ cd rome-solidity
 git checkout main && git pull
 npx hardhat compile
 
-# 2. Make sure the deployer wallet has rUSDC for gas on Marcus.
+# 2. Make sure the deployer wallet has USDC (native gas) on Marcus.
 #    (Funding floor in deployments/marcus.json's deployer notes.)
 
 # 3. Run the redeploy script.
