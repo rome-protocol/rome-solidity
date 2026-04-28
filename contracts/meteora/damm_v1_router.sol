@@ -41,7 +41,7 @@ contract MeteoraDAMMv1Router {
         uint256 pool_token_amount,
         uint256 max_token_a_amount,
         uint256 max_token_b_amount,
-        DAMMv1Lib.BalanceLiquidityAccountsInput memory liquidity_accounts
+        DAMMv1Lib.AddLiquidityUserAccountsInput memory user_accounts
     ) external {
         address pool = factory.getPool(token_a, token_b);
         require(pool != address(0), "Pool does not exist");
@@ -52,7 +52,7 @@ contract MeteoraDAMMv1Router {
                 pool_token_amount,
                 max_token_a_amount,
                 max_token_b_amount,
-                liquidity_accounts
+                user_accounts
             )
         );
 

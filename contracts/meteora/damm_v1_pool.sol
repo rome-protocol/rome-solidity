@@ -142,6 +142,13 @@ library DAMMv1Lib {
         bytes32 token_program;
     }
 
+    // User-supplied token accounts for the optimized addLiquidity flow.
+    struct AddLiquidityUserAccountsInput {
+        bytes32 user_pool_lp;
+        bytes32 user_a_token;
+        bytes32 user_b_token;
+    }
+
     struct InitializeVaultAccounts {
         bytes32 vault;
         bytes32 payer;
@@ -1315,6 +1322,34 @@ contract DAMMv1Pool {
             token_program: SplTokenLib.SPL_TOKEN_PROGRAM
         });
     }
+
+    function make_balance_liquidity_accounts_from_pool_and_user_accounts(
+        bytes32 user,
+        DAMMv1Lib.AddLiquidityUserAccountsInput memory user_accounts
+    )
+    public
+    view
+    returns (DAMMv1Lib.BalanceLiquidityAccountsInput memory out)
+    {
+        out = DAMMv1Lib.BalanceLiquidityAccountsInput({
+            pool: pool_address,
+            lp_mint: lp_mint,
+            user_pool_lp: user_accounts.user_pool_lp,
+            a_vault_lp: a_vault_lp,
+            b_vault_lp: b_vault_lp,
+            a_vault: a_vault,
+            b_vault: b_vault,
+            a_vault_lp_mint: vault_a.lp_mint,
+            b_vault_lp_mint: vault_b.lp_mint,
+            a_token_vault: vault_a.token_vault,
+            b_token_vault: vault_b.token_vault,
+            user_a_token: user_accounts.user_a_token,
+            user_b_token: user_accounts.user_b_token,
+            user: user,
+            vault_program: prog_dynamic_vault,
+            token_program: SplTokenLib.SPL_TOKEN_PROGRAM
+        });
+    }
 }
 
 contract ERC20DAMMv1Pool {
@@ -1322,9 +1357,6 @@ contract ERC20DAMMv1Pool {
     ERC20Users private immutable users;
     SPL_ERC20 private immutable tokenA;
     SPL_ERC20 private immutable tokenB;
-    
-    error InvalidLiquidityAccountsUser(bytes32 actual, bytes32 expected);
-    error InvalidLiquidityAccountsPool(bytes32 actual, bytes32 expected);
 
     constructor(
         DAMMv1Pool _internal_pool,
@@ -1502,24 +1534,21 @@ contract ERC20DAMMv1Pool {
         uint256 pool_token_amount,
         uint256 max_token_a_amount,
         uint256 max_token_b_amount,
-        DAMMv1Lib.BalanceLiquidityAccountsInput memory liquidity_accounts
+        DAMMv1Lib.AddLiquidityUserAccountsInput memory user_accounts
     ) external {
         bytes32 user = users.get_user(msg.sender);
-        bytes32 pool_address = internal_pool.pool_address();
 
         require(pool_token_amount <= type(uint64).max, "pool_token_amount exceeds uint64");
         require(max_token_a_amount <= type(uint64).max, "max_token_a_amount exceeds uint64");
         require(max_token_b_amount <= type(uint64).max, "max_token_b_amount exceeds uint64");
 
-        if (liquidity_accounts.user != user) {
-            revert InvalidLiquidityAccountsUser(liquidity_accounts.user, user);
-        }
-        if (liquidity_accounts.pool != pool_address) {
-            revert InvalidLiquidityAccountsPool(liquidity_accounts.pool, pool_address);
-        }
-
         ICrossProgramInvocation.AccountMeta[] memory accounts =
-            DAMMv1Lib.build_balance_liquidity_account_metas(liquidity_accounts);
+            DAMMv1Lib.build_balance_liquidity_account_metas(
+                internal_pool.make_balance_liquidity_accounts_from_pool_and_user_accounts(
+                    user,
+                    user_accounts
+                )
+            );
 
         bytes memory data = DAMMv1Lib.build_add_balance_liquidity_ix_data(
             uint64(pool_token_amount),
