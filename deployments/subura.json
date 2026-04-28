@@ -71,5 +71,8 @@
   "ERC20SPLFactory": {
     "address": "0xa283e7569c62028177e63a4df02c50a2a63cd642",
     "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
+  },
+  "MeteoraDAMMv1Factory": {
+    "address": "0x60d724978ab845a77a0d13914668e45d20504c30"
   }
 }
