@@ -63,6 +63,13 @@ export default defineConfig({
       url: "https://esquiline.devnet.romeprotocol.xyz/",
       accounts: [configVariable("ESQUILINE_PRIVATE_KEY")],
     },
+    maximus: {
+      type: "http",
+      chainType: "l1",
+      chainId: 121215,
+      url: "https://maximus.devnet.romeprotocol.xyz/",
+      accounts: [configVariable("MAXIMUS_PRIVATE_KEY")],
+    },
     local: {
       type: "http",
       chainType: "l1",
