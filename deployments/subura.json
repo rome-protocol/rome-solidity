@@ -67,5 +67,9 @@
         "adapter": "0x486b1bFfc19153Fb030E5d25ED0FC5a9b57A7992"
       }
     ]
+  },
+  "ERC20SPLFactory": {
+    "address": "0xa283e7569c62028177e63a4df02c50a2a63cd642",
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
   }
 }
