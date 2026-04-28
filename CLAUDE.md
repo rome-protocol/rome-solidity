@@ -173,7 +173,7 @@ Target: `0.8.28`. Production profile enables optimizer with 200 runs.
 | If you change... | Also check/update... |
 |-----------------|---------------------|
 | Precompile interface addresses | `rome-solidity-sdk/` interfaces must match `rome-evm-private/` precompile dispatch |
-| Contract ABIs | `rome-ui/src/abis/*.json` + parseAbi() call sites, `rome-deposit-ui/` imports, `tests/` Solidity test contracts, `CHANGELOG.md` |
+| Contract ABIs | `rome-ui/src/abis/*.json` + parseAbi() call sites, `tests/` Solidity test contracts, `CHANGELOG.md` |
 | `SPL_ERC20.bridgeOutToSolana` / `ensureRecipientAta` / `balanceOf` | **rome-ui** `src/features/bridge/hooks/useOutboundSplBridge.ts`, `useBalances.ts`, `useRomeHoldings.ts`. ABI is parseAbi-encoded inline; no JSON to regenerate. |
 | `ERC20SPLFactory.create_user` / `add_spl_token_no_metadata` / `TokenCreated` event | **rome-ui** `src/features/portfolio/components/ClaimWrapperButton.tsx` (calls `create_user`), `src/abis/ERC20SPLFactory.json` (mirror), backend's token-discovery indexer (watches `TokenCreated`). |
 | `RomeBridgeWithdraw.burnUSDC` / `burnETH` / `approveBurnETH` | **rome-ui** `src/features/bridge/hooks/useOutboundCctpSend.ts`, `useOutboundWhSend.ts`. Inline parseAbi, no JSON regen. |
