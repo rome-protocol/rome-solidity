@@ -7,6 +7,7 @@ import {SplTokenLib} from "../spl_token/spl_token.sol";
 import {AssociatedSplToken} from "../spl_token/associated_spl_token.sol";
 import {ISystemProgram, ICrossProgramInvocation, CpiProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
+import {UserPda} from "../cpi/UserPda.sol";
 import {Convert} from "../convert.sol";
 
 contract ERC20Users {
@@ -153,13 +154,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // populated only after a wrapper-mediated `ensure_token_account`
         // call) would mismatch and report 0 for any user whose tokens
         // arrived via a non-wrapper path.
-        bytes32 authority_pda = RomeEVMAccount.pda(account);
-        bytes32 ata = AssociatedSplToken.get_associated_token_address_with_program_id(
-            authority_pda,
-            mint_id,
-            SplTokenLib.SPL_TOKEN_PROGRAM,
-            associated_token_program_id
-        );
+        bytes32 ata = UserPda.ata(account, mint_id);
         return uint256(SplTokenLib.load_token_amount(ata, cpi_program));
     }
 
@@ -324,24 +319,14 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         bytes32 authority_pda = RomeEVMAccount.pda(msg.sender);
         bytes32 payer_pda = _users.get_user(msg.sender);
 
-        bytes32 from_ata = AssociatedSplToken.get_associated_token_address_with_program_id(
-            authority_pda,
-            mint_id,
-            SplTokenLib.SPL_TOKEN_PROGRAM,
-            associated_token_program_id
-        );
+        bytes32 from_ata = UserPda.ataForKey(authority_pda, mint_id);
 
         // Recipient ATA — derive only. Caller must pre-create on Solana
         // if it doesn't exist. Adding the in-tx ATA-create CPI failed
         // on rome-evm's CPI emulator (the two-CPI sequence reverts at
         // sim time even though the contract logic is correct). Single
         // CPI (transfer only) works reliably on chain.
-        bytes32 to_ata = AssociatedSplToken.get_associated_token_address_with_program_id(
-            solana_recipient,
-            mint_id,
-            SplTokenLib.SPL_TOKEN_PROGRAM,
-            associated_token_program_id
-        );
+        bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
         // Suppress unused-var warning. payer_pda is read for potential
         // future ATA-create reintroduction once the emulator quirk is
         // fixed.
