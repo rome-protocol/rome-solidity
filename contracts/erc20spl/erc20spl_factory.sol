@@ -53,6 +53,8 @@ contract ERC20SPLFactory {
         token_by_mint[mint] = address(new_contract);
         mint_by_symbol_hash[symbolHash] = mint;
         token_by_symbol_hash[symbolHash] = address(new_contract);
+
+        emit TokenCreated(msg.sender, mint, address(new_contract), name, symbol, creator_nonce[msg.sender]);
         return address(new_contract);
     }
 
