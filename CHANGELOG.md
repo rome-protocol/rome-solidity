@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Fixed — `ERC20SPLFactory.TokenCreated` event was declared but never emitted
+- `contracts/erc20spl/erc20spl_factory.sol` — `_register_contract` (called from both `add_spl_token_with_metadata` and `add_spl_token_no_metadata`) now emits `TokenCreated(creator, mint, wrapper, name, symbol, nonce)` after writing the `token_by_mint` / `mint_by_symbol_hash` / `token_by_symbol_hash` mappings. Previously the event was declared on lines 26-33 but had zero `emit` sites — so the rome-ui backend's token-discovery indexer (which watches `TokenCreated` per the cross-repo deps note in `CLAUDE.md`) never populated wrappers deployed via this factory. The bootstrap-bridged-wrappers script added in a prior session was relying on an event the factory wasn't emitting; this fix completes that loop. `nonce` carries the creator's current `creator_nonce[msg.sender]` at registration time.
+- Surfaced during the cassius-test (121298) bring-up rehearsal — `rome-specs/active/technical/2026-04-28-rome-chain-bring-up-runbook-plan.md` Chapter 10.4 lessons.
+
 ### Added — Generic Marcus → Solana SPL outbound (`SPL_ERC20.bridgeOutToSolana` + `ensureRecipientAta`)
 - `contracts/erc20spl/erc20spl.sol` — new `bridgeOutToSolana(bytes32 recipient, uint256 value) → bool`: single CPI `transfer_checked` from `getATA(AUTHORITY_PDA, mint)` → recipient ATA, signed as `AUTHORITY_PDA = find_program_address([EXTERNAL_AUTHORITY, evmAddr])` with empty seeds. Generic outbound for any wrapper deployed by the factory — one method covers WUSDC/WETH/WSOL today and every future Solana-native SPL. Emits `BridgedOutToSolana`.
 - `contracts/erc20spl/erc20spl.sol` — new `ensureRecipientAta(bytes32 recipient) → bytes32`: idempotent single-CPI ATA-create on Solana, paid by sender's pre-funded PAYER PDA. Companion to `bridgeOutToSolana`; the single-tx two-CPI variant fails rome-evm's `eth_call` simulation, so the flow is split. Emits `RecipientAtaEnsured`.
