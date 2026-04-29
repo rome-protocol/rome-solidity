@@ -212,6 +212,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         );
 
         require (success, string(Convert.revert_msg(result)));
+        emit Transfer(from, to, value);
         return true;
     }
 
@@ -250,6 +251,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         );
 
         require (success, string(Convert.revert_msg(result)));
+        emit Approval(msg.sender, spender, value);
         return true;
     }
 
@@ -473,6 +475,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         );
 
         require (success, string(Convert.revert_msg(result)));
+        emit Transfer(address(0), to, value);
         return true;
     }
 }
