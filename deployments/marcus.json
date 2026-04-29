@@ -97,5 +97,9 @@
   "RomeBridgeInbound": {
     "address": "0x01d5cCfb9349F051A2a78bA75285168cbA0D206a",
     "deployedAt": 1777090061
+  },
+  "ERC20SPLFactory": {
+    "address": "0x9e595a6ee33525ceefdec545567260946f2009fb",
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
   }
 }
