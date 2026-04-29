@@ -7,7 +7,7 @@ import {
     deploySplErc20,
     deployWithdraw,
 } from "./bridge/deploy.js";
-import { SPL_MINTS } from "./bridge/constants.js";
+import { SPL_MINTS_DEVNET } from "./bridge/constants.js";
 
 /**
  * Local Rome stack setup script for rome-solidity testing.
@@ -266,30 +266,41 @@ async function main() {
     const paymaster = await deployPaymaster(deployer.account.address);
     deployments.RomeBridgePaymaster = { address: paymaster.address };
 
+    // Local stack uses devnet mint set (rome-setup seeds Wormhole/CCTP devnet
+    // programs alongside these mints).
+    const usdcMint = SPL_MINTS_DEVNET.USDC_NATIVE;
+    const wethMint = SPL_MINTS_DEVNET.WETH_WORMHOLE;
+
     const usdcWrapper = await deploySplErc20(
         "SPL_ERC20_USDC",
-        "Rome USDC",
-        "rUSDC",
-        SPL_MINTS.USDC_NATIVE,
+        "Wrapped USDC",
+        "WUSDC",
+        usdcMint,
         cpiProgramAddress,
     );
-    deployments.SPL_ERC20_USDC = { address: usdcWrapper.address, mintId: SPL_MINTS.USDC_NATIVE };
+    deployments.SPL_ERC20_USDC = { address: usdcWrapper.address, mintId: usdcMint };
 
     const wethWrapper = await deploySplErc20(
         "SPL_ERC20_WETH",
-        "Rome wETH",
-        "rETH",
-        SPL_MINTS.WETH_WORMHOLE,
+        "Wrapped ETH",
+        "WETH",
+        wethMint,
         cpiProgramAddress,
     );
-    deployments.SPL_ERC20_WETH = { address: wethWrapper.address, mintId: SPL_MINTS.WETH_WORMHOLE };
+    deployments.SPL_ERC20_WETH = { address: wethWrapper.address, mintId: wethMint };
 
     try {
-        await deployWithdraw(paymaster.address, usdcWrapper.address, wethWrapper.address);
+        await deployWithdraw(
+            paymaster.address,
+            usdcWrapper.address,
+            wethWrapper.address,
+            usdcMint,
+            wethMint,
+        );
         deployments.RomeBridgeWithdraw = { address: "(see deployments/local.json)" };
     } catch (err) {
         console.warn(
-            "Skipping RomeBridgeWithdraw deploy — Phase 1.5 PDA derivation pending:",
+            "Skipping RomeBridgeWithdraw deploy — PDA derivation failed:",
             (err as Error).message,
         );
     }
@@ -311,7 +322,7 @@ async function main() {
     console.log(`Meteora: factory + 1 pool`);
     console.log(`Pyth feeds: ${successFeeds.length}/${feeds.length} created`);
     console.log(`Switchboard feeds: ${successSbFeeds.length}/${sbFeeds.length} created`);
-    console.log(`Bridge: paymaster + rUSDC wrapper + rETH wrapper (withdraw deferred to Phase 1.5)`);
+    console.log(`Bridge: paymaster + WUSDC wrapper + WETH wrapper`);
     const allFailed = [...failedFeeds, ...failedSbFeeds];
     if (allFailed.length > 0) {
         console.log(`Failed feeds: ${allFailed.map((f: any) => f.pair).join(", ")}`);

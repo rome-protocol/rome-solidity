@@ -1,15 +1,25 @@
 // scripts/bridge/deploy.ts
 //
-// Phase 1.4 deploy script for Rome Bridge contracts:
+// Per-chain deploy script for the Rome Bridge stack:
 //   - RomeBridgePaymaster
-//   - ERC20Users (if not already deployed)
-//   - SPL_ERC20 wrappers for USDC (rUSDC) and wETH (rETH)
-//   - RomeBridgeWithdraw (once Phase 1.5 supplies Solana PDAs)
+//   - ERC20Users (idempotent — reused if already deployed)
+//   - SPL_ERC20 wrappers for USDC (WUSDC) and wETH (WETH), one per env-var-supplied mint
+//   - RomeBridgeWithdraw (only if both wrappers were deployed — otherwise skipped)
+//
+// Mint configuration is per-chain via env vars; constants no longer hard-code
+// Marcus's mints. Operators always pass the mints explicitly:
+//
+//   USDC_MINT=4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU \
+//   WETH_MINT=6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs \
+//   npx hardhat run scripts/bridge/deploy.ts --network marcus
+//
+// If a mint env var is empty / unset, the corresponding SPL_ERC20 wrapper is
+// skipped. RomeBridgeWithdraw deploys only when BOTH USDC + WETH wrappers are
+// present, since its constructor takes both and per-mint Wormhole / CCTP PDAs
+// must be derived from real mints. A chain with no Ethereum-origin bridge
+// target therefore gets paymaster + ERC20Users only — no broken withdraw artefact.
 //
 // Universal Solana constants (program IDs, sysvars) are base58-decoded here.
-// Per-deployment PDAs are stubbed with a Phase 1.5 TODO error — running this
-// script against a live network will throw at that point. The compile/typecheck
-// target for Phase 1.4 is met.
 //
 // CPI precompile address: 0xFF00000000000000000000000000000000000008
 // (confirmed from contracts/interface.sol: `cpi_program_address`)
@@ -18,7 +28,7 @@ import { PublicKey } from "@solana/web3.js";
 import hardhat from "hardhat";
 import { readDeployments, writeDeployments } from "../lib/deployments.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
-import { SOLANA_PROGRAM_IDS, SPL_MINTS } from "./constants.js";
+import { SOLANA_PROGRAM_IDS } from "./constants.js";
 import { deriveCctpAccounts } from "./derive/cctp-accounts.js";
 import { deriveWormholeAccounts } from "./derive/wormhole-accounts.js";
 
@@ -39,7 +49,7 @@ const UNIVERSAL = {
 };
 
 // -------------------------------------------------------------------------
-// Solana PDA account interface (deployment-specific; derived in Phase 1.5)
+// Solana PDA account interface (deployment-specific; derived from chain mints)
 // -------------------------------------------------------------------------
 
 interface SolanaPdaAccounts {
@@ -64,12 +74,11 @@ interface SolanaPdaAccounts {
 }
 
 /// Derives all Solana PDAs required for the RomeBridgeWithdraw constructor.
-/// Uses canonical mainnet program IDs from constants.ts — correct for local,
-/// monti_spl (devnet), and mainnet as long as those programs are deployed at
-/// the same addresses (rome-setup seeds them on local).
-function loadSolanaPdas(_networkName: string): SolanaPdaAccounts {
-  const usdcMint = new PublicKey(SPL_MINTS.USDC_NATIVE);
-  const wethMint = new PublicKey(SPL_MINTS.WETH_WORMHOLE);
+/// Both mints are passed in by the caller — never read from a global default —
+/// so the same script works across any Rome chain.
+function loadSolanaPdas(usdcMintBase58: string, wethMintBase58: string): SolanaPdaAccounts {
+  const usdcMint = new PublicKey(usdcMintBase58);
+  const wethMint = new PublicKey(wethMintBase58);
   return {
     ...deriveCctpAccounts(usdcMint),
     ...deriveWormholeAccounts(wethMint),
@@ -132,11 +141,12 @@ export async function deploySplErc20(
 export async function deployWithdraw(
   paymasterAddress: `0x${string}`,
   usdcWrapper: `0x${string}`,
-  wethWrapper: `0x${string}`
+  wethWrapper: `0x${string}`,
+  usdcMintBase58: string,
+  wethMintBase58: string,
 ) {
   const { viem, networkName } = await hardhat.network.connect();
-  // Phase 1.5 TODO: loadSolanaPdas() will throw here until PDA derivation is implemented.
-  const pdas = loadSolanaPdas(networkName);
+  const pdas = loadSolanaPdas(usdcMintBase58, wethMintBase58);
 
   const cctpParams = {
     tokenMessengerProgram:     UNIVERSAL.cctpTokenMessengerProgram,
@@ -204,14 +214,45 @@ export async function deployWithdraw(
 // Standalone entrypoint
 // -------------------------------------------------------------------------
 
+/// Reads `USDC_MINT` and `WETH_MINT` from the environment. Either may be
+/// absent — the corresponding wrapper is skipped in that case, and
+/// RomeBridgeWithdraw is skipped unless both are present.
+function readMintEnv(): { usdcMint: string | null; wethMint: string | null } {
+  const usdc = (process.env.USDC_MINT ?? "").trim();
+  const weth = (process.env.WETH_MINT ?? "").trim();
+  return {
+    usdcMint: usdc.length > 0 ? usdc : null,
+    wethMint: weth.length > 0 ? weth : null,
+  };
+}
+
 async function main() {
-  const { viem } = await hardhat.network.connect();
+  const { viem, networkName } = await hardhat.network.connect();
   const [admin] = await viem.getWalletClients();
 
+  const { usdcMint, wethMint } = readMintEnv();
+  console.log(
+    `[${networkName}] USDC_MINT=${usdcMint ?? "(unset — WUSDC wrapper skipped)"}; ` +
+    `WETH_MINT=${wethMint ?? "(unset — WETH wrapper skipped)"}`,
+  );
+
   const paymaster = await deployPaymaster(admin.account!.address);
-  const usdc = await deploySplErc20("SPL_ERC20_USDC", "Rome USDC", "rUSDC", SPL_MINTS.USDC_NATIVE, CPI_PROGRAM_ADDRESS);
-  const weth = await deploySplErc20("SPL_ERC20_WETH", "Rome wETH", "rETH", SPL_MINTS.WETH_WORMHOLE, CPI_PROGRAM_ADDRESS);
-  await deployWithdraw(paymaster.address, usdc.address, weth.address);
+
+  const usdc = usdcMint
+    ? await deploySplErc20("SPL_ERC20_USDC", "Wrapped USDC", "WUSDC", usdcMint, CPI_PROGRAM_ADDRESS)
+    : null;
+  const weth = wethMint
+    ? await deploySplErc20("SPL_ERC20_WETH", "Wrapped ETH", "WETH", wethMint, CPI_PROGRAM_ADDRESS)
+    : null;
+
+  if (usdc && weth && usdcMint && wethMint) {
+    await deployWithdraw(paymaster.address, usdc.address, weth.address, usdcMint, wethMint);
+  } else {
+    console.log(
+      `[${networkName}] Skipping RomeBridgeWithdraw — both USDC_MINT and WETH_MINT must be set ` +
+      `to derive Wormhole/CCTP PDAs and wire the constructor. Deploy paymaster + wrappers only.`,
+    );
+  }
 }
 
 main().catch((err) => {
