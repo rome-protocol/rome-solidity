@@ -77,6 +77,13 @@ export default defineConfig({
       url: "https://cassius.devnet.romeprotocol.xyz/",
       accounts: [configVariable("CASSIUS_PRIVATE_KEY")],
     },
+    "cassius-test": {
+      type: "http",
+      chainType: "l1",
+      chainId: 121298,
+      url: "https://cassius-test.devnet.romeprotocol.xyz/",
+      accounts: [configVariable("CASSIUS_TEST_PRIVATE_KEY")],
+    },
     local: {
       type: "http",
       chainType: "l1",
