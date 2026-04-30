@@ -73,7 +73,7 @@ export default defineConfig({
     cassius: {
       type: "http",
       chainType: "l1",
-      chainId: 121227,
+      chainId: 121228,
       url: "https://cassius.devnet.romeprotocol.xyz/",
       accounts: [configVariable("CASSIUS_PRIVATE_KEY")],
     },
