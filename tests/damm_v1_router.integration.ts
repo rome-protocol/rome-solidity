@@ -478,23 +478,13 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
         const tokenBBalanceBefore = await tokenBFromUser.read.balanceOf([deployer.account.address]);
         const lpBalanceBefore = await readSplTokenAmount(cpiProgram, userPoolLp);
 
-        const preparedAddLiquidity = await routerFromUser.read.prepareAddLiquidity([
-            tokenAAddress,
-            tokenBAddress,
-            deployer.account.address,
+        const quotedPoolTokenAmount = await wrappedPool.read.quoteAddLiquidity([
             addLiquidityTokenAAmount,
             addLiquidityTokenBAmount,
             0n,
         ]);
-        const quotedPoolTokenAmount = preparedAddLiquidity[0];
-        const liquidityAccounts = preparedAddLiquidity[1];
 
         assert.ok(quotedPoolTokenAmount > 0n, "quoted pool token amount must be positive");
-        assert.equal(
-            liquidityAccounts.user_pool_lp.toLowerCase(),
-            userPoolLp.toLowerCase(),
-            "prepared user_pool_lp must match derived LP ATA",
-        );
 
         const addLiquidityTxHash = await routerFromUser.write.addLiquidity(
             [
@@ -503,7 +493,11 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
                 quotedPoolTokenAmount,
                 addLiquidityTokenAAmount,
                 addLiquidityTokenBAmount,
-                liquidityAccounts,
+                {
+                    user_pool_lp: userPoolLp,
+                    user_a_token: userTokenAccountA,
+                    user_b_token: userTokenAccountB,
+                },
             ],
             {
                 account: deployer.account,
