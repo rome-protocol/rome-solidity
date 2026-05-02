@@ -83,6 +83,9 @@ npx hardhat run scripts/oracle/deploy.ts --network monti_spl
 npx hardhat run scripts/oracle/deploy-factory.ts --network monti_spl
 npx hardhat run scripts/oracle/deploy-and-test.ts --network monti_spl  # end-to-end deploy + test
 
+# Deploy Oracle on cassius (fresh-staleness Pyth Pull SOL/USD adapter)
+npx hardhat run scripts/oracle/cassius-deploy-fresh-sol-feed.ts --network cassius
+
 # Test oracle feeds on live network
 npx hardhat run scripts/oracle/test-feeds.ts --network monti_spl       # Pyth v1 feeds
 npx hardhat run scripts/oracle/test-feeds-v2.ts --network monti_spl    # Oracle Gateway V2 (Pyth Pull + batch reader)
@@ -96,6 +99,12 @@ npx hardhat run scripts/oracle/validate-switchboard-offsets.ts --network monti_s
 npx hardhat run scripts/oracle/check-account-owner.ts --network monti_spl
 npx hardhat run scripts/oracle/check-switchboard.ts --network monti_spl
 
+# Deploy bridge contracts (requires USDC_MINT / WETH_MINT env vars per chain)
+npx hardhat run scripts/bridge/deploy.ts --network marcus
+
+# Bootstrap factory-registered SPL wrappers (idempotent; run after factory deploy)
+npx hardhat run scripts/bridge/bootstrap-bridged-wrappers.ts --network marcus
+
 # Local Rome stack setup (requires rome-setup stack running)
 npx hardhat keystore set LOCAL_PRIVATE_KEY --dev   # Hardhat #0: ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 npx hardhat run scripts/setup-local.ts --network local  # deploys Meteora factory+pool, Oracle Gateway V2, Pyth+Switchboard feeds
@@ -107,11 +116,15 @@ npx hardhat run scripts/oracle/test-feeds-v2.ts --network local
 
 # Set keys in dev keystore
 npx hardhat keystore set MONTI_SPL_PRIVATE_KEY --dev
+npx hardhat keystore set MARCUS_PRIVATE_KEY --dev
+npx hardhat keystore set CASSIUS_PRIVATE_KEY --dev
+npx hardhat keystore set CASSIUS_TEST_PRIVATE_KEY --dev
 ```
 
 ## CI & Release Tracking
 
 - **CI** (`.github/workflows/ci.yml`): runs on push/PR to `master` with Node 22. Stages: `npm ci`, `npx hardhat compile`, `npx hardhat test` (oracle parser unit tests — network-independent). Integration tests requiring `local` or `monti_spl` are not run in CI.
+- **No CI-driven contract deploys.** The `deploy-oracle.yml` workflow was removed (#74) — every deploy (Oracle, Bridge, ERC20SPL, Meteora) uses the manual local-keystore flow. If CI-driven deploys are needed in the future, they belong in a dedicated private deploy-runner repo with per-network GitHub Environment gating.
 - **CHANGELOG.md** — user-facing changes tracked by session. Update when a PR lands user-visible behaviour changes (new contracts, API shifts, deployment changes). Parser/offset changes also belong here because they affect downstream deployments.
 - **PR / issue templates** live under `.github/` and enforce the session-readiness checklist.
 
@@ -133,9 +146,9 @@ Global constants (`SplToken`, `AssociatedSplToken`, `SystemProgram`, `CpiProgram
 
 ### Contract Layers
 
-- **`contracts/cpi/`** — Cardo CPI Foundation (library + templates). Shared Solidity helpers every Cardo app adapter builds on top of: `AccountMetaBuilder`, `AnchorInstruction`, `Cpi`, `PdaDeriver`, `SolanaConstants`, `UserPda`, `CpiError`, and the Pillar B cost-transparency trio (`CostEstimate`, `CostEstimator`, `ICostView`). Also ships `templates/CpiAdapterBase.sol` (Ownable+Pausable+ReentrancyGuard+backend pointer scaffold) and `templates/CpiProgramWrapper.sol` (prose scaffold for golden-vector wrappers). See `contracts/cpi/README.md` for the adapter authoring guide, the three-layer pattern, and the `tx.origin`/`msg.sender` rule. Canonical spec: `rome-specs/active/technical/cardo-foundation.md`.
+- **`contracts/cpi/`** — Cardo CPI Foundation (library + templates). Shared Solidity helpers every Cardo app adapter builds on top of: `AccountMetaBuilder`, `AnchorInstruction`, `Cpi`, `PdaDeriver`, `SolanaConstants`, `UserPda`, `CostEstimate`, `CostEstimator`, `ICostView`, and the Pillar B cost-transparency trio. Also ships `templates/CpiAdapterBase.sol` (Ownable+Pausable+ReentrancyGuard+backend pointer scaffold) and `templates/CpiProgramWrapper.sol` (prose scaffold for golden-vector wrappers). See `contracts/cpi/README.md` for the adapter authoring guide, the three-layer pattern, and the `tx.origin`/`msg.sender` rule. Canonical spec: `rome-specs/active/technical/cardo-foundation.md`.
 - **`contracts/spl_token/`** — Low-level SPL token and associated token account libraries (`SplTokenLib`, `AssociatedSplTokenLib`). These use `CpiProgram.account_info()` to deserialize on-chain Solana account data (Borsh-encoded) from within Solidity.
-- **`contracts/erc20spl/`** — `SPL_ERC20` wraps an SPL mint as an ERC20 token with deposit/withdraw. `ERC20SPLFactory` deploys these wrappers. Uses OpenZeppelin IERC20. Generic outbound-bridge surface (`bridgeOutToSolana`, `ensureRecipientAta`) lets any deployed wrapper serve as a Marcus → Solana SPL bridge — consumed by **rome-ui's `useOutboundSplBridge` hook** (see Cross-repo dependencies below).
+- **`contracts/erc20spl/`** — `SPL_ERC20` wraps an SPL mint as an ERC20 token with deposit/withdraw. `ERC20SPLFactory` deploys these wrappers. Uses OpenZeppelin IERC20. Generic outbound-bridge surface (`bridgeOutToSolana`, `ensureRecipientAta`) lets any deployed wrapper serve as a Marcus → Solana SPL bridge — consumed by **rome-ui's `useOutboundSplBridge` hook** (see Cross-repo dependencies below). **Event emission:** `SPL_ERC20` emits standard `IERC20.Transfer` and `IERC20.Approval` events on all mutating paths (`_transfer`, `approve`, `mint_to`) — added in #83. Events fire after the underlying SPL CPI succeeds. **Auto-ATA:** `_transfer` and `mint_to` auto-create the recipient's ATA via `ensure_token_account` if it doesn't exist (#63), matching Phantom/Solana wallet UX — sender pays ~0.002 SOL rent. **Factory event:** `ERC20SPLFactory._register_contract` emits `TokenCreated` on every wrapper registration (#85), enabling rome-ui's backend token-discovery indexer.
 - **`contracts/meteora/`** — `MeteoraDAMMv1Factory` and `DAMMv1Pool` implement a Uniswap-style factory/pool pattern that delegates swaps to Meteora's on-chain Solana program via CPI.
 - **`contracts/oracle/`** — Oracle Gateway V2: Chainlink-compatible adapters for both Pyth Pull and Switchboard V3 price feeds. `OracleAdapterFactory` deploys `PythPullAdapter` and `SwitchboardV3Adapter` instances via EIP-1167 minimal proxy clones. Each adapter reads Solana account data via CPI precompile, parses Borsh-encoded price data (`PythPullParser` / `SwitchboardParser`), and normalizes to 8-decimal Chainlink format. `IExtendedOracleAdapter` extends `IAggregatorV3Interface` with confidence intervals, EMA data, and price status. `BatchReader` reads multiple feeds in one call. The factory includes owner-controlled pause/unpause emergency controls. Includes `examples/SampleLendingOracle.sol`.
 - **`contracts/bridge/`** — Rome Bridge Phase 1 (Solana ↔ Ethereum cross-chain). `RomeBridgePaymaster` is an EIP-2771 trusted forwarder with per-user 3-tx sponsorship cap + (target, selector) allowlist. `RomeBridgeWithdraw` accepts ERC-20 input on Rome EVM and emits Wormhole Token Bridge or CCTP outbound messages via CPI signed as the user's PDA. Outbound Wormhole is split across two EVM txs (`approveBurnETH` then `burnETH`) because a single atomic Rome DoTx with two CPIs exceeds Solana's 1.4M compute-unit budget. `IWormholeTokenBridge.sol` and `ICCTP.sol` encode the native/Anchor Solana instructions. All Solana pubkeys are supplied via constructor params so the contract is network-agnostic. **See `contracts/bridge/README.md`** for architecture, flow diagrams, and a problems-and-fixes runbook covering the incidents from bring-up. Design spec: `rome-product/specs/rome-bridge-phase1.md`.
@@ -154,19 +167,31 @@ Global constants (`SplToken`, `AssociatedSplToken`, `SystemProgram`, `CpiProgram
 - Solana pubkeys are `bytes32` throughout; EVM addresses map to Solana PDAs via `RomeEVMAccount.pda(address)`.
 - Cross-program invocation uses `ICrossProgramInvocation.invoke()` / `invoke_signed()` with Solana-style `AccountMeta` arrays.
 - Borsh deserialization (`BorshLib`) decodes raw Solana account data returned by `CpiProgram.account_info()`.
-- Deployment metadata is stored in `deployments/monti_spl.json` and consumed by tests via `scripts/lib/deployments.ts`. Local deployment artifacts (`deployments/local.json`, cached account data) are gitignored.
+- Deployment metadata is stored in `deployments/<network>.json` and consumed by tests via `scripts/lib/deployments.ts`. Local deployment artifacts (`deployments/local.json`, cached account data) are gitignored.
 - Oracle adapters use EIP-1167 minimal proxy (clone) pattern — one implementation contract per oracle type, thin clones per feed. Factory validates Solana account ownership before deploying.
 - Parser offsets are validated against live Solana accounts using `scripts/oracle/validate-*-offsets.ts` scripts. Always re-validate before redeployment.
 - Oracle test harnesses (`contracts/oracle/test/`) expose internal parser functions for unit testing. Parser tests use mock account data (`tests/oracle/helpers/`).
+- **UserPda library** (`contracts/cpi/UserPda.sol`) provides the canonical two-hop EVM-addr → AUTHORITY_PDA → ATA-of-PDA derivation. Use `UserPda.ata(account, mint_id)` and `UserPda.ataForKey(pubkey, mint_id)` instead of inlining the pattern (#82).
 - **Internal overload trap:** when a contract has both an external multi-arg overload and an internal 3-arg overload (e.g. `invoke_swap`), call the internal one **without** `this.`. `this.foo()` forces an external call, which resolves to the external overload and fails to compile. Observed on `DAMMv1Pool.invoke_swap` (#23).
 
 ### Deployments
 
-Deployment metadata is tracked in `deployments/{network}.json`. `marcus.json` and `monti_spl.json` are committed (devnet deployments); `local.json` is generated by `scripts/setup-local.ts` and should not be committed (regenerated per local stack restart). Current devnet deployments:
+Deployment metadata is tracked in `deployments/{network}.json`. Committed files: `marcus.json`, `cassius.json`, `subura.json`, `esquiline.json`, `monti_spl.json`. `local.json` is generated by `scripts/setup-local.ts` and should not be committed (regenerated per local stack restart). Current devnet deployments:
 
 **marcus (current V2 target):**
-- **OracleGatewayV2** — PythPullAdapter + SwitchboardV3Adapter implementations, OracleAdapterFactory (`defaultMaxStaleness=300`), BatchReader, + 5 Pyth feeds (SOL/BTC/ETH/USDC/USDT) and 1 Switchboard feed (SOL). Deployed by `scripts/oracle/deploy-v2-polish.ts` (idempotent — set `FORCE_REDEPLOY=1` to override).
-- **MeteoraDAMMv1Factory**, **RomeBridgePaymaster**, **RomeBridgeWithdraw**, **SPL_ERC20** (WUSDC, WETH; WSOL on chains with the canonical wSOL wrapper) — Rome Bridge wrappers.
+- **OracleGatewayV2** — PythPullAdapter + SwitchboardV3Adapter implementations, OracleAdapterFactory (`defaultMaxStaleness=86400`), BatchReader, + 5 Pyth feeds (SOL/BTC/ETH/USDC/USDT) and 1 Switchboard feed (SOL). Deployed by `scripts/oracle/deploy-v2-polish.ts` (idempotent — set `FORCE_REDEPLOY=1` to override). Note: the original factory used `defaultMaxStaleness=300`, which caused USDC/USDT Pyth feeds to revert when publish lag exceeded 5 minutes; the replacement factory uses 86400s.
+- **ERC20SPLFactory V2** (`0x9e595a6e...`) — current factory. SPL_ERC20 wrappers: WUSDC v2 (`0x7B4b0bE7...`), WETH v2 (`0x613b22c0...`), WSOL (`0x1b23b52d...`). V1 factory and wrapper addresses are preserved in `marcus.json`'s `archive` block.
+- **MeteoraDAMMv1Factory**, **RomeBridgePaymaster**, **RomeBridgeWithdraw** — Rome Bridge wrappers.
+
+**cassius (devnet, chain id 121228):**
+- **OracleGatewayV2** — OracleAdapterFactory, PythPullAdapter, BatchReader, + fresh-staleness Pyth Pull SOL/USD adapter (deployed via `scripts/oracle/cassius-deploy-fresh-sol-feed.ts` with relaxed staleness for devnet Pyth receivers).
+- **ERC20SPLFactory**, **MeteoraDAMMv1Factory** — base contract deployments.
+
+**subura (devnet, chain id 121222):**
+- **ERC20SPLFactory** (#77), **MeteoraDAMMv1Factory** (#78) — deployed via rome-deploys bot. Deployment artifacts in `deployments/subura.json`.
+
+**esquiline (devnet, chain id 121225):**
+- Deployment artifacts in `deployments/esquiline.json`.
 
 **monti_spl (retired):**
 - **OracleGatewayV2Legacy** — historical V2 addresses kept for reference only; monti_spl is no longer a deploy target.
@@ -175,10 +200,17 @@ Deployment metadata is tracked in `deployments/{network}.json`. `marcus.json` an
 ### Networks
 
 - `local` — local Rome-EVM node at `http://localhost:9090` (key: `LOCAL_PRIVATE_KEY`)
-- `monti_spl` — Rome devnet at `https://montispl-i.devnet.romeprotocol.xyz/` (key: `MONTI_SPL_PRIVATE_KEY`)
+- `marcus` — Rome devnet chain 121226 at `https://marcus.devnet.romeprotocol.xyz/` (key: `MARCUS_PRIVATE_KEY`)
+- `subura` — Rome devnet chain 121222 at `https://subura.devnet.romeprotocol.xyz/` (key: `SUBURA_PRIVATE_KEY`); also used as the `monti_spl` proxy target
+- `esquiline` — Rome devnet chain 121225 at `https://esquiline.devnet.romeprotocol.xyz/` (key: `ESQUILINE_PRIVATE_KEY`)
+- `cassius` — Rome devnet chain 121228 at `https://cassius.devnet.romeprotocol.xyz/` (key: `CASSIUS_PRIVATE_KEY`)
+- `cassius-test` — throwaway dry-run chain 121298 at `https://cassius-test.devnet.romeprotocol.xyz/` (key: `CASSIUS_TEST_PRIVATE_KEY`); used for Cassius bring-up rehearsal
+- `monti_spl` — legacy alias pointing at subura proxy (`https://subura.devnet.romeprotocol.xyz/proxy`) (key: `MONTI_SPL_PRIVATE_KEY`)
 - `sepolia` — Ethereum Sepolia testnet (key: `SEPOLIA_PRIVATE_KEY`)
 - `hardhatMainnet` — Hardhat EDR simulated L1 network (used for oracle parser unit tests)
 - `hardhatOp` — Hardhat EDR simulated OP Stack network
+
+**Decommissioned:** `maximus` (chain 121215) — VM destroyed 2026-05-01, removed from hardhat config (#90).
 
 ### Solidity Version
 
@@ -193,6 +225,8 @@ Target: `0.8.28`. Production profile enables optimizer with 200 runs.
 - Oracle Gateway V2 contracts depend on live Pyth/Switchboard feeds — test against montispl for oracle-related changes.
 - Never deploy contracts without running the full Hardhat test suite.
 - ERC-20 SPL wrappers interact with Solana precompiles at fixed addresses — verify precompile addresses match rome-evm-private if changed. Note: SPL Token (0xFF...05) and Associated Token (0xFF...06) dedicated handlers were removed in the Mollusk refactor; these now route through Mollusk SVM/CPI.
+- Bridge deploy scripts (`scripts/bridge/deploy.ts`) require `USDC_MINT` and `WETH_MINT` env vars — no longer hardcoded to Marcus's mints (#86). Wrapper deploys are skipped when the corresponding mint env var is unset; chains without an Ethereum-origin bridge target get paymaster + ERC20Users only.
+- After deploying `ERC20SPLFactory` on a new chain, run `scripts/bridge/bootstrap-bridged-wrappers.ts` to register canonical wrappers via `add_spl_token_no_metadata` so the rome-ui backend's `TokenCreated` indexer can discover them.
 - Update `CHANGELOG.md` when a PR lands user-visible behaviour changes or changes the deployed contract ABIs.
 
 ## Change Impact Map
@@ -221,9 +255,10 @@ rome-ui consumes a small, stable surface from this repo. Changes to that surface
 | `SPL_ERC20` | `ensureRecipientAta(bytes32 recipient) → bytes32` | same hook (preflight before bridge tx — single CPI ATA-create paid by sender's PAYER PDA) |
 | `SPL_ERC20` | `balanceOf(address) → uint256` (now reads AUTHORITY_PDA's ATA, not `_accounts` map) | wagmi multicall, `useChainTokenBalances`, every Portfolio row |
 | `SPL_ERC20` | `transfer` / `transferFrom` / `approve` / `symbol` / `decimals` (standard IERC20 + IERC20Metadata) | wagmi readContract, TokenList, swap/liquidity flows |
+| `SPL_ERC20` | `Transfer(from, to, value)` / `Approval(owner, spender, value)` events (emitted since #83) | rome-via-enrich/holders.rs (filters by topic0), eth_getLogs consumers, block explorers |
 | `ERC20SPLFactory` | `create_user()` (no args, no return) | `src/features/portfolio/components/ClaimWrapperButton.tsx` (first-time activation) |
 | `ERC20SPLFactory` | `add_spl_token_no_metadata(bytes32 mint, string name, string symbol)` | indirect — backend indexer watches `TokenCreated` event to populate Redis token cache served at `/api/tokens` |
-| `ERC20SPLFactory` | event `TokenCreated(address creator, bytes32 mint, address wrapper, string name, string symbol, uint64 nonce)` | backend token-discovery indexer + rome-ui's `useChainTokenBalances` |
+| `ERC20SPLFactory` | event `TokenCreated(address creator, bytes32 mint, address wrapper, string name, string symbol, uint64 nonce)` | backend token-discovery indexer + rome-ui's `useChainTokenBalances`. Note: event was declared since inception but only actually emitted since #85; wrappers deployed before that fix are invisible to the indexer. |
 | `RomeBridgeWithdraw` | `burnUSDC(uint256 amount, address ethereumRecipient)` | `src/features/bridge/hooks/useOutboundCctpSend.ts` (Marcus → Sepolia CCTP outbound) |
 | `RomeBridgeWithdraw` | `approveBurnETH(uint256)` + `burnETH(uint256, address)` (two-tx pattern, CU constraint) | `src/features/bridge/hooks/useOutboundWhSend.ts` (Marcus → Sepolia Wormhole outbound) |
 
@@ -237,7 +272,7 @@ These are observable from the outside but not enforced by the type system. Break
 
 - `bridgeOutToSolana` signs as `AUTHORITY_PDA` (`find_program_address([EXTERNAL_AUTHORITY, evmAddr])`), with **empty seeds** in the precompile `invoke_signed`. The source ATA = `getATA(AUTHORITY_PDA, mint)` — the canonical cross-chain location where bridged-in tokens live. rome-ui assumes the recipient ATA already exists; callers MUST run `ensureRecipientAta` first if uncertain (see `useOutboundSplBridge`).
 - `ensureRecipientAta` is **idempotent** — returns the same ATA address whether it pre-existed or was created. rome-ui probes Solana directly first to skip the call when not needed.
-- `balanceOf` reads `getATA(AUTHORITY_PDA, mint)`, NOT the `_accounts` mapping. Bridged-in users (Wormhole / native deposits) only have balance in the AUTHORITY_PDA's ATA; the legacy mapping path returned 0 for them.
+- `balanceOf` reads `getATA(AUTHORITY_PDA, mint)`, NOT the `_accounts` mapping. Bridged-in users (Wormhole complete_transfer_wrapped, useNativeDepositSend) only have balance in the AUTHORITY_PDA's ATA; the legacy mapping path returned 0 for them.
 - `factory.create_user` pre-funds the PAYER PDA at exactly **1,000,000 lamports** (~0.001 SOL) — above the rent-exempt floor, below subsequent operation costs. ABI is unchanged from earlier 1B-lamport versions; the deployed factory's lamport amount can be observed by reading lamports on the PAYER PDA after a fresh user calls `create_user`. Per `/rome/CLAUDE.md` "no faucets, no starter-gas-on-us" rule.
 
 ### Deployment artifacts rome-ui reads
