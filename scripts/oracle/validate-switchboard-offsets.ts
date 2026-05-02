@@ -7,7 +7,7 @@ import hardhat from "hardhat";
  * validates that SwitchboardParser's byte offsets produce reasonable values.
  *
  * Usage:
- *   SWITCHBOARD_ACCOUNT=0x... npx hardhat run scripts/oracle/validate-switchboard-offsets.ts --network monti_spl
+ *   SWITCHBOARD_ACCOUNT=0x... npx hardhat run scripts/oracle/validate-switchboard-offsets.ts --network marcus
  */
 
 async function main() {

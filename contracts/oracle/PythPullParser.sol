@@ -26,7 +26,7 @@ import "../convert.sol";
 /// + 1 byte u8 = 2 bytes). This parser reads at offsets for the Full variant.
 /// On-chain PriceFeedAccount PDAs maintained by the push oracle always use Full.
 ///
-/// IMPORTANT: These offsets are validated against live accounts on monti_spl.
+/// IMPORTANT: These offsets are validated against live accounts on marcus.
 /// Run validate-pyth-pull-offsets.ts to re-confirm before any redeployment.
 library PythPullParser {
     error InvalidPythPullAccount();

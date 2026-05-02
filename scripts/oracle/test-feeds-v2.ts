@@ -4,7 +4,7 @@ import path from "node:path";
 import { toHex } from "viem";
 
 /**
- * Oracle Gateway V2 — Integration test on monti_spl.
+ * Oracle Gateway V2 — Integration test on marcus.
  *
  * Tests:
  *   1. Create Pyth Pull feeds for SOL/USD, BTC/USD, ETH/USD

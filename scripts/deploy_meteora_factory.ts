@@ -46,7 +46,7 @@ function resolveVaultOverrideNetwork(networkName: string): VaultOverrideNetwork 
         );
     }
 
-    return networkName === "monti_spl"
+    return ["local", "marcus"].includes(networkName)
         ? VAULT_OVERRIDE_NETWORK.Devnet
         : VAULT_OVERRIDE_NETWORK.Mainnet;
 }

@@ -17,7 +17,7 @@ import bs58 from "bs58";
  * `switchboardAdapters` mappings are skipped.
  *
  * Usage:
- *   npx hardhat run scripts/oracle/deploy-seed-feeds.ts --network monti_spl
+ *   npx hardhat run scripts/oracle/deploy-seed-feeds.ts --network marcus
  */
 
 type SeedFeed = {

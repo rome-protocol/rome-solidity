@@ -15,7 +15,7 @@
 //      companion.
 //
 // Usage:
-//   npx hardhat run scripts/bridge/deploy-inbound.ts --network monti_spl
+//   npx hardhat run scripts/bridge/deploy-inbound.ts --network marcus
 //   npx hardhat run scripts/bridge/deploy-inbound.ts --network local
 //
 // Idempotent: if RomeBridgeInbound is already in deployments, the script
