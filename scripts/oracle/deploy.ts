@@ -12,7 +12,7 @@ import path from "node:path";
  *   4. BatchReader
  *
  * Usage:
- *   npx hardhat run scripts/oracle/deploy.ts --network monti_spl
+ *   npx hardhat run scripts/oracle/deploy.ts --network marcus
  *
  * Override program IDs via env vars if needed:
  *   PYTH_PRICE_FEED_PROGRAM_ID=0x...

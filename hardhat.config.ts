@@ -36,46 +36,12 @@ export default defineConfig({
       url: configVariable("SEPOLIA_RPC_URL"),
       accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
     },
-    monti_spl: {
-      type: "http",
-      chainType: "l1",
-      url: "https://subura.devnet.romeprotocol.xyz/proxy",
-      accounts: [configVariable("MONTI_SPL_PRIVATE_KEY")]
-    },
     marcus: {
       type: "http",
       chainType: "l1",
       chainId: 121226,
       url: "https://marcus.devnet.romeprotocol.xyz/",
       accounts: [configVariable("MARCUS_PRIVATE_KEY")],
-    },
-    subura: {
-      type: "http",
-      chainType: "l1",
-      chainId: 121222,
-      url: "https://subura.devnet.romeprotocol.xyz/",
-      accounts: [configVariable("SUBURA_PRIVATE_KEY")],
-    },
-    esquiline: {
-      type: "http",
-      chainType: "l1",
-      chainId: 121225,
-      url: "https://esquiline.devnet.romeprotocol.xyz/",
-      accounts: [configVariable("ESQUILINE_PRIVATE_KEY")],
-    },
-    cassius: {
-      type: "http",
-      chainType: "l1",
-      chainId: 121228,
-      url: "https://cassius.devnet.romeprotocol.xyz/",
-      accounts: [configVariable("CASSIUS_PRIVATE_KEY")],
-    },
-    "cassius-test": {
-      type: "http",
-      chainType: "l1",
-      chainId: 121298,
-      url: "https://cassius-test.devnet.romeprotocol.xyz/",
-      accounts: [configVariable("CASSIUS_TEST_PRIVATE_KEY")],
     },
     local: {
       type: "http",

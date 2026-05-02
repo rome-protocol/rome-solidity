@@ -1,7 +1,7 @@
 /**
  * Mock Switchboard V2 AggregatorAccountData builder for testing SwitchboardParser.
  *
- * Validated layout (from live SOL/USD aggregator on monti_spl):
+ * Validated layout (from live SOL/USD aggregator on marcus):
  *   [0..8]     Anchor discriminator (0xd9e64165c9a21b7d)
  *   [8..40]    name
  *   ...        (many config fields)

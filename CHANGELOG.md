@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Removed — retired chain plumbing (subura, esquiline, cassius, cassius-test, monti_spl)
+With every chain except Marcus retired in 2026-04 → 2026-05 (Maximus #90, then Subura/Esquiline/Cassius/Cassius-test/Aventine/Caelian/Martius via `/take-down-chain` on 2026-05-01), the per-chain plumbing for the dead networks is removed alongside the registry directory cleanup (`rome-protocol/registry#23`).
+
+- **`hardhat.config.ts`** — dropped 5 network entries: `monti_spl`, `subura`, `esquiline`, `cassius`, `cassius-test`. Remaining live targets: `marcus`, `local`, `sepolia`, `hardhatMainnet`, `hardhatOp`.
+- **`deployments/`** — removed `subura.json`, `esquiline.json`, `cassius.json`, `cassius-test.json`, `monti_spl.json`. Only `marcus.json` remains under git tracking (plus `local.json` which is gitignored / per-stack-restart). Per-chain deploy history is preserved in this CHANGELOG.
+- **`scripts/oracle/cassius-deploy-fresh-sol-feed.ts`** — deleted. The script existed to deploy a relaxed-staleness Pyth Pull adapter on Cassius's devnet receivers; with Cassius retired and Marcus's factory already on `defaultMaxStaleness=86400`, the script has no live target. The general-purpose `deploy-factory.ts` + `deploy-seed-feeds.ts` pair covers any future chain.
+- **Comment / docstring scrubs** — `monti_spl` references in `scripts/oracle/*.ts`, `scripts/bridge/{deploy-inbound,constants}.ts`, `scripts/deploy_meteora_factory.ts`, `tests/bridge/RomeBridgeWithdraw.integration.ts`, `tests/oracle/helpers/mockSwitchboard.ts`, `contracts/oracle/{PythPullParser,SwitchboardParser}.sol` rewritten to point at `marcus`. Two scripts had network-conditional runtime logic on `monti_spl` (`scripts/deploy_meteora_factory.ts` Meteora vault selection, `scripts/bridge/bootstrap-bridged-wrappers.ts` devnet-set selection); both updated to key off the live `["local", "marcus"]` set.
+- **`README.md`** — dropped the `## Deploy Oracle Gateway V2 via GitHub Actions` section (the workflow it referenced — `.github/workflows/deploy-oracle.yml` — was already removed in #74) and rewrote the Meteora deploy snippet + Notes section from `monti_spl` → `marcus`.
+- **`scripts/oracle/README.md` + `scripts/bridge/README.md`** — keystore / deploy snippets reduced to `marcus` + `local`; the standalone "monti_spl devnet" deploy block removed.
+- **`CLAUDE.md`** — every `--network monti_spl` / `--network montispl` example replaced with `--network marcus`; per-chain Deployment subsections (cassius, subura, esquiline, monti_spl) collapsed into a one-line "earlier devnet chains were retired" pointer; the Networks list reduced to `local`/`marcus`/`sepolia`/`hardhatMainnet`/`hardhatOp`, with a Decommissioned roll-up. The retired-key keystore lines removed.
+
+The CHANGELOG sections describing past deploys to retired chains are preserved (history not rewritten); this entry simply marks the moment the plumbing for those chains was removed from the live tree.
+
 ### Changed — `deployments/marcus.json` reconciled against the canonical registry (rome-protocol/registry@v0.4.9)
 - `deployments/marcus.json` — bulk address refresh to match the now-corrected registry entries for chain 121226-marcus. The file had drifted to track an earlier deploy that was superseded on 2026-04-21 (oracle stack) and again on 2026-04-29 (`SPL_ERC20` wrappers + `ERC20SPLFactory`). The local artefact and the registry are now identical for every live address. Cross-link: `rome-protocol/registry#21`.
 - `OracleGatewayV2.OracleAdapterFactory`: `0x98d2a1eeafd4595b9df1ad791625d0fb16b081b5` → `0x454f0cde265ecf530a01c5c1bfd1f40d9e0672af`. The previous factory was deployed with `defaultMaxStaleness = 300` which caused USDC and USDT Pyth feeds to revert when their on-chain publish lag exceeded five minutes; the live factory uses `defaultMaxStaleness = 86400` and re-clones every adapter via EIP-1167.

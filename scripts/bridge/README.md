@@ -39,15 +39,6 @@ npx hardhat keystore set LOCAL_PRIVATE_KEY --dev
 npx hardhat run scripts/bridge/deploy.ts --network local
 ```
 
-### monti_spl devnet
-
-```bash
-npx hardhat keystore set MONTI_SPL_PRIVATE_KEY
-npx hardhat run scripts/bridge/deploy.ts --network monti_spl
-git add deployments/monti_spl.json
-git commit -m "chore(bridge): record monti_spl devnet deployments"
-```
-
 ## Testing
 
 Unit tests (run on hardhatMainnet, no Rome stack needed):
@@ -62,8 +53,8 @@ Integration tests (require live Rome stack + pre-seeded user balances):
 
 ```bash
 npx hardhat test tests/bridge/RomeBridgeWithdraw.integration.ts --network local
-# or
-npx hardhat test tests/bridge/RomeBridgeWithdraw.integration.ts --network monti_spl
+# or against the live devnet
+npx hardhat test tests/bridge/RomeBridgeWithdraw.integration.ts --network marcus
 ```
 
 ## Adding a new asset

@@ -33,18 +33,6 @@ npx hardhat compile
 
 ---
 
-## Deploy Oracle Gateway V2 via GitHub Actions
-
-Oracle Gateway V2 can be redeployed to any supported Rome devnet (`esquiline`, `subura`, `marcus`) without local key handling using the [`Deploy Oracle Gateway V2`](.github/workflows/deploy-oracle.yml) workflow.
-
-1. Configure one repo secret in **Settings → Secrets and variables → Actions → New repository secret**: `ROME_DEVNET_PRIVATE_KEY` (hex, `0x…`). The same key is reused across all supported devnets — the account must be funded on whichever network you intend to target.
-2. Trigger the workflow via **Actions → Deploy Oracle Gateway V2 → Run workflow**. Pick a network, an optional `defaultMaxStaleness` override (default `300` seconds), and toggle seed-feed deployment, post-deploy verification, and the bot PR independently.
-3. On success (with `open_pr: true`) the workflow opens a bot PR with the updated `deployments/<network>.json`. Review the addresses and merge. For smoke tests set `open_pr: false` to skip the PR.
-
-The workflow runs `deploy-v2-polish.ts`, `deploy-seed-feeds.ts`, and `test-feeds-v2.ts` in order. Each step is independently toggleable via workflow inputs, so partial re-runs (seeds only, verify only) are straightforward.
-
----
-
 # Meteora DAMMv1 integration
 
 This integration can be used as an example of how Rome-EVM can provide interoperability with native Solana smart-contracts.
@@ -61,14 +49,14 @@ Example scripts:
 - deploy_meteora_pool.ts
 
 ```bash
-export MONTI_SPL_PRIVATE_KEY=<YOUR_PRIVATE_KEY>
+export MARCUS_PRIVATE_KEY=<YOUR_PRIVATE_KEY>
 export POOL_ADDRESS=<YOUR_POOL_ADDRESS>
-npx hardhat run scripts/deploy_meteora_factory.ts --network monti_spl
-npx hardhat run scripts/deploy_meteora_pool.ts --network monti_spl
+npx hardhat run scripts/deploy_meteora_factory.ts --network marcus
+npx hardhat run scripts/deploy_meteora_pool.ts --network marcus
 ```
 
-After successfull deployment, you will see new file /deployments/monti_spl.json
-Wich contains information about deployed smart contracts. This file later is used by tests
+After successful deployment, you will see new file /deployments/marcus.json
+which contains information about deployed smart contracts. This file is later used by tests.
 
 ---
 
@@ -77,7 +65,7 @@ Wich contains information about deployed smart contracts. This file later is use
 Set tester private key in dev keystore:
 
 ```bash
-npx hardhat keystore set MONTI_SPL_PRIVATE_KEY --dev
+npx hardhat keystore set MARCUS_PRIVATE_KEY --dev
 ```
 
 Use Hardhat test suite:
@@ -123,7 +111,7 @@ npx hardhat test tests/damm_v1_pool.integration.ts --network local
 ## Notes
 
 - artifacts includes compiled JSON from existing snapshot builds.
-- monti_spl.json is existing deployed contract metadata.
+- `deployments/marcus.json` carries the deployed contract metadata for the live devnet.
 - Keep toolchain with hardhat.config.ts and `tsconfig` consistent with existing pattern.
 
 ---

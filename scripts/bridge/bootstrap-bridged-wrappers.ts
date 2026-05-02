@@ -49,7 +49,7 @@ function resolveSet(networkName: string): WrapperSpec[] {
   const override = process.env.BRIDGED_SET?.toLowerCase();
   if (override === "devnet")  return DEVNET_SET;
   if (override === "mainnet") return MAINNET_SET;
-  const isDevnet = ["local", "marcus", "monti_spl", "subura", "esquiline"].includes(networkName);
+  const isDevnet = ["local", "marcus"].includes(networkName);
   return isDevnet ? DEVNET_SET : MAINNET_SET;
 }
 

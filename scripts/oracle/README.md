@@ -21,10 +21,7 @@ Deploys are run **manually from a maintainer's machine**, not via CI. The Hardha
 Per network you intend to deploy to:
 
 ```bash
-npx hardhat keystore set MARCUS_PRIVATE_KEY     # for marcus
-npx hardhat keystore set SUBURA_PRIVATE_KEY     # for subura
-npx hardhat keystore set ESQUILINE_PRIVATE_KEY  # for esquiline
-npx hardhat keystore set MONTI_SPL_PRIVATE_KEY  # for monti_spl (legacy)
+npx hardhat keystore set MARCUS_PRIVATE_KEY       # for marcus (current devnet target)
 npx hardhat keystore set LOCAL_PRIVATE_KEY --dev  # for local stack
 ```
 
@@ -38,8 +35,6 @@ npx hardhat run scripts/oracle/deploy-seed-feeds.ts --network marcus
 git add deployments/marcus.json
 git commit -m "ops(oracle): deploy Oracle Gateway V2 to marcus"
 ```
-
-Repeat for each target devnet (`subura`, `esquiline`, etc.).
 
 ### Local stack (no keystore needed)
 
