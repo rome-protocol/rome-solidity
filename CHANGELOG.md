@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Changed — `deployments/marcus.json` reconciled against the canonical registry (rome-protocol/registry@v0.4.9)
+- `deployments/marcus.json` — bulk address refresh to match the now-corrected registry entries for chain 121226-marcus. The file had drifted to track an earlier deploy that was superseded on 2026-04-21 (oracle stack) and again on 2026-04-29 (`SPL_ERC20` wrappers + `ERC20SPLFactory`). The local artefact and the registry are now identical for every live address. Cross-link: `rome-protocol/registry#21`.
+- `OracleGatewayV2.OracleAdapterFactory`: `0x98d2a1eeafd4595b9df1ad791625d0fb16b081b5` → `0x454f0cde265ecf530a01c5c1bfd1f40d9e0672af`. The previous factory was deployed with `defaultMaxStaleness = 300` which caused USDC and USDT Pyth feeds to revert when their on-chain publish lag exceeded five minutes; the live factory uses `defaultMaxStaleness = 86400` and re-clones every adapter via EIP-1167.
+- `OracleGatewayV2.PythPullAdapterImpl`: `0x79380864f61fa5c08bfc98b93d5a55bd71afad35` → `0x23f27d84c5fd53a32baaa52270a22f7b13f241da`.
+- `OracleGatewayV2.SwitchboardV3AdapterImpl`: `0xb766b12d163a16ad1f7c1f1bb913e398029e0787` → `0x827a045a8fd1973859ac57df8e801e658e9ed78b`.
+- `OracleGatewayV2.BatchReader`: `0x8bc2d008c8fb61daec1ce81276c01f1f234572f3` → `0x0796e4cfdba2acb9aab32abd1722e7845c87acf1`.
+- `OracleGatewayV2.defaultMaxStaleness`: `300` → `86400` (matches the live factory).
+- `OracleGatewayV2.feeds.pyth[*]` — all 5 adapter clones (SOL/USD, BTC/USD, ETH/USD, USDC/USD, USDT/USD) refreshed to the addresses produced by the new factory; underlying Solana pubkeys unchanged.
+- `OracleGatewayV2.feeds.switchboard[0]` (SOL/USD) — adapter refreshed.
+- `OracleGatewayV2.feedsVerified[*]` — adapter addresses refreshed to match the new clones for SOL/BTC/ETH so the verified set stays internally consistent.
+- `SPL_ERC20_USDC`: `0x6ed2944bba4cb5b1cb295541f315c648658dd67c` → `0x7B4b0bE747AbD982b0E4de5E4a4479FfaC18a81c` (v2, via `ERC20SPLFactory@v2`).
+- `SPL_ERC20_WETH`: `0x3e52cfb38ca1639f3c95aef6dccff2b36c230f22` → `0x613b22c098b1058d91731dcb15beaa781b45783e` (v2, with `ensureRecipientAta`).
+- `SPL_ERC20_WSOL` (new): `0x1b23b52d9c991d580ae6df1b936aff09a5f794a2`, mint `So11111111111111111111111111111111111111112`. Previously absent from the file; canonical wSOL wrapper.
+- `RomeBridgeWithdraw`: `0x513f76e39cfd7008f1e143ae37148608cddfcaaf` → `0x325d62dc31be2b2a6e19e6e5773586e552f7c938` (matches registry `live` entry).
+- `ERC20Users`: `0x803f6923bcc776db1d0aa6fcdbd8ceddf35ad6f3` → `0x6a71c3dccc356abe3ffe37e07ed2afb5b3831ce5`.
+- `archive` block extended with the previous addresses for `RomeBridgeWithdraw`, `ERC20Users`, `SPL_ERC20_USDC` (v1), `SPL_ERC20_WETH` (v1), and `OracleAdapterFactory` (300s-staleness deploy) so the file retains provenance for the superseded deploys. Mirrors the existing `RomeBridgeWithdrawPrevious` / `RomeBridgeInboundPrevious` convention; no schema changes.
+
 ### Changed — `scripts/bridge/deploy.ts` parameterized per-chain via `USDC_MINT` / `WETH_MINT` env vars; `r` symbols swapped to `W`
 - `scripts/bridge/deploy.ts` — `loadSolanaPdas` and `main()` no longer read `SPL_MINTS.USDC_NATIVE` / `SPL_MINTS.WETH_WORMHOLE` (Marcus's mints) regardless of target. Both now require explicit `USDC_MINT` / `WETH_MINT` env vars at invocation; the script skips the corresponding `SPL_ERC20` wrapper if a mint is unset. `RomeBridgeWithdraw` deploys only when **both** mints are set, since its constructor takes both wrappers and the per-mint Wormhole / CCTP PDAs cannot be derived without them — chains with no Ethereum-origin bridge target therefore get paymaster + ERC20Users + (optional) wrappers, with no broken withdraw artefact written. Surfaced during the cassius-test (121298) bring-up rehearsal — `rome-specs/active/technical/2026-04-28-rome-chain-bring-up-runbook-plan.md` Chapter 10.4 — where the previous default deployed Marcus's mints onto cassius-test as throwaway wrappers.
 - `scripts/bridge/deploy.ts` — `deployWithdraw(...)` signature gained two trailing string params (`usdcMintBase58`, `wethMintBase58`) so PDAs are derived from the actual deploy-time mints rather than a global. The single in-tree caller (`scripts/setup-local.ts`) updated.
