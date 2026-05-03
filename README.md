@@ -1,13 +1,14 @@
 # `rome-solidity`
 
-`rome-solidity` is a Solidity smart contract monorepo for SPL/EVM cross-program interaction primitives within Rome-EVM program stack, token utilities, and a Meteora DEX AMM implementation, tested via Hardhat.
+`rome-solidity` is a Solidity smart contract monorepo for **bidirectional EVM ↔ Solana interop primitives** within the Rome-EVM program stack, token utilities, and a Meteora DEX AMM implementation, tested via Hardhat.
 
 ## Key goals
 
 - Solana-compatible token/account behavior in EVM style
 - `Meteora DAMMv1`: automated market maker + factory/pool system
-- Cross-program invocation wrappers (CPI)
-- ERC20 interface to SPL tokens
+- **Cross-program invocation wrappers (CPI)** — let Solidity contracts invoke native Solana programs via the precompile at `0xff…08` (plus gas-token wrap/unwrap, withdraw)
+- **Surface for MetaHook callbacks** — Solana programs invoke Rome EVM contracts with a synthetic EVM sender derived from the calling Solana program ID; Solidity contracts can target this surface to be invoked from Solana side
+- ERC20 interface to SPL tokens (supports liquidity flow in both directions: Solana liquidity consumed in Solidity, Rome-side liquidity contributed back to Solana protocols)
 
 ---
 
