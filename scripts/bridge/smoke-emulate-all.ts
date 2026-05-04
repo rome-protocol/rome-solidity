@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { Wallet, JsonRpcProvider, keccak256, toUtf8Bytes } from "ethers";
 
 async function emulate(label: string, signed: string) {
-  const res = await fetch("https://marcus.devnet.romeprotocol.xyz/", {
+  const res = await fetch("https://rome.devnet.romeprotocol.xyz/", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "rome_emulateTx", params: [signed] }),
@@ -18,10 +18,10 @@ async function emulate(label: string, signed: string) {
 async function main() {
   const { networkConfig } = await hardhat.network.connect();
   const pk = await (networkConfig as any).accounts[0].get();
-  const dep = JSON.parse(fs.readFileSync("deployments/marcus.json", "utf8"));
+  const dep = JSON.parse(fs.readFileSync("deployments/rome.json", "utf8"));
   const WITHDRAW = dep.RomeBridgeWithdraw.address as `0x${string}`;
 
-  const provider = new JsonRpcProvider("https://marcus.devnet.romeprotocol.xyz/");
+  const provider = new JsonRpcProvider("https://rome.devnet.romeprotocol.xyz/");
   const wallet = new Wallet(pk, provider);
   const { chainId } = await provider.getNetwork();
   const gasPrice = await provider.getFeeData().then(f => f.gasPrice || 5000000000n);

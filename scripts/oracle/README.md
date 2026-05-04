@@ -21,7 +21,7 @@ Deploys are run **manually from a maintainer's machine**, not via CI. The Hardha
 Per network you intend to deploy to:
 
 ```bash
-npx hardhat keystore set MARCUS_PRIVATE_KEY       # for marcus (current devnet target)
+npx hardhat keystore set CHAIN_PRIVATE_KEY       # for rome (current devnet target)
 npx hardhat keystore set LOCAL_PRIVATE_KEY --dev  # for local stack
 ```
 
@@ -30,10 +30,10 @@ Network ↔ keystore-var mapping lives in `hardhat.config.ts`. The `--dev` flag 
 ### Deploy a fresh Oracle Gateway V2 stack
 
 ```bash
-npx hardhat run scripts/oracle/deploy-v2-polish.ts --network marcus
-npx hardhat run scripts/oracle/deploy-seed-feeds.ts --network marcus
-git add deployments/marcus.json
-git commit -m "ops(oracle): deploy Oracle Gateway V2 to marcus"
+npx hardhat run scripts/oracle/deploy-v2-polish.ts --network <chain>
+npx hardhat run scripts/oracle/deploy-seed-feeds.ts --network <chain>
+git add deployments/rome.json
+git commit -m "ops(oracle): deploy Oracle Gateway V2 to rome"
 ```
 
 ### Local stack (no keystore needed)

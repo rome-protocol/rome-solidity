@@ -4,7 +4,7 @@ async function main() {
   const [admin] = await viem.getWalletClients();
   const pc = await viem.getPublicClient();
   const fs = await import("node:fs");
-  const dep = JSON.parse(fs.readFileSync("deployments/marcus.json", "utf8"));
+  const dep = JSON.parse(fs.readFileSync("deployments/rome.json", "utf8"));
   const WITHDRAW = dep.RomeBridgeWithdraw.address as `0x${string}`;
   const RUSDC = "0x6ed2944bba4cb5b1cb295541f315c648658dd67c" as const;
   const deployer = admin.account!.address;

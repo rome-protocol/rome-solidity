@@ -1,6 +1,6 @@
 // scripts/bridge/deploy-inbound.ts
 //
-// Deploy RomeBridgeInbound to marcus (or any configured network) and wire
+// Deploy RomeBridgeInbound to rome (or any configured network) and wire
 // it into the existing paymaster. Symmetric to the outbound RomeBridgeWithdraw
 // deployment; reads the already-deployed RomeBridgePaymaster + SPL_ERC20_USDC
 // addresses from deployments/<network>.json.
@@ -15,7 +15,7 @@
 //      companion.
 //
 // Usage:
-//   npx hardhat run scripts/bridge/deploy-inbound.ts --network marcus
+//   npx hardhat run scripts/bridge/deploy-inbound.ts --network <chain>
 //   npx hardhat run scripts/bridge/deploy-inbound.ts --network local
 //
 // Idempotent: if RomeBridgeInbound is already in deployments, the script

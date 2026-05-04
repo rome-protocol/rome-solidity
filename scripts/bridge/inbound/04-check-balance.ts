@@ -1,4 +1,4 @@
-// Step 4 of CCTP inbound demo: read rUSDC balance on marcus to confirm the
+// Step 4 of CCTP inbound demo: read rUSDC balance on rome to confirm the
 // Solana-side mint propagated. Run before step 1 and again after step 3 to
 // see the delta.
 import hardhat from "hardhat";

@@ -29,13 +29,13 @@ When adding new contracts:
 
 | Token kind | Display symbol | Example |
 |---|---|---|
-| **Native gas** of a Rome chain | **bare underlying symbol** — no prefix | `USDC` (Marcus's gas mint), `ETH` (a hypothetical ETH-gas chain), `SOL` (a hypothetical SOL-gas chain) |
-| **ERC20-SPL wrapper** (any `SPL_ERC20` deployed via the factory or bridge scripts) | **`W` prefix** (capital W) | `WUSDC` (Marcus's USDC-mint wrapper), `WETH` (Wormhole-wrapped Sepolia-ETH wrapper), `WSOL` (canonical wSOL wrapper), `WJUP`/`WBONK`/`WUSDT` (future long-tails) |
+| **Native gas** of a Rome chain | **bare underlying symbol** — no prefix | `USDC` (Rome's gas mint), `ETH` (a hypothetical ETH-gas chain), `SOL` (a hypothetical SOL-gas chain) |
+| **ERC20-SPL wrapper** (any `SPL_ERC20` deployed via the factory or bridge scripts) | **`W` prefix** (capital W) | `WUSDC` (Rome's USDC-mint wrapper), `WETH` (Wormhole-wrapped Sepolia-ETH wrapper), `WSOL` (canonical wSOL wrapper), `WJUP`/`WBONK`/`WUSDT` (future long-tails) |
 
 ### Rules
 
-1. **Native gas keeps its underlying name.** On Marcus the gas mint is USDC, so the native gas is `USDC`. On a SOL-gas chain it's `SOL`. **No prefix, ever**, on the native gas symbol.
-2. **Every ERC20-SPL wrapper gets `W`.** This is true even for wrappers of the gas mint itself (Marcus has `USDC` native gas AND `WUSDC` as the SPL_ERC20 wrapper of the same SPL — two distinct tokens, two distinct displays).
+1. **Native gas keeps its underlying name.** On Rome the gas mint is USDC, so the native gas is `USDC`. On a SOL-gas chain it's `SOL`. **No prefix, ever**, on the native gas symbol.
+2. **Every ERC20-SPL wrapper gets `W`.** This is true even for wrappers of the gas mint itself (Rome has `USDC` native gas AND `WUSDC` as the SPL_ERC20 wrapper of the same SPL — two distinct tokens, two distinct displays).
 3. **Capital `W`.** Matches WETH/WBTC/WMATIC. Not lowercase `w`, not legacy `r`.
 4. **The on-chain `symbol()` of an SPL_ERC20 may not match the display form.** Wrappers are sometimes deployed with `symbol: "USDC"` (matching the underlying), and the W-prefix is a UI/docs convention. The canonical helper is `rome-ui/src/utils/displayTokenSymbol.ts: wrapperSymbolFor(gasSymbol)` which always returns `W{symbol}`.
 5. **Old `r` prefix (Rome) is deprecated.** `rUSDC`, `rETH`, `rSOL` were the legacy forms before alignment with the WETH/WBTC convention. Don't introduce new `r`-prefixed names; when you find an existing one, fix it. Historical CHANGELOG entries that describe past state may keep the old names — don't rewrite history, but flag them as historical.
@@ -142,7 +142,7 @@ Global constants (`SplToken`, `AssociatedSplToken`, `SystemProgram`, `CpiProgram
 
 - **`contracts/cpi/`** — Cardo CPI Foundation (library + templates). Shared Solidity helpers every Cardo app adapter builds on top of: `AccountMetaBuilder`, `AnchorInstruction`, `Cpi`, `PdaDeriver`, `SolanaConstants`, `UserPda`, `CostEstimate`, `CostEstimator`, `ICostView`, and the Pillar B cost-transparency trio. Also ships `templates/CpiAdapterBase.sol` (Ownable+Pausable+ReentrancyGuard+backend pointer scaffold) and `templates/CpiProgramWrapper.sol` (prose scaffold for golden-vector wrappers). See `contracts/cpi/README.md` for the adapter authoring guide, the three-layer pattern, and the `tx.origin`/`msg.sender` rule. Canonical spec: `rome-specs/active/technical/cardo-foundation.md`.
 - **`contracts/spl_token/`** — Low-level SPL token and associated token account libraries (`SplTokenLib`, `AssociatedSplTokenLib`). These use `CpiProgram.account_info()` to deserialize on-chain Solana account data (Borsh-encoded) from within Solidity.
-- **`contracts/erc20spl/`** — `SPL_ERC20` wraps an SPL mint as an ERC20 token with deposit/withdraw. `ERC20SPLFactory` deploys these wrappers. Uses OpenZeppelin IERC20. Generic outbound-bridge surface (`bridgeOutToSolana`, `ensureRecipientAta`) lets any deployed wrapper serve as a Marcus → Solana SPL bridge — consumed by **rome-ui's `useOutboundSplBridge` hook** (see Cross-repo dependencies below). **Event emission:** `SPL_ERC20` emits standard `IERC20.Transfer` and `IERC20.Approval` events on all mutating paths (`_transfer`, `approve`, `mint_to`) — added in #83. Events fire after the underlying SPL CPI succeeds. **Auto-ATA:** `_transfer` and `mint_to` auto-create the recipient's ATA via `ensure_token_account` if it doesn't exist (#63), matching Phantom/Solana wallet UX — sender pays ~0.002 SOL rent. **Factory event:** `ERC20SPLFactory._register_contract` emits `TokenCreated` on every wrapper registration (#85), enabling rome-ui's backend token-discovery indexer.
+- **`contracts/erc20spl/`** — `SPL_ERC20` wraps an SPL mint as an ERC20 token with deposit/withdraw. `ERC20SPLFactory` deploys these wrappers. Uses OpenZeppelin IERC20. Generic outbound-bridge surface (`bridgeOutToSolana`, `ensureRecipientAta`) lets any deployed wrapper serve as a Rome → Solana SPL bridge — consumed by **rome-ui's `useOutboundSplBridge` hook** (see Cross-repo dependencies below). **Event emission:** `SPL_ERC20` emits standard `IERC20.Transfer` and `IERC20.Approval` events on all mutating paths (`_transfer`, `approve`, `mint_to`) — added in #83. Events fire after the underlying SPL CPI succeeds. **Auto-ATA:** `_transfer` and `mint_to` auto-create the recipient's ATA via `ensure_token_account` if it doesn't exist (#63), matching Phantom/Solana wallet UX — sender pays ~0.002 SOL rent. **Factory event:** `ERC20SPLFactory._register_contract` emits `TokenCreated` on every wrapper registration (#85), enabling rome-ui's backend token-discovery indexer.
 - **`contracts/meteora/`** — `MeteoraDAMMv1Factory` and `DAMMv1Pool` implement a Uniswap-style factory/pool pattern that delegates swaps to Meteora's on-chain Solana program via CPI.
 - **`contracts/oracle/`** — Oracle Gateway V2: Chainlink-compatible adapters for both Pyth Pull and Switchboard V3 price feeds. `OracleAdapterFactory` deploys `PythPullAdapter` and `SwitchboardV3Adapter` instances via EIP-1167 minimal proxy clones. Each adapter reads Solana account data via CPI precompile, parses Borsh-encoded price data (`PythPullParser` / `SwitchboardParser`), and normalizes to 8-decimal Chainlink format. `IExtendedOracleAdapter` extends `IAggregatorV3Interface` with confidence intervals, EMA data, and price status. `BatchReader` reads multiple feeds in one call. The factory includes owner-controlled pause/unpause emergency controls. Includes `examples/SampleLendingOracle.sol`.
 - **`contracts/bridge/`** — Rome Bridge Phase 1 (Solana ↔ Ethereum cross-chain). `RomeBridgePaymaster` is an EIP-2771 trusted forwarder with per-user 3-tx sponsorship cap + (target, selector) allowlist. `RomeBridgeWithdraw` accepts ERC-20 input on Rome EVM and emits Wormhole Token Bridge or CCTP outbound messages via CPI signed as the user's PDA. Outbound Wormhole is split across two EVM txs (`approveBurnETH` then `burnETH`) because a single atomic Rome DoTx with two CPIs exceeds Solana's 1.4M compute-unit budget. `IWormholeTokenBridge.sol` and `ICCTP.sol` encode the native/Anchor Solana instructions. All Solana pubkeys are supplied via constructor params so the contract is network-agnostic. **See `contracts/bridge/README.md`** for architecture, flow diagrams, and a problems-and-fixes runbook covering the incidents from bring-up. Design spec: `rome-product/specs/rome-bridge-phase1.md`.
@@ -172,7 +172,7 @@ Global constants (`SplToken`, `AssociatedSplToken`, `SystemProgram`, `CpiProgram
 
 Deployment metadata is tracked in `deployments/{network}.json`, written by the Hardhat scripts on each `npx hardhat run`. The local stack file `local.json` is generated by `scripts/setup-local.ts` and should not be committed (regenerated per local stack restart). Per-chain devnet receipts are committed alongside their hardhat network entry.
 
-**Current devnet deployments:** none. All 2026-04 → 2026-05 devnet chains (marcus, subura, esquiline, cassius, cassius-test, monti_spl, maximus) were retired as part of the clean-slate transition. Their per-chain hardhat network entries + `deployments/<network>.json` artifacts were removed alongside the registry directory cleanup; CHANGELOG.md preserves the deploy history for archival reads. New chains add themselves back via `/bring-up-chain` Row 6 (`/deploy-solidity`).
+**Current devnet deployments:** none. All 2026-04 → 2026-05 devnet chains (rome, subura, esquiline, cassius, cassius-test, monti_spl, maximus) were retired as part of the clean-slate transition. Their per-chain hardhat network entries + `deployments/<network>.json` artifacts were removed alongside the registry directory cleanup; CHANGELOG.md preserves the deploy history for archival reads. New chains add themselves back via `/bring-up-chain` Row 6 (`/deploy-solidity`).
 
 ### Networks
 
@@ -197,7 +197,7 @@ Target: `0.8.28`. Production profile enables optimizer with 200 runs.
 - Oracle Gateway V2 contracts depend on live Pyth/Switchboard feeds — test against a live Rome devnet chain for oracle-related changes.
 - Never deploy contracts without running the full Hardhat test suite.
 - ERC-20 SPL wrappers interact with Solana precompiles at fixed addresses — verify precompile addresses match rome-evm-private if changed. Note: SPL Token (0xFF...05) and Associated Token (0xFF...06) dedicated handlers were removed in the Mollusk refactor; these now route through Mollusk SVM/CPI.
-- Bridge deploy scripts (`scripts/bridge/deploy.ts`) require `USDC_MINT` and `WETH_MINT` env vars — no longer hardcoded to Marcus's mints (#86). Wrapper deploys are skipped when the corresponding mint env var is unset; chains without an Ethereum-origin bridge target get paymaster + ERC20Users only.
+- Bridge deploy scripts (`scripts/bridge/deploy.ts`) require `USDC_MINT` and `WETH_MINT` env vars — no longer hardcoded to Rome's mints (#86). Wrapper deploys are skipped when the corresponding mint env var is unset; chains without an Ethereum-origin bridge target get paymaster + ERC20Users only.
 - After deploying `ERC20SPLFactory` on a new chain, run `scripts/bridge/bootstrap-bridged-wrappers.ts` to register canonical wrappers via `add_spl_token_no_metadata` so the rome-ui backend's `TokenCreated` indexer can discover them.
 - Update `CHANGELOG.md` when a PR lands user-visible behaviour changes or changes the deployed contract ABIs.
 
@@ -223,7 +223,7 @@ rome-ui consumes a small, stable surface from this repo. Changes to that surface
 
 | Contract | Method / event | rome-ui consumer |
 |---|---|---|
-| `SPL_ERC20` | `bridgeOutToSolana(bytes32 recipient, uint256 value) → bool` | `src/features/bridge/hooks/useOutboundSplBridge.ts` (Marcus → Solana outbound for any wrapper) |
+| `SPL_ERC20` | `bridgeOutToSolana(bytes32 recipient, uint256 value) → bool` | `src/features/bridge/hooks/useOutboundSplBridge.ts` (Rome → Solana outbound for any wrapper) |
 | `SPL_ERC20` | `ensureRecipientAta(bytes32 recipient) → bytes32` | same hook (preflight before bridge tx — single CPI ATA-create paid by sender's PAYER PDA) |
 | `SPL_ERC20` | `balanceOf(address) → uint256` (now reads AUTHORITY_PDA's ATA, not `_accounts` map) | wagmi multicall, `useChainTokenBalances`, every Portfolio row |
 | `SPL_ERC20` | `transfer` / `transferFrom` / `approve` / `symbol` / `decimals` (standard IERC20 + IERC20Metadata) | wagmi readContract, TokenList, swap/liquidity flows |
@@ -231,12 +231,12 @@ rome-ui consumes a small, stable surface from this repo. Changes to that surface
 | `ERC20SPLFactory` | `create_user()` (no args, no return) | `src/features/portfolio/components/ClaimWrapperButton.tsx` (first-time activation) |
 | `ERC20SPLFactory` | `add_spl_token_no_metadata(bytes32 mint, string name, string symbol)` | indirect — backend indexer watches `TokenCreated` event to populate Redis token cache served at `/api/tokens` |
 | `ERC20SPLFactory` | event `TokenCreated(address creator, bytes32 mint, address wrapper, string name, string symbol, uint64 nonce)` | backend token-discovery indexer + rome-ui's `useChainTokenBalances`. Note: event was declared since inception but only actually emitted since #85; wrappers deployed before that fix are invisible to the indexer. |
-| `RomeBridgeWithdraw` | `burnUSDC(uint256 amount, address ethereumRecipient)` | `src/features/bridge/hooks/useOutboundCctpSend.ts` (Marcus → Sepolia CCTP outbound) |
-| `RomeBridgeWithdraw` | `approveBurnETH(uint256)` + `burnETH(uint256, address)` (two-tx pattern, CU constraint) | `src/features/bridge/hooks/useOutboundWhSend.ts` (Marcus → Sepolia Wormhole outbound) |
+| `RomeBridgeWithdraw` | `burnUSDC(uint256 amount, address ethereumRecipient)` | `src/features/bridge/hooks/useOutboundCctpSend.ts` (Rome → Sepolia CCTP outbound) |
+| `RomeBridgeWithdraw` | `approveBurnETH(uint256)` + `burnETH(uint256, address)` (two-tx pattern, CU constraint) | `src/features/bridge/hooks/useOutboundWhSend.ts` (Rome → Sepolia Wormhole outbound) |
 
 ### Legacy / not consumed
 
-`RomeBridgePaymaster` and `RomeBridgeInbound` are kept in `chain.contracts` config for back-compat parsing of older chains.yaml files. The current inbound flow is `settle_inbound_bridge` on rome-evm-private (signed by `SOLANA_SETTLE_PAYER_KEY` after Circle/Wormhole `receiveMessage` confirms) — no Marcus EVM tx involved. Don't expand these contracts; deprecate them.
+`RomeBridgePaymaster` and `RomeBridgeInbound` are kept in `chain.contracts` config for back-compat parsing of older chains.yaml files. The current inbound flow is `settle_inbound_bridge` on rome-evm-private (signed by `SOLANA_SETTLE_PAYER_KEY` after Circle/Wormhole `receiveMessage` confirms) — no Rome EVM tx involved. Don't expand these contracts; deprecate them.
 
 ### Behavioral contracts (not just ABI)
 

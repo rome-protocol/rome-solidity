@@ -46,7 +46,7 @@ function resolveVaultOverrideNetwork(networkName: string): VaultOverrideNetwork 
         );
     }
 
-    return ["local", "marcus"].includes(networkName)
+    return ["local", "<chain>"].includes(networkName)
         ? VAULT_OVERRIDE_NETWORK.Devnet
         : VAULT_OVERRIDE_NETWORK.Mainnet;
 }

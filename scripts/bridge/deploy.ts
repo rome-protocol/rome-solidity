@@ -7,11 +7,11 @@
 //   - RomeBridgeWithdraw (only if both wrappers were deployed — otherwise skipped)
 //
 // Mint configuration is per-chain via env vars; constants no longer hard-code
-// Marcus's mints. Operators always pass the mints explicitly:
+// Rome's mints. Operators always pass the mints explicitly:
 //
 //   USDC_MINT=4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU \
 //   WETH_MINT=6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs \
-//   npx hardhat run scripts/bridge/deploy.ts --network marcus
+//   npx hardhat run scripts/bridge/deploy.ts --network <chain>
 //
 // If a mint env var is empty / unset, the corresponding SPL_ERC20 wrapper is
 // skipped. RomeBridgeWithdraw deploys only when BOTH USDC + WETH wrappers are
@@ -180,7 +180,7 @@ export async function deployWithdraw(
     wrappedMeta:        pdas.wormholeWrappedMeta,
     // Wormhole destination chain id — 2 for Ethereum mainnet, 10002 for Sepolia.
     // Pick based on the Ethereum-side target for this Rome deployment.
-    targetChain:        networkName === "marcus" || networkName === "local" ? 10002 : 2,
+    targetChain:        networkName === "<chain>" || networkName === "local" ? 10002 : 2,
   };
 
   const withdraw = await viem.deployContract("RomeBridgeWithdraw", [

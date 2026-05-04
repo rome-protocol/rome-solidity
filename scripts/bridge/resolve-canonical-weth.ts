@@ -7,7 +7,7 @@ const SEPOLIA_WETH_TOKEN_CHAIN = 10002;
 const SEPOLIA_WETH_TOKEN_ADDR  = "eef12a83ee5b7161d3873317c8e0e7b76e0b5d9c";
 
 const ENDPOINTS = [
-  { label: "Rome RPC (marcus)", url: "https://node1.devnet-eu-sol-api.devnet.romeprotocol.xyz" },
+  { label: "Rome RPC (rome)", url: "https://node1.devnet-eu-sol-api.devnet.romeprotocol.xyz" },
   { label: "Public Solana devnet", url: "https://api.devnet.solana.com" },
 ];
 

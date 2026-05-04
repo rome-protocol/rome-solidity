@@ -1,5 +1,5 @@
 // Reads the deployer's Rome PDA USDC ATA on Solana via the SPL_ERC20 rUSDC
-// wrapper on marcus. This ATA is the `mintRecipient` for CCTP depositForBurn
+// wrapper on rome. This ATA is the `mintRecipient` for CCTP depositForBurn
 // calls on Ethereum testnet that target this Rome user.
 import hardhat from "hardhat";
 async function main() {

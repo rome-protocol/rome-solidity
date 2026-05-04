@@ -4,7 +4,7 @@ import path from "node:path";
 import { toHex } from "viem";
 
 /**
- * Test oracle feeds on marcus. Uses existing factory deployment
+ * Test oracle feeds on rome. Uses existing factory deployment
  * or deploys a new one. Creates BTC/USD and ETH/USD feed adapters
  * and runs full verification.
  */
