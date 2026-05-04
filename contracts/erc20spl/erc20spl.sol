@@ -48,10 +48,26 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     ERC20Users private _users;
     mapping(address => bytes32) private _accounts;
 
-    /// @notice Public reader for the SPL token account owned by this EVM user.
-    /// @dev Returns the cached ATA; callers may treat a zero return as "not yet initialized".
+    /// @notice Canonical SPL token account address for `user` against this
+    /// wrapper's mint.
+    /// @dev Pure derivation. Returns
+    /// `ata(AUTHORITY_PDA(user), mint_id, splTokenProgram)` — same ATA
+    /// `balanceOf` reads (line below at 158) and same destination
+    /// `wrap_gas_to_spl` deposits to and Wormhole `complete_transfer_wrapped`
+    /// lands at. Always non-zero, no per-user activation required.
+    ///
+    /// Pre-#82 this returned `_accounts[user]` (a PAYER_PDA-owned ATA cached
+    /// on first wrapper-mediated call). After #82 migrated `balanceOf` to
+    /// the AUTHORITY_PDA-derived ATA, this reader stayed on the legacy
+    /// mapping — internally inconsistent: `balanceOf(user)` could return a
+    /// non-zero amount while `getAta(user)` returned `bytes32(0)` for any
+    /// user whose tokens arrived via wrap / inbound bridge (which never
+    /// write to `_accounts`). RomeBridgeWithdraw consumed this reader for
+    /// the CCTP / Wormhole burn account; the inconsistency surfaced as
+    /// `mollusk error: Failure(Custom(3007))` from CCTP's depositForBurn
+    /// when fed an empty-or-zero burnTokenAccount.
     function getAta(address user) external view returns (bytes32) {
-        return _accounts[user];
+        return UserPda.ata(user, mint_id);
     }
 
     error ERC20InvalidApprover(address approver);
