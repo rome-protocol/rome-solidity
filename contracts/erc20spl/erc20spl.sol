@@ -179,105 +179,191 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     function transfer(address to, uint256 value) public virtual returns (bool) {
-        return _transfer(_users.ensure_user(msg.sender), msg.sender, to, value);
+        return _transfer(msg.sender, to, value);
     }
 
-    /**
-     * Internal transfer function that performs a token transfer by invoking the SPL Token program's TransferChecked instruction via CPI.
-     * @param user The User struct containing payer and seeds for the signer
-     * @param from EVM address of the sender
-     * @param to EVM address of the recipient
-     * @param value amount of tokens to transfer (in the smallest unit, e.g. if decimals is 6, then value should be in micro-units)
-     * 
-     * @return success Returns true if the transfer was successful
-     */
-    function _transfer(
-        bytes32 user,
-        address from,
-        address to,
-        uint256 value
-    ) internal returns (bool) {
+    /// @dev Idempotent: ensures `UserPda.ata(user, mint_id)` (the
+    /// AUTHORITY_PDA-owned ATA) exists on Solana. Skips the create CPI
+    /// when the account already exists — single-CPI fast path. Pays
+    /// rent (when needed) from the supplied PAYER_PDA. Used as the
+    /// recipient-side prepare in `_transfer` and `mint_to`.
+    ///
+    /// The early-return matters: `_transfer` in the direct path signs
+    /// the SPL transfer as AUTHORITY_PDA (empty seeds) while the
+    /// ATA-create signs as PAYER_PDA (`[payer_salt]` seeds). Two
+    /// different signers in one Rome DoTx hits the same emulator
+    /// quirk that forced `bridgeOutToSolana` to skip in-tx ATA-create
+    /// (see comment at line ~342). Skipping the create CPI when the
+    /// ATA is already there avoids the multi-signer scenario entirely
+    /// for the common case (returning recipients, all DEX/router
+    /// flows after the first deposit).
+    function _ensureAuthorityAta(address user, bytes32 payer)
+        internal
+        returns (bytes32)
+    {
+        bytes32 owner = UserPda.pda(user);
+        bytes32 to_ata = UserPda.ataForKey(owner, mint_id);
+        (,,,,, bytes memory existing) = ICrossProgramInvocation(cpi_program).account_info(to_ata);
+        if (existing.length > 0) {
+            return to_ata;
+        }
+        (
+            bytes32 program_id,
+            ICrossProgramInvocation.AccountMeta[] memory accounts,
+            bytes memory data,
+        ) = AssociatedSplToken.create_associated_token_account_idempotent(
+            payer,
+            owner,
+            mint_id,
+            system_program_id,
+            SplTokenLib.SPL_TOKEN_PROGRAM,
+            associated_token_program_id
+        );
+        bytes32[] memory seeds = new bytes32[](1);
+        seeds[0] = _users.payer_salt();
+        (bool success, bytes memory result) = address(cpi_program).delegatecall(
+            abi.encodeWithSignature(
+                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
+                program_id, accounts, data, seeds
+            )
+        );
+        require(success, string(Convert.revert_msg(result)));
+        return to_ata;
+    }
+
+    /// Internal SPL transfer. Source = AUTHORITY_PDA(from)'s ATA — the
+    /// canonical cross-chain balance location (where Wormhole
+    /// `complete_transfer_wrapped`, native deposits, and `wrap_gas_to_spl`
+    /// land tokens; what `balanceOf` and `getAta` read). Authority depends
+    /// on caller context:
+    ///   * Direct path (`msg.sender == from`): sign as AUTHORITY_PDA(from)
+    ///     with empty seeds — same auth model as `bridgeOutToSolana`.
+    ///   * Delegated path (`msg.sender != from` — `transferFrom`): sign as
+    ///     PAYER_PDA(spender) (the delegate set by `approve`) with
+    ///     `[payer_salt]` seeds. SPL token program recognizes the signer
+    ///     as a delegate via the source account's delegate field and
+    ///     auto-decrements `delegated_amount`.
+    ///
+    /// Recipient ATA is the AUTHORITY_PDA(to)-owned ATA. Idempotent
+    /// create runs only if the ATA is missing. Sender's PAYER_PDA pays
+    /// rent — same Phantom-like UX as the prior `ensure_token_account`
+    /// path.
+    ///
+    /// Pre-#82 this used the `_accounts` mapping (PAYER_PDA-owned ATA
+    /// cached on first wrapper-mediated call). Post-#82 `balanceOf` /
+    /// `getAta` migrated to AUTHORITY_PDA's ATA, but `_transfer` /
+    /// `approve` / `transferFrom` stayed on the legacy `_accounts`
+    /// mapping — internally inconsistent. A user with bridged-in
+    /// balance saw a non-zero `balanceOf` but `approve` / `transferFrom`
+    /// failed inside Solana with `mollusk error: Failure(Custom(1))`
+    /// because the legacy ATA had zero balance. This commit closes
+    /// that gap; standard ERC20 `approve` + `transferFrom` works for
+    /// any user whose tokens are in their canonical AUTHORITY_PDA ATA.
+    function _transfer(address from, address to, uint256 value) internal returns (bool) {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
-        // Auto-create the recipient's PDA-owned ATA on first transfer.
-        // Without this, sending an SPL_ERC20 wrapper to a fresh address
-        // reverts with "Token account does not exist" because the
-        // recipient never went through the wrapper's
-        // `ensure_token_account` flow (no inbound bridge, no prior
-        // receive). MetaMask's `eth_call` simulation surfaces the
-        // revert as a greyed-out Send button, leaving users unable to
-        // transfer their tokens. Idempotent: returns the cached /
-        // existing ATA when it's already there, costs ~0.002 SOL rent
-        // (paid by the sender / spender) when it's not. Same UX model
-        // as Phantom and every other Solana wallet.
-        bytes32 to_account = ensure_token_account(to);
+
+        bytes32 from_authority_pda = UserPda.pda(from);
+        bytes32 from_ata = UserPda.ataForKey(from_authority_pda, mint_id);
+
+        bytes32 sender_payer_pda = _users.ensure_user(msg.sender);
+        bytes32 to_ata = _ensureAuthorityAta(to, sender_payer_pda);
+
+        bytes32 authority;
+        bytes32[] memory seeds;
+        if (msg.sender == from) {
+            authority = from_authority_pda;
+            seeds = new bytes32[](0);
+        } else {
+            authority = sender_payer_pda;
+            seeds = new bytes32[](1);
+            seeds[0] = _users.payer_salt();
+        }
+
         (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) =
         SplTokenLib.transfer_checked(
             SplTokenLib.SPL_TOKEN_PROGRAM,
-            get_token_account(from),
+            from_ata,
             mint_id,
-            to_account,
-            user,
+            to_ata,
+            authority,
             new bytes32[](0),
             uint64(value),
             decimals
         );
 
-        bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = _users.payer_salt();
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
                 "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
                 program_id, accounts, data, seeds
             )
         );
-
-        require (success, string(Convert.revert_msg(result)));
+        require(success, string(Convert.revert_msg(result)));
         emit Transfer(from, to, value);
         return true;
     }
 
+    /// @dev View — never reverts. Returns 0 when spender has no
+    /// allowance OR the owner's ATA doesn't exist yet. Reads the
+    /// SPL delegate field on AUTHORITY_PDA(owner)'s ATA (the canonical
+    /// balance ATA, post write-path migration). Spender's expected
+    /// delegate pubkey is derived deterministically as
+    /// `RomeEVMAccount.get_payer(spender, payer_salt)` — no
+    /// state-write to `ERC20Users` is needed for a view function.
     function allowance(address owner, address spender) public view virtual returns (uint256) {
-        bytes32 spenderUser = _users.get_user(spender);
-        (bytes32 delegate, uint64 delegated_amount) =
-                            SplTokenLib.load_token_account_delegate(get_token_account(owner), cpi_program);
-        if (delegate != spenderUser) {
+        bytes32 spender_payer_pda = RomeEVMAccount.get_payer(spender, _users.payer_salt());
+        bytes32 owner_ata = UserPda.ata(owner, mint_id);
+        (,,,,, bytes memory acct_data) = ICrossProgramInvocation(cpi_program).account_info(owner_ata);
+        if (acct_data.length == 0) {
             return uint256(0);
         }
-
+        (bytes32 delegate, uint64 delegated_amount) =
+                            SplTokenLib.load_token_account_delegate(owner_ata, cpi_program);
+        if (delegate != spender_payer_pda) {
+            return uint256(0);
+        }
         return uint256(delegated_amount);
     }
 
+    /// SPL approve on the AUTHORITY_PDA(msg.sender)-owned ATA (where
+    /// the user's tokens actually live). Delegate = PAYER_PDA(spender)
+    /// — the address `transferFrom` will sign as. Owner +
+    /// authority-signer = AUTHORITY_PDA(msg.sender), signed with empty
+    /// seeds (same pattern as `bridgeOutToSolana`).
     function approve(address spender, uint256 value) public virtual returns (bool) {
-        bytes32 ownerUser = _users.ensure_user(msg.sender);
-        bytes32 spenderUser = _users.ensure_user(spender);
+        require(value <= type(uint64).max, "Approve amount exceeds uint64");
+        // Register both parties in ERC20Users so other consumers
+        // (including `transferFrom`) and any future allowance-reader
+        // helpers see consistent PAYER PDAs. Idempotent.
+        _users.ensure_user(msg.sender);
+        bytes32 spender_payer_pda = _users.ensure_user(spender);
 
-        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) = 
+        bytes32 owner_authority_pda = UserPda.pda(msg.sender);
+        bytes32 owner_ata = UserPda.ataForKey(owner_authority_pda, mint_id);
+
+        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) =
         SplTokenLib.approve(
             SplTokenLib.SPL_TOKEN_PROGRAM,
-            get_token_account(msg.sender),
-            spenderUser,
-            ownerUser,
+            owner_ata,
+            spender_payer_pda,
+            owner_authority_pda,
             new bytes32[](0),
             uint64(value)
         );
 
-        bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = _users.payer_salt();
+        bytes32[] memory seeds = new bytes32[](0); // sign as AUTHORITY_PDA
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
                 "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
                 program_id, accounts, data, seeds
             )
         );
-
-        require (success, string(Convert.revert_msg(result)));
+        require(success, string(Convert.revert_msg(result)));
         emit Approval(msg.sender, spender, value);
         return true;
     }
 
     function transferFrom(address from, address to, uint256 value) public virtual returns (bool) {
-        address spender = msg.sender;
-        return _transfer(_users.ensure_user(spender), from, to, value);
+        return _transfer(from, to, value);
     }
 
     /// @notice Move this wrapper's underlying SPL out of the caller's
@@ -475,11 +561,13 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         require(value <= type(uint64).max, "Mint amount exceeds uint64");
 
         bytes32 user = _users.ensure_user(msg.sender);
-        // Mint to a fresh address: ensure the recipient's PDA-owned
-        // ATA exists before the SPL mint_to_checked CPI. Same
-        // idempotent pattern as `_transfer` above — no-op when the
-        // ATA already exists.
-        bytes32 to_account = ensure_token_account(to);
+        // Destination = AUTHORITY_PDA(to)'s ATA — the canonical ATA
+        // `balanceOf(to)` reads. Pre-migration this minted into
+        // PAYER_PDA(to)'s ATA, leaving the recipient's `balanceOf`
+        // showing 0 even after a successful mint (the legacy `_accounts`
+        // ATA wasn't where balance is read). Idempotent create — no-op
+        // when the ATA already exists.
+        bytes32 to_account = _ensureAuthorityAta(to, user);
         (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data)
             = SplTokenLib.mint_to_checked(
             SplTokenLib.SPL_TOKEN_PROGRAM,
