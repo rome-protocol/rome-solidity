@@ -42,5 +42,12 @@ export default defineConfig({
       url: "http://localhost:9090",
       accounts: [configVariable("LOCAL_PRIVATE_KEY")],
     },
+    marcus: {
+      type: "http",
+      chainType: "l1",
+      chainId: 121301,
+      url: "https://marcus.devnet.romeprotocol.xyz/",
+      accounts: [configVariable("MARCUS_PRIVATE_KEY")],
+    },
   },
 });
