@@ -36,13 +36,6 @@ export default defineConfig({
       url: configVariable("SEPOLIA_RPC_URL"),
       accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
     },
-    marcus: {
-      type: "http",
-      chainType: "l1",
-      chainId: 121226,
-      url: "https://marcus.devnet.romeprotocol.xyz/",
-      accounts: [configVariable("MARCUS_PRIVATE_KEY")],
-    },
     local: {
       type: "http",
       chainType: "l1",
