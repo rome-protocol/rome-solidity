@@ -50,13 +50,13 @@ Example scripts:
 - deploy_meteora_pool.ts
 
 ```bash
-export MARCUS_PRIVATE_KEY=<YOUR_PRIVATE_KEY>
+export <CHAIN>_PRIVATE_KEY=<YOUR_PRIVATE_KEY>
 export POOL_ADDRESS=<YOUR_POOL_ADDRESS>
-npx hardhat run scripts/deploy_meteora_factory.ts --network marcus
-npx hardhat run scripts/deploy_meteora_pool.ts --network marcus
+npx hardhat run scripts/deploy_meteora_factory.ts --network <chain>
+npx hardhat run scripts/deploy_meteora_pool.ts --network <chain>
 ```
 
-After successful deployment, you will see new file /deployments/marcus.json
+After successful deployment, you will see a new file `/deployments/<network>.json`
 which contains information about deployed smart contracts. This file is later used by tests.
 
 ---
@@ -66,7 +66,7 @@ which contains information about deployed smart contracts. This file is later us
 Set tester private key in dev keystore:
 
 ```bash
-npx hardhat keystore set MARCUS_PRIVATE_KEY --dev
+npx hardhat keystore set <CHAIN>_PRIVATE_KEY --dev
 ```
 
 Use Hardhat test suite:
@@ -112,7 +112,7 @@ npx hardhat test tests/damm_v1_pool.integration.ts --network local
 ## Notes
 
 - artifacts includes compiled JSON from existing snapshot builds.
-- `deployments/marcus.json` carries the deployed contract metadata for the live devnet.
+- `deployments/<network>.json` carries the deployed contract metadata for each chain (per `hardhat.config.ts` networks). No live devnet currently — see CLAUDE.md "Networks" section for active hardhat networks.
 - Keep toolchain with hardhat.config.ts and `tsconfig` consistent with existing pattern.
 
 ---
