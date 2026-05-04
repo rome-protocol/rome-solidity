@@ -179,8 +179,13 @@ export async function deployWithdraw(
     sequence:           pdas.wormholeSequence,
     wrappedMeta:        pdas.wormholeWrappedMeta,
     // Wormhole destination chain id — 2 for Ethereum mainnet, 10002 for Sepolia.
-    // Pick based on the Ethereum-side target for this Rome deployment.
-    targetChain:        networkName === "<chain>" || networkName === "local" ? 10002 : 2,
+    // All current Rome chains target Sepolia (devnet). When a mainnet Rome
+    // chain is brought up, fold its networkName into the mainnet branch (or
+    // replace this block with a `chain.bridge.sourceEvm.chainId` lookup from
+    // the registry). The earlier `"<chain>"` placeholder was a leftover from
+    // PR #97's marcus-sweep — it never matched any real network and silently
+    // routed Marcus's outbound Wormhole to Ethereum mainnet.
+    targetChain:        networkName === "marcus" || networkName === "local" ? 10002 : 2,
   };
 
   const withdraw = await viem.deployContract("RomeBridgeWithdraw", [
