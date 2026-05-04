@@ -128,7 +128,11 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
      * @return associated_account_address The address of the associated token account created or existing for the user
      */
     function ensure_token_account(address user) public returns (bytes32) {
-        bytes32 payer = _users.get_user(msg.sender);
+        // ensure_user (not get_user) so a brand-new caller — never
+        // bridged, never wrapped, never registered in ERC20Users — gets
+        // auto-registered on the first call. Self-bootstrapping; no
+        // out-of-band setup tx required. Idempotent for repeat callers.
+        bytes32 payer = _users.ensure_user(msg.sender);
         bytes32 token_account = _accounts[user];
         if (token_account == bytes32(0)) {
             return create_token_account(user, payer);
@@ -175,7 +179,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     function transfer(address to, uint256 value) public virtual returns (bool) {
-        return _transfer(_users.get_user(msg.sender), msg.sender, to, value);
+        return _transfer(_users.ensure_user(msg.sender), msg.sender, to, value);
     }
 
     /**
@@ -244,8 +248,8 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     function approve(address spender, uint256 value) public virtual returns (bool) {
-        bytes32 ownerUser = _users.get_user(msg.sender);
-        bytes32 spenderUser = _users.get_user(spender);
+        bytes32 ownerUser = _users.ensure_user(msg.sender);
+        bytes32 spenderUser = _users.ensure_user(spender);
 
         (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) = 
         SplTokenLib.approve(
@@ -273,7 +277,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
 
     function transferFrom(address from, address to, uint256 value) public virtual returns (bool) {
         address spender = msg.sender;
-        return _transfer(_users.get_user(spender), from, to, value);
+        return _transfer(_users.ensure_user(spender), from, to, value);
     }
 
     /// @notice Move this wrapper's underlying SPL out of the caller's
@@ -335,7 +339,11 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // answer for bridged-in tokens. bridgeOutToSolana takes the
         // direct path.
         bytes32 authority_pda = RomeEVMAccount.pda(msg.sender);
-        bytes32 payer_pda = _users.get_user(msg.sender);
+        // ensure_user (not get_user) so users who only have bridged-in
+        // tokens (never called create_user) can still bridge out — the
+        // first outbound auto-registers. payer_pda is read for
+        // potential future ATA-create reintroduction (see comment below).
+        bytes32 payer_pda = _users.ensure_user(msg.sender);
 
         bytes32 from_ata = UserPda.ataForKey(authority_pda, mint_id);
 
@@ -420,7 +428,9 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     {
         require(solana_recipient != bytes32(0), "Solana recipient cannot be zero");
 
-        bytes32 payer_pda = _users.get_user(msg.sender);
+        // ensure_user (not get_user) so users with bridged-in tokens
+        // who never called create_user can still ensure recipient ATAs.
+        bytes32 payer_pda = _users.ensure_user(msg.sender);
 
         (
             bytes32 program_id,
@@ -464,7 +474,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     function mint_to(address to, uint256 value) public virtual returns (bool) {
         require(value <= type(uint64).max, "Mint amount exceeds uint64");
 
-        bytes32 user = _users.get_user(msg.sender);
+        bytes32 user = _users.ensure_user(msg.sender);
         // Mint to a fresh address: ensure the recipient's PDA-owned
         // ATA exists before the SPL mint_to_checked CPI. Same
         // idempotent pattern as `_transfer` above — no-op when the
