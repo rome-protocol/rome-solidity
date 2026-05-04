@@ -19,7 +19,7 @@ import "../convert.sol";
 ///   - scale: u32 (4 bytes, little-endian)
 ///   - actual_value = mantissa / 10^scale
 ///
-/// Validated layout (from live SOL/USD aggregator GvDMxP... on marcus):
+/// Validated layout (from live SOL/USD aggregator GvDMxP... on rome):
 ///   Offset  Size  Field
 ///   0       8     Anchor discriminator (0xd9e64165c9a21b7d)
 ///   8       32    name

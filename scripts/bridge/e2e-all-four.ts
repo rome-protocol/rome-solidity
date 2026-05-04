@@ -15,7 +15,7 @@ import {
 
 // --------- constants ----------
 const SEPOLIA_RPC = "https://sepolia.drpc.org";
-const ROME_RPC = "https://marcus.devnet.romeprotocol.xyz/";
+const ROME_RPC = "https://rome.devnet.romeprotocol.xyz/";
 const SOLANA_RPC = "https://api.devnet.solana.com";
 
 const USDC_SEPOLIA = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
@@ -25,7 +25,7 @@ const TOKEN_BRIDGE_SEPOLIA = "0xDB5492265f6038831E89f495670FF909aDe94bd9";
 
 const WH_CHAIN_SOLANA = 1;
 const DOMAIN_SOLANA = 5;
-const MARCUS_USER_EVM = "0x3403e0De09Bc76Ca7d74762F264e4F6B649A0562";
+const CHAIN_USER_EVM = "0x3403e0De09Bc76Ca7d74762F264e4F6B649A0562";
 const ROLLUP_PROGRAM = "DP1dshBzmXXVsRxH5kCKMemrDuptg1JvJ1j5AsFV4Hm3";
 const TOKEN_BRIDGE_SOLANA = "DZnkkTmCiFWfYTfT41X3Rd1kDgozqzxWaHqsw6W4x2oe";
 const CORE_SOLANA = "3u8hJUVTA4jH1wYAyUur7FFZVQ8H635K3tSHHF4ssjQ5";
@@ -125,7 +125,7 @@ async function inboundCctp(sepWallet: Wallet, solConn: Connection, solanaPayer: 
 // ---- Flow 2: Outbound CCTP (Rome rUSDC → Sepolia USDC) ----
 async function outboundCctp(romeWallet: Wallet, sepWallet: Wallet) {
   log("outbound-cctp", "submitting burnUSDC on Rome…");
-  const dep = JSON.parse(fs.readFileSync("deployments/marcus.json", "utf8"));
+  const dep = JSON.parse(fs.readFileSync("deployments/rome.json", "utf8"));
   const WITHDRAW = dep.RomeBridgeWithdraw.address as `0x${string}`;
   const burnUsdcSel = "0x" + keccak256(new TextEncoder().encode("burnUSDC(uint256,address)")).slice(2, 10);
   const recipient = sepWallet.address.slice(2).toLowerCase().padStart(64, "0");
@@ -174,7 +174,7 @@ async function outboundCctp(romeWallet: Wallet, sepWallet: Wallet) {
 // ---- Flow 3: Inbound Wh (Sepolia ETH → Rome rETH) ----
 async function inboundWh(sepWallet: Wallet, solConn: Connection, solanaPayer: Keypair) {
   log("inbound-wh", "submitting wrapAndTransferETH on Sepolia…");
-  const userPda = deriveUserPda(MARCUS_USER_EVM);
+  const userPda = deriveUserPda(CHAIN_USER_EVM);
   const userAta = getAta(userPda, new PublicKey(CANONICAL_WETH_MINT));
   const recipient = "0x" + userAta.toBuffer().toString("hex");
   const tb = new Contract(TOKEN_BRIDGE_SEPOLIA, TB_ABI_SEPOLIA, sepWallet);
@@ -222,7 +222,7 @@ async function inboundWh(sepWallet: Wallet, solConn: Connection, solanaPayer: Ke
 // ---- Flow 4: Outbound Wh (Rome rETH → Sepolia ETH) ----
 async function outboundWh(romeWallet: Wallet, sepWallet: Wallet) {
   log("outbound-wh", "submitting approveBurnETH + burnETH on Rome…");
-  const dep = JSON.parse(fs.readFileSync("deployments/marcus.json", "utf8"));
+  const dep = JSON.parse(fs.readFileSync("deployments/rome.json", "utf8"));
   const WITHDRAW = dep.RomeBridgeWithdraw.address as `0x${string}`;
   const amount = (10_000n).toString(16).padStart(64, "0"); // 10k base units
 
@@ -307,7 +307,7 @@ async function main() {
   if (!solanaPayer) log("main", "no Solana payer — inbound-wh complete leg will skip");
 
   // Rome user's rUSDC ATA (destination for inbound CCTP)
-  const rUsdcAta = getAta(deriveUserPda(MARCUS_USER_EVM), new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"));
+  const rUsdcAta = getAta(deriveUserPda(CHAIN_USER_EVM), new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"));
 
   log("main", "Rome wallet:", romeWallet.address);
   log("main", "Sepolia wallet:", sepWallet.address);

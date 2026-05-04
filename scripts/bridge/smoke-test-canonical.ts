@@ -7,7 +7,7 @@ async function main() {
   const deployer = admin.account!.address;
 
   const d = JSON.parse(
-    (await import("node:fs")).readFileSync("deployments/marcus.json", "utf8"),
+    (await import("node:fs")).readFileSync("deployments/rome.json", "utf8"),
   );
   const paymaster = d.RomeBridgePaymaster.address;
   const rEthAddr  = d.SPL_ERC20_WETH.address;

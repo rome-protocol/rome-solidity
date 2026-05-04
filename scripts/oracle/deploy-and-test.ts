@@ -4,7 +4,7 @@ import path from "node:path";
 import { toHex } from "viem";
 
 /**
- * Deploy PythAggregatorFactory to marcus and create a feed adapter
+ * Deploy PythAggregatorFactory to rome and create a feed adapter
  * for a real Pyth devnet price account.
  */
 
@@ -12,7 +12,7 @@ async function main() {
     const { viem, networkName } = await hardhat.network.connect();
     const [deployer] = await viem.getWalletClients();
     if (!deployer?.account) {
-        throw new Error("No deployer wallet. Set MARCUS_PRIVATE_KEY.");
+        throw new Error("No deployer wallet. Set CHAIN_PRIVATE_KEY.");
     }
 
     const publicClient = await viem.getPublicClient();

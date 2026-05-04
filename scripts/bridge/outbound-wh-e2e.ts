@@ -9,10 +9,10 @@ async function main() {
   const { networkConfig } = await hardhat.network.connect();
   const romePk = await (networkConfig as any).accounts[0].get();
   const sepKey = fs.readFileSync(".secrets/sepolia-key.txt", "utf8").trim();
-  const dep = JSON.parse(fs.readFileSync("deployments/marcus.json", "utf8"));
+  const dep = JSON.parse(fs.readFileSync("deployments/rome.json", "utf8"));
   const WITHDRAW = dep.RomeBridgeWithdraw.address as `0x${string}`;
 
-  const romeProv = new JsonRpcProvider("https://marcus.devnet.romeprotocol.xyz/");
+  const romeProv = new JsonRpcProvider("https://rome.devnet.romeprotocol.xyz/");
   const sepProv = new JsonRpcProvider("https://sepolia.drpc.org");
   const romeWallet = new Wallet(romePk, romeProv);
   const sepWallet = new Wallet(sepKey, sepProv);
@@ -23,7 +23,7 @@ async function main() {
   const recipient = sepWallet.address.slice(2).toLowerCase().padStart(64, "0");
 
   // Use a low gasPrice (2 gwei instead of the proxy's default ~10 gwei).
-  // The native-balance preflight check on marcus rejects tx's whose
+  // The native-balance preflight check on rome rejects tx's whose
   // gasLimit * gasPrice exceeds the Meteora-derived balance, which is often
   // under 0.01 ETH-equivalent even with many tens of rUSDC. At 2 gwei a
   // 1.5M-gas burn costs 3e15 wei (well within normal deployer balances).
@@ -43,7 +43,7 @@ async function main() {
   // Get Solana sigs — may return multiple (TransmitTx + DoTx). Pick the one
   // with Wormhole logs.
   await sleep(5000);
-  const sigsRes = await fetch("https://marcus.devnet.romeprotocol.xyz/", {
+  const sigsRes = await fetch("https://rome.devnet.romeprotocol.xyz/", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "rome_solanaTxForEvmTx", params: [burn.hash] }),
   });

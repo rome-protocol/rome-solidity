@@ -19,7 +19,7 @@ const SEPOLIA_TOKEN_BRIDGE = "0xDB5492265f6038831E89f495670FF909aDe94bd9";
 const WH_CHAIN_SOLANA = 1;
 const CANONICAL_WETH_MINT = "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs";
 const ROLLUP_PROGRAM = "DP1dshBzmXXVsRxH5kCKMemrDuptg1JvJ1j5AsFV4Hm3";
-const MARCUS_USER_EVM = "0x3403e0De09Bc76Ca7d74762F264e4F6B649A0562";
+const CHAIN_USER_EVM = "0x3403e0De09Bc76Ca7d74762F264e4F6B649A0562";
 
 const RPC = "https://sepolia.drpc.org";
 const ABI = [
@@ -33,7 +33,7 @@ const main = async () => {
   console.log("Signer:", signer.address);
 
   // Derive user PDA + ATA
-  const evmBytes = Buffer.from(MARCUS_USER_EVM.replace(/^0x/, "").toLowerCase(), "hex");
+  const evmBytes = Buffer.from(CHAIN_USER_EVM.replace(/^0x/, "").toLowerCase(), "hex");
   const [userPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("EXTERNAL_AUTHORITY"), evmBytes],
     new PublicKey(ROLLUP_PROGRAM),
@@ -63,7 +63,7 @@ const main = async () => {
     sender: signer.address,
     amountRaw: valueWei.toString(),
     recipientAta: recipientAta.toBase58(),
-    userEvm: MARCUS_USER_EVM,
+    userEvm: CHAIN_USER_EVM,
   };
   fs.writeFileSync(".secrets/last-wh-inbound.json", JSON.stringify(out, null, 2));
   console.log("\n✓ Saved to .secrets/last-wh-inbound.json");

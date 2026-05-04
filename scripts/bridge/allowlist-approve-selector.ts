@@ -7,7 +7,7 @@ import { keccak256, toUtf8Bytes } from "ethers";
 
 async function main() {
   const { viem } = await hardhat.network.connect();
-  const dep = JSON.parse(fs.readFileSync("deployments/marcus.json", "utf8"));
+  const dep = JSON.parse(fs.readFileSync("deployments/rome.json", "utf8"));
   const paymaster = await viem.getContractAt("RomeBridgePaymaster", dep.RomeBridgePaymaster.address);
   const withdraw = dep.RomeBridgeWithdraw.address as `0x${string}`;
   const sel = ("0x" + keccak256(toUtf8Bytes("approveBurnETH(uint256)")).slice(2, 10)) as `0x${string}`;

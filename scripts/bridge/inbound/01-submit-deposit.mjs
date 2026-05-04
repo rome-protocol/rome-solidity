@@ -19,7 +19,7 @@ const MESSAGE_TRANSMITTER_SEPOLIA = "0x7865fAfC2db2093669d92c0F33AeEF291086BEFD"
 const DOMAIN_SOLANA = 5;
 
 // mintRecipient — the Rome-user PDA USDC ATA on Solana (CkwEb4FHu…)
-// Read from rUSDC.get_token_account(deployer) on marcus.
+// Read from rUSDC.get_token_account(deployer) on rome.
 const MINT_RECIPIENT_BYTES32 =
   "0xaeb1da9640c012e56d973efd21a2bc76384d059250b2c1895ca926d27241f493";
 

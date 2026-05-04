@@ -51,7 +51,7 @@ import {RomeBridgeEvents} from "./RomeBridgeEvents.sol";
 ///         atomically record events / enforce invariants / emit structured
 ///         audit data, we need a contract wrapper. This is it.
 contract RomeBridgeInbound is ERC2771Context, ReentrancyGuard, RomeBridgeEvents {
-    /// @notice ERC20-SPL wrapper for the chain's gas mint (e.g. rUSDC on Marcus).
+    /// @notice ERC20-SPL wrapper for the chain's gas mint (e.g. rUSDC on Rome).
     SPL_ERC20 public immutable wrapper;
 
     /// @notice Chain's gas mint (bytes32 pubkey) — recorded in SettledInbound

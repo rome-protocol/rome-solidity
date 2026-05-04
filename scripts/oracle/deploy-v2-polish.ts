@@ -20,7 +20,7 @@ import path from "node:path";
  * Does NOT seed feeds — run `deploy-seed-feeds.ts` next.
  *
  * Usage:
- *   npx hardhat run scripts/oracle/deploy-v2-polish.ts --network marcus
+ *   npx hardhat run scripts/oracle/deploy-v2-polish.ts --network <chain>
  *
  * Override program IDs / staleness via env vars if needed:
  *   PYTH_PRICE_FEED_PROGRAM_ID=0x...

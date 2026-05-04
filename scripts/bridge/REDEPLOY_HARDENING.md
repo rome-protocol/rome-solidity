@@ -32,34 +32,34 @@ cd rome-solidity
 git checkout main && git pull
 npx hardhat compile
 
-# 2. Make sure the deployer wallet has USDC (native gas) on Marcus.
-#    (Funding floor in deployments/marcus.json's deployer notes.)
+# 2. Make sure the deployer wallet has USDC (native gas) on Rome.
+#    (Funding floor in deployments/rome.json's deployer notes.)
 
 # 3. Run the redeploy script.
-npx hardhat run scripts/bridge/redeploy-inbound.ts --network marcus
+npx hardhat run scripts/bridge/redeploy-inbound.ts --network <chain>
 
 # Expected output:
 #   - Deploys new RomeBridgeInbound at <NEW_ADDRESS>
 #   - Archives old address under archive.RomeBridgeInboundPrevious
 #   - Re-runs allowlist for (RomeBridgeInbound, settleInbound) on the paymaster
-#   - Writes deployments/marcus.json
+#   - Writes deployments/rome.json
 ```
 
-After the script writes `deployments/marcus.json`, **commit it** and open a
-small PR (`chore(deploy): redeploy RomeBridgeInbound on Marcus post-#55`)
+After the script writes `deployments/rome.json`, **commit it** and open a
+small PR (`chore(deploy): redeploy RomeBridgeInbound on Rome post-#55`)
 so the artifact's authoritative state is in `main`.
 
 ## Downstream updates (rome-ui)
 
 The new address must propagate to three places:
 
-1. **`rome-ui/deploy/chains.sample.yaml`** — line ~26, `marcus.contracts.romeBridgeInbound`.
+1. **`rome-ui/deploy/chains.sample.yaml`** — line ~26, `rome.contracts.romeBridgeInbound`.
    This is the committed canonical config.
 2. **`rome-ui/backend/chains.yaml`** (operator-local, gitignored) — same
    field. Each operator updates their own copy.
 3. **`rome-ui/src/server/bridge/flows/inboundCctp.ts`** — only if you
    redeployed the paymaster too (this redeploy doesn't, so leave it
-   alone). The hardcoded `MARCUS_PAYMASTER_ADDRESS` env-fallback there is
+   alone). The hardcoded `CHAIN_PAYMASTER_ADDRESS` env-fallback there is
    the paymaster, not the inbound.
 
 After updating `chains.yaml`, restart the rome-ui backend so it re-reads.
@@ -68,21 +68,21 @@ After updating `chains.yaml`, restart the rome-ui backend so it re-reads.
 
 ```bash
 # 1. Confirm the new contract picked up the hardening:
-npx hardhat console --network marcus
+npx hardhat console --network <chain>
 > const i = await viem.getContractAt("RomeBridgeInbound", "<NEW_ADDRESS>")
 > // The reentrancy guard storage slot is _NOT_ENTERED (1) on a fresh deploy.
 > // The slippage error UnexpectedUnwrapDelta is in the ABI:
 > Object.keys(i.abi).filter(k => k.includes("Unexpected"))
 
 # 2. End-to-end inbound bridge with gas-split:
-#    Run an inbound CCTP bridge from Sepolia → Marcus through the rome-ui
+#    Run an inbound CCTP bridge from Sepolia → Rome through the rome-ui
 #    portal. Watch the worker's [bridge-worker] settling-split phase
 #    succeed against the new inbound address.
 
 # 3. Negative test (best-effort):
 #    Build a malicious wrapper deployment that re-enters settleInbound
 #    inside its receive() and confirm the call reverts with
-#    ReentrancyGuardReentrantCall — hard to exercise on real Marcus
+#    ReentrancyGuardReentrantCall — hard to exercise on real Rome
 #    without a custom mint, so the hardhat test in
 #    tests/bridge/RomeBridgeInbound.test.ts is the authoritative proof.
 ```
@@ -92,7 +92,7 @@ npx hardhat console --network marcus
 If the new inbound misbehaves:
 
 1. Revert `chains.sample.yaml` + `backend/chains.yaml` to the old address
-   (still recorded in `deployments/marcus.json` under
+   (still recorded in `deployments/rome.json` under
    `archive.RomeBridgeInboundPrevious`).
 2. Restart rome-ui backend.
 3. The old (paymaster, settleInbound) allowlist entry was never removed

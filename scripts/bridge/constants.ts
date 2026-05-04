@@ -47,7 +47,7 @@ export const SPL_MINTS_DEVNET = {
 } as const;
 
 // Default export — points at devnet for now since active deploys target
-// marcus/marcus. Switch to SPL_MINTS_MAINNET for mainnet.
+// rome/rome. Switch to SPL_MINTS_MAINNET for mainnet.
 export const SPL_MINTS = SPL_MINTS_DEVNET;
 
 export const CCTP_DOMAINS = { ETHEREUM: 0, SOLANA: 5 } as const;

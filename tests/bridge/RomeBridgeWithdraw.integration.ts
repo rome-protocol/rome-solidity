@@ -9,7 +9,7 @@
 //
 // These tests will FAIL on hardhatMainnet — they require CPI precompiles and a
 // live Solana cluster. Phase 1.5 documents the setup; Phase 1.6 runs them against
-// marcus devnet.
+// rome devnet.
 
 import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";

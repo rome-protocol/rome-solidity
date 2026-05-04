@@ -7,7 +7,7 @@ import hardhat from "hardhat";
  * PythPullParser's byte offsets produce reasonable values.
  *
  * Usage:
- *   PYTH_PULL_ACCOUNT=0x... npx hardhat run scripts/oracle/validate-pyth-pull-offsets.ts --network marcus
+ *   PYTH_PULL_ACCOUNT=0x... npx hardhat run scripts/oracle/validate-pyth-pull-offsets.ts --network <chain>
  */
 
 async function main() {

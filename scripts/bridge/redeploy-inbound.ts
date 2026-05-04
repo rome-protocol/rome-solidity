@@ -28,10 +28,10 @@
 // "current" at the start of this run. Don't run twice without good reason.
 //
 // Usage:
-//   npx hardhat run scripts/bridge/redeploy-inbound.ts --network marcus
+//   npx hardhat run scripts/bridge/redeploy-inbound.ts --network <chain>
 //   npx hardhat run scripts/bridge/redeploy-inbound.ts --network local
 //
-// Requires the MARCUS_PRIVATE_KEY hardhat config variable to be set
+// Requires the CHAIN_PRIVATE_KEY hardhat config variable to be set
 // (deployer wallet that funded the original deploy).
 
 import hardhat from "hardhat";
@@ -131,9 +131,9 @@ async function main() {
   console.log("  RomeBridgeInbound (new):", newInboundAddr);
   console.log("  Old (archived):         ", oldInboundAddr);
   console.log("\n== Manual follow-ups (rome-ui) ==");
-  console.log("  1. rome-ui/deploy/chains.sample.yaml — update marcus.contracts.romeBridgeInbound");
+  console.log("  1. rome-ui/deploy/chains.sample.yaml — update rome.contracts.romeBridgeInbound");
   console.log("  2. rome-ui/backend/chains.yaml (operator-local, gitignored) — same field");
-  console.log("  3. (Optional) rome-ui/src/server/bridge/flows/inboundCctp.ts — only if MARCUS_PAYMASTER_ADDRESS env var fallback also changed (not in this redeploy)");
+  console.log("  3. (Optional) rome-ui/src/server/bridge/flows/inboundCctp.ts — only if CHAIN_PAYMASTER_ADDRESS env var fallback also changed (not in this redeploy)");
   console.log("  4. Restart rome-ui backend so it re-reads chains.yaml");
   console.log("  5. See scripts/bridge/REDEPLOY_HARDENING.md for the full runbook.");
 }

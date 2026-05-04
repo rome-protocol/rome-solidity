@@ -2,7 +2,7 @@
 // redeploys RomeBridgeWithdraw wiring the new rETH. Reuses existing Paymaster
 // + rUSDC. Re-registers paymaster allowlist for the new withdraw address.
 //
-// Pre-req: scripts/bridge/resolve-canonical-weth.ts passes against marcus's
+// Pre-req: scripts/bridge/resolve-canonical-weth.ts passes against rome's
 // Solana RPC (mint exists on-chain).
 
 import hardhat from "hardhat";

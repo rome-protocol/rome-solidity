@@ -1,6 +1,6 @@
 import hardhat from "hardhat";
 import fs from "node:fs";
-const dep = JSON.parse(fs.readFileSync("deployments/marcus.json", "utf8"));
+const dep = JSON.parse(fs.readFileSync("deployments/rome.json", "utf8"));
 const WITHDRAW = dep.RomeBridgeWithdraw.address as `0x${string}`;
 const RETH = dep.SPL_ERC20_WETH.address as `0x${string}`;
 
@@ -55,7 +55,7 @@ async function main() {
   console.log("rETH balance after:", balAfter.toString());
 
   // Look up Solana sig for the burn tx
-  const sigRes = await fetch("https://marcus.devnet.romeprotocol.xyz/", {
+  const sigRes = await fetch("https://rome.devnet.romeprotocol.xyz/", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

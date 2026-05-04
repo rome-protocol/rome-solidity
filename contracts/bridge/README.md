@@ -1,8 +1,8 @@
 # Rome Bridge
 
-Cross-chain bridge between **Ethereum Sepolia** and **Rome marcus devnet** using **Circle CCTP** for USDC and **Wormhole Token Bridge** for ETH (Phase 1 — Ethereum-origin assets), plus a **generic Marcus → Solana SPL outbound** for any wrapper deployed by `ERC20SPLFactory` (Phase 2 — Solana-native and Solana-bridged SPLs).
+Cross-chain bridge between **Ethereum Sepolia** and **Rome rome devnet** using **Circle CCTP** for USDC and **Wormhole Token Bridge** for ETH (Phase 1 — Ethereum-origin assets), plus a **generic Rome → Solana SPL outbound** for any wrapper deployed by `ERC20SPLFactory` (Phase 2 — Solana-native and Solana-bridged SPLs).
 
-Token nomenclature follows the canonical W-prefix standard documented in [`/CLAUDE.md` § "Token nomenclature"](../../CLAUDE.md#token-nomenclature--canonical-repo-wide). Native gas keeps its bare symbol (`USDC` on Marcus); ERC20-SPL wrappers get `W` (e.g. `WUSDC`, `WETH`, `WSOL`).
+Token nomenclature follows the canonical W-prefix standard documented in [`/CLAUDE.md` § "Token nomenclature"](../../CLAUDE.md#token-nomenclature--canonical-repo-wide). Native gas keeps its bare symbol (`USDC` on Rome); ERC20-SPL wrappers get `W` (e.g. `WUSDC`, `WETH`, `WSOL`).
 
 This document covers what the bridge does, how it's wired, how to redeploy it, and — most importantly — the non-obvious problems that came up during bring-up and the fixes that unblocked them. Read the "Problems faced and fixes" section before touching the code.
 
@@ -10,7 +10,7 @@ This document covers what the bridge does, how it's wired, how to redeploy it, a
 
 ## Assets and flows
 
-| Asset | Marcus wrapper | Source of truth on Solana | Bridge mechanism |
+| Asset | Rome wrapper | Source of truth on Solana | Bridge mechanism |
 |-------|------------|----------------------------|------------------|
 | USDC  | `WUSDC` (`SPL_ERC20`) | Circle's devnet USDC mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` | **CCTP** (native mint/burn, no wrapped tokens) — Phase 1 |
 | ETH   | `WETH`  (`SPL_ERC20`) | Wormhole-wrapped Sepolia-ETH mint `6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs` | **Wormhole Token Bridge** (lock-and-mint / burn-and-unlock) — Phase 1 |
@@ -18,12 +18,12 @@ This document covers what the bridge does, how it's wired, how to redeploy it, a
 
 Both assets flow as SPL tokens between Solana and Ethereum. On the Rome side, an `SPL_ERC20` wrapper exposes each SPL mint as an ERC-20 so users can interact with standard wallets. The wrapper is a 1:1 view over the user's Solana ATA — there is no additional custody.
 
-**Marcus's gas mint is `USDC` (bare).** The `WUSDC` wrapper above is a distinct token from native gas — same underlying SPL, different surface (BalancePDA vs SPL_ERC20). The bridge picker on rome-ui filters out `WUSDC` from the Marcus → Solana picker because the native gas withdraw path covers the same destination ATA. See [rome-ui CLAUDE.md § "Bridge asset picker"](https://github.com/rome-protocol/rome-ui/blob/main/CLAUDE.md).
+**Rome's gas mint is `USDC` (bare).** The `WUSDC` wrapper above is a distinct token from native gas — same underlying SPL, different surface (BalancePDA vs SPL_ERC20). The bridge picker on rome-ui filters out `WUSDC` from the Rome → Solana picker because the native gas withdraw path covers the same destination ATA. See [rome-ui CLAUDE.md § "Bridge asset picker"](https://github.com/rome-protocol/rome-ui/blob/main/CLAUDE.md).
 
 The four CCTP/Wormhole flows (Phase 1):
 
 ```
-                                         Sepolia                                  Rome marcus (Solana)
+                                         Sepolia                                  Rome rome (Solana)
                                     ┌──────────────────┐                     ┌────────────────────────┐
   Inbound CCTP   (user on Sepolia)  │  depositForBurn  │ ── IRIS attest ──►  │  receiveMessage (CPI)  │  → WUSDC minted to user ATA
   Outbound CCTP  (user on Rome)     │  receiveMessage  │ ◄── IRIS attest ──  │  burnUSDC → CCTP CPI   │  → WUSDC burned
@@ -32,10 +32,10 @@ The four CCTP/Wormhole flows (Phase 1):
                                     └──────────────────┘                     └────────────────────────┘
 ```
 
-The two Phase-2 flows (Marcus ↔ Solana, any SPL):
+The two Phase-2 flows (Rome ↔ Solana, any SPL):
 
 ```
-                                                                                  Rome marcus (Solana)
+                                                                                  Rome rome (Solana)
                                                                               ┌─────────────────────────────┐
   Outbound Phase 2 (user on Rome → Solana wallet)                             │ ensureRecipientAta + bridgeOutToSolana │ → SPL minted to recipient ATA
   Inbound Phase 2  (user on Solana → Rome) — native deposit                  │ user signs Solana SPL transfer ; Hercules indexes; W{Symbol} balance reflects │
@@ -50,11 +50,11 @@ Attestation/VAA fetching and the return-leg submission happen off-chain in the b
 
 ### On Rome (this repo — `rome-solidity`)
 
-Three bridge contracts on the `marcus` devnet EVM:
+Three bridge contracts on the `<chain>` devnet EVM:
 
-- **`SPL_ERC20`** (`WUSDC`, `WETH`, `WSOL`, plus any future `W{Symbol}` deployed via the factory) — generic ERC-20 wrapper for any SPL mint. Binds the mint to a standard ERC-20 interface (`balanceOf` reads `getATA(AUTHORITY_PDA, mint)`, transfers/approvals go through Rome's CPI precompile). Phase-2 generic outbound (`bridgeOutToSolana` + `ensureRecipientAta`) lives here — see § "Generic Marcus → Solana SPL outbound" below.
+- **`SPL_ERC20`** (`WUSDC`, `WETH`, `WSOL`, plus any future `W{Symbol}` deployed via the factory) — generic ERC-20 wrapper for any SPL mint. Binds the mint to a standard ERC-20 interface (`balanceOf` reads `getATA(AUTHORITY_PDA, mint)`, transfers/approvals go through Rome's CPI precompile). Phase-2 generic outbound (`bridgeOutToSolana` + `ensureRecipientAta`) lives here — see § "Generic Rome → Solana SPL outbound" below.
 - **`RomeBridgeWithdraw`** — entrypoint for outbound flows. `burnUSDC(amount, ethRecipient)` fires a CCTP `depositForBurn` CPI. `approveBurnETH(amount)` + `burnETH(amount, ethRecipient)` (two separate EVM txs — see "Problems faced") fire an SPL Token Approve CPI then a Wormhole `transferWrapped` CPI. The contract takes all Solana program IDs, sysvars, and PDAs through its constructor so it is network-agnostic.
-- **`RomeBridgePaymaster`** — ERC-2771 trusted forwarder with per-user 3-tx sponsorship cap and a `(target, selector)` allowlist. **Legacy — no longer used by the active bridge worker.** The current inbound flow uses `settle_inbound_bridge` on rome-evm-private signed by `SOLANA_SETTLE_PAYER_KEY`, no Marcus EVM tx involved. Kept in chain.contracts config for back-compat parsing only.
+- **`RomeBridgePaymaster`** — ERC-2771 trusted forwarder with per-user 3-tx sponsorship cap and a `(target, selector)` allowlist. **Legacy — no longer used by the active bridge worker.** The current inbound flow uses `settle_inbound_bridge` on rome-evm-private signed by `SOLANA_SETTLE_PAYER_KEY`, no Rome EVM tx involved. Kept in chain.contracts config for back-compat parsing only.
 
 `IWormholeTokenBridge.sol` and `ICCTP.sol` encode the Solana instructions and account lists for the two CPI targets. All Solana program IDs and sysvar addresses are constructor params, not constants.
 
@@ -72,9 +72,9 @@ Devnet program IDs, all already deployed by Circle / Wormhole — we only CPI in
 
 The Wormhole devnet programs are different from mainnet IDs — see `scripts/bridge/constants.ts` (`SOLANA_PROGRAM_IDS_DEVNET`).
 
-### Generic Marcus → Solana SPL outbound (`SPL_ERC20.bridgeOutToSolana`)
+### Generic Rome → Solana SPL outbound (`SPL_ERC20.bridgeOutToSolana`)
 
-A complement to Phase 1's CCTP/Wormhole outbound paths. **Solana-native SPL tokens don't need a cross-chain protocol to leave Marcus** — Marcus is a Solidity-on-Solana view layer, so the user's tokens already live on Solana in their PDA-ATA. "Bridging" to Solana is just an SPL transfer with the right authority signing. One pair of methods on the SPL_ERC20 base contract covers every wrapper the factory will ever deploy.
+A complement to Phase 1's CCTP/Wormhole outbound paths. **Solana-native SPL tokens don't need a cross-chain protocol to leave Rome** — Rome is a Solidity-on-Solana view layer, so the user's tokens already live on Solana in their PDA-ATA. "Bridging" to Solana is just an SPL transfer with the right authority signing. One pair of methods on the SPL_ERC20 base contract covers every wrapper the factory will ever deploy.
 
 | Method | Role |
 |---|---|
@@ -105,9 +105,9 @@ The frontend (`src/features/bridge/hooks/`) handles source-chain signing and pol
 
 ---
 
-## Current deployment (marcus devnet)
+## Current deployment (rome devnet)
 
-From `deployments/marcus.json`:
+From `deployments/rome.json`:
 
 | Contract | Address |
 |----------|---------|
@@ -166,7 +166,7 @@ Each tx now fits the budget. This is also the standard ERC-20 bridge pattern (ap
 
 **Why.** Once any CPI has been attempted, Rome sets `found_cpi = true` (before executing). If the EVM then tries to revert the frame, Rome replaces the revert data with `CannotRevertCpi` (`program/src/vm/vm.rs:434`). This is intentional — the CPI's real side effects on Solana can't be rolled back — but it destroys the specific error data from the failed CPI.
 
-**Debugging approach.** Read the proxy's stdout on the marcus host directly: `ssh -i ~/.ssh/devnet-marcus ubuntu@<marcus-ip> 'sudo docker logs proxy --tail 500 | grep -iE "mollusk|error|custom program"'`. The real Solana program error appears in the `non-evm call error: SimulateTransactionError: mollusk error: Failure(Custom(0))` line along with full Solana logs. Do this first when a CPI fails unexplained.
+**Debugging approach.** Read the proxy's stdout on the rome host directly: `ssh -i ~/.ssh/devnet-rome ubuntu@<rome-ip> 'sudo docker logs proxy --tail 500 | grep -iE "mollusk|error|custom program"'`. The real Solana program error appears in the `non-evm call error: SimulateTransactionError: mollusk error: Failure(Custom(0))` line along with full Solana logs. Do this first when a CPI fails unexplained.
 
 ### 5. `block.number` on Rome EVM is the Solana slot, not stable inside a tx
 
@@ -196,19 +196,19 @@ Each tx now fits the budget. This is also the standard ERC-20 bridge pattern (ap
 
 **Why.** `RomeBridgeWithdraw.burnETH` hardcoded `targetChain: 2` — Ethereum **mainnet**'s Wormhole chain id. Sepolia has chain id **10002** on the Wormhole testnet. The VAA was produced targeting the wrong chain; the Sepolia Token Bridge refused to redeem it.
 
-**Fix.** Added `wormholeTargetChain` as an immutable constructor param, set per deploy. `deploy.ts` / `redeploy-withdraw-devnet-wh.ts` default to `10002` for marcus/local; `redeploy-withdraw-only.ts` (mainnet path) uses `2`. Future chain swaps just change this constructor arg rather than the contract source.
+**Fix.** Added `wormholeTargetChain` as an immutable constructor param, set per deploy. `deploy.ts` / `redeploy-withdraw-devnet-wh.ts` default to `10002` for rome/local; `redeploy-withdraw-only.ts` (mainnet path) uses `2`. Future chain swaps just change this constructor arg rather than the contract source.
 
 ### 9. Proxy needed a new RPC method to look up Solana sigs for an EVM tx
 
 **Symptom.** The outbound flows need to know the Solana signature of the Rome tx so the relayer can scrape Wormhole logs / poll IRIS. There was no proxy RPC for this — logs had it, but clients couldn't.
 
-**Fix.** Added `rome_solanaTxForEvmTx(evmTxHash)` to `rome-apps/proxy/src/api/rome.rs`. It queries the `evm_tx_sol_tx` table via rome-sdk and returns an array of Solana signatures. The marcus proxy runs the `solana-tx-rpc` Docker tag which includes this method.
+**Fix.** Added `rome_solanaTxForEvmTx(evmTxHash)` to `rome-apps/proxy/src/api/rome.rs`. It queries the `evm_tx_sol_tx` table via rome-sdk and returns an array of Solana signatures. The rome proxy runs the `solana-tx-rpc` Docker tag which includes this method.
 
 ---
 
 ## Setup / redeploy
 
-For a fresh deploy on a new Rome chain or to refresh marcus:
+For a fresh deploy on a new Rome chain or to refresh rome:
 
 1. **Verify devnet program IDs** are live on your Solana cluster. All four (CCTP Token Messenger, CCTP Message Transmitter, Wormhole Token Bridge devnet, Wormhole Core devnet) are deployed on Solana devnet — no action needed unless you're on a different cluster.
 
@@ -222,11 +222,11 @@ For a fresh deploy on a new Rome chain or to refresh marcus:
 
 6. **Smoke test**:
    ```bash
-   npx hardhat run scripts/bridge/smoke-emulate-all.ts --network marcus
+   npx hardhat run scripts/bridge/smoke-emulate-all.ts --network <chain>
    ```
    Checks that `burnUSDC` and `approveBurnETH` emulate cleanly. `burnETH` is explicitly skipped in the smoke test — it requires a prior on-chain approve.
 
-7. **Update the frontend** (`rome-ui`) `MARCUS_WITHDRAW` address in `src/features/bridge/hooks/useOutboundWhSend.ts` and any CCTP hook file.
+7. **Update the frontend** (`rome-ui`) `CHAIN_WITHDRAW` address in `src/features/bridge/hooks/useOutboundWhSend.ts` and any CCTP hook file.
 
 ## Test flows end to end
 
@@ -235,15 +235,15 @@ For a fresh deploy on a new Rome chain or to refresh marcus:
 - **Inbound Wormhole** (Sepolia → Rome WETH): `scripts/bridge/inbound/01b-submit-whETH.mjs` → relayer advances → balance appears.
 - **Outbound Wormhole** (Rome WETH → Sepolia): `scripts/bridge/submit-burnETH.ts` sends `approveBurnETH` then `burnETH`, waits for Sepolia completion.
 
-All four have been verified E2E on marcus against Sepolia with real funds:
+All four have been verified E2E on rome against Sepolia with real funds:
 - Inbound CCTP: Sepolia `0x484c00f5...` → Solana `WS6QkvCJ...`
 - Outbound CCTP: Rome `0xb7d70b64...` → Solana `37iR6YNA...` → Sepolia `0x45a67f6d...`
 - Inbound Wh: Sepolia `0xe9d25c2e...` (seq 343916) → Solana `nPKVXZ3m...`
 - Outbound Wh: Rome `0x22e85b5f...` → Solana `5hdP2zTh...` (seq 56746) → Sepolia `0x72252591...`
 
-### Note: gas price on marcus devnet
+### Note: gas price on rome devnet
 
-marcus's gas token is `USDC` (bare — native gas mint), priced against `SOL` via a Meteora pool between the `WUSDC` and `WSOL` SPL_ERC20 wrappers. The proxy reports a default `eth_gasPrice` of ~10 gwei — but because the pool price can swing, the resulting **Wei balance per USDC is variable**. If the native balance check rejects a tx with `"User does not have sufficient funds (Wei)"` despite having plenty of `USDC`, override `gasPrice` downward (1-2 gwei works on marcus). The submit-burnETH runner uses 2 gwei by default for this reason.
+rome's gas token is `USDC` (bare — native gas mint), priced against `SOL` via a Meteora pool between the `WUSDC` and `WSOL` SPL_ERC20 wrappers. The proxy reports a default `eth_gasPrice` of ~10 gwei — but because the pool price can swing, the resulting **Wei balance per USDC is variable**. If the native balance check rejects a tx with `"User does not have sufficient funds (Wei)"` despite having plenty of `USDC`, override `gasPrice` downward (1-2 gwei works on rome). The submit-burnETH runner uses 2 gwei by default for this reason.
 
 ---
 

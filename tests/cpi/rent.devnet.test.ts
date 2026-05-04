@@ -4,7 +4,7 @@
  * Per cardo-foundation.md §7 Task 7 step 4.5.
  *
  * Intent:
- *   On Marcus (or any live Rome devnet), trigger creation of one SPL Token
+ *   On Rome (or any live Rome devnet), trigger creation of one SPL Token
  *   account + one Drift User PDA, read lamports from each via RPC, assert
  *   equality with `rentForSpace(space)`. Catches divergence if Rome ever
  *   customises rent away from the canonical Solana formula.
@@ -15,7 +15,7 @@
  *   Phase 1 foundation PR (no adapter deployed yet with the foundation
  *   plumbing). Re-enable once Phase 2 lands:
  *
- *     CARDO_DEVNET_RENT=1 npx hardhat test --network marcus \
+ *     CARDO_DEVNET_RENT=1 npx hardhat test --network <chain> \
  *        tests/cpi/rent.devnet.test.ts
  */
 

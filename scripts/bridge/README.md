@@ -54,7 +54,7 @@ Integration tests (require live Rome stack + pre-seeded user balances):
 ```bash
 npx hardhat test tests/bridge/RomeBridgeWithdraw.integration.ts --network local
 # or against the live devnet
-npx hardhat test tests/bridge/RomeBridgeWithdraw.integration.ts --network marcus
+npx hardhat test tests/bridge/RomeBridgeWithdraw.integration.ts --network <chain>
 ```
 
 ## Adding a new asset
@@ -63,7 +63,7 @@ The path differs by asset origin:
 
 ### Solana-native SPL (any token deployed via the factory) — outbound only
 
-For tokens that originate on Solana (USDT-on-Solana, JUP, BONK, custom long-tail, etc.), you only need an `SPL_ERC20` wrapper on Marcus. No `RomeBridgeWithdraw` change, no new burn entrypoint, no paymaster allowlist update — `SPL_ERC20.bridgeOutToSolana` is the generic outbound for all of them.
+For tokens that originate on Solana (USDT-on-Solana, JUP, BONK, custom long-tail, etc.), you only need an `SPL_ERC20` wrapper on Rome. No `RomeBridgeWithdraw` change, no new burn entrypoint, no paymaster allowlist update — `SPL_ERC20.bridgeOutToSolana` is the generic outbound for all of them.
 
 1. Call `ERC20SPLFactory.add_spl_token_no_metadata(mint, "Symbol", "Name")` against the deployed factory on the target chain.
 2. The backend's `TokenCreated` event indexer picks up the new wrapper and surfaces it in `rome-ui`'s portfolio + bridge picker. The bridge picker auto-includes it because `useRomeHoldings` filters on `kind === "wrap"`.
@@ -72,7 +72,7 @@ That's it. One CPI per outbound transfer, same code path as WETH/WSOL today.
 
 ### Ethereum-origin asset — inbound + outbound, requires Solidity work
 
-For tokens that originate on Ethereum (USDC, ETH, future ERC20s reaching Marcus through CCTP/Wormhole), the outbound path needs a per-asset entry on `RomeBridgeWithdraw`:
+For tokens that originate on Ethereum (USDC, ETH, future ERC20s reaching Rome through CCTP/Wormhole), the outbound path needs a per-asset entry on `RomeBridgeWithdraw`:
 
 1. Add the mint base58 to `constants.ts` under `SPL_MINTS`.
 2. Add a `deploySplErc20` call in `main()` for the new symbol.

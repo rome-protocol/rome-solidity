@@ -7,7 +7,7 @@ async function main() {
   const [a] = await viem.getWalletClients();
   const pc = await viem.getPublicClient();
   const deployer = a.account!.address;
-  const d = JSON.parse(fs.readFileSync("deployments/marcus.json", "utf8"));
+  const d = JSON.parse(fs.readFileSync("deployments/rome.json", "utf8"));
   const RETH = d.SPL_ERC20_WETH.address;
   const WITHDRAW = d.RomeBridgeWithdraw.address;
   console.log("rETH:", RETH);

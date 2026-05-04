@@ -68,13 +68,13 @@ describe("UserPda", () => {
     // ──────────────────────────────────────────────────────────────────
     // Live-Rome paths — skipped on hardhatMainnet (no find_program_address
     // precompile). Adapter integration tests on `--network local` /
-    // `--network marcus` cover these paths end-to-end.
+    // `--network <chain>` cover these paths end-to-end.
     // ──────────────────────────────────────────────────────────────────
 
     it("ataForKey / pda / ata require live Rome stack — skipped on hardhatMainnet", async () => {
         // Placeholder test recording the skip rationale. The UserPda write
         // paths are covered by each refactored adapter's integration test
-        // (Meteora / Kamino / Drift, Phase 2) which runs against Marcus.
+        // (Meteora / Kamino / Drift, Phase 2) which runs against Rome.
         assert.ok(true);
     });
 });

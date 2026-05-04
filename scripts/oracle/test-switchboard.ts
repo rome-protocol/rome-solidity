@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Test Switchboard V2 SOL/USD feed on marcus.
+ * Test Switchboard V2 SOL/USD feed on rome.
  *
  * SOL/USD aggregator: GvDMxPzN1sCj7L26YDK2HnMRXEQmQ2aemov8YBtPS7vR
  *   bytes32: 0xec81105112a257d61df4cf5f13ee0a1b019197c8c5343b4f2a7ec8846ae22c1a

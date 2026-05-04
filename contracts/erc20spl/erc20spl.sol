@@ -261,7 +261,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     /// @notice Move this wrapper's underlying SPL out of the caller's
-    /// PDA-owned ATA to an arbitrary Solana wallet. Generic Marcus →
+    /// PDA-owned ATA to an arbitrary Solana wallet. Generic Rome →
     /// Solana exit door for ANY wrapper deployed by the factory —
     /// works the same for WUSDC, WETH, WSOL, JUP, BONK, custom long-tail
     /// tokens. No Wormhole, no CCTP, no per-asset bridge contract: just
@@ -269,7 +269,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     ///
     /// Asymmetry vs. the EVM-side `transfer(address, uint256)`:
     ///   - `to` is a raw Solana wallet pubkey, NOT derived from an EVM
-    ///     address. The recipient does not need a Marcus account.
+    ///     address. The recipient does not need a Rome account.
     ///   - The recipient's ATA for this wrapper's mint is created
     ///     idempotently if missing — the caller's PAYER PDA pays the
     ///     ~0.002 SOL rent (matches Phantom's "send to fresh address"
@@ -369,7 +369,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     /// @notice Emitted on every bridgeOutToSolana call. Indexers / activity
-    /// feeds use this as the canonical "left Marcus" signal — paired
+    /// feeds use this as the canonical "left Rome" signal — paired
     /// with on-chain Solana SPL transfer events for the round-trip.
     event BridgedOutToSolana(
         address indexed from,
