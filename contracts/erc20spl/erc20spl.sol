@@ -48,26 +48,10 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     ERC20Users private _users;
     mapping(address => bytes32) private _accounts;
 
-    /// @notice Canonical SPL token account address for `user` against this
-    /// wrapper's mint.
-    /// @dev Pure derivation. Returns
-    /// `ata(AUTHORITY_PDA(user), mint_id, splTokenProgram)` — same ATA
-    /// `balanceOf` reads (line below at 158) and same destination
-    /// `wrap_gas_to_spl` deposits to and Wormhole `complete_transfer_wrapped`
-    /// lands at. Always non-zero, no per-user activation required.
-    ///
-    /// Pre-#82 this returned `_accounts[user]` (a PAYER_PDA-owned ATA cached
-    /// on first wrapper-mediated call). After #82 migrated `balanceOf` to
-    /// the AUTHORITY_PDA-derived ATA, this reader stayed on the legacy
-    /// mapping — internally inconsistent: `balanceOf(user)` could return a
-    /// non-zero amount while `getAta(user)` returned `bytes32(0)` for any
-    /// user whose tokens arrived via wrap / inbound bridge (which never
-    /// write to `_accounts`). RomeBridgeWithdraw consumed this reader for
-    /// the CCTP / Wormhole burn account; the inconsistency surfaced as
-    /// `mollusk error: Failure(Custom(3007))` from CCTP's depositForBurn
-    /// when fed an empty-or-zero burnTokenAccount.
+    /// @notice Public reader for the SPL token account owned by this EVM user.
+    /// @dev Returns the cached ATA; callers may treat a zero return as "not yet initialized".
     function getAta(address user) external view returns (bytes32) {
-        return UserPda.ata(user, mint_id);
+        return _accounts[user];
     }
 
     error ERC20InvalidApprover(address approver);
@@ -128,11 +112,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
      * @return associated_account_address The address of the associated token account created or existing for the user
      */
     function ensure_token_account(address user) public returns (bytes32) {
-        // ensure_user (not get_user) so a brand-new caller — never
-        // bridged, never wrapped, never registered in ERC20Users — gets
-        // auto-registered on the first call. Self-bootstrapping; no
-        // out-of-band setup tx required. Idempotent for repeat callers.
-        bytes32 payer = _users.ensure_user(msg.sender);
+        bytes32 payer = _users.get_user(msg.sender);
         bytes32 token_account = _accounts[user];
         if (token_account == bytes32(0)) {
             return create_token_account(user, payer);
@@ -179,46 +159,49 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     function transfer(address to, uint256 value) public virtual returns (bool) {
-        return _transfer(msg.sender, to, value);
+        return _transfer(_users.get_user(msg.sender), msg.sender, to, value);
     }
 
-    /// @dev Idempotent: ensures `UserPda.ata(user, mint_id)` (the
-    /// AUTHORITY_PDA-owned ATA) exists on Solana. Skips the create CPI
-    /// when the account already exists — single-CPI fast path. Pays
-    /// rent (when needed) from the supplied PAYER_PDA. Used as the
-    /// recipient-side prepare in `_transfer` and `mint_to`.
-    ///
-    /// The early-return matters: `_transfer` in the direct path signs
-    /// the SPL transfer as AUTHORITY_PDA (empty seeds) while the
-    /// ATA-create signs as PAYER_PDA (`[payer_salt]` seeds). Two
-    /// different signers in one Rome DoTx hits the same emulator
-    /// quirk that forced `bridgeOutToSolana` to skip in-tx ATA-create
-    /// (see comment at line ~342). Skipping the create CPI when the
-    /// ATA is already there avoids the multi-signer scenario entirely
-    /// for the common case (returning recipients, all DEX/router
-    /// flows after the first deposit).
-    function _ensureAuthorityAta(address user, bytes32 payer)
-        internal
-        returns (bytes32)
-    {
-        bytes32 owner = UserPda.pda(user);
-        bytes32 to_ata = UserPda.ataForKey(owner, mint_id);
-        (,,,,, bytes memory existing) = ICrossProgramInvocation(cpi_program).account_info(to_ata);
-        if (existing.length > 0) {
-            return to_ata;
-        }
-        (
-            bytes32 program_id,
-            ICrossProgramInvocation.AccountMeta[] memory accounts,
-            bytes memory data,
-        ) = AssociatedSplToken.create_associated_token_account_idempotent(
-            payer,
-            owner,
-            mint_id,
-            system_program_id,
+    /**
+     * Internal transfer function that performs a token transfer by invoking the SPL Token program's TransferChecked instruction via CPI.
+     * @param user The User struct containing payer and seeds for the signer
+     * @param from EVM address of the sender
+     * @param to EVM address of the recipient
+     * @param value amount of tokens to transfer (in the smallest unit, e.g. if decimals is 6, then value should be in micro-units)
+     * 
+     * @return success Returns true if the transfer was successful
+     */
+    function _transfer(
+        bytes32 user,
+        address from,
+        address to,
+        uint256 value
+    ) internal returns (bool) {
+        require(value <= type(uint64).max, "Transfer amount exceeds uint64");
+        // Auto-create the recipient's PDA-owned ATA on first transfer.
+        // Without this, sending an SPL_ERC20 wrapper to a fresh address
+        // reverts with "Token account does not exist" because the
+        // recipient never went through the wrapper's
+        // `ensure_token_account` flow (no inbound bridge, no prior
+        // receive). MetaMask's `eth_call` simulation surfaces the
+        // revert as a greyed-out Send button, leaving users unable to
+        // transfer their tokens. Idempotent: returns the cached /
+        // existing ATA when it's already there, costs ~0.002 SOL rent
+        // (paid by the sender / spender) when it's not. Same UX model
+        // as Phantom and every other Solana wallet.
+        bytes32 to_account = ensure_token_account(to);
+        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) =
+        SplTokenLib.transfer_checked(
             SplTokenLib.SPL_TOKEN_PROGRAM,
-            associated_token_program_id
+            get_token_account(from),
+            mint_id,
+            to_account,
+            user,
+            new bytes32[](0),
+            uint64(value),
+            decimals
         );
+
         bytes32[] memory seeds = new bytes32[](1);
         seeds[0] = _users.payer_salt();
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
@@ -227,183 +210,54 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
                 program_id, accounts, data, seeds
             )
         );
-        require(success, string(Convert.revert_msg(result)));
-        return to_ata;
-    }
 
-    /// Internal SPL transfer. Source = AUTHORITY_PDA(from)'s ATA — the
-    /// canonical cross-chain balance location (where Wormhole
-    /// `complete_transfer_wrapped`, native deposits, and `wrap_gas_to_spl`
-    /// land tokens; what `balanceOf` and `getAta` read). Authority depends
-    /// on caller context:
-    ///   * Direct path (`msg.sender == from`): sign as AUTHORITY_PDA(from)
-    ///     with empty seeds — same auth model as `bridgeOutToSolana`.
-    ///   * Delegated path (`msg.sender != from` — `transferFrom`): sign as
-    ///     PAYER_PDA(spender) (the delegate set by `approve`) with
-    ///     `[payer_salt]` seeds. SPL token program recognizes the signer
-    ///     as a delegate via the source account's delegate field and
-    ///     auto-decrements `delegated_amount`.
-    ///
-    /// Recipient ATA is the AUTHORITY_PDA(to)-owned ATA. Idempotent
-    /// create runs only if the ATA is missing. Sender's PAYER_PDA pays
-    /// rent — same Phantom-like UX as the prior `ensure_token_account`
-    /// path.
-    ///
-    /// Pre-#82 this used the `_accounts` mapping (PAYER_PDA-owned ATA
-    /// cached on first wrapper-mediated call). Post-#82 `balanceOf` /
-    /// `getAta` migrated to AUTHORITY_PDA's ATA, but `_transfer` /
-    /// `approve` / `transferFrom` stayed on the legacy `_accounts`
-    /// mapping — internally inconsistent. A user with bridged-in
-    /// balance saw a non-zero `balanceOf` but `approve` / `transferFrom`
-    /// failed inside Solana with `mollusk error: Failure(Custom(1))`
-    /// because the legacy ATA had zero balance. This commit closes
-    /// that gap; standard ERC20 `approve` + `transferFrom` works for
-    /// any user whose tokens are in their canonical AUTHORITY_PDA ATA.
-    /// One-time bootstrap of the caller's PAYER_PDA on Solana.
-    /// `factory.create_user()` already does this (1M lamports from the
-    /// rome-evm operator), but bridged-in / wrap-funded users may never
-    /// have called it. `ensure_user` (the post-#101 auto-register) writes
-    /// the ERC20Users Rome-side mapping but does NOT fund the Solana
-    /// PAYER_PDA — so any wrapper write path that needs to allocate
-    /// recipient ATA rent hits mollusk Custom(1) (System Program
-    /// InsufficientFunds). This helper closes that gap. Idempotent: the
-    /// underlying `create_payer` returns immediately if the PDA already
-    /// has ≥ requested lamports.
-    function _ensurePayerFunded(address user) internal {
-        RomeEVMAccount.create_payer(user, 1_000_000, _users.payer_salt());
-    }
-
-    function _transfer(address from, address to, uint256 value) internal returns (bool) {
-        require(value <= type(uint64).max, "Transfer amount exceeds uint64");
-
-        bytes32 from_authority_pda = UserPda.pda(from);
-        bytes32 from_ata = UserPda.ataForKey(from_authority_pda, mint_id);
-
-        // Recipient-ATA create rent must be paid from a Solana account
-        // with non-zero lamports. We fund it from the value-originator's
-        // PAYER_PDA (`from` here, which is also tx.origin in the direct
-        // path or the user that signed the approve in the delegated
-        // path). Why `from` and not `msg.sender`:
-        //   * `msg.sender` may be a contract (router, paymaster, etc.)
-        //     whose PAYER_PDA was never funded — contracts don't go
-        //     through `factory.create_user`, and `ensure_user` only
-        //     writes the Rome-side mapping.
-        //   * `from` represents the value-originator; charging them rent
-        //     for downstream Solana state matches the Phantom-style
-        //     "sender pays for recipient" UX and the existing
-        //     `bridgeOutToSolana` precedent.
-        // Bootstrap their PAYER_PDA the first time it's used — same
-        // 1M-lamport floor as `factory.create_user`. Idempotent: no-op
-        // when already funded.
-        _ensurePayerFunded(from);
-        bytes32 from_payer_pda = _users.ensure_user(from);
-        // Register the spender too so other consumers see consistent state.
-        _users.ensure_user(msg.sender);
-        bytes32 to_ata = _ensureAuthorityAta(to, from_payer_pda);
-
-        bytes32 authority;
-        bytes32[] memory seeds;
-        if (msg.sender == from) {
-            authority = from_authority_pda;
-            seeds = new bytes32[](0);
-        } else {
-            // Delegated path: signer = PAYER_PDA(spender) (matches the
-            // delegate set in `approve`). `[payer_salt]` seeds let the
-            // CPI sign as that PDA. The spender's PAYER_PDA needs to
-            // exist on-chain (just so the SPL token program can verify
-            // the signer matches the delegate field) but not be funded
-            // — recipient-ATA rent already came from `from`'s PDA above.
-            _ensurePayerFunded(msg.sender);
-            authority = _users.ensure_user(msg.sender);
-            seeds = new bytes32[](1);
-            seeds[0] = _users.payer_salt();
-        }
-
-        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) =
-        SplTokenLib.transfer_checked(
-            SplTokenLib.SPL_TOKEN_PROGRAM,
-            from_ata,
-            mint_id,
-            to_ata,
-            authority,
-            new bytes32[](0),
-            uint64(value),
-            decimals
-        );
-
-        (bool success, bytes memory result) = address(cpi_program).delegatecall(
-            abi.encodeWithSignature(
-                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
-                program_id, accounts, data, seeds
-            )
-        );
-        require(success, string(Convert.revert_msg(result)));
+        require (success, string(Convert.revert_msg(result)));
         emit Transfer(from, to, value);
         return true;
     }
 
-    /// @dev View — never reverts. Returns 0 when spender has no
-    /// allowance OR the owner's ATA doesn't exist yet. Reads the
-    /// SPL delegate field on AUTHORITY_PDA(owner)'s ATA (the canonical
-    /// balance ATA, post write-path migration). Spender's expected
-    /// delegate pubkey is derived deterministically as
-    /// `RomeEVMAccount.get_payer(spender, payer_salt)` — no
-    /// state-write to `ERC20Users` is needed for a view function.
     function allowance(address owner, address spender) public view virtual returns (uint256) {
-        bytes32 spender_payer_pda = RomeEVMAccount.get_payer(spender, _users.payer_salt());
-        bytes32 owner_ata = UserPda.ata(owner, mint_id);
-        (,,,,, bytes memory acct_data) = ICrossProgramInvocation(cpi_program).account_info(owner_ata);
-        if (acct_data.length == 0) {
-            return uint256(0);
-        }
+        bytes32 spenderUser = _users.get_user(spender);
         (bytes32 delegate, uint64 delegated_amount) =
-                            SplTokenLib.load_token_account_delegate(owner_ata, cpi_program);
-        if (delegate != spender_payer_pda) {
+                            SplTokenLib.load_token_account_delegate(get_token_account(owner), cpi_program);
+        if (delegate != spenderUser) {
             return uint256(0);
         }
+
         return uint256(delegated_amount);
     }
 
-    /// SPL approve on the AUTHORITY_PDA(msg.sender)-owned ATA (where
-    /// the user's tokens actually live). Delegate = PAYER_PDA(spender)
-    /// — the address `transferFrom` will sign as. Owner +
-    /// authority-signer = AUTHORITY_PDA(msg.sender), signed with empty
-    /// seeds (same pattern as `bridgeOutToSolana`).
     function approve(address spender, uint256 value) public virtual returns (bool) {
-        require(value <= type(uint64).max, "Approve amount exceeds uint64");
-        // Register both parties in ERC20Users so other consumers
-        // (including `transferFrom`) and any future allowance-reader
-        // helpers see consistent PAYER PDAs. Idempotent.
-        _users.ensure_user(msg.sender);
-        bytes32 spender_payer_pda = _users.ensure_user(spender);
+        bytes32 ownerUser = _users.get_user(msg.sender);
+        bytes32 spenderUser = _users.get_user(spender);
 
-        bytes32 owner_authority_pda = UserPda.pda(msg.sender);
-        bytes32 owner_ata = UserPda.ataForKey(owner_authority_pda, mint_id);
-
-        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) =
+        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) = 
         SplTokenLib.approve(
             SplTokenLib.SPL_TOKEN_PROGRAM,
-            owner_ata,
-            spender_payer_pda,
-            owner_authority_pda,
+            get_token_account(msg.sender),
+            spenderUser,
+            ownerUser,
             new bytes32[](0),
             uint64(value)
         );
 
-        bytes32[] memory seeds = new bytes32[](0); // sign as AUTHORITY_PDA
+        bytes32[] memory seeds = new bytes32[](1);
+        seeds[0] = _users.payer_salt();
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
                 "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
                 program_id, accounts, data, seeds
             )
         );
-        require(success, string(Convert.revert_msg(result)));
+
+        require (success, string(Convert.revert_msg(result)));
         emit Approval(msg.sender, spender, value);
         return true;
     }
 
     function transferFrom(address from, address to, uint256 value) public virtual returns (bool) {
-        return _transfer(from, to, value);
+        address spender = msg.sender;
+        return _transfer(_users.get_user(spender), from, to, value);
     }
 
     /// @notice Move this wrapper's underlying SPL out of the caller's
@@ -465,11 +319,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // answer for bridged-in tokens. bridgeOutToSolana takes the
         // direct path.
         bytes32 authority_pda = RomeEVMAccount.pda(msg.sender);
-        // ensure_user (not get_user) so users who only have bridged-in
-        // tokens (never called create_user) can still bridge out — the
-        // first outbound auto-registers. payer_pda is read for
-        // potential future ATA-create reintroduction (see comment below).
-        bytes32 payer_pda = _users.ensure_user(msg.sender);
+        bytes32 payer_pda = _users.get_user(msg.sender);
 
         bytes32 from_ata = UserPda.ataForKey(authority_pda, mint_id);
 
@@ -554,12 +404,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     {
         require(solana_recipient != bytes32(0), "Solana recipient cannot be zero");
 
-        // ensure_user (not get_user) so users with bridged-in tokens
-        // who never called create_user can still ensure recipient ATAs.
-        // _ensurePayerFunded bootstraps the PAYER_PDA's SOL balance to
-        // 1M lamports — covers the ATA-create rent CPI below.
-        _ensurePayerFunded(msg.sender);
-        bytes32 payer_pda = _users.ensure_user(msg.sender);
+        bytes32 payer_pda = _users.get_user(msg.sender);
 
         (
             bytes32 program_id,
@@ -603,17 +448,12 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     function mint_to(address to, uint256 value) public virtual returns (bool) {
         require(value <= type(uint64).max, "Mint amount exceeds uint64");
 
-        // Bootstrap the minter's PAYER_PDA on Solana so the recipient
-        // ATA-create CPI below has rent-funded source lamports. Idempotent.
-        _ensurePayerFunded(msg.sender);
-        bytes32 user = _users.ensure_user(msg.sender);
-        // Destination = AUTHORITY_PDA(to)'s ATA — the canonical ATA
-        // `balanceOf(to)` reads. Pre-migration this minted into
-        // PAYER_PDA(to)'s ATA, leaving the recipient's `balanceOf`
-        // showing 0 even after a successful mint (the legacy `_accounts`
-        // ATA wasn't where balance is read). Idempotent create — no-op
-        // when the ATA already exists.
-        bytes32 to_account = _ensureAuthorityAta(to, user);
+        bytes32 user = _users.get_user(msg.sender);
+        // Mint to a fresh address: ensure the recipient's PDA-owned
+        // ATA exists before the SPL mint_to_checked CPI. Same
+        // idempotent pattern as `_transfer` above — no-op when the
+        // ATA already exists.
+        bytes32 to_account = ensure_token_account(to);
         (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data)
             = SplTokenLib.mint_to_checked(
             SplTokenLib.SPL_TOKEN_PROGRAM,
