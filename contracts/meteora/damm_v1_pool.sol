@@ -1477,8 +1477,7 @@ contract ERC20DAMMv1Pool {
         );
 
         bytes memory data = DAMMv1Lib.build_swap_ix_data(uint64(amount_in), uint64(min_amount_out));
-        bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = users.payer_salt();
+        bytes32[] memory seeds = new bytes32[](0);
 
         (bool success, bytes memory result) = address(internal_pool.cpi_program()).delegatecall(
             abi.encodeWithSelector(
@@ -1514,8 +1513,7 @@ contract ERC20DAMMv1Pool {
             uint64(minimum_a_token_out),
             uint64(minimum_b_token_out)
         );
-        bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = users.payer_salt();
+        bytes32[] memory seeds = new bytes32[](0);
 
         (bool success, bytes memory result) = address(internal_pool.cpi_program()).delegatecall(
             abi.encodeWithSelector(
@@ -1555,8 +1553,7 @@ contract ERC20DAMMv1Pool {
             uint64(max_token_a_amount),
             uint64(max_token_b_amount)
         );
-        bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = users.payer_salt();
+        bytes32[] memory seeds = new bytes32[](0);
 
         (bool success, bytes memory result) = address(internal_pool.cpi_program()).delegatecall(
             abi.encodeWithSelector(
@@ -1599,8 +1596,7 @@ contract ERC20DAMMv1Pool {
             AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
         );
 
-        bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = users.payer_salt();
+        bytes32[] memory seeds = new bytes32[](0);
 
         (bool success, bytes memory result) = address(internal_pool.cpi_program()).delegatecall(
             abi.encodeWithSelector(

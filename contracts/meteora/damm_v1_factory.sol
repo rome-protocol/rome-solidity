@@ -107,7 +107,7 @@ contract MeteoraDAMMv1Factory {
             accounts_,
             prog_dynamic_vault
         );
-        _invoke_signed(ix, token_factory.users().payer_salt());
+        _invoke_signed(ix);
         return (vault, true);
     }
 
@@ -150,7 +150,7 @@ contract MeteoraDAMMv1Factory {
                 token_b_amount,
                 prog_dynamic_amm
             );
-        _invoke_signed(ix, token_factory.users().payer_salt());
+        _invoke_signed(ix);
         pool_pubkey = accounts.pool;
     }
 
@@ -233,9 +233,8 @@ contract MeteoraDAMMv1Factory {
         return address(erc20_pool);
     }
 
-    function _invoke_signed(SystemProgramLib.Instruction memory ix, bytes32 seed) internal {
-        bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = seed;
+    function _invoke_signed(SystemProgramLib.Instruction memory ix) internal {
+        bytes32[] memory seeds = new bytes32[](0);
 
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSelector(

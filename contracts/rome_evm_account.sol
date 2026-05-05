@@ -53,12 +53,12 @@ library RomeEVMAccount {
         return key;
     }
 
-    function get_payer(address user, bytes32 salt) internal view returns (bytes32) {
-        return pda_with_salt(user, salt);
+    function get_payer(address user) internal view returns (bytes32) {
+        return pda(user);
     }
 
-    function create_payer(address user, uint64 lamports, bytes32 salt) internal {
-        bytes32 key = get_payer(user, salt);
+    function create_payer(address user, uint64 lamports) internal {
+        bytes32 key = get_payer(user);
 
         (uint64 current_lamports,,,,,) = CpiProgram.account_info(key);
         if (current_lamports == 0) {

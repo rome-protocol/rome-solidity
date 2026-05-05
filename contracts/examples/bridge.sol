@@ -60,8 +60,7 @@ contract UnwrapSplToGasContract  {
     }
 
     function create_payer()  public {
-        bytes32 salt = Convert.bytes_to_bytes32(bytes("PAYER"));
-        RomeEVMAccount.create_payer(msg.sender, 10000000, salt);
+        RomeEVMAccount.create_payer(msg.sender, 10000000);
     }
 
     function payer() internal view returns (bytes32) {

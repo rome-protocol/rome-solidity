@@ -55,13 +55,11 @@ contract orra_example {
     bytes32 public constant ORRA_PROGRAM_ID = 0x0c011697d4d36ab9571d6cfd88c3c45c6c9249cece2756ccd780781bb1f981d2;
 
     function create_payer_account() external {
-        bytes32 salt = Convert.bytes_to_bytes32(bytes("PAYER"));
-        RomeEVMAccount.create_payer(msg.sender, 1000000000, salt);
+        RomeEVMAccount.create_payer(msg.sender, 1000000000);
     }
 
     function create_sub_user_key() external {
-        bytes32 salt = Convert.bytes_to_bytes32(bytes("SUB_USER_KEY"));
-        bytes32 key = RomeEVMAccount.pda_with_salt(msg.sender, salt);
+        bytes32 key = RomeEVMAccount.pda(msg.sender);
 
         (uint64 lamports,,,,,) = CpiProgram.account_info(key);
         if (lamports == 0) {

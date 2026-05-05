@@ -11,8 +11,6 @@ import {UserPda} from "../cpi/UserPda.sol";
 import {Convert} from "../convert.sol";
 
 contract ERC20Users {
-    bytes32 public payer_salt = Convert.bytes_to_bytes32(bytes("PAYER"));
-
     mapping (address => bytes32) private users;
 
     /// 1M lamports (~0.001 SOL): rent-exempt floor for the PAYER PDA.
@@ -43,9 +41,9 @@ contract ERC20Users {
     function ensure_user(address user) public returns (bytes32) {
         bytes32 existing_user = users[user];
         if (existing_user == bytes32(0)) {
-            bytes32 new_user = RomeEVMAccount.get_payer(user, payer_salt);
+            bytes32 new_user = RomeEVMAccount.get_payer(user);
             users[user] = new_user;
-            RomeEVMAccount.create_payer(user, CREATE_PAYER_LAMPORTS, payer_salt);
+            RomeEVMAccount.create_payer(user, CREATE_PAYER_LAMPORTS);
             return new_user;
         } else {
             return existing_user;
@@ -118,8 +116,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
                 associated_token_program_id
             );
         
-        bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = _users.payer_salt();
+        bytes32[] memory seeds = new bytes32[](0);
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
                 "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
@@ -231,8 +228,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             decimals
         );
 
-        bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = _users.payer_salt();
+        bytes32[] memory seeds = new bytes32[](0);
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
                 "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
@@ -276,8 +272,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             uint64(value)
         );
 
-        bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = _users.payer_salt();
+        bytes32[] memory seeds = new bytes32[](0);
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
                 "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
@@ -455,8 +450,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             associated_token_program_id
         );
 
-        bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = _users.payer_salt();
+        bytes32[] memory seeds = new bytes32[](0);
 
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
@@ -500,8 +494,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             decimals
         );
 
-        bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = _users.payer_salt();
+        bytes32[] memory seeds = new bytes32[](0);
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
                 "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",

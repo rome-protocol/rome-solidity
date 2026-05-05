@@ -114,8 +114,7 @@ contract ERC20SPLFactory {
         users.ensure_user(msg.sender);
         RomeEVMAccount.create_payer(
             msg.sender,
-            CREATE_PAYER_LAMPORTS,
-            users.payer_salt()
+            CREATE_PAYER_LAMPORTS
         );
     }
 
@@ -169,9 +168,8 @@ contract ERC20SPLFactory {
             SplTokenLib.SPL_TOKEN_PROGRAM
         );
 
-        bytes32[] memory seeds = new bytes32[](2);
-        seeds[0] = users.payer_salt();
-        seeds[1] = mintSeed;
+        bytes32[] memory seeds = new bytes32[](1);
+        seeds[0] = mintSeed;
 
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
