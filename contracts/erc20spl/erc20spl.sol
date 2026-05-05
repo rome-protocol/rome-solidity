@@ -259,14 +259,47 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     /// because the legacy ATA had zero balance. This commit closes
     /// that gap; standard ERC20 `approve` + `transferFrom` works for
     /// any user whose tokens are in their canonical AUTHORITY_PDA ATA.
+    /// One-time bootstrap of the caller's PAYER_PDA on Solana.
+    /// `factory.create_user()` already does this (1M lamports from the
+    /// rome-evm operator), but bridged-in / wrap-funded users may never
+    /// have called it. `ensure_user` (the post-#101 auto-register) writes
+    /// the ERC20Users Rome-side mapping but does NOT fund the Solana
+    /// PAYER_PDA — so any wrapper write path that needs to allocate
+    /// recipient ATA rent hits mollusk Custom(1) (System Program
+    /// InsufficientFunds). This helper closes that gap. Idempotent: the
+    /// underlying `create_payer` returns immediately if the PDA already
+    /// has ≥ requested lamports.
+    function _ensurePayerFunded(address user) internal {
+        RomeEVMAccount.create_payer(user, 1_000_000, _users.payer_salt());
+    }
+
     function _transfer(address from, address to, uint256 value) internal returns (bool) {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
 
         bytes32 from_authority_pda = UserPda.pda(from);
         bytes32 from_ata = UserPda.ataForKey(from_authority_pda, mint_id);
 
-        bytes32 sender_payer_pda = _users.ensure_user(msg.sender);
-        bytes32 to_ata = _ensureAuthorityAta(to, sender_payer_pda);
+        // Recipient-ATA create rent must be paid from a Solana account
+        // with non-zero lamports. We fund it from the value-originator's
+        // PAYER_PDA (`from` here, which is also tx.origin in the direct
+        // path or the user that signed the approve in the delegated
+        // path). Why `from` and not `msg.sender`:
+        //   * `msg.sender` may be a contract (router, paymaster, etc.)
+        //     whose PAYER_PDA was never funded — contracts don't go
+        //     through `factory.create_user`, and `ensure_user` only
+        //     writes the Rome-side mapping.
+        //   * `from` represents the value-originator; charging them rent
+        //     for downstream Solana state matches the Phantom-style
+        //     "sender pays for recipient" UX and the existing
+        //     `bridgeOutToSolana` precedent.
+        // Bootstrap their PAYER_PDA the first time it's used — same
+        // 1M-lamport floor as `factory.create_user`. Idempotent: no-op
+        // when already funded.
+        _ensurePayerFunded(from);
+        bytes32 from_payer_pda = _users.ensure_user(from);
+        // Register the spender too so other consumers see consistent state.
+        _users.ensure_user(msg.sender);
+        bytes32 to_ata = _ensureAuthorityAta(to, from_payer_pda);
 
         bytes32 authority;
         bytes32[] memory seeds;
@@ -274,7 +307,14 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             authority = from_authority_pda;
             seeds = new bytes32[](0);
         } else {
-            authority = sender_payer_pda;
+            // Delegated path: signer = PAYER_PDA(spender) (matches the
+            // delegate set in `approve`). `[payer_salt]` seeds let the
+            // CPI sign as that PDA. The spender's PAYER_PDA needs to
+            // exist on-chain (just so the SPL token program can verify
+            // the signer matches the delegate field) but not be funded
+            // — recipient-ATA rent already came from `from`'s PDA above.
+            _ensurePayerFunded(msg.sender);
+            authority = _users.ensure_user(msg.sender);
             seeds = new bytes32[](1);
             seeds[0] = _users.payer_salt();
         }
@@ -516,6 +556,9 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
 
         // ensure_user (not get_user) so users with bridged-in tokens
         // who never called create_user can still ensure recipient ATAs.
+        // _ensurePayerFunded bootstraps the PAYER_PDA's SOL balance to
+        // 1M lamports — covers the ATA-create rent CPI below.
+        _ensurePayerFunded(msg.sender);
         bytes32 payer_pda = _users.ensure_user(msg.sender);
 
         (
@@ -560,6 +603,9 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     function mint_to(address to, uint256 value) public virtual returns (bool) {
         require(value <= type(uint64).max, "Mint amount exceeds uint64");
 
+        // Bootstrap the minter's PAYER_PDA on Solana so the recipient
+        // ATA-create CPI below has rent-funded source lamports. Idempotent.
+        _ensurePayerFunded(msg.sender);
         bytes32 user = _users.ensure_user(msg.sender);
         // Destination = AUTHORITY_PDA(to)'s ATA — the canonical ATA
         // `balanceOf(to)` reads. Pre-migration this minted into
