@@ -15,11 +15,37 @@ contract ERC20Users {
 
     mapping (address => bytes32) private users;
 
+    /// 1M lamports (~0.001 SOL): rent-exempt floor for the PAYER PDA.
+    /// Same constant as `ERC20SPLFactory.CREATE_PAYER_LAMPORTS` — kept
+    /// in sync. Originally `ensure_user` funded with 1 SOL; later
+    /// `factory.create_user` lowered to 1M (rome-solidity commit 4855441
+    /// "lower per-user payer prefund 1 SOL → 0.01 SOL"). Matching that
+    /// floor here.
+    uint64 internal constant CREATE_PAYER_LAMPORTS = 1_000_000;
+
+    /// @notice Idempotent registration + Solana-side PAYER_PDA bootstrap.
+    /// @dev On first call for `user`: writes the mapping AND funds
+    /// `PAYER_PDA(user)` with 1M lamports — same dual side-effect as
+    /// `factory.create_user()`. Repeat calls are no-ops (mapping write
+    /// skipped if already set; `create_payer` short-circuits when the PDA
+    /// already has ≥ requested lamports).
+    ///
+    /// History: the auto-fund call was present in the original
+    /// `ensure_user` (rome-solidity commit d881eff) but was dropped in
+    /// commit 0751b75 ("change token ownership model"). Bridge contracts'
+    /// comments — e.g. `RomeBridgeWithdraw.sol:215` "the PAYER salt PDA
+    /// is pre-funded with 1 SOL in ERC20Users.ensure_user" — still
+    /// document the pre-0751b75 contract. This restores the documented
+    /// behavior so callers don't have to invoke `factory.create_user`
+    /// explicitly before any wrapper-mediated mutation. Bridged-in /
+    /// wrap-funded users + DEX router contracts now self-bootstrap on
+    /// first interaction.
     function ensure_user(address user) public returns (bytes32) {
         bytes32 existing_user = users[user];
         if (existing_user == bytes32(0)) {
             bytes32 new_user = RomeEVMAccount.get_payer(user, payer_salt);
             users[user] = new_user;
+            RomeEVMAccount.create_payer(user, CREATE_PAYER_LAMPORTS, payer_salt);
             return new_user;
         } else {
             return existing_user;
@@ -112,7 +138,10 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
      * @return associated_account_address The address of the associated token account created or existing for the user
      */
     function ensure_token_account(address user) public returns (bytes32) {
-        bytes32 payer = _users.get_user(msg.sender);
+        // ensure_user (not get_user) so a brand-new caller — never bridged,
+        // never wrapped, never registered in ERC20Users — gets auto-registered
+        // and PAYER_PDA-funded on first call. Idempotent for repeat callers.
+        bytes32 payer = _users.ensure_user(msg.sender);
         bytes32 token_account = _accounts[user];
         if (token_account == bytes32(0)) {
             return create_token_account(user, payer);
@@ -159,7 +188,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     function transfer(address to, uint256 value) public virtual returns (bool) {
-        return _transfer(_users.get_user(msg.sender), msg.sender, to, value);
+        return _transfer(_users.ensure_user(msg.sender), msg.sender, to, value);
     }
 
     /**
@@ -228,8 +257,14 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     function approve(address spender, uint256 value) public virtual returns (bool) {
-        bytes32 ownerUser = _users.get_user(msg.sender);
-        bytes32 spenderUser = _users.get_user(spender);
+        // ensure_user on both sides — both owner AND spender need
+        // ERC20Users entries (the SPL approve sets PAYER_PDA(spender)
+        // as delegate, and transferFrom signs as that PDA). Without
+        // auto-register, contract spenders (DEX routers, paymasters)
+        // can never be approved-to since they have no natural way to
+        // call factory.create_user themselves.
+        bytes32 ownerUser = _users.ensure_user(msg.sender);
+        bytes32 spenderUser = _users.ensure_user(spender);
 
         (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) = 
         SplTokenLib.approve(
@@ -257,7 +292,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
 
     function transferFrom(address from, address to, uint256 value) public virtual returns (bool) {
         address spender = msg.sender;
-        return _transfer(_users.get_user(spender), from, to, value);
+        return _transfer(_users.ensure_user(spender), from, to, value);
     }
 
     /// @notice Move this wrapper's underlying SPL out of the caller's
@@ -319,7 +354,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // answer for bridged-in tokens. bridgeOutToSolana takes the
         // direct path.
         bytes32 authority_pda = RomeEVMAccount.pda(msg.sender);
-        bytes32 payer_pda = _users.get_user(msg.sender);
+        bytes32 payer_pda = _users.ensure_user(msg.sender);
 
         bytes32 from_ata = UserPda.ataForKey(authority_pda, mint_id);
 
@@ -404,7 +439,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     {
         require(solana_recipient != bytes32(0), "Solana recipient cannot be zero");
 
-        bytes32 payer_pda = _users.get_user(msg.sender);
+        bytes32 payer_pda = _users.ensure_user(msg.sender);
 
         (
             bytes32 program_id,
@@ -448,7 +483,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     function mint_to(address to, uint256 value) public virtual returns (bool) {
         require(value <= type(uint64).max, "Mint amount exceeds uint64");
 
-        bytes32 user = _users.get_user(msg.sender);
+        bytes32 user = _users.ensure_user(msg.sender);
         // Mint to a fresh address: ensure the recipient's PDA-owned
         // ATA exists before the SPL mint_to_checked CPI. Same
         // idempotent pattern as `_transfer` above — no-op when the
