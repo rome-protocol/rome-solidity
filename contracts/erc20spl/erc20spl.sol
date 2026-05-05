@@ -74,10 +74,26 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     ERC20Users private _users;
     mapping(address => bytes32) private _accounts;
 
-    /// @notice Public reader for the SPL token account owned by this EVM user.
-    /// @dev Returns the cached ATA; callers may treat a zero return as "not yet initialized".
+    /// @notice Public reader for the SPL token account address owned by
+    /// this EVM user — the canonical AUTHORITY_PDA-owned ATA where this
+    /// wrapper's underlying SPL tokens land for that user.
+    /// @dev Cache fast-path: returns `_accounts[user]` when populated.
+    /// Fallback: deterministic derivation via `UserPda.ata` — same
+    /// address `create_token_account` would compute and cache, also
+    /// where `wrap_gas_to_spl`, Wormhole `complete_transfer_wrapped`,
+    /// and any inbound flow deposits tokens. Returning the canonical
+    /// address even for users whose `_accounts` mapping was never
+    /// populated keeps `getAta` aligned with `balanceOf` and unblocks
+    /// `RomeBridgeWithdraw.burnUSDC` / `burnETH` for users with wrap-
+    /// or bridge-funded balance. The address may exist on Solana even
+    /// when `_accounts` is unset; downstream SPL CPIs handle the
+    /// "ATA initialized?" check loud-and-early. Never reverts.
     function getAta(address user) external view returns (bytes32) {
-        return _accounts[user];
+        bytes32 cached = _accounts[user];
+        if (cached != bytes32(0)) {
+            return cached;
+        }
+        return UserPda.ata(user, mint_id);
     }
 
     error ERC20InvalidApprover(address approver);
@@ -155,10 +171,25 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
      * @param user EVM address of the user whose associated token account address to retrieve
      * @return associated_account_address The address of the associated token account for the user
      */
+    /// @dev Internal reader used by mutation paths (transfer, approve,
+    /// transferFrom). Cache fast-path: returns `_accounts[user]` when
+    /// populated. Fallback: deterministic derivation via `UserPda.ata`
+    /// — same address `create_token_account` would compute and cache,
+    /// also where `wrap_gas_to_spl` / Wormhole `complete_transfer_wrapped`
+    /// / native-deposit flows land tokens. Never reverts.
+    ///
+    /// Without the fallback, users with bridge- or wrap-funded balance
+    /// (whose `_accounts[user]` was never written through a wrapper-
+    /// mediated `ensure_token_account` flow) couldn't transfer / approve
+    /// even though `balanceOf` correctly showed their balance and the
+    /// underlying ATA was on-chain. Aligning the read to match
+    /// `balanceOf` closes that gap.
     function get_token_account(address user) public view returns (bytes32) {
-        bytes32 token_account = _accounts[user];
-        require(token_account != bytes32(0), "Token account does not exist");
-        return token_account;
+        bytes32 cached = _accounts[user];
+        if (cached != bytes32(0)) {
+            return cached;
+        }
+        return UserPda.ata(user, mint_id);
     }
 
     function name() public view virtual returns (string memory) {
