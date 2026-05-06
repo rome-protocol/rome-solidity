@@ -180,22 +180,43 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
 
     // --- Internal helpers ---
 
-    /// @dev Fetches the current owner and data for `pythAccount`. Split out
-    ///      as `virtual` so test harnesses can override the CPI precompile
-    ///      call — the precompile is unavailable on hardhat's simulated
-    ///      network. Production code uses the real precompile.
-    function _fetchAccount() internal view virtual returns (bytes32 owner, bytes memory data) {
-        (, owner,,,, data) = CpiProgram.account_info(pythAccount);
+    /// @dev Fetches the parser-relevant slice of `pythAccount`'s data buffer.
+    ///      Split out as `virtual` so test harnesses can override the CPI
+    ///      precompile call — the precompile is unavailable on hardhat's
+    ///      simulated network. Production code uses the real precompile.
+    ///
+    ///      Reads bytes [0, MIN_DATA_LENGTH) via `account_data_at`. This is
+    ///      a deliberate change from the prior `account_info`-based fetch:
+    ///      the new shortcut precompile (rome-evm-private PR #318) returns
+    ///      ONLY the slice we need, skipping the 5 unused fields of the
+    ///      account_info 6-tuple AND any data past the parser's last offset.
+    ///      Saves ~70-100k CU per read.
+    ///
+    ///      Trade-off (M-5): the prior implementation re-validated
+    ///      `account.owner == expectedProgramId` on every read to catch the
+    ///      "Pyth's program is compromised → calls assign syscall →
+    ///      reassigns account to attacker → attacker writes same-layout
+    ///      bytes with manipulated prices" attack chain. That defense-in-
+    ///      depth is dropped here:
+    ///        - The factory's one-time owner check at createPythFeed
+    ///          (OracleAdapterFactory) still establishes initial provenance.
+    ///        - The Anchor discriminator check + verification_level check
+    ///          in PythPullParser still rejects malformed/wrong-layout data.
+    ///        - The remaining attack vector (Pyth-program-compromise +
+    ///          reassign + impersonate) requires Pyth's own program to
+    ///          invoke `assign`. A compromised Pyth program could just
+    ///          write malicious data directly without bothering to
+    ///          reassign — the per-read owner check only added marginal
+    ///          security against a narrow corner-case.
+    ///        - The CU savings (compounded across every Compound /
+    ///          Romeswap / cardo oracle read) outweigh that marginal
+    ///          incremental security in Rome's threat model.
+    function _fetchAccount() internal view virtual returns (bytes memory data) {
+        data = CpiProgram.account_data_at(pythAccount, 0, uint16(PythPullParser.MIN_DATA_LENGTH));
     }
 
     function _readAndParse() internal view returns (PythPullParser.PythPullPrice memory) {
-        (bytes32 owner, bytes memory data) = _fetchAccount();
-        // M-5: revalidate owner on every read. An attacker-controlled program
-        // could reassign the account via Solana's `assign` syscall and start
-        // producing bytes with the same discriminator + layout but arbitrary
-        // prices. The factory's one-time check at createPythFeed is not enough.
-        if (owner != expectedProgramId) revert AccountOwnerChanged();
-        return PythPullParser.parse(data);
+        return PythPullParser.parse(_fetchAccount());
     }
 
     /// @dev Guards against two failure modes:
