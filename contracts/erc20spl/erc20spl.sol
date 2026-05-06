@@ -220,8 +220,9 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // populated only after a wrapper-mediated `ensure_token_account`
         // call) would mismatch and report 0 for any user whose tokens
         // arrived via a non-wrapper path.
-        bytes32 ata = UserPda.ata(account, mint_id);
-        return uint256(SplTokenLib.load_token_amount(ata, cpi_program));
+        bytes32 ata = ICrossProgramInvocation(cpi_program).derive_user_ata(account, mint_id);
+        // SPL TokenAccount.amount is a u64 LE at offset 64.
+        return uint256(ICrossProgramInvocation(cpi_program).account_u64_at(ata, 64));
     }
 
     function transfer(address to, uint256 value) public virtual returns (bool) {
