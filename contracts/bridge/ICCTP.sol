@@ -25,7 +25,10 @@ library CCTPLib {
     }
 
     /// @notice All 17 accounts required by the Anchor IDL for deposit_for_burn,
-    ///         grouped into a struct to avoid stack-too-deep at the call site.
+    ///         plus 1 trailing meta required by the post-#266 Mollusk emulator's
+    ///         `ix_store` filter (`rome-evm-private/emulator/src/state.rs`) so
+    ///         the inner CPI to MessageTransmitter::send_message_with_caller can
+    ///         resolve its Anchor event_cpi accounts.
     struct DepositForBurnAccounts {
         bytes32 owner;                      // 1  signer, writable — user's Rome PDA
         bytes32 eventRentPayer;             // 2  signer, writable — pays rent for event data account
@@ -42,8 +45,18 @@ library CCTPLib {
         bytes32 tokenMessengerMinterProgram;// 13 readonly — Token Messenger Minter program ID
         bytes32 tokenProgram;               // 14 readonly — SPL Token program
         bytes32 systemProgram;              // 15 readonly — System program
-        bytes32 eventAuthority;             // 16 readonly — Anchor event authority PDA
+        bytes32 eventAuthority;             // 16 readonly — Anchor event authority PDA (TMM's __event_authority)
         bytes32 program;                    // 17 readonly — Token Messenger Minter program ID (again, as "program")
+        // 18 — POST-#266 EMULATOR WORKAROUND: MessageTransmitter's __event_authority PDA.
+        // TMM's deposit_for_burn CPIs into MessageTransmitter::send_message_with_caller,
+        // which uses Anchor's event_cpi pattern → the inner CPI references
+        // MessageTransmitter's own event_authority (a different PDA from TMM's).
+        // The post-#266 Mollusk emulator's ix_store filter only loads accounts
+        // that appear in the OUTER metas list — without this trailing entry,
+        // the inner CPI's Anchor invariant fails and mollusk returns Custom(1).
+        // Solitaire/Anchor at the TMM layer ignores trailing accounts, so this
+        // is harmless to deposit_for_burn's own validation.
+        bytes32 messageTransmitterEventAuthority; // 18 readonly — MessageTransmitter __event_authority PDA
     }
 
     /// @notice Encodes a deposit_for_burn instruction payload.
@@ -67,7 +80,7 @@ library CCTPLib {
         pure
         returns (ICrossProgramInvocation.AccountMeta[] memory metas)
     {
-        metas = new ICrossProgramInvocation.AccountMeta[](17);
+        metas = new ICrossProgramInvocation.AccountMeta[](18);
 
         metas[0]  = ICrossProgramInvocation.AccountMeta(a.owner,                       true,  true);
         metas[1]  = ICrossProgramInvocation.AccountMeta(a.eventRentPayer,              true,  true);
@@ -86,6 +99,8 @@ library CCTPLib {
         metas[14] = ICrossProgramInvocation.AccountMeta(a.systemProgram,               false, false);
         metas[15] = ICrossProgramInvocation.AccountMeta(a.eventAuthority,              false, false);
         metas[16] = ICrossProgramInvocation.AccountMeta(a.program,                     false, false);
+        // POST-#266 EMULATOR WORKAROUND — see struct comment above.
+        metas[17] = ICrossProgramInvocation.AccountMeta(a.messageTransmitterEventAuthority, false, false);
     }
 
     // -------------------------------------------------------------------------

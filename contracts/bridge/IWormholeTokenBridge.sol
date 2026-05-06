@@ -139,6 +139,16 @@ library WormholeTokenBridgeLib {
         bytes32 system;
         bytes32 wormhole_core;
         bytes32 token;
+        // POST-#266 EMULATOR WORKAROUND: Wormhole Token Bridge program itself.
+        // The 17-account solitaire layout doesn't include the Token Bridge
+        // program in the metas list — only Core Bridge at metas[16]. Post-#266
+        // the Mollusk emulator's `ix_store` filter (rome-evm-private/emulator/
+        // src/state.rs:565-582) only loads accounts that appear in OUTER metas;
+        // without this trailing entry the inner CPI for the Token Bridge fails
+        // because its program account isn't in mollusk's store. Solitaire
+        // iterates positionally on its expected fields and silently ignores
+        // trailing accounts, so this is harmless to the Token Bridge layer.
+        bytes32 token_bridge_program;
     }
 
     function buildTransferWrappedAccounts(TransferWrappedAccounts memory a)
@@ -146,7 +156,7 @@ library WormholeTokenBridgeLib {
         pure
         returns (ICrossProgramInvocation.AccountMeta[] memory metas)
     {
-        metas = new ICrossProgramInvocation.AccountMeta[](17);
+        metas = new ICrossProgramInvocation.AccountMeta[](18);
         metas[0]  = ICrossProgramInvocation.AccountMeta(a.payer,            true,  true);
         metas[1]  = ICrossProgramInvocation.AccountMeta(a.config,           false, false);
         metas[2]  = ICrossProgramInvocation.AccountMeta(a.from,             false, true);
@@ -164,6 +174,8 @@ library WormholeTokenBridgeLib {
         metas[14] = ICrossProgramInvocation.AccountMeta(a.system,           false, false);
         metas[15] = ICrossProgramInvocation.AccountMeta(a.token,            false, false);
         metas[16] = ICrossProgramInvocation.AccountMeta(a.wormhole_core,    false, false);
+        // POST-#266 EMULATOR WORKAROUND — see struct comment above.
+        metas[17] = ICrossProgramInvocation.AccountMeta(a.token_bridge_program, false, false);
     }
 
     // -------------------------------------------------------------------------

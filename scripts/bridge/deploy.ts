@@ -28,25 +28,43 @@ import { PublicKey } from "@solana/web3.js";
 import hardhat from "hardhat";
 import { readDeployments, writeDeployments } from "../lib/deployments.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
-import { SOLANA_PROGRAM_IDS } from "./constants.js";
+import { SOLANA_PROGRAM_IDS, SOLANA_PROGRAM_IDS_DEVNET } from "./constants.js";
 import { deriveCctpAccounts } from "./derive/cctp-accounts.js";
 import { deriveWormholeAccounts } from "./derive/wormhole-accounts.js";
 
 // CPI precompile at 0xff..08 as defined in contracts/interface.sol.
 const CPI_PROGRAM_ADDRESS = "0xFF00000000000000000000000000000000000008" as const;
 
-// Universal Solana constants — same across mainnet / devnet / local (network-invariant).
-const UNIVERSAL = {
-  splTokenProgram:             base58ToBytes32(SOLANA_PROGRAM_IDS.SPL_TOKEN),
-  systemProgram:               base58ToBytes32(SOLANA_PROGRAM_IDS.SYSTEM_PROGRAM),
-  wormholeTokenBridgeProgram:  base58ToBytes32(SOLANA_PROGRAM_IDS.WORMHOLE_TOKEN_BRIDGE),
-  cctpTokenMessengerProgram:   base58ToBytes32(SOLANA_PROGRAM_IDS.CCTP_TOKEN_MESSENGER),
-  cctpMessageTransmitterProgram: base58ToBytes32(SOLANA_PROGRAM_IDS.CCTP_MESSAGE_TRANSMITTER),
-  wormholeCoreProgram:         base58ToBytes32(SOLANA_PROGRAM_IDS.WORMHOLE_CORE),
-  // Sysvars — well-known fixed addresses on all Solana clusters.
-  clockSysvar: base58ToBytes32("SysvarC1ock11111111111111111111111111111111"),
-  rentSysvar:  base58ToBytes32("SysvarRent111111111111111111111111111111111"),
-};
+// Networks that target Solana DEVNET (Wormhole devnet IDs + Sepolia destination).
+// Mainnet networks use the canonical mainnet IDs. Wormhole's program IDs differ
+// per cluster; CCTP's are the same on both. Update this set when bringing up a
+// new chain — adding it here keeps the deploy + sub-PDA derivations consistent.
+const SOLANA_DEVNET_NETWORKS = new Set([
+  "marcus", "cassius", "subura", "esquiline", "aventine", "maximus", "local",
+]);
+
+function programIdsFor(networkName: string) {
+  return SOLANA_DEVNET_NETWORKS.has(networkName)
+    ? SOLANA_PROGRAM_IDS_DEVNET
+    : SOLANA_PROGRAM_IDS;
+}
+
+// Cluster-aware UNIVERSAL block. Wormhole Token Bridge / Core program IDs
+// vary per cluster; CCTP and SPL Token / System Program are identical
+// across clusters.
+function universalFor(networkName: string) {
+  const ids = programIdsFor(networkName);
+  return {
+    splTokenProgram:             base58ToBytes32(ids.SPL_TOKEN),
+    systemProgram:               base58ToBytes32(ids.SYSTEM_PROGRAM),
+    wormholeTokenBridgeProgram:  base58ToBytes32(ids.WORMHOLE_TOKEN_BRIDGE),
+    cctpTokenMessengerProgram:   base58ToBytes32(ids.CCTP_TOKEN_MESSENGER),
+    cctpMessageTransmitterProgram: base58ToBytes32(ids.CCTP_MESSAGE_TRANSMITTER),
+    wormholeCoreProgram:         base58ToBytes32(ids.WORMHOLE_CORE),
+    clockSysvar: base58ToBytes32("SysvarC1ock11111111111111111111111111111111"),
+    rentSysvar:  base58ToBytes32("SysvarRent111111111111111111111111111111111"),
+  };
+}
 
 // -------------------------------------------------------------------------
 // Solana PDA account interface (deployment-specific; derived from chain mints)
@@ -61,6 +79,7 @@ interface SolanaPdaAccounts {
   cctpLocalTokenUsdc:           `0x${string}`;
   cctpSenderAuthorityPda:       `0x${string}`;
   cctpEventAuthority:           `0x${string}`;
+  cctpMessageTransmitterEventAuthority: `0x${string}`;
   // Wormhole PDAs
   wormholeConfig:          `0x${string}`;
   wormholeCustody:         `0x${string}`;
@@ -75,13 +94,19 @@ interface SolanaPdaAccounts {
 
 /// Derives all Solana PDAs required for the RomeBridgeWithdraw constructor.
 /// Both mints are passed in by the caller — never read from a global default —
-/// so the same script works across any Rome chain.
-function loadSolanaPdas(usdcMintBase58: string, wethMintBase58: string): SolanaPdaAccounts {
+/// so the same script works across any Rome chain. The `networkName` selects
+/// which Wormhole program IDs to derive sub-PDAs against (mainnet vs devnet).
+/// CCTP uses the same IDs across clusters so its derivation is unaffected.
+function loadSolanaPdas(usdcMintBase58: string, wethMintBase58: string, networkName: string): SolanaPdaAccounts {
   const usdcMint = new PublicKey(usdcMintBase58);
   const wethMint = new PublicKey(wethMintBase58);
+  const ids = programIdsFor(networkName);
   return {
     ...deriveCctpAccounts(usdcMint),
-    ...deriveWormholeAccounts(wethMint),
+    ...deriveWormholeAccounts(wethMint, {
+      tokenBridgeProgramId: ids.WORMHOLE_TOKEN_BRIDGE,
+      coreProgramId:        ids.WORMHOLE_CORE,
+    }),
   };
 }
 
@@ -146,7 +171,8 @@ export async function deployWithdraw(
   wethMintBase58: string,
 ) {
   const { viem, networkName } = await hardhat.network.connect();
-  const pdas = loadSolanaPdas(usdcMintBase58, wethMintBase58);
+  const pdas = loadSolanaPdas(usdcMintBase58, wethMintBase58, networkName);
+  const UNIVERSAL = universalFor(networkName);
 
   const cctpParams = {
     tokenMessengerProgram:     UNIVERSAL.cctpTokenMessengerProgram,
@@ -160,6 +186,7 @@ export async function deployWithdraw(
     localTokenUsdc:            pdas.cctpLocalTokenUsdc,
     senderAuthorityPda:        pdas.cctpSenderAuthorityPda,
     eventAuthority:            pdas.cctpEventAuthority,
+    messageTransmitterEventAuthority: pdas.cctpMessageTransmitterEventAuthority,
   };
 
   const wormholeParams = {

@@ -93,21 +93,28 @@ contract ERC20SPLFactory {
     }
 
     /// @notice Allocates the ERC20Users `users[msg.sender]` slot AND
-    /// the on-Solana PAYER PDA at 1,000,000 lamports (~0.001 SOL).
+    /// pre-funds the on-Solana unified user PDA at 50,000,000 lamports
+    /// (~0.05 SOL) — sized to cover one outbound CCTP (~13M event-rent)
+    /// + one outbound Wormhole (~2.5M message rent) + several ATA
+    /// creates (~2M each) without manual top-up.
     ///
-    /// 1M is above the 0-byte rent-exempt minimum (~890,880 lamports)
-    /// with ~109k lamports of head-room — enough to keep the PAYER PDA
-    /// rent-exempt indefinitely, but NOT enough to fund subsequent
-    /// operations like ATA creates (~2,039,280 lamports each).
-    ///
-    /// Historical note: this previously transferred 1,000,000,000
-    /// lamports (1 SOL) to the PAYER PDA from the operator account —
-    /// a per-user faucet of gifted protocol funds. That violated Rome's
-    /// design rule (no faucets, no "starter gas on us" subsidies — see
-    /// `/rome/CLAUDE.md`). The fixed-1M floor keeps account creation
-    /// possible while sourcing all bridging / ATA-creation lamports
-    /// from user funds going forward.
-    uint64 internal constant CREATE_PAYER_LAMPORTS = 1_000_000;
+    /// Historical note: original 1B lamport (1 SOL) per-user faucet
+    /// was reduced to 1M (rome-solidity 4855441) under the pre-0acabea
+    /// two-PDA model — a separately-funded PAYER sub-PDA covered bridge
+    /// rent, so the AUTHORITY PDA only needed the 1M rent-exempt floor.
+    /// Under the unified-PDA model (rome-solidity 0acabea — AUTHORITY +
+    /// PAYER collapsed onto a single PDA at
+    /// `find_program_address([EXTERNAL_AUTHORITY, evmAddr])`), the same
+    /// PDA signs CPIs AND pays rent for transient bridge accounts. An
+    /// underfunded PDA blocks the first bridge tx with mollusk
+    /// `Custom(1) = ResultWithNegativeLamports` before the user can
+    /// top up, so the bootstrap is sized to make first-time bridges
+    /// just work. Per `/rome/CLAUDE.md`: this is not a faucet — bridge
+    /// rent is largely reclaimable post-attestation, so the bootstrap
+    /// is a refundable working balance, not a subsidy. A user-funded
+    /// top-up via the Withdraw precompile (debits EVM gas → credits
+    /// PDA SOL) is the right long-term answer for sustained users.
+    uint64 internal constant CREATE_PAYER_LAMPORTS = 50_000_000;
 
     function create_user()
     public {

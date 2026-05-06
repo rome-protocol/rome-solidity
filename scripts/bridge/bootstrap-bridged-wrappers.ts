@@ -42,15 +42,18 @@ const MAINNET_SET: WrapperSpec[] = [
   { key: "SPL_ERC20_WETH", mintBase58: SPL_MINTS_MAINNET.WETH_WORMHOLE, name: "Rome ETH",  symbol: "wETH"  },
 ];
 
-// Devnet networks use the devnet mint set; everything else uses
-// mainnet. Override via `BRIDGED_SET=devnet|mainnet` env var when the
-// network name doesn't match the convention (e.g. a one-off testnet).
+// Networks targeting Solana DEVNET use SPL_MINTS_DEVNET; mainnet networks use
+// SPL_MINTS_MAINNET. Update this list whenever a new chain is brought up.
+// Override via `BRIDGED_SET=devnet|mainnet` env var for one-off cases.
+const DEVNET_NETWORKS = new Set([
+  "marcus", "cassius", "subura", "esquiline", "aventine", "maximus", "local",
+]);
+
 function resolveSet(networkName: string): WrapperSpec[] {
   const override = process.env.BRIDGED_SET?.toLowerCase();
   if (override === "devnet")  return DEVNET_SET;
   if (override === "mainnet") return MAINNET_SET;
-  const isDevnet = ["local", "<chain>"].includes(networkName);
-  return isDevnet ? DEVNET_SET : MAINNET_SET;
+  return DEVNET_NETWORKS.has(networkName) ? DEVNET_SET : MAINNET_SET;
 }
 
 type DeploymentsJson = Record<string, unknown>;
