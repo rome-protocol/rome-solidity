@@ -57,7 +57,9 @@ describe("RomeBridgeWithdraw — error paths", () => {
       "0x0000000000000000000000000000000000000000", // forwarder
       mockUsdc.address, // _usdc (cast to SPL_ERC20 by Solidity)
       mockWeth.address, // _weth (cast to SPL_ERC20 by Solidity)
-      // CctpParams — all fields now required including program IDs
+      // CctpParams — all fields now required including program IDs.
+      // messageTransmitterEventAuthority added for the post-#266 emulator's
+      // ix_store filter on the inner send_message_with_caller CPI.
       {
         tokenMessengerProgram: DUMMY_PROGRAM,
         messageTransmitterProgram: DUMMY_PROGRAM,
@@ -70,6 +72,7 @@ describe("RomeBridgeWithdraw — error paths", () => {
         localTokenUsdc: ZERO_BYTES32,
         senderAuthorityPda: ZERO_BYTES32,
         eventAuthority: ZERO_BYTES32,
+        messageTransmitterEventAuthority: ZERO_BYTES32,
       },
       // WormholeParams — all fields now required including program IDs and sysvars
       {
