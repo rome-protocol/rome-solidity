@@ -55,7 +55,7 @@ library SwitchboardParser {
     uint256 constant RESULT_SCALE_OFFSET = 382;
 
     /// @notice Minimum account data length (must cover through scale field)
-    uint256 constant MIN_DATA_LENGTH = 386;
+    uint256 internal constant MIN_DATA_LENGTH = 386;
 
     struct SwitchboardPrice {
         int128 mantissa;

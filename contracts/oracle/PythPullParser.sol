@@ -33,7 +33,7 @@ library PythPullParser {
     error PythPullDataTooShort();
     error UnsupportedVerificationVariant();
 
-    uint256 constant MIN_DATA_LENGTH = 133;
+    uint256 internal constant MIN_DATA_LENGTH = 133;
 
     /// @notice Anchor discriminator for PriceUpdateV2
     /// sha256("account:PriceUpdateV2")[0..8]

@@ -172,18 +172,20 @@ contract SwitchboardV3Adapter is IExtendedOracleAdapter, IAdapterMetadata {
 
     // --- Internal helpers ---
 
-    /// @dev Fetches the current owner and data for `switchboardAccount`.
-    ///      Split out as `virtual` so test harnesses can override the CPI
-    ///      precompile call (unavailable on hardhat's simulated network).
-    function _fetchAccount() internal view virtual returns (bytes32 owner, bytes memory data) {
-        (, owner,,,, data) = CpiProgram.account_info(switchboardAccount);
+    /// @dev Fetches the parser-relevant slice of `switchboardAccount`'s data
+    ///      buffer via the `account_data_at` precompile shortcut. Split as
+    ///      `virtual` so test harnesses can override the CPI precompile call
+    ///      (unavailable on hardhat's simulated network).
+    ///
+    ///      Reads bytes [0, MIN_DATA_LENGTH) — same security trade-off as
+    ///      PythPullAdapter._fetchAccount; see that contract for the M-5
+    ///      audit-finding deferral rationale.
+    function _fetchAccount() internal view virtual returns (bytes memory data) {
+        data = CpiProgram.account_data_at(switchboardAccount, 0, uint16(SwitchboardParser.MIN_DATA_LENGTH));
     }
 
     function _readAndParse() internal view returns (SwitchboardParser.SwitchboardPrice memory) {
-        (bytes32 owner, bytes memory data) = _fetchAccount();
-        // M-5: revalidate owner on every read — see PythPullAdapter rationale.
-        if (owner != expectedProgramId) revert AccountOwnerChanged();
-        return SwitchboardParser.parse(data);
+        return SwitchboardParser.parse(_fetchAccount());
     }
 
     /// @dev Guards against two failure modes:
