@@ -214,8 +214,12 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     function totalSupply() public view virtual returns (uint256) {
-        SplTokenLib.SplMint memory mint = SplTokenLib.load_mint(mint_id, cpi_program);
-        return uint256(mint.supply);
+        // SPL Mint layout: 0..3 mint_authority COption tag, 4..35 pubkey,
+        // 36..43 supply (u64 LE) — what we want, 44 decimals, 45 init,
+        // 46..81 freeze_authority COption. `account_u64_at` reads exactly
+        // the 8-byte supply field directly — no full mint Borsh decode,
+        // no 5-tuple ABI roundtrip.
+        return uint256(ICrossProgramInvocation(cpi_program).account_u64_at(mint_id, 36));
     }
 
     function balanceOf(address account) public view virtual returns (uint256) {
@@ -292,13 +296,28 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
 
     function allowance(address owner, address spender) public view virtual returns (uint256) {
         bytes32 spenderUser = _users.get_user(spender);
-        (bytes32 delegate, uint64 delegated_amount) =
-                            SplTokenLib.load_token_account_delegate(get_token_account(owner), cpi_program);
+        bytes32 ata = get_token_account(owner);
+
+        // SPL TokenAccount delegate is `COption<Pubkey>` at offset 72:
+        //   72..75 tag (u32 LE; 0 = None, 1 = Some)
+        //   76..107 pubkey (only valid when tag=1)
+        // delegated_amount is `u64 LE` at offset 121.
+        //
+        // `account_data_at(ata, 72, 36)` reads exactly the 36-byte COption
+        // slice (skipping the unrelated mint/owner/amount/state/is_native
+        // fields that `account_info` would also marshal). Decode via the
+        // existing Convert.read_coption_bytes32 helper.
+        bytes memory delegateOption = ICrossProgramInvocation(cpi_program).account_data_at(ata, 72, 36);
+        Convert.COptionBytes32 memory parsed;
+        (parsed,) = Convert.read_coption_bytes32(delegateOption, 0);
+        bytes32 delegate = parsed.is_some ? parsed.value : bytes32(0);
+
         if (delegate != spenderUser) {
             return uint256(0);
         }
 
-        return uint256(delegated_amount);
+        // Read the u64 delegated_amount at offset 121 directly.
+        return uint256(ICrossProgramInvocation(cpi_program).account_u64_at(ata, 121));
     }
 
     function approve(address spender, uint256 value) public virtual returns (bool) {
