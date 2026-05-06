@@ -44,6 +44,7 @@ export interface CctpPdas {
   cctpLocalTokenUsdc: `0x${string}`;
   cctpSenderAuthorityPda: `0x${string}`;
   cctpEventAuthority: `0x${string}`;
+  cctpMessageTransmitterEventAuthority: `0x${string}`;
 }
 
 export function deriveCctpAccounts(usdcMint: PublicKey): CctpPdas {
@@ -76,6 +77,13 @@ export function deriveCctpAccounts(usdcMint: PublicKey): CctpPdas {
     [Buffer.from("__event_authority")],
     CCTP_TOKEN_MESSENGER_ID
   );
+  // MessageTransmitter's own __event_authority — needed as a trailing meta
+  // so the post-#266 Mollusk emulator's `ix_store` filter loads it for the
+  // inner CPI to send_message_with_caller (Anchor event_cpi).
+  const messageTransmitterEventAuthority = pda(
+    [Buffer.from("__event_authority")],
+    CCTP_MESSAGE_TRANSMITTER_ID
+  );
 
   return {
     cctpMessageTransmitterConfig: base58ToBytes32(messageTransmitterConfig.toBase58()),
@@ -85,5 +93,6 @@ export function deriveCctpAccounts(usdcMint: PublicKey): CctpPdas {
     cctpLocalTokenUsdc: base58ToBytes32(localTokenUsdc.toBase58()),
     cctpSenderAuthorityPda: base58ToBytes32(senderAuthorityPda.toBase58()),
     cctpEventAuthority: base58ToBytes32(eventAuthority.toBase58()),
+    cctpMessageTransmitterEventAuthority: base58ToBytes32(messageTransmitterEventAuthority.toBase58()),
   };
 }

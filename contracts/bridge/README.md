@@ -79,7 +79,7 @@ A complement to Phase 1's CCTP/Wormhole outbound paths. **Solana-native SPL toke
 | Method | Role |
 |---|---|
 | `bridgeOutToSolana(bytes32 recipient, uint256 value) → bool` | Single CPI: SPL `transfer_checked` from `getATA(AUTHORITY_PDA, mint)` → recipient ATA. Authority = `AUTHORITY_PDA = find_program_address([EXTERNAL_AUTHORITY, evmAddr])`, signed with **empty seeds** in `invoke_signed`. Recipient ATA must exist (use `ensureRecipientAta` first). Emits `BridgedOutToSolana`. |
-| `ensureRecipientAta(bytes32 recipient) → bytes32` | Single CPI: idempotent `create_associated_token_account_idempotent`. Funded by sender's PAYER PDA — no Solana wallet on the recipient side. Emits `RecipientAtaEnsured`. |
+| `ensureRecipientAta(bytes32 recipient) → bytes32` | Single CPI: idempotent `create_associated_token_account_idempotent`. Funded by sender's unified user PDA — no Solana wallet on the recipient side. Emits `RecipientAtaEnsured`. |
 
 The two-step pattern (preflight → ensureRecipientAta if missing → bridgeOutToSolana) is required because rome-evm's `eth_call` simulation rejects the single-tx two-CPI variant with `"Cannot revert cross-program invocation"`. Splitting is architectural, not just UX.
 

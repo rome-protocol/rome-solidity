@@ -13,31 +13,45 @@ import {Convert} from "../convert.sol";
 contract ERC20Users {
     mapping (address => bytes32) private users;
 
-    /// 1M lamports (~0.001 SOL): rent-exempt floor for the PAYER PDA.
-    /// Same constant as `ERC20SPLFactory.CREATE_PAYER_LAMPORTS` — kept
-    /// in sync. Originally `ensure_user` funded with 1 SOL; later
-    /// `factory.create_user` lowered to 1M (rome-solidity commit 4855441
-    /// "lower per-user payer prefund 1 SOL → 0.01 SOL"). Matching that
-    /// floor here.
-    uint64 internal constant CREATE_PAYER_LAMPORTS = 1_000_000;
+    /// 50M lamports (~0.05 SOL): bootstrap budget for the unified user
+    /// PDA, sized to cover one outbound CCTP (~13M event-account rent)
+    /// PLUS one outbound Wormhole (~2.5M message rent) PLUS several
+    /// ATA-creates (~2M each, e.g. wrapper × wrapper pool sides) without
+    /// manual top-up. Same constant as `ERC20SPLFactory.CREATE_PAYER_LAMPORTS`
+    /// — kept in sync.
+    ///
+    /// History: previously 1M (rent-exempt floor only) under the
+    /// pre-0acabea two-PDA model where the salted PAYER sub-PDA was
+    /// funded separately. Under the unified-PDA model the same PDA
+    /// signs CPIs AND pays rent, so an underfunded PDA blocks the
+    /// first bridge tx (`mollusk Custom(1) =
+    /// ResultWithNegativeLamports`) before the user can top up. Sizing
+    /// up so the first-time-user UX matches the design principle's
+    /// "Ethereum-equivalent" bar — Sepolia users don't get blocked on
+    /// first bridge by a missing rent budget. Reclaim of CCTP event
+    /// accounts is async (Circle relayer triggers it post-attestation),
+    /// so back-to-back bridges before reclaim need the headroom.
+    uint64 internal constant CREATE_PAYER_LAMPORTS = 50_000_000;
 
-    /// @notice Idempotent registration + Solana-side PAYER_PDA bootstrap.
-    /// @dev On first call for `user`: writes the mapping AND funds
-    /// `PAYER_PDA(user)` with 1M lamports — same dual side-effect as
+    /// @notice Idempotent registration + unified user PDA bootstrap.
+    /// @dev On first call for `user`: writes the mapping AND funds the
+    /// unified user PDA with 1M lamports — same dual side-effect as
     /// `factory.create_user()`. Repeat calls are no-ops (mapping write
     /// skipped if already set; `create_payer` short-circuits when the PDA
     /// already has ≥ requested lamports).
     ///
-    /// History: the auto-fund call was present in the original
-    /// `ensure_user` (rome-solidity commit d881eff) but was dropped in
-    /// commit 0751b75 ("change token ownership model"). Bridge contracts'
-    /// comments — e.g. `RomeBridgeWithdraw.sol:215` "the PAYER salt PDA
-    /// is pre-funded with 1 SOL in ERC20Users.ensure_user" — still
-    /// document the pre-0751b75 contract. This restores the documented
-    /// behavior so callers don't have to invoke `factory.create_user`
-    /// explicitly before any wrapper-mediated mutation. Bridged-in /
-    /// wrap-funded users + DEX router contracts now self-bootstrap on
-    /// first interaction.
+    /// History: the unified-PDA model landed in rome-solidity commit
+    /// 0acabea ("Remove PAYER seed from user PDA derivation"). Before
+    /// that, every EVM user had two distinct PDAs (AUTHORITY_PDA at
+    /// `find_program_address([EXTERNAL_AUTHORITY, evmAddr])` plus
+    /// PAYER_PDA at the same seed list with `"PAYER"` appended) which
+    /// caused split-brain bugs — bridged-in tokens landed in
+    /// AUTHORITY_PDA's ATA but `transfer/approve/transferFrom` cached
+    /// PAYER_PDA's ATA in `_accounts`. The unification collapses the
+    /// two roles onto a single PDA: it signs CPIs, owns ATAs, and pays
+    /// rent. Self-bootstrap on first wrapper-mediated mutation means
+    /// bridged-in / wrap-funded users + DEX router contracts don't have
+    /// to call `factory.create_user` explicitly.
     function ensure_user(address user) public returns (bytes32) {
         bytes32 existing_user = users[user];
         if (existing_user == bytes32(0)) {
@@ -73,9 +87,14 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     mapping(address => bytes32) private _accounts;
 
     /// @notice Public reader for the SPL token account owned by this EVM user.
-    /// @dev Returns the cached ATA; callers may treat a zero return as "not yet initialized".
+    /// @dev Returns the canonical user-PDA ATA derived from the unified PDA
+    ///      (post-0acabea). Equivalent to `UserPda.ata(user, mint_id)`. The
+    ///      legacy `_accounts` cache is retained for write-through (callers
+    ///      that previously relied on a non-zero cache value still see one
+    ///      after any wrapper-mediated mutation). New callers should treat
+    ///      this as the canonical lookup.
     function getAta(address user) external view returns (bytes32) {
-        return _accounts[user];
+        return UserPda.ata(user, mint_id);
     }
 
     error ERC20InvalidApprover(address approver);
@@ -116,11 +135,12 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
                 associated_token_program_id
             );
         
-        bytes32[] memory seeds = new bytes32[](0);
+        // Only the unified user PDA needs to sign — auto-detected from metas.
+        // No salt-derived signer involved → use `invoke`, not `invoke_signed`.
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
-                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
-                program_id, accounts, data, seeds
+                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
+                program_id, accounts, data
             )
         );
 
@@ -135,27 +155,47 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
      * @return associated_account_address The address of the associated token account created or existing for the user
      */
     function ensure_token_account(address user) public returns (bytes32) {
-        // ensure_user (not get_user) so a brand-new caller — never bridged,
-        // never wrapped, never registered in ERC20Users — gets auto-registered
-        // and PAYER_PDA-funded on first call. Idempotent for repeat callers.
-        bytes32 payer = _users.ensure_user(msg.sender);
-        bytes32 token_account = _accounts[user];
-        if (token_account == bytes32(0)) {
-            return create_token_account(user, payer);
-        } else {
-            return token_account;
+        // Canonical user-PDA ATA derivation (post-0acabea unified PDA).
+        // Skip the ATA-create CPI when Solana already has the account
+        // initialized — saves a CPI per transfer in flows where the
+        // recipient's ATA was created earlier (Romeswap pair.burn, repeat
+        // wrapper.transfer to the same recipient, etc.). Without this
+        // shortcut every wrapper.transfer would always do 2 CPIs (ATA
+        // create + transfer_checked) and pair.burn (which makes 2× wrapper.
+        // transfer back to the LP holder) exceeds Rome's per-tx CPI budget.
+        bytes32 ata = UserPda.ata(user, mint_id);
+        (uint64 lamports, , , , , ) = ICrossProgramInvocation(cpi_program).account_info(ata);
+        if (lamports != 0) {
+            // Account already exists on Solana — no CPI needed.
+            // Cache write-through is optional; legacy callers checking
+            // `_accounts[user] != 0` still need a non-zero entry, so we
+            // populate it for back-compat.
+            _accounts[user] = ata;
+            return ata;
         }
+
+        // First-time recipient — call create_associated_token_account_idempotent
+        // CPI. ensure_user populates the ERC20Users mapping AND funds the
+        // unified user PDA at the rent-exempt floor (1M lamports).
+        bytes32 payer = _users.ensure_user(msg.sender);
+        return create_token_account(user, payer);
     }
 
     /**
-     * Gets the associated token account address for a user. Reverts if the user does not have an associated token account.
-     * @param user EVM address of the user whose associated token account address to retrieve
-     * @return associated_account_address The address of the associated token account for the user
+     * Gets the canonical SPL associated token account for an EVM user.
+     * @dev Post-0acabea unified-PDA derivation: returns `UserPda.ata(user, mint_id)`
+     *      = `getATA(AUTHORITY_PDA(user), mint)`. This is the SAME ATA where
+     *      bridge-in deposits land and where balanceOf reads. No revert when
+     *      the ATA hasn't been on-chain-initialized yet — callers that need
+     *      it created must call `ensure_token_account(user)` (idempotent on
+     *      repeat calls). The legacy `_accounts` cache is no longer the
+     *      source of truth; this function ignores it to fix the split-brain
+     *      where balanceOf read AUTHORITY_PDA's ATA but transfer/approve/
+     *      transferFrom read the cached PAYER_PDA's ATA, breaking router-
+     *      mediated flows like Romeswap addLiquidity.
      */
     function get_token_account(address user) public view returns (bytes32) {
-        bytes32 token_account = _accounts[user];
-        require(token_account != bytes32(0), "Token account does not exist");
-        return token_account;
+        return UserPda.ata(user, mint_id);
     }
 
     function name() public view virtual returns (string memory) {
@@ -228,11 +268,12 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             decimals
         );
 
-        bytes32[] memory seeds = new bytes32[](0);
+        // Only the unified user PDA signs (= `user` arg above) — auto-detected
+        // from metas. No salt-derived signer → use `invoke`.
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
-                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
-                program_id, accounts, data, seeds
+                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
+                program_id, accounts, data
             )
         );
 
@@ -254,8 +295,8 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
 
     function approve(address spender, uint256 value) public virtual returns (bool) {
         // ensure_user on both sides — both owner AND spender need
-        // ERC20Users entries (the SPL approve sets PAYER_PDA(spender)
-        // as delegate, and transferFrom signs as that PDA). Without
+        // ERC20Users entries (the SPL approve sets the spender's unified
+        // PDA as delegate, and transferFrom signs as that PDA). Without
         // auto-register, contract spenders (DEX routers, paymasters)
         // can never be approved-to since they have no natural way to
         // call factory.create_user themselves.
@@ -272,11 +313,12 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             uint64(value)
         );
 
-        bytes32[] memory seeds = new bytes32[](0);
+        // Only the owner's unified user PDA signs — auto-detected from metas.
+        // No salt-derived signer → use `invoke`.
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
-                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
-                program_id, accounts, data, seeds
+                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
+                program_id, accounts, data
             )
         );
 
@@ -301,8 +343,8 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     ///   - `to` is a raw Solana wallet pubkey, NOT derived from an EVM
     ///     address. The recipient does not need a Rome account.
     ///   - The recipient's ATA for this wrapper's mint is created
-    ///     idempotently if missing — the caller's PAYER PDA pays the
-    ///     ~0.002 SOL rent (matches Phantom's "send to fresh address"
+    ///     idempotently if missing — the caller's unified user PDA pays
+    ///     the ~0.002 SOL rent (matches Phantom's "send to fresh address"
     ///     model). For repeat sends to the same recipient, the create
     ///     is a no-op.
     ///
@@ -328,41 +370,25 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         require(value <= type(uint64).max, "Bridge amount exceeds uint64");
         require(solana_recipient != bytes32(0), "Solana recipient cannot be zero");
 
-        // Two distinct PDAs are involved:
-        //   - AUTHORITY_PDA = find_program_address([EXTERNAL_AUTHORITY, evmAddr])
-        //     Owns the user's bridged-in SPL tokens. Wormhole's
-        //     complete_transfer_wrapped, useNativeDepositSend, and
-        //     other inbound paths all deposit to ata(AUTHORITY_PDA).
-        //   - PAYER_PDA     = find_program_address([EXTERNAL_AUTHORITY, evmAddr, "PAYER"])
-        //     Pre-funded with 1 SOL on first factory.create_user; pays
-        //     rent for new ATA creations.
-        //
-        // For outbound bridging:
-        //   - Source ATA   = ata(AUTHORITY_PDA, mint)  (where the user's
-        //                    tokens actually live)
-        //   - Funding for recipient ATA-create = PAYER_PDA (rent budget)
-        //   - SPL transfer authority = AUTHORITY_PDA (matches source owner)
-        //
-        // The legacy `_users.get_user` mapping returns PAYER_PDA which is
-        // the right answer for transfer-recipient ATAs (they're created
-        // owned by PAYER_PDA via create_token_account), but the WRONG
-        // answer for bridged-in tokens. bridgeOutToSolana takes the
-        // direct path.
+        // Single unified user PDA per EVM address (post-0acabea):
+        //   userPda = find_program_address([EXTERNAL_AUTHORITY, evmAddr])
+        // Signs CPIs, owns ATAs (bridged-in and wrap-funded land here),
+        // and pays rent for new accounts. Pre-existing wrappers may
+        // expose a legacy `_users.get_user` mapping that historically
+        // returned PAYER_PDA (a salted sub-PDA); under the unified
+        // model, that mapping returns userPda — same value as
+        // RomeEVMAccount.pda(msg.sender). bridgeOutToSolana takes the
+        // direct path via RomeEVMAccount.pda to skip the mapping lookup.
         bytes32 authority_pda = RomeEVMAccount.pda(msg.sender);
-        bytes32 payer_pda = _users.ensure_user(msg.sender);
-
         bytes32 from_ata = UserPda.ataForKey(authority_pda, mint_id);
 
         // Recipient ATA — derive only. Caller must pre-create on Solana
-        // if it doesn't exist. Adding the in-tx ATA-create CPI failed
-        // on rome-evm's CPI emulator (the two-CPI sequence reverts at
-        // sim time even though the contract logic is correct). Single
-        // CPI (transfer only) works reliably on chain.
+        // if it doesn't exist (use ensureRecipientAta below as a separate
+        // tx). Adding the in-tx ATA-create CPI failed on rome-evm's
+        // CPI emulator (the two-CPI sequence reverts at sim time even
+        // though the contract logic is correct). Single CPI (transfer
+        // only) works reliably on chain.
         bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
-        // Suppress unused-var warning. payer_pda is read for potential
-        // future ATA-create reintroduction once the emulator quirk is
-        // fixed.
-        payer_pda;
 
         // SPL transfer_checked from AUTHORITY_PDA's ATA →
         // recipient's ATA. Authority = AUTHORITY_PDA (owns the source
@@ -384,12 +410,12 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             decimals
         );
 
-        bytes32[] memory transferSeeds = new bytes32[](0);
-
+        // The unified user PDA signs as `authority_pda` (owner of from_ata) —
+        // auto-detected from metas. No salt-derived signer → use `invoke`.
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
-                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
-                program_id, accounts, data, transferSeeds
+                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
+                program_id, accounts, data
             )
         );
         require(success, string(Convert.revert_msg(result)));
@@ -410,7 +436,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
 
     /// @notice Create the associated token account on Solana for a
     /// given recipient + this wrapper's mint. Pays rent from the
-    /// caller's pre-funded PAYER PDA (no Solana wallet needed).
+    /// caller's pre-funded unified user PDA (no Solana wallet needed).
     ///
     /// Companion to `bridgeOutToSolana`. The single-CPI design of
     /// bridgeOutToSolana requires the recipient ATA to exist on
@@ -434,7 +460,9 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     {
         require(solana_recipient != bytes32(0), "Solana recipient cannot be zero");
 
-        bytes32 payer_pda = _users.ensure_user(msg.sender);
+        // Unified user PDA — funds the ATA-create rent and serves as
+        // the rent-payer in the AssociatedToken `Create` instruction.
+        bytes32 user_pda = _users.ensure_user(msg.sender);
 
         (
             bytes32 program_id,
@@ -442,7 +470,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             bytes memory data,
             bytes32 to_ata
         ) = AssociatedSplToken.create_associated_token_account_idempotent(
-            payer_pda,
+            user_pda,
             solana_recipient,
             mint_id,
             system_program_id,
@@ -450,12 +478,12 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             associated_token_program_id
         );
 
-        bytes32[] memory seeds = new bytes32[](0);
-
+        // Caller's unified user PDA pays rent (= `user_pda` arg above) —
+        // auto-detected from metas. No salt-derived signer → use `invoke`.
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
-                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
-                program_id, accounts, data, seeds
+                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
+                program_id, accounts, data
             )
         );
         require(success, string(Convert.revert_msg(result)));
@@ -494,11 +522,12 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             decimals
         );
 
-        bytes32[] memory seeds = new bytes32[](0);
+        // mint_to_checked signs as the mint authority's unified user PDA —
+        // auto-detected from metas. No salt-derived signer → use `invoke`.
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
-                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
-                program_id, accounts, data, seeds
+                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
+                program_id, accounts, data
             )
         );
 

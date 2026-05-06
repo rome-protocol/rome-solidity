@@ -10,6 +10,7 @@ import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {Convert} from "../convert.sol";
 import {RomeBridgeEvents} from "./RomeBridgeEvents.sol";
 import {SplTokenLib} from "../spl_token/spl_token.sol";
+import {UserPda} from "../cpi/UserPda.sol";
 
 
 /// @title RomeBridgeWithdraw
@@ -41,6 +42,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     bytes32 public immutable cctpLocalTokenUsdc;
     bytes32 public immutable cctpSenderAuthorityPda;
     bytes32 public immutable cctpEventAuthority;
+    bytes32 public immutable cctpMessageTransmitterEventAuthority;
 
     // -------------------------------------------------------------------------
     // Wormhole Solana-side immutables (set at construction from deploy script)
@@ -114,7 +116,12 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 localTokenUsdc;
         /// @dev ["sender_authority"] PDA under Token Messenger Minter program
         bytes32 senderAuthorityPda;
+        /// @dev TMM's __event_authority — for outer event_cpi
         bytes32 eventAuthority;
+        /// @dev MessageTransmitter's __event_authority — required as the
+        /// 18th meta so the post-#266 Mollusk emulator's `ix_store` filter
+        /// loads it for the inner CPI to send_message_with_caller.
+        bytes32 messageTransmitterEventAuthority;
     }
 
     /// @notice Wormhole-path Solana accounts. Includes all program IDs, sysvars, and
@@ -171,6 +178,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         cctpLocalTokenUsdc            = cctp.localTokenUsdc;
         cctpSenderAuthorityPda        = cctp.senderAuthorityPda;
         cctpEventAuthority            = cctp.eventAuthority;
+        cctpMessageTransmitterEventAuthority = cctp.messageTransmitterEventAuthority;
         // Wormhole
         wormholeTokenBridgeProgram = wh.tokenBridgeProgram;
         wormholeCoreProgram        = wh.coreProgram;
@@ -209,15 +217,22 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         }
 
         bytes32 userPda = RomeEVMAccount.pda(user);
-        bytes32 userAta = usdcWrapper.getAta(user);
+        // Canonical user-ATA derivation, post-0acabea (unified PDA model).
+        // Avoids the legacy `_accounts` cache in SPL_ERC20 which is empty on
+        // a freshly-deployed wrapper — `wrapper.getAta(user)` would return
+        // `bytes32(0)` and CCTP's deposit_for_burn would revert with
+        // Anchor `AccountOwnedByWrongProgram` (3007) on burn_token_account.
+        bytes32 userAta = UserPda.ata(user, usdcMint);
 
-        // Rome PDAs created by ERC20Users.ensure_user.
-        // The "PAYER" salt PDA is pre-funded with 1 SOL in ERC20Users.ensure_user,
-        // giving it rent to pay for the transient message_sent_event_data account.
-        bytes32 payerSalt = Convert.bytes_to_bytes32(bytes("PAYER"));
-        bytes32 userPayer = RomeEVMAccount.pda_with_salt(user, payerSalt);
+        // Unified-PDA model (rome-solidity 0acabea): the user has ONE PDA.
+        // Wherever the pre-0acabea code passed PAYER_PDA (salt-derived sub-PDA
+        // of the user) we now pass userPda. CCTP's `event_rent_payer` slot is
+        // filled by the unified PDA — same as `owner`. The unified PDA holds
+        // ≥50M lamports (factory.create_user / ERC20Users.ensure_user funds it
+        // with CREATE_PAYER_LAMPORTS) so it can pay messageSentEventData rent
+        // (~13M lamports).
 
-        // Per-tx message data account derived as a PDA under the user.
+        // Per-tx message data account derived as a salted PDA under the user.
         // Salt includes per-user nonce instead of block.number — block.number on
         // Rome EVM = Solana slot, unstable across emulation/execution.
         uint64 nonce = burnNonce[user];
@@ -237,7 +252,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
             CCTPLib.buildDepositForBurnAccounts(
                 CCTPLib.DepositForBurnAccounts({
                     owner:                       userPda,
-                    eventRentPayer:              userPayer,
+                    eventRentPayer:              userPda,  // unified PDA — replaces PAYER_PDA
                     senderAuthorityPda:          cctpSenderAuthorityPda,
                     burnTokenAccount:            userAta,
                     messageTransmitter:          cctpMessageTransmitterConfig,
@@ -252,17 +267,20 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
                     tokenProgram:                cctpSplTokenProgram,
                     systemProgram:               cctpSystemProgram,
                     eventAuthority:              cctpEventAuthority,
-                    program:                     cctpTokenMessengerProgram
+                    program:                     cctpTokenMessengerProgram,
+                    messageTransmitterEventAuthority: cctpMessageTransmitterEventAuthority
                 })
             );
 
-        // Signing salts for Rome's invoke_signed — we need the user's "PAYER"
-        // salt (to sign for eventRentPayer) and the per-tx CCTP_MSG salt (to
-        // sign for messageSentEventData). The base user PDA (owner) is signed
-        // implicitly from the tx-caller's EVM address, per orra.sol convention.
-        bytes32[] memory salts = new bytes32[](2);
-        salts[0] = payerSalt;
-        salts[1] = cctpSalt;
+        // Signing salt for Rome's invoke_signed:
+        //   [0] = cctpSalt — signs for the per-tx messageSentEventData PDA.
+        // The unified user PDA (filling owner at metas[0] AND event_rent_payer
+        // at metas[1]) is auto-signed by the rome-evm precompile from the
+        // tx-caller's EVM address. No second salt needed under the
+        // unified-PDA model — userPDA replaces the previously-distinct
+        // userPayerPDA.
+        bytes32[] memory salts = new bytes32[](1);
+        salts[0] = cctpSalt;
 
         (bool ok, bytes memory result) = address(CpiProgram).delegatecall(
             abi.encodeWithSignature(
@@ -295,7 +313,8 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         address user = _msgSender();
 
         bytes32 userPda = RomeEVMAccount.pda(user);
-        bytes32 userAta = wethWrapper.getAta(user);
+        // Canonical user-ATA — see comment in burnUSDC for rationale.
+        bytes32 userAta = UserPda.ata(user, wethMint);
 
         bytes32[] memory emptySigners = new bytes32[](0);
         (, ICrossProgramInvocation.AccountMeta[] memory approveMetas, bytes memory approveIx) =
@@ -307,14 +326,15 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
                 emptySigners,
                 uint64(amount)
             );
-        bytes32[] memory noSalts = new bytes32[](0);
+        // SPL approve signs as the owner's unified user PDA (= `userPda`
+        // arg above) — auto-detected from metas. No salt-derived signer
+        // → use `invoke`, not `invoke_signed`.
         (bool ok, bytes memory result) = address(CpiProgram).delegatecall(
             abi.encodeWithSignature(
-                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
+                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
                 whSplTokenProgram,
                 approveMetas,
-                approveIx,
-                noSalts
+                approveIx
             )
         );
         if (!ok) revert CpiFailed(result);
@@ -343,15 +363,16 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         }
 
         bytes32 userPda  = RomeEVMAccount.pda(user);
-        bytes32 userAta  = wethWrapper.getAta(user);
+        // Canonical user-ATA — see comment in burnUSDC for rationale.
+        bytes32 userAta  = UserPda.ata(user, wethMint);
 
-        // PAYER salt PDA — pre-funded by ERC20Users.ensure_user with enough
-        // SOL to cover the transient message account rent in Wormhole's
-        // init_if_needed. userPda itself has no SOL.
-        bytes32 payerSalt = Convert.bytes_to_bytes32(bytes("PAYER"));
-        bytes32 userPayer = RomeEVMAccount.pda_with_salt(user, payerSalt);
+        // Unified-PDA model: the user's single PDA fills both `payer`
+        // (metas[0]) and `from_owner` (metas[3]). Wherever the pre-0acabea
+        // code passed userPayerPDA, we now pass userPda. The unified PDA
+        // holds ≥50M lamports — enough to cover the ~2.5M Wormhole message
+        // rent inside transfer_wrapped's inner System::create_account.
 
-        // Per-tx Wormhole message account derived as a PDA under the user.
+        // Per-tx Wormhole message account derived as a salted PDA under the user.
         uint64 nonce = burnNonce[user];
         burnNonce[user] = nonce + 1;
         bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", address(this), nonce));
@@ -370,7 +391,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         ICrossProgramInvocation.AccountMeta[] memory metas =
             WormholeTokenBridgeLib.buildTransferWrappedAccounts(
                 WormholeTokenBridgeLib.TransferWrappedAccounts({
-                    payer:            userPayer,
+                    payer:            userPda,  // unified PDA — same as from_owner
                     config:           wormholeConfig,
                     from:             userAta,
                     from_owner:       userPda,
@@ -386,15 +407,19 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
                     rent:             whRentSysvar,
                     system:           whSystemProgram,
                     wormhole_core:    wormholeCoreProgram,
-                    token:            whSplTokenProgram
+                    token:            whSplTokenProgram,
+                    token_bridge_program: wormholeTokenBridgeProgram
                 })
             );
 
-        // Signing salts: PAYER (pre-funded sub-account used as payer) + WH_MSG
-        // (per-tx Wormhole message account).
-        bytes32[] memory salts = new bytes32[](2);
-        salts[0] = payerSalt;
-        salts[1] = whSalt;
+        // Signing salt:
+        //   [0] = whSalt — signs for the per-tx messageAccount PDA.
+        // The unified user PDA (`payer` at metas[0] AND `from_owner` at
+        // metas[3] — same pubkey, dedup'd by Solana runtime) is auto-signed
+        // by the rome-evm precompile from the tx-caller's EVM address. No
+        // second salt needed under the unified-PDA model.
+        bytes32[] memory salts = new bytes32[](1);
+        salts[0] = whSalt;
 
         (bool ok, bytes memory result) = address(CpiProgram).delegatecall(
             abi.encodeWithSignature(

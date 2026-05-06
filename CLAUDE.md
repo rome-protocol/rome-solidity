@@ -224,7 +224,7 @@ rome-ui consumes a small, stable surface from this repo. Changes to that surface
 | Contract | Method / event | rome-ui consumer |
 |---|---|---|
 | `SPL_ERC20` | `bridgeOutToSolana(bytes32 recipient, uint256 value) → bool` | `src/features/bridge/hooks/useOutboundSplBridge.ts` (Rome → Solana outbound for any wrapper) |
-| `SPL_ERC20` | `ensureRecipientAta(bytes32 recipient) → bytes32` | same hook (preflight before bridge tx — single CPI ATA-create paid by sender's PAYER PDA) |
+| `SPL_ERC20` | `ensureRecipientAta(bytes32 recipient) → bytes32` | same hook (preflight before bridge tx — single CPI ATA-create paid by sender's unified user PDA) |
 | `SPL_ERC20` | `balanceOf(address) → uint256` (now reads AUTHORITY_PDA's ATA, not `_accounts` map) | wagmi multicall, `useChainTokenBalances`, every Portfolio row |
 | `SPL_ERC20` | `transfer` / `transferFrom` / `approve` / `symbol` / `decimals` (standard IERC20 + IERC20Metadata) | wagmi readContract, TokenList, swap/liquidity flows |
 | `SPL_ERC20` | `Transfer(from, to, value)` / `Approval(owner, spender, value)` events (emitted since #83) | rome-via-enrich/holders.rs (filters by topic0), eth_getLogs consumers, block explorers |
@@ -245,7 +245,7 @@ These are observable from the outside but not enforced by the type system. Break
 - `bridgeOutToSolana` signs as `AUTHORITY_PDA` (`find_program_address([EXTERNAL_AUTHORITY, evmAddr])`), with **empty seeds** in the precompile `invoke_signed`. The source ATA = `getATA(AUTHORITY_PDA, mint)` — the canonical cross-chain location where bridged-in tokens live. rome-ui assumes the recipient ATA already exists; callers MUST run `ensureRecipientAta` first if uncertain (see `useOutboundSplBridge`).
 - `ensureRecipientAta` is **idempotent** — returns the same ATA address whether it pre-existed or was created. rome-ui probes Solana directly first to skip the call when not needed.
 - `balanceOf` reads `getATA(AUTHORITY_PDA, mint)`, NOT the `_accounts` mapping. Bridged-in users (Wormhole complete_transfer_wrapped, useNativeDepositSend) only have balance in the AUTHORITY_PDA's ATA; the legacy mapping path returned 0 for them.
-- `factory.create_user` pre-funds the PAYER PDA at exactly **1,000,000 lamports** (~0.001 SOL) — above the rent-exempt floor, below subsequent operation costs. ABI is unchanged from earlier 1B-lamport versions; the deployed factory's lamport amount can be observed by reading lamports on the PAYER PDA after a fresh user calls `create_user`. Per `/rome/CLAUDE.md` "no faucets, no starter-gas-on-us" rule.
+- `factory.create_user` pre-funds the **unified user PDA** at exactly **1,000,000 lamports** (~0.001 SOL) — above the rent-exempt floor, below subsequent operation costs. ABI is unchanged from earlier 1B-lamport versions; the deployed factory's lamport amount can be observed by reading lamports on `RomeEVMAccount.pda(user)` after a fresh user calls `create_user`. Per `/rome/CLAUDE.md` "no faucets, no starter-gas-on-us" rule. The previously-distinct `PAYER_PDA` (salted at `[EXTERNAL_AUTHORITY, evmAddr, "PAYER"]`) collapsed into the unified PDA in rome-solidity 0acabea — the unified PDA now signs CPIs, owns ATAs, and holds rent funds for transient bridge accounts.
 
 ### Deployment artifacts rome-ui reads
 
