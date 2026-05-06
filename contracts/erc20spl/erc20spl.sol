@@ -94,7 +94,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     ///      after any wrapper-mediated mutation). New callers should treat
     ///      this as the canonical lookup.
     function getAta(address user) external view returns (bytes32) {
-        return UserPda.ata(user, mint_id);
+        return ICrossProgramInvocation(cpi_program).derive_user_ata(user, mint_id);
     }
 
     error ERC20InvalidApprover(address approver);
@@ -202,7 +202,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
      *      mediated flows like Romeswap addLiquidity.
      */
     function get_token_account(address user) public view returns (bytes32) {
-        return UserPda.ata(user, mint_id);
+        return ICrossProgramInvocation(cpi_program).derive_user_ata(user, mint_id);
     }
 
     function name() public view virtual returns (string memory) {

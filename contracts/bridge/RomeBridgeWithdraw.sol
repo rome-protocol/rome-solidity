@@ -222,7 +222,9 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         // a freshly-deployed wrapper — `wrapper.getAta(user)` would return
         // `bytes32(0)` and CCTP's deposit_for_burn would revert with
         // Anchor `AccountOwnedByWrongProgram` (3007) on burn_token_account.
-        bytes32 userAta = UserPda.ata(user, usdcMint);
+        // Uses the `derive_user_ata` precompile shortcut: one syscall vs the
+        // 2× findPda chain in `UserPda.ata` (~80k CU saved per call).
+        bytes32 userAta = CpiProgram.derive_user_ata(user, usdcMint);
 
         // Unified-PDA model (rome-solidity 0acabea): the user has ONE PDA.
         // Wherever the pre-0acabea code passed PAYER_PDA (salt-derived sub-PDA
@@ -313,8 +315,9 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         address user = _msgSender();
 
         bytes32 userPda = RomeEVMAccount.pda(user);
-        // Canonical user-ATA — see comment in burnUSDC for rationale.
-        bytes32 userAta = UserPda.ata(user, wethMint);
+        // Canonical user-ATA via `derive_user_ata` precompile shortcut — see
+        // comment in burnUSDC for rationale.
+        bytes32 userAta = CpiProgram.derive_user_ata(user, wethMint);
 
         bytes32[] memory emptySigners = new bytes32[](0);
         (, ICrossProgramInvocation.AccountMeta[] memory approveMetas, bytes memory approveIx) =
@@ -363,8 +366,9 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         }
 
         bytes32 userPda  = RomeEVMAccount.pda(user);
-        // Canonical user-ATA — see comment in burnUSDC for rationale.
-        bytes32 userAta  = UserPda.ata(user, wethMint);
+        // Canonical user-ATA via `derive_user_ata` precompile shortcut — see
+        // comment in burnUSDC for rationale.
+        bytes32 userAta  = CpiProgram.derive_user_ata(user, wethMint);
 
         // Unified-PDA model: the user's single PDA fills both `payer`
         // (metas[0]) and `from_owner` (metas[3]). Wherever the pre-0acabea
