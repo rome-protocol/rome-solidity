@@ -264,24 +264,24 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // (paid by the sender / spender) when it's not. Same UX model
         // as Phantom and every other Solana wallet.
         bytes32 to_account = ensure_token_account(to);
-        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) =
-        SplTokenLib.transfer_checked(
-            SplTokenLib.SPL_TOKEN_PROGRAM,
-            get_token_account(from),
-            mint_id,
-            to_account,
-            user,
-            new bytes32[](0),
-            uint64(value),
-            decimals
-        );
 
-        // Only the unified user PDA signs (= `user` arg above) — auto-detected
-        // from metas. No salt-derived signer → use `invoke`.
+        // `spl_transfer_checked_v1` builds the AccountMeta[4] + 10-byte
+        // transfer_checked ix data in Rust (saves ~250k CU vs the
+        // Solidity-side SplTokenLib.transfer_checked marshaling) and
+        // signs as the precompile-caller's unified PDA when salts is
+        // empty. Delegatecall preserves caller = msg.sender, so:
+        //   - transfer(to, value): signer = unified_pda_of(msg.sender) =
+        //     source-ATA owner (`user` arg, kept for compatibility with
+        //     prior callers). Direct authority match.
+        //   - transferFrom(from, to, value): signer = unified_pda_of(spender),
+        //     which is the SPL Token delegate set by the prior approve()
+        //     call. SPL Token Classic accepts delegate-as-authority for
+        //     transfer_checked when delegated_amount ≥ amount.
+        user;  // arg is the unified PDA the precompile auto-derives — silenced
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
-                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
-                program_id, accounts, data
+                "spl_transfer_checked_v1(bytes32,bytes32,bytes32,uint64,uint8,bytes32[])",
+                get_token_account(from), mint_id, to_account, uint64(value), decimals, new bytes32[](0)
             )
         );
 
@@ -398,32 +398,19 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // only) works reliably on chain.
         bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
-        // SPL transfer_checked from AUTHORITY_PDA's ATA →
-        // recipient's ATA. Authority = AUTHORITY_PDA (owns the source
-        // ATA). Signed with empty seeds so the rome-evm CPI precompile
-        // signs as AUTHORITY_PDA (no salt — find_program_address
-        // ([EXTERNAL_AUTHORITY, evmAddr])).
-        (
-            bytes32 program_id,
-            ICrossProgramInvocation.AccountMeta[] memory accounts,
-            bytes memory data
-        ) = SplTokenLib.transfer_checked(
-            SplTokenLib.SPL_TOKEN_PROGRAM,
-            from_ata,
-            mint_id,
-            to_ata,
-            authority_pda,                  // owner of from_ata
-            new bytes32[](0),
-            uint64(value),
-            decimals
-        );
-
-        // The unified user PDA signs as `authority_pda` (owner of from_ata) —
-        // auto-detected from metas. No salt-derived signer → use `invoke`.
+        // SPL transfer_checked from AUTHORITY_PDA's ATA → recipient's ATA.
+        // `spl_transfer_checked_v1` builds the AccountMeta[4] + 10-byte ix
+        // data in Rust (saves ~250k CU vs the Solidity SplTokenLib helper)
+        // and signs as the precompile-caller's unified PDA when salts is
+        // empty. Delegatecall preserves caller = msg.sender, so the signer
+        // resolves to `external_auth(msg.sender)` = `authority_pda` =
+        // owner of `from_ata`. Direct authority match — no delegation,
+        // no salts.
+        authority_pda;  // owner of from_ata; precompile auto-derives same value
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
-                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
-                program_id, accounts, data
+                "spl_transfer_checked_v1(bytes32,bytes32,bytes32,uint64,uint8,bytes32[])",
+                from_ata, mint_id, to_ata, uint64(value), decimals, new bytes32[](0)
             )
         );
         require(success, string(Convert.revert_msg(result)));
