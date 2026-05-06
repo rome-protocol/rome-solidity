@@ -163,8 +163,15 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // shortcut every wrapper.transfer would always do 2 CPIs (ATA
         // create + transfer_checked) and pair.burn (which makes 2× wrapper.
         // transfer back to the LP holder) exceeds Rome's per-tx CPI budget.
-        bytes32 ata = UserPda.ata(user, mint_id);
-        (uint64 lamports, , , , , ) = ICrossProgramInvocation(cpi_program).account_info(ata);
+        //
+        // Two precompile shortcuts (rome-evm-private PR #318 + #319):
+        //  - `derive_user_ata` collapses 2× findPda (EXTERNAL_AUTH → unified
+        //    PDA → ATA-of-PDA) into one syscall.
+        //  - `account_lamports` fetches lamports only — no data buffer pull,
+        //    no Borsh decoding. The fast-path here only needs lamports != 0
+        //    to confirm the account is initialized.
+        bytes32 ata = ICrossProgramInvocation(cpi_program).derive_user_ata(user, mint_id);
+        uint64 lamports = ICrossProgramInvocation(cpi_program).account_lamports(ata);
         if (lamports != 0) {
             // Account already exists on Solana — no CPI needed.
             // Cache write-through is optional; legacy callers checking
