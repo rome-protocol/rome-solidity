@@ -22,8 +22,10 @@ function deriveWrappedMint(tokenBridge: PublicKey, chainId: number, tokenAddress
 }
 
 async function main() {
-  // Sepolia ETH placeholder (used for the wrapped mint derivation per Wormhole convention)
-  const SEPOLIA_ETH_TOKEN_ADDR = "eef12a83ee5b7161d3873317c8e0e7b76e0b5d9c";
+  // Sepolia ETH placeholder (used for the wrapped mint derivation per
+  // Wormhole convention — the canonical Sepolia ETH address tracker).
+  // This is a publicly-documented address, not a secret. ggshield: ignore
+  const SEPOLIA_ETH_TOKEN_ADDR = "eef12a83ee5b7161d3873317c8e0e7b76e0b5d9c"; // ggshield-ignore
   // Mainnet Wormhole-wrapped ETH on Solana mainnet: 7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs
   const MAINNET_ETH_TOKEN_ADDR = "0000000000000000000000000000000000000000";  // ETH "address" is null-y in Wormhole CG
 
