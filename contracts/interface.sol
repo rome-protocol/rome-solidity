@@ -35,6 +35,33 @@ interface IWrapGasToSpl {
     function wrap_gas_to_spl(uint256 amount) external;
 }
 
+// SPL Transfer Precompile (0xFF…09). High-level Solidity entry point for
+// SPL Token + Token-2022 transfers. The precompile auto-derives source ATA
+// from msg.sender's unified PDA, derives dest ATA from destWallet, reads
+// decimals from the mint, idempotently creates the dest ATA if missing,
+// and resolves Token-2022 TransferHook accounts in the emulator pre-pass.
+//
+// CALLING CONVENTION: invoke via `delegatecall` so msg.sender flows through
+// to the unified-PDA derivation. See SPEC-spl-transfer-precompile.md
+// §Conformance and the erc20spl.sol:285-290 reference pattern.
+//
+// CPI-DEPTH CONSTRAINT (v1, per SPEC §Constraints & Limits): only safe to
+// invoke from a top-level (RheaTx-entered) Solidity contract. Calling from
+// inside another CPI context (RemusTx outer instruction, precompile-from-
+// precompile chain) will exceed Solana's 4-level CPI ceiling once a
+// Token-2022 TransferHook fires. Documented; not runtime-checked.
+//
+// COMPUTE BUDGET: when the mint may carry a TransferHook extension, the
+// caller MUST issue SetComputeUnitLimit(>= 400_000) — Token-2022 + hook +
+// DoEvmCallback can push past the default 200k CU.
+interface ISplTransfer {
+    // Transfer `amount` of `mint` from msg.sender's PDA-owned ATA to
+    // destWallet's ATA. Reverts on any failure (InvalidMintOwner,
+    // SourceAtaMissing, InsufficientBalance, HookRejected, AtaCreateFailed,
+    // Token2022UnsupportedExtension).
+    function splTransfer(bytes32 mint, bytes32 destWallet, uint64 amount) external;
+}
+
 interface ICrossProgramInvocation {
     struct AccountMeta {
         bytes32 pubkey;
@@ -77,12 +104,14 @@ interface ICrossProgramInvocation {
 
 address constant system_program_address = address(0xfF00000000000000000000000000000000000007);
 address constant cpi_program_address = address(0xFF00000000000000000000000000000000000008);
+address constant spl_transfer_address = address(0xFF00000000000000000000000000000000000009);
 address constant withdraw_address = address(0x4200000000000000000000000000000000000016);
 address constant unwrap_spl_to_gas_address = address(0x4200000000000000000000000000000000000017);
 address constant wrap_gas_to_spl_address = address(0x4200000000000000000000000000000000000018);
 
 ISystemProgram constant SystemProgram = ISystemProgram(system_program_address);
 ICrossProgramInvocation constant CpiProgram = ICrossProgramInvocation(cpi_program_address);
+ISplTransfer constant SplTransfer = ISplTransfer(spl_transfer_address);
 IWithdraw constant Withdraw = IWithdraw(withdraw_address);
 IUnwrapSplToGas constant UnwrapSplToGas = IUnwrapSplToGas(unwrap_spl_to_gas_address);
 IWrapGasToSpl constant WrapGasToSpl = IWrapGasToSpl(wrap_gas_to_spl_address);
