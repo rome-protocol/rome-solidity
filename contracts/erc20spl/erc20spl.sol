@@ -13,37 +13,32 @@ import {Convert} from "../convert.sol";
 contract ERC20Users {
     mapping (address => bytes32) private users;
 
-    /// @notice Idempotent registration of the user's unified PDA in the
-    ///         wrapper's `users` mapping.
+    /// @notice Lamports the proxy operator transfers to a user PDA on its
+    ///         first registration. Sized to the rent-exempt floor for an
+    ///         empty system-owned account (`(128 + 0) * 3480 * 2`).
+    uint64 private constant CREATE_PAYER_LAMPORTS = 890_880;
+
+    /// @notice Idempotent registration + PDA activation.
     /// @dev    Registers the caller-derived `external_auth(user)` PDA as
-    ///         the wrapper's record of `user`. The mapping is consulted
-    ///         by `approve` / `transferFrom` when treating the spender's
-    ///         PDA as an SPL Token delegate. Repeat calls are no-ops.
+    ///         the wrapper's record of `user`. On the first call for a
+    ///         given EVM address the operator-funded
+    ///         `RomeEVMAccount.create_payer` CPI transfers
+    ///         `CREATE_PAYER_LAMPORTS` to the PDA so it exists as a real
+    ///         Solana account at the rent-exempt floor — sufficient for
+    ///         it to act as `Signer<'info>` and hold rent for downstream
+    ///         operations (CCTP/Wormhole event accounts, etc.). Repeat
+    ///         calls are no-ops (`create_payer` short-circuits when the
+    ///         PDA already has ≥ requested lamports).
     ///
-    ///         **No PDA funding here.** PDA activation (turning the
-    ///         seed-derived address into a real Solana account with SOL
-    ///         lamports for rent-payer roles) is handled exclusively by
-    ///         `PdaActivator.activate{value: cost}()`, which charges the
-    ///         user from their gas balance via the WUSDC↔WSOL Romeswap
-    ///         pool and closes the resulting wSOL ATA into the user's
-    ///         PDA. The earlier operator-subsidized
-    ///         `RomeEVMAccount.create_payer(user, 50_000_000)` call has
-    ///         been removed — Sybil-vulnerable and antithetical to the
-    ///         "user pays for activation" design.
-    ///
-    ///         Most wrapper operations (transfer / approve / transferFrom
-    ///         / balanceOf / swap / liquidity) work without the PDA
-    ///         being activated — SPL Token signatures don't require the
-    ///         signer to hold lamports. Only operations that designate
-    ///         the user PDA as **rent payer** for new account creation
-    ///         (CCTP outbound's `messageSentEventData`, Wormhole
-    ///         outbound's message account, etc.) need a funded PDA. The
-    ///         UI surfaces an Activate button before those flows.
+    ///         The funding is operator-subsidized via
+    ///         `SystemProgram.operator()`, the same proxy SOL wallet
+    ///         that already pays `wrap_gas_to_spl`'s ATA-create rent.
     function ensure_user(address user) public returns (bytes32) {
         bytes32 existing_user = users[user];
         if (existing_user == bytes32(0)) {
             bytes32 new_user = RomeEVMAccount.get_payer(user);
             users[user] = new_user;
+            RomeEVMAccount.create_payer(user, CREATE_PAYER_LAMPORTS);
             return new_user;
         } else {
             return existing_user;
