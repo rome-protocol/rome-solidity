@@ -126,11 +126,10 @@ describe("ERC20SPLFactory integration", { concurrency: false }, function () {
             await waitForSuccess(publicClient, fundingTxHash, "fund account B");
         }
 
-        const createUserTxHash = await factory.write.create_user([], {
-            account: accountA.account,
-        });
-        await waitForSuccess(publicClient, createUserTxHash, "create_user");
-
+        // factory.create_user was removed (operator-subsidy cleanup). User registration
+        // in the wrapper's `users` mapping now happens implicitly via the first
+        // wrapper-mediated mutation (transfer / approve / transferFrom) — for this
+        // test, the create_token_mint flow fires it as a side effect when needed.
         [mintId] = await factory.read.get_current_mint([accountA.account.address]);
 
         const createTokenTxHash = await factory.write.create_token_mint([], {
