@@ -353,17 +353,18 @@ describe("DAMMv1Pool integration", function () {
             },
         });
 
+        // factory.create_user was removed (operator-subsidy cleanup). User
+        // registration in ERC20Users now happens implicitly via the first
+        // wrapper-mediated mutation. This test's downstream addLiquidity /
+        // swap flow goes through wrapper.transferFrom which auto-fires
+        // ensure_user(spender) — so the deployer ends up registered as a
+        // side effect of the test's own operations.
+        let payer: `0x${string}` | undefined;
         try {
-            await users.read.get_user([deployer.account.address]);
+            payer = await users.read.get_user([deployer.account.address]) as `0x${string}`;
         } catch {
-            const createUserTxHash = await erc20SplFactory.write.create_user([], {
-                account: deployer.account,
-            });
-            const createUserReceipt = await publicClient.waitForTransactionReceipt({ hash: createUserTxHash });
-            assert.equal(createUserReceipt.status, "success", "create_user tx failed");
+            // Not yet registered — first wrapper mutation below will register.
         }
-
-        const payer = await users.read.get_user([deployer.account.address]);
         console.log("Payer is ", payer);
 
         for (const [tokenContract, label] of [

@@ -44,14 +44,16 @@ async function waitForSuccess(
     return receipt;
 }
 
-async function ensureUser(factoryFromUser: any, users: any, publicClient: any, user: any): Promise<void> {
+async function ensureUser(_factoryFromUser: any, users: any, _publicClient: any, user: any): Promise<void> {
+    // factory.create_user was removed (operator-subsidy cleanup). User
+    // registration in ERC20Users now happens implicitly via the first
+    // wrapper-mediated mutation. This helper is now a noop probe — if
+    // the user isn't yet registered, downstream test ops (transferFrom
+    // via the router) auto-fire ensure_user(spender) as a side effect.
     try {
         await users.read.get_user([user.account.address]);
     } catch {
-        const createUserTxHash = await factoryFromUser.write.create_user([], {
-            account: user.account,
-        });
-        await waitForSuccess(publicClient, createUserTxHash, "create_user");
+        // not yet registered; will be registered on first wrapper mutation
     }
 }
 

@@ -13,51 +13,37 @@ import {Convert} from "../convert.sol";
 contract ERC20Users {
     mapping (address => bytes32) private users;
 
-    /// 50M lamports (~0.05 SOL): bootstrap budget for the unified user
-    /// PDA, sized to cover one outbound CCTP (~13M event-account rent)
-    /// PLUS one outbound Wormhole (~2.5M message rent) PLUS several
-    /// ATA-creates (~2M each, e.g. wrapper × wrapper pool sides) without
-    /// manual top-up. Same constant as `ERC20SPLFactory.CREATE_PAYER_LAMPORTS`
-    /// — kept in sync.
+    /// @notice Idempotent registration of the user's unified PDA in the
+    ///         wrapper's `users` mapping.
+    /// @dev    Registers the caller-derived `external_auth(user)` PDA as
+    ///         the wrapper's record of `user`. The mapping is consulted
+    ///         by `approve` / `transferFrom` when treating the spender's
+    ///         PDA as an SPL Token delegate. Repeat calls are no-ops.
     ///
-    /// History: previously 1M (rent-exempt floor only) under the
-    /// pre-0acabea two-PDA model where the salted PAYER sub-PDA was
-    /// funded separately. Under the unified-PDA model the same PDA
-    /// signs CPIs AND pays rent, so an underfunded PDA blocks the
-    /// first bridge tx (`mollusk Custom(1) =
-    /// ResultWithNegativeLamports`) before the user can top up. Sizing
-    /// up so the first-time-user UX matches the design principle's
-    /// "Ethereum-equivalent" bar — Sepolia users don't get blocked on
-    /// first bridge by a missing rent budget. Reclaim of CCTP event
-    /// accounts is async (Circle relayer triggers it post-attestation),
-    /// so back-to-back bridges before reclaim need the headroom.
-    uint64 internal constant CREATE_PAYER_LAMPORTS = 50_000_000;
-
-    /// @notice Idempotent registration + unified user PDA bootstrap.
-    /// @dev On first call for `user`: writes the mapping AND funds the
-    /// unified user PDA with 1M lamports — same dual side-effect as
-    /// `factory.create_user()`. Repeat calls are no-ops (mapping write
-    /// skipped if already set; `create_payer` short-circuits when the PDA
-    /// already has ≥ requested lamports).
+    ///         **No PDA funding here.** PDA activation (turning the
+    ///         seed-derived address into a real Solana account with SOL
+    ///         lamports for rent-payer roles) is handled exclusively by
+    ///         `PdaActivator.activate{value: cost}()`, which charges the
+    ///         user from their gas balance via the WUSDC↔WSOL Romeswap
+    ///         pool and closes the resulting wSOL ATA into the user's
+    ///         PDA. The earlier operator-subsidized
+    ///         `RomeEVMAccount.create_payer(user, 50_000_000)` call has
+    ///         been removed — Sybil-vulnerable and antithetical to the
+    ///         "user pays for activation" design.
     ///
-    /// History: the unified-PDA model landed in rome-solidity commit
-    /// 0acabea ("Remove PAYER seed from user PDA derivation"). Before
-    /// that, every EVM user had two distinct PDAs (AUTHORITY_PDA at
-    /// `find_program_address([EXTERNAL_AUTHORITY, evmAddr])` plus
-    /// PAYER_PDA at the same seed list with `"PAYER"` appended) which
-    /// caused split-brain bugs — bridged-in tokens landed in
-    /// AUTHORITY_PDA's ATA but `transfer/approve/transferFrom` cached
-    /// PAYER_PDA's ATA in `_accounts`. The unification collapses the
-    /// two roles onto a single PDA: it signs CPIs, owns ATAs, and pays
-    /// rent. Self-bootstrap on first wrapper-mediated mutation means
-    /// bridged-in / wrap-funded users + DEX router contracts don't have
-    /// to call `factory.create_user` explicitly.
+    ///         Most wrapper operations (transfer / approve / transferFrom
+    ///         / balanceOf / swap / liquidity) work without the PDA
+    ///         being activated — SPL Token signatures don't require the
+    ///         signer to hold lamports. Only operations that designate
+    ///         the user PDA as **rent payer** for new account creation
+    ///         (CCTP outbound's `messageSentEventData`, Wormhole
+    ///         outbound's message account, etc.) need a funded PDA. The
+    ///         UI surfaces an Activate button before those flows.
     function ensure_user(address user) public returns (bytes32) {
         bytes32 existing_user = users[user];
         if (existing_user == bytes32(0)) {
             bytes32 new_user = RomeEVMAccount.get_payer(user);
             users[user] = new_user;
-            RomeEVMAccount.create_payer(user, CREATE_PAYER_LAMPORTS);
             return new_user;
         } else {
             return existing_user;
@@ -325,8 +311,8 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // ERC20Users entries (the SPL approve sets the spender's unified
         // PDA as delegate, and transferFrom signs as that PDA). Without
         // auto-register, contract spenders (DEX routers, paymasters)
-        // can never be approved-to since they have no natural way to
-        // call factory.create_user themselves.
+        // can never be approved-to since they don't go through any
+        // user-initiated activation flow themselves.
         bytes32 ownerUser = _users.ensure_user(msg.sender);
         bytes32 spenderUser = _users.ensure_user(spender);
 

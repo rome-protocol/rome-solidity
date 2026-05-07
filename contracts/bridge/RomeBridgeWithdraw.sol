@@ -227,12 +227,14 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 userAta = CpiProgram.derive_user_ata(user, usdcMint);
 
         // Unified-PDA model (rome-solidity 0acabea): the user has ONE PDA.
-        // Wherever the pre-0acabea code passed PAYER_PDA (salt-derived sub-PDA
-        // of the user) we now pass userPda. CCTP's `event_rent_payer` slot is
-        // filled by the unified PDA — same as `owner`. The unified PDA holds
-        // ≥50M lamports (factory.create_user / ERC20Users.ensure_user funds it
-        // with CREATE_PAYER_LAMPORTS) so it can pay messageSentEventData rent
-        // (~13M lamports).
+        // CCTP's `event_rent_payer` slot is filled by the unified PDA —
+        // same as `owner`. The PDA must already hold ≥ ~13M lamports for
+        // CCTP's inner System::create_account on `messageSentEventData`;
+        // users activate it (one-time, user-paid via the WUSDC↔WSOL
+        // Romeswap pool) by calling `PdaActivator.activate{value: cost}()`
+        // before any rent-paying outbound. The rome-ui surfaces this as
+        // the Activate Account primary CTA on Bridge / Swap / Liquidity
+        // pages until `external_auth(user)` has lamports.
 
         // Per-tx message data account derived as a salted PDA under the user.
         // Salt includes per-user nonce instead of block.number — block.number on
@@ -371,10 +373,10 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 userAta  = CpiProgram.derive_user_ata(user, wethMint);
 
         // Unified-PDA model: the user's single PDA fills both `payer`
-        // (metas[0]) and `from_owner` (metas[3]). Wherever the pre-0acabea
-        // code passed userPayerPDA, we now pass userPda. The unified PDA
-        // holds ≥50M lamports — enough to cover the ~2.5M Wormhole message
-        // rent inside transfer_wrapped's inner System::create_account.
+        // (metas[0]) and `from_owner` (metas[3]). Same activation
+        // requirement as burnUSDC — PDA needs ≥ ~2.5M lamports for the
+        // Wormhole message-account rent inside transfer_wrapped, supplied
+        // by `PdaActivator.activate` before this call.
 
         // Per-tx Wormhole message account derived as a salted PDA under the user.
         uint64 nonce = burnNonce[user];

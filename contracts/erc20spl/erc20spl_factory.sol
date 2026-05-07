@@ -92,39 +92,6 @@ contract ERC20SPLFactory {
         return _register_contract(mint, name, symbol);
     }
 
-    /// @notice Allocates the ERC20Users `users[msg.sender]` slot AND
-    /// pre-funds the on-Solana unified user PDA at 50,000,000 lamports
-    /// (~0.05 SOL) — sized to cover one outbound CCTP (~13M event-rent)
-    /// + one outbound Wormhole (~2.5M message rent) + several ATA
-    /// creates (~2M each) without manual top-up.
-    ///
-    /// Historical note: original 1B lamport (1 SOL) per-user faucet
-    /// was reduced to 1M (rome-solidity 4855441) under the pre-0acabea
-    /// two-PDA model — a separately-funded PAYER sub-PDA covered bridge
-    /// rent, so the AUTHORITY PDA only needed the 1M rent-exempt floor.
-    /// Under the unified-PDA model (rome-solidity 0acabea — AUTHORITY +
-    /// PAYER collapsed onto a single PDA at
-    /// `find_program_address([EXTERNAL_AUTHORITY, evmAddr])`), the same
-    /// PDA signs CPIs AND pays rent for transient bridge accounts. An
-    /// underfunded PDA blocks the first bridge tx with mollusk
-    /// `Custom(1) = ResultWithNegativeLamports` before the user can
-    /// top up, so the bootstrap is sized to make first-time bridges
-    /// just work. Per `/rome/CLAUDE.md`: this is not a faucet — bridge
-    /// rent is largely reclaimable post-attestation, so the bootstrap
-    /// is a refundable working balance, not a subsidy. A user-funded
-    /// top-up via the Withdraw precompile (debits EVM gas → credits
-    /// PDA SOL) is the right long-term answer for sustained users.
-    uint64 internal constant CREATE_PAYER_LAMPORTS = 50_000_000;
-
-    function create_user()
-    public {
-        users.ensure_user(msg.sender);
-        RomeEVMAccount.create_payer(
-            msg.sender,
-            CREATE_PAYER_LAMPORTS
-        );
-    }
-
     /**
      * Derives the address of the mint account that will be created for the user in the next call to create_token_mint,
      * based on the user's current nonce and this factory's address. This can be used by clients to know the mint
