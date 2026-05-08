@@ -230,11 +230,12 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         // CCTP's `event_rent_payer` slot is filled by the unified PDA —
         // same as `owner`. The PDA must already hold ≥ ~13M lamports for
         // CCTP's inner System::create_account on `messageSentEventData`;
-        // users activate it (one-time, user-paid via the WUSDC↔WSOL
-        // Romeswap pool) by calling `PdaActivator.activate{value: cost}()`
-        // before any rent-paying outbound. The rome-ui surfaces this as
-        // the Activate Account primary CTA on Bridge / Swap / Liquidity
-        // pages until `external_auth(user)` has lamports.
+        // users activate it (one-time, user-paid) by calling
+        // `SimpleActivator.activate{value: cost}()` (and then
+        // `createTokenAccounts()` for ATA bootstrap) before any rent-
+        // paying outbound. The rome-ui surfaces this as the Activate
+        // Account primary CTA on Bridge / Swap / Liquidity pages until
+        // `external_auth(user)` has lamports.
 
         // Per-tx message data account derived as a salted PDA under the user.
         // Salt includes per-user nonce instead of block.number — block.number on
@@ -376,7 +377,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         // (metas[0]) and `from_owner` (metas[3]). Same activation
         // requirement as burnUSDC — PDA needs ≥ ~2.5M lamports for the
         // Wormhole message-account rent inside transfer_wrapped, supplied
-        // by `PdaActivator.activate` before this call.
+        // by `SimpleActivator.activate` before this call.
 
         // Per-tx Wormhole message account derived as a salted PDA under the user.
         uint64 nonce = burnNonce[user];

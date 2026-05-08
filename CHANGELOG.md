@@ -6,15 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
-### Added — `PdaActivator` (user-paid PDA activation via the chain's Meteora gas-pricing pool)
-First-time PDA activation entry point on Rome chains. `PdaActivator.activate{value: cost}(minWsolOut)` is payable: caller sends gas-token wei equal to `activationCost()`; the contract wraps gas → WUSDC via the `wrap_gas_to_spl` precompile, swaps WUSDC → WSOL through the chain's pre-existing Meteora gas-pricing pool (already bootstrapped at `/prepare-rollup` time, used by the proxy's price-manager), then `closeAccount`'s the resulting WSOL ATA into the user's unified PDA. Rent reserve + wrapped SOL value land as lamports on the PDA via `System::transfer`. Idempotent: refunds `msg.value` if the PDA already has lamports. Sybil resistance: user pays the swap themselves; zero operator subsidy. Uses only existing precompiles and the existing Meteora pool — no new precompile, no rome-evm-private change.
+### Added — `SimpleActivator` (user-paid two-tx PDA + ATA bootstrap)
+First-time bootstrap entry point on Rome chains. Two `payable` functions because the full flow exceeds Solana's 1.4M-CU per-tx cap when packed atomically (~2M CU emulated):
 
-- **`contracts/activation/PdaActivator.sol`** — activation entry point. Constructor: `(usdcWrapper, wsolWrapper, meteoraPool, wsolMint, splTokenProgram, activationCost)`. The closeAccount CPI is a regular call (not delegatecall) so the precompile auto-signs as `external_auth(activator)` (= activator contract's PDA), matching the wSOL ATA's owner.
-- **`scripts/activation/deploy-pda-activator.ts`** — three-step deploy: register WSOL `SPL_ERC20` wrapper via `factory.add_spl_token_no_metadata` (idempotent); call `MeteoraDAMMv1Factory.addPool(gasPricingPoolPubkey)` to create a Solidity wrapper around the chain's existing pool (operator captures pool wrapper address from tx receipt, re-runs with `METEORA_GAS_POOL_WRAPPER` env var set); deploy `PdaActivator` with all addresses wired. Pool pubkey is read from `rome-ops/ansible/deployments/registry.json[chain].gas_pricing.meteora_pool`.
-- **`CLAUDE.md`** — `contracts/activation/` bullet added to Contract Layers; Active surface table, Change Impact Map, and Behavioral contracts notes updated to replace `factory.create_user` / `ClaimWrapperButton` references with `PdaActivator.activate` / `ActivateAccountButton`.
+- **`SimpleActivator.activate()`** — funds the user's unified PDA at the rent-exempt floor (890,880 lamports) via `RomeEVMAccount.create_payer` + registers the EVM address in the `ERC20Users` mapping via `users.ensure_user`. Caller sends `msg.value ≥ activationCost()` (default 1 USDC). Idempotent: refunds `msg.value` if the user PDA already has lamports.
+- **`SimpleActivator.createTokenAccounts()`** — tops up the activator's own PDA via `create_payer`, then creates the user's WUSDC + WSOL ATAs via the wrapper's `ensure_token_account` (owned by the user's PDA). Caller sends `msg.value ≥ tokenAccountsCost()` (default 1 USDC). Idempotent: `create_payer` and `ensure_token_account` short-circuit when target state is already met.
+
+Total user cost: ~2 USDC across two MetaMask confirmations. The rome-ui fires both back-to-back behind a single button click. After this, downstream wrapper writes (`transfer` / `approve` / `transferFrom`), DEX swaps, and bridge-out flows resolve `users.get_user(msg.sender)` correctly and the user's WUSDC + WSOL ATAs exist on Solana — rent-exempt for life.
+
+Sybil resistance: user pays both calls themselves; zero operator subsidy. Uses only existing precompiles and existing primitives (`RomeEVMAccount.create_payer`, `ERC20Users.ensure_user`, `SPL_ERC20.ensure_token_account`) — no new precompile, no rome-evm-private change.
+
+- **`contracts/activation/SimpleActivator.sol`** — entry point. Constructor: `(activationCost, tokenAccountsCost, usdcWrapper, wsolWrapper, users)`.
+- **`scripts/activation/deploy-simple-activator.ts`** — single-step deploy: reads `users` from `factory.users()`, takes `usdcWrapper` + `wsolWrapper` + `factory` as env / defaults, deploys `SimpleActivator` with all wiring resolved.
+- **`CLAUDE.md`** — `contracts/activation/` bullet rewritten; Change Impact Map and Cross-repo dependencies tables updated for the new ABI (`activate()` no-arg + `createTokenAccounts()` + `tokenAccountsCost()`); Behavioral contracts notes describe the two-tx pattern.
+
+Replaces `PdaActivator` (deleted in this release — never shipped past unreleased): the prior single-tx Meteora-swap design exceeded the 1.4M-CU cap on chains with the post-clean-slate wrapper stack and was rejected by the rome-sdk pre-flight (`TooManyComputeUnitsInAtomicTx`).
+
+### Removed — `PdaActivator` (single-tx Meteora-swap activation path)
+- **`contracts/activation/PdaActivator.sol`** — file deleted.
+- **`scripts/activation/deploy-pda-activator.ts`** — file deleted.
 
 ### Removed — operator-subsidy `factory.create_user` / `ensure_user` PDA pre-funding
-The operator-subsidy PDA-funding path is removed in favor of `PdaActivator.activate` (user-paid). The earlier `factory.create_user` path was Sybil-vulnerable (operator capital lock-up scaling with user count) and required users to discover an off-path "Claim" button. The previous Unreleased entry's "factory.create_user pre-funds 50M" note (in the `RomeBridgeWithdraw` aligned with unified-PDA model section) is superseded — PDA activation now goes through `PdaActivator.activate` exclusively.
+The operator-subsidy PDA-funding path is removed in favor of `SimpleActivator.activate` (user-paid). The earlier `factory.create_user` path was Sybil-vulnerable (operator capital lock-up scaling with user count) and required users to discover an off-path "Claim" button.
 
 - **`ERC20SPLFactory.create_user()`** — function removed.
 - **`ERC20SPLFactory.CREATE_PAYER_LAMPORTS`** — constant removed.
@@ -22,7 +35,7 @@ The operator-subsidy PDA-funding path is removed in favor of `PdaActivator.activ
 - **`ERC20Users.CREATE_PAYER_LAMPORTS`** — constant removed.
 - **`scripts/bridge/create-user.ts`** — operator-subsidy bootstrap helper deleted.
 - **`tests/erc20spl_factory.integration.ts`, `tests/damm_v1_pool.integration.ts`, `tests/damm_v1_router.integration.ts`** — `factory.create_user` calls removed; replaced with comments noting auto-registration via wrapper transfer/approve.
-- **`RomeBridgeWithdraw.sol`** — `burnUSDC` / `burnETH` comments updated to point at `PdaActivator.activate` as the activation prerequisite.
+- **`RomeBridgeWithdraw.sol`** — `burnUSDC` / `burnETH` comments updated to point at `SimpleActivator.activate` as the activation prerequisite.
 
 ### Fixed — `RomeBridgeWithdraw` aligned with unified-PDA model + correct devnet Wormhole sub-PDAs
 Companion to `rome-evm-private` 0acabea ("Remove PAYER seed from user PDA derivation"). With the user's authority and payer collapsed onto a single PDA at `find_program_address([EXTERNAL_AUTHORITY, evm_addr])`, the bridge contract is updated to fill every previously-PAYER_PDA slot with the unified user PDA — matching the rome-ui hooks (`useOutboundCctpSend` / `useOutboundWhSend`) that submit calldata directly to the CPI precompile per `rome-ui/docs/BRIDGE_OUTBOUND_CPI.md`.
