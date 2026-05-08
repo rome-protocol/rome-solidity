@@ -6,12 +6,13 @@ import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {SPL_ERC20, ERC20Users} from "../erc20spl/erc20spl.sol";
 
 /// @title SimpleActivator
-/// @notice Two-step "Activate your account" entry. Sets up everything the
-///         user needs to transact on this chain. Split into two calls
-///         because the full flow (PDA fund + ensure_user + 2 ATAs)
-///         exceeds Solana's 1.4M-CU per-tx cap when packed into a single
-///         atomic EVM tx (~2M CU emulated). Each call below stays under
-///         the cap; the UI fires them back-to-back behind one button.
+/// @notice Three-step "Activate your account" entry. Sets up everything
+///         the user needs to transact on this chain. Split into three
+///         calls because each ATA-create + activator-PDA-topup CPI pair
+///         consumes ~950k CU on Solana, and bundling two ATA creates in
+///         one tx (~1.65M CU) exceeds the 1.4M-CU per-tx cap. Each call
+///         below stays well under the cap; the UI fires them sequentially
+///         behind one button.
 ///
 ///         Step 1 — `activate()`:
 ///           1. User's unified PDA — funded at the rent-exempt floor
@@ -20,10 +21,13 @@ import {SPL_ERC20, ERC20Users} from "../erc20spl/erc20spl.sol";
 ///              writes (transfer / approve / transferFrom) and DEX swaps
 ///              find their PDA via `users.get_user(msg.sender)`.
 ///
-///         Step 2 — `createTokenAccounts()`:
+///         Step 2 — `createWusdcAta()`:
 ///           1. THIS contract's PDA topped up so it can pay rent.
 ///           2. User's WUSDC ATA — owned by the user's PDA, rent-exempt.
-///           3. User's WSOL ATA — owned by the user's PDA, rent-exempt.
+///
+///         Step 3 — `createWsolAta()`:
+///           1. THIS contract's PDA topped up (idempotent).
+///           2. User's WSOL ATA — owned by the user's PDA, rent-exempt.
 ///
 ///         All three Solana accounts are rent-exempt: the lamports stay
 ///         indefinitely, no rent ever accrues, and the user can fully
@@ -32,14 +36,19 @@ import {SPL_ERC20, ERC20Users} from "../erc20spl/erc20spl.sol";
 /// @dev    Each function is idempotent:
 ///           - `activate()` short-circuits + refunds if user PDA already
 ///             has lamports. `AlreadyActivated` is emitted.
-///           - `createTokenAccounts()` is naturally idempotent —
-///             `create_payer` and `ensure_token_account` both short-
-///             circuit when the target state is already met.
+///           - `createWusdcAta()` / `createWsolAta()` are naturally
+///             idempotent — `create_payer` and `ensure_token_account`
+///             both short-circuit on Solana when the target state is
+///             already met. Re-running them costs the user gas + the
+///             tokenAccountsCost but creates no new state.
 contract SimpleActivator {
     /// @notice Wei the caller must pay per `activate()`.
     uint256 public immutable activationCost;
 
-    /// @notice Wei the caller must pay per `createTokenAccounts()`.
+    /// @notice Wei the caller must pay per `createWusdcAta()` /
+    ///         `createWsolAta()` call. Sized to cover the operator's
+    ///         per-call SOL outflow (~2M lamports for the ATA rent +
+    ///         activator PDA topup) plus a small Sybil-resistance margin.
     uint256 public immutable tokenAccountsCost;
 
     /// @notice WUSDC wrapper (chain's gas-mint SPL_ERC20).
@@ -59,9 +68,9 @@ contract SimpleActivator {
     uint64 public constant PDA_RENT_LAMPORTS = 890_880;
 
     /// @notice Lamports the operator tops THIS contract's PDA up to per
-    ///         createTokenAccounts call, sized to cover its own rent-
-    ///         exempt floor PLUS two ATA-create rents (2 × 2,039,280 =
-    ///         4,078,560), with a small buffer.
+    ///         createWusdcAta / createWsolAta call. Sized to cover its
+    ///         own rent-exempt floor PLUS one ATA-create rent
+    ///         (2,039,280) per call, with a small buffer.
     uint64 public constant ACTIVATOR_PDA_BUFFER = 5_000_000;
 
     error InsufficientGas(uint256 sent, uint256 required);
@@ -69,7 +78,8 @@ contract SimpleActivator {
 
     event Activated(address indexed user, uint256 paid);
     event AlreadyActivated(address indexed user, uint256 refunded);
-    event TokenAccountsCreated(address indexed user, uint256 paid);
+    event WusdcAtaCreated(address indexed user, uint256 paid);
+    event WsolAtaCreated(address indexed user, uint256 paid);
 
     constructor(
         uint256 _activationCost,
@@ -114,17 +124,12 @@ contract SimpleActivator {
         emit Activated(user, msg.value);
     }
 
-    /// @notice Step 2 of activation. Tops up THIS contract's PDA so it
-    ///         can pay ATA rents, then creates the user's WUSDC and WSOL
-    ///         ATAs. Idempotent — both `create_payer` and
-    ///         `ensure_token_account` short-circuit when the target
-    ///         state is already met. Safe to retry without effect.
-    ///
-    ///         Caller does NOT need to be activated first — these calls
-    ///         just create ATAs owned by `RomeEVMAccount.pda(user)`,
-    ///         which is a deterministic address regardless of activation
-    ///         state. But in practice the UI always calls activate() first.
-    function createTokenAccounts() external payable {
+    /// @notice Step 2 of activation. Tops up THIS contract's PDA (so it
+    ///         can pay the WUSDC ATA rent), then creates the user's
+    ///         WUSDC ATA owned by the user's PDA. Idempotent — both
+    ///         `create_payer` and `ensure_token_account` short-circuit
+    ///         on Solana when the target state is already met.
+    function createWusdcAta() external payable {
         address user = msg.sender;
 
         if (msg.value < tokenAccountsCost) {
@@ -133,13 +138,29 @@ contract SimpleActivator {
 
         RomeEVMAccount.create_payer(address(this), ACTIVATOR_PDA_BUFFER);
         usdcWrapper.ensure_token_account(user);
+
+        emit WusdcAtaCreated(user, msg.value);
+    }
+
+    /// @notice Step 3 of activation. Same pattern as step 2 but for the
+    ///         WSOL ATA.
+    function createWsolAta() external payable {
+        address user = msg.sender;
+
+        if (msg.value < tokenAccountsCost) {
+            revert InsufficientGas(msg.value, tokenAccountsCost);
+        }
+
+        RomeEVMAccount.create_payer(address(this), ACTIVATOR_PDA_BUFFER);
         wsolWrapper.ensure_token_account(user);
 
-        emit TokenAccountsCreated(user, msg.value);
+        emit WsolAtaCreated(user, msg.value);
     }
 
     /// @notice True if the user's PDA already has lamports — i.e., the
-    ///         activate() call should NOT appear again.
+    ///         activate() call should NOT appear again. The UI also probes
+    ///         Solana directly for the WUSDC and WSOL ATAs to decide
+    ///         whether step 2 / step 3 are still needed.
     function isActivated(address user) external view returns (bool) {
         bytes32 userPda = RomeEVMAccount.pda(user);
         return CpiProgram.account_lamports(userPda) > 0;

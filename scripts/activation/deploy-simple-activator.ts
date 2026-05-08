@@ -12,10 +12,12 @@
 
 import hardhat from "hardhat";
 
-// Two-call activation: 1 USDC each, total 2 USDC matches v3.
-// Tune to taste per environment.
+// Three-call activation: 1 USDC for activate(), 0.5 USDC for each
+// ATA-create call. Total user cost = 1 + 0.5 + 0.5 = 2 USDC,
+// matching the prior two-call total. Operator margin per call covers
+// the ~2M lamports of SOL outflow (ATA rent + activator PDA topup).
 const ACTIVATION_COST_WEI = 1_000_000_000_000_000_000n;
-const TOKEN_ACCOUNTS_COST_WEI = 1_000_000_000_000_000_000n;
+const TOKEN_ACCOUNTS_COST_WEI = 500_000_000_000_000_000n;
 
 async function main() {
   const { viem, networkName } = await hardhat.network.connect();
@@ -59,7 +61,7 @@ async function main() {
 
   console.log("\nNext steps:");
   console.log(`  1. Update debug-portal/activate.html simpleActivator default.`);
-  console.log(`  2. From a fresh EVM address: UI fires activate() (1 USDC) then createTokenAccounts() (1 USDC) sequentially.`);
+  console.log(`  2. From a fresh EVM address: UI fires activate() (1 USDC), createWusdcAta() (0.5 USDC), createWsolAta() (0.5 USDC) sequentially.`);
   console.log(`  3. Verify on-chain: PDA exists with 890,880 lamports, WUSDC + WSOL ATAs both exist owned by PDA.`);
   console.log(`  4. Then: try a Meteora swap from the same wallet — destination ATA exists now, should succeed.`);
 }

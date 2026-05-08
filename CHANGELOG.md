@@ -6,19 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
-### Added — `SimpleActivator` (user-paid two-tx PDA + ATA bootstrap)
-First-time bootstrap entry point on Rome chains. Two `payable` functions because the full flow exceeds Solana's 1.4M-CU per-tx cap when packed atomically (~2M CU emulated):
+### Changed — `SimpleActivator` split into THREE calls (was two)
+End-to-end testing on Marcus surfaced that the two-call shape (`activate()` + `createTokenAccounts()`) emulated at ~1.65M CU on the canonical deploy — over Solana's 1.4M-CU per-tx cap — because `create_payer(activator, 5M)` doesn't fast-path at the rome-evm-private level even when the activator's PDA balance already exceeds the target. Bundling two ATA-create CPIs in one tx pushes total CU over the cap regardless of priming.
+
+The fix: split `createTokenAccounts()` into `createWusdcAta()` + `createWsolAta()`. Each call is ~950K CU (one ATA + one create_payer), comfortably under the cap. UI fires three txs sequentially behind one button click. Per-call cost dropped to 0.5 USDC (down from 1 USDC for the bundled call) so total user cost stays at 2 USDC.
+
+ABI changes:
+- **Removed** `createTokenAccounts() payable` + `TokenAccountsCreated(address,uint256)` event
+- **Added** `createWusdcAta() payable` + `WusdcAtaCreated(address,uint256)` event
+- **Added** `createWsolAta() payable` + `WsolAtaCreated(address,uint256)` event
+- `tokenAccountsCost()` view unchanged in signature; meaning is now per-call
+
+### Added — `SimpleActivator` (initial three-tx PDA + ATA bootstrap)
+First-time bootstrap entry point on Rome chains. Three `payable` functions because each ATA-create + activator-PDA-topup CPI pair consumes ~950k CU on Solana, and bundling two ATA creates in one tx (~1.65M CU emulated) exceeds Solana's 1.4M-CU per-tx cap:
 
 - **`SimpleActivator.activate()`** — funds the user's unified PDA at the rent-exempt floor (890,880 lamports) via `RomeEVMAccount.create_payer` + registers the EVM address in the `ERC20Users` mapping via `users.ensure_user`. Caller sends `msg.value ≥ activationCost()` (default 1 USDC). Idempotent: refunds `msg.value` if the user PDA already has lamports.
-- **`SimpleActivator.createTokenAccounts()`** — tops up the activator's own PDA via `create_payer`, then creates the user's WUSDC + WSOL ATAs via the wrapper's `ensure_token_account` (owned by the user's PDA). Caller sends `msg.value ≥ tokenAccountsCost()` (default 1 USDC). Idempotent: `create_payer` and `ensure_token_account` short-circuit when target state is already met.
+- **`SimpleActivator.createWusdcAta()`** — tops up the activator's own PDA via `create_payer`, then creates the user's WUSDC ATA via the wrapper's `ensure_token_account` (owned by the user's PDA). Caller sends `msg.value ≥ tokenAccountsCost()` (default 0.5 USDC). Idempotent.
+- **`SimpleActivator.createWsolAta()`** — same pattern for WSOL ATA.
 
-Total user cost: ~2 USDC across two MetaMask confirmations. The rome-ui fires both back-to-back behind a single button click. After this, downstream wrapper writes (`transfer` / `approve` / `transferFrom`), DEX swaps, and bridge-out flows resolve `users.get_user(msg.sender)` correctly and the user's WUSDC + WSOL ATAs exist on Solana — rent-exempt for life.
+Total user cost: ~2 USDC across three MetaMask confirmations. The rome-ui fires the three txs sequentially behind a single button click. After this, downstream wrapper writes (`transfer` / `approve` / `transferFrom`), DEX swaps, and bridge-out flows resolve `users.get_user(msg.sender)` correctly and the user's WUSDC + WSOL ATAs exist on Solana — rent-exempt for life.
 
-Sybil resistance: user pays both calls themselves; zero operator subsidy. Uses only existing precompiles and existing primitives (`RomeEVMAccount.create_payer`, `ERC20Users.ensure_user`, `SPL_ERC20.ensure_token_account`) — no new precompile, no rome-evm-private change.
+Sybil resistance: user pays all calls themselves; zero operator subsidy. Uses only existing precompiles and existing primitives (`RomeEVMAccount.create_payer`, `ERC20Users.ensure_user`, `SPL_ERC20.ensure_token_account`) — no new precompile, no rome-evm-private change.
 
 - **`contracts/activation/SimpleActivator.sol`** — entry point. Constructor: `(activationCost, tokenAccountsCost, usdcWrapper, wsolWrapper, users)`.
-- **`scripts/activation/deploy-simple-activator.ts`** — single-step deploy: reads `users` from `factory.users()`, takes `usdcWrapper` + `wsolWrapper` + `factory` as env / defaults, deploys `SimpleActivator` with all wiring resolved.
-- **`CLAUDE.md`** — `contracts/activation/` bullet rewritten; Change Impact Map and Cross-repo dependencies tables updated for the new ABI (`activate()` no-arg + `createTokenAccounts()` + `tokenAccountsCost()`); Behavioral contracts notes describe the two-tx pattern.
+- **`scripts/activation/deploy-simple-activator.ts`** — single-step deploy: reads `users` from `factory.users()`, takes `usdcWrapper` + `wsolWrapper` + `factory` as env / defaults, deploys `SimpleActivator` with all wiring resolved. Default per-call cost = 0.5 USDC (× 2 = 1 USDC across both ATA calls).
+- **`CLAUDE.md`** — `contracts/activation/` bullet rewritten; Change Impact Map and Cross-repo dependencies tables updated for the three-call ABI; Behavioral contracts notes describe the three-tx pattern.
 
 Replaces `PdaActivator` (deleted in this release — never shipped past unreleased): the prior single-tx Meteora-swap design exceeded the 1.4M-CU cap on chains with the post-clean-slate wrapper stack and was rejected by the rome-sdk pre-flight (`TooManyComputeUnitsInAtomicTx`).
 
