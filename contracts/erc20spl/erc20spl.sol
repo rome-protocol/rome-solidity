@@ -23,10 +23,10 @@ contract ERC20Users {
     ///         **No PDA funding here.** PDA activation (turning the
     ///         seed-derived address into a real Solana account with SOL
     ///         lamports for rent-payer roles) is handled exclusively by
-    ///         `SimpleActivator.activate{value: cost}()`, which charges the
-    ///         user `activationCost()` (default 1 USDC) and tops up the
-    ///         user's PDA at the rent-exempt floor + registers in the
-    ///         users mapping. The earlier operator-subsidized
+    ///         the `SimpleActivator` three-call flow:
+    ///         `activate{value: cost}()` (PDA fund + ensure_user),
+    ///         `createWusdcAta{value: cost}()`, `createWsolAta{value:
+    ///         cost}()`. The earlier operator-subsidized
     ///         `RomeEVMAccount.create_payer(user, 50_000_000)` call has
     ///         been removed — Sybil-vulnerable and antithetical to the
     ///         "user pays for activation" design.
