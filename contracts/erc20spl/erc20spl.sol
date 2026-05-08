@@ -218,6 +218,17 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // call) would mismatch and report 0 for any user whose tokens
         // arrived via a non-wrapper path.
         bytes32 ata = ICrossProgramInvocation(cpi_program).derive_user_ata(account, mint_id);
+        // ERC20-standard total: an address that has never received the
+        // token has balance 0, not a revert. When the user's ATA hasn't
+        // been initialized on Solana yet, account_u64_at(ata, 64) would
+        // revert with `account_u64_at: offset 64 + 8 out of 0 bytes`,
+        // forcing every consumer (DEX routers, allowance checks, wallet
+        // UIs that simulate balance reads on first-time wallets) to wrap
+        // balanceOf in try/catch. account_lamports is cheap (no data
+        // buffer pull) and returns 0 when the account doesn't exist.
+        if (ICrossProgramInvocation(cpi_program).account_lamports(ata) == 0) {
+            return 0;
+        }
         // SPL TokenAccount.amount is a u64 LE at offset 64.
         return uint256(ICrossProgramInvocation(cpi_program).account_u64_at(ata, 64));
     }
