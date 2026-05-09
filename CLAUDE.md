@@ -30,19 +30,20 @@ When adding new contracts:
 | Token kind | Display symbol | Example |
 |---|---|---|
 | **Native gas** of a Rome chain | **bare underlying symbol** — no prefix | `USDC` (Rome's gas mint), `ETH` (a hypothetical ETH-gas chain), `SOL` (a hypothetical SOL-gas chain) |
-| **ERC20-SPL wrapper** (any `SPL_ERC20` deployed via the factory or bridge scripts) | **`W` prefix** (capital W) | `WUSDC` (Rome's USDC-mint wrapper), `WETH` (Wormhole-wrapped Sepolia-ETH wrapper), `WSOL` (canonical wSOL wrapper), `WJUP`/`WBONK`/`WUSDT` (future long-tails) |
+| **ERC20-SPL wrapper** (any `SPL_ERC20` deployed via the factory or bridge scripts) | **lowercase `w` prefix** | `wUSDC` (Rome's USDC-mint wrapper), `wETH` (Wormhole-wrapped Sepolia-ETH wrapper), `wSOL` (canonical wSOL wrapper), `wJUP`/`wBONK`/`wUSDT` (future long-tails) |
 
 ### Rules
 
 1. **Native gas keeps its underlying name.** On Rome the gas mint is USDC, so the native gas is `USDC`. On a SOL-gas chain it's `SOL`. **No prefix, ever**, on the native gas symbol.
-2. **Every ERC20-SPL wrapper gets `W`.** This is true even for wrappers of the gas mint itself (Rome has `USDC` native gas AND `WUSDC` as the SPL_ERC20 wrapper of the same SPL — two distinct tokens, two distinct displays).
-3. **Capital `W`.** Matches WETH/WBTC/WMATIC. Not lowercase `w`, not legacy `r`.
-4. **The on-chain `symbol()` of an SPL_ERC20 may not match the display form.** Wrappers are sometimes deployed with `symbol: "USDC"` (matching the underlying), and the W-prefix is a UI/docs convention. The canonical helper is `rome-ui/src/utils/displayTokenSymbol.ts: wrapperSymbolFor(gasSymbol)` which always returns `W{symbol}`.
-5. **Old `r` prefix (Rome) is deprecated.** `rUSDC`, `rETH`, `rSOL` were the legacy forms before alignment with the WETH/WBTC convention. Don't introduce new `r`-prefixed names; when you find an existing one, fix it. Historical CHANGELOG entries that describe past state may keep the old names — don't rewrite history, but flag them as historical.
+2. **Every ERC20-SPL wrapper gets `w`.** This is true even for wrappers of the gas mint itself (Rome has `USDC` native gas AND `wUSDC` as the SPL_ERC20 wrapper of the same SPL — two distinct tokens, two distinct displays).
+3. **Lowercase `w`** — matches the on-chain `SPL_ERC20.symbol()` value the factory writes. Verified on Marcus: the deployed wUSDC + wETH wrappers report lowercase. Display layer aligns with on-chain truth so portfolio labels match what users see in MetaMask + the block explorer + their wallet token list. Not capital `W`, not legacy `r`.
+4. **The on-chain `symbol()` IS the display form.** This is the change from the previous (capital-W) convention: where the old rule said the W-prefix was a UI-side override, the new rule is "match what the contract was deployed with". When deploying a new wrapper, set the on-chain symbol to `w{Underlying}` (lowercase). The canonical UI helper is [`rome-ui/src/utils/displayTokenSymbol.ts: wrapperSymbolFor(gasSymbol)`](https://github.com/rome-protocol/rome-ui/blob/main/src/utils/displayTokenSymbol.ts) which returns `w{symbol}` (lowercase, matching).
+5. **Old `r` prefix (Rome) is deprecated.** `rUSDC`, `rETH`, `rSOL` were the legacy forms before alignment with the WETH/WBTC pattern. Don't introduce new `r`-prefixed names; when you find an existing one, fix it. Historical CHANGELOG entries that describe past state may keep the old names — don't rewrite history, but flag them as historical.
+6. **Old capital-`W` convention is also deprecated.** Earlier docs/code used `WUSDC`/`WETH` as a display-layer override on top of contracts that shipped with `symbol: "USDC"`. The current rule is to match on-chain truth (lowercase `w`); legacy WETH9-style mainnet contracts are unrelated and keep their canonical uppercase names.
 
 ### Why this matters
 
-Ethereum users coming from MetaMask / Uniswap recognize `WETH` instantly. Using `rETH` forces them to re-learn the convention. The Rome design principle ([`/rome/CLAUDE.md`](../CLAUDE.md) "Ethereum-equivalent, not Ethereum-lite") is to **preserve patterns users already know** — wrapper naming is the most visible application of that principle.
+Ethereum users coming from MetaMask / Uniswap recognize the `w` prefix from Wormhole-wrapped assets (Wormhole writes wUSDC, wETH, wSOL on-chain across networks). The Rome design principle ([`/rome/CLAUDE.md`](../CLAUDE.md) "Ethereum-equivalent, not Ethereum-lite") is to **preserve patterns users already know AND keep on-chain truth as the single source**. Lowercase `w` satisfies both: it matches the deployed contract symbols, and it matches what the user sees in their wallet without a UI translation step that can drift from reality.
 
 ### Cross-repo enforcement
 
