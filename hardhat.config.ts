@@ -22,6 +22,14 @@ export default defineConfig({
     },
   },
   networks: {
+    augustus: {
+      type: "http",
+      chainType: "l1",
+      chainId: 200001,
+      url: "https://augustus.testnet.romeprotocol.xyz/",
+      accounts: [configVariable("AUGUSTUS_PRIVATE_KEY")],
+    },
+
     hardhatMainnet: {
       type: "edr-simulated",
       chainType: "l1",
