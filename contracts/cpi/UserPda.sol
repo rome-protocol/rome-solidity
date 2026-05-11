@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {ISystemProgram, SystemProgram} from "../interface.sol";
+import {ISystemProgram, SystemProgram, ICrossProgramInvocation, CpiProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {AssociatedSplToken} from "../spl_token/associated_spl_token.sol";
 import {SolanaConstants} from "./SolanaConstants.sol";
@@ -28,14 +28,19 @@ library UserPda {
     /// classic SPL Token program (Tokenkeg...). Token-2022 ATAs use a
     /// different derivation; adapters that support Token-2022 call
     /// `ataWithProgram` directly.
+    ///
+    /// Delegates to the `derive_user_ata` CPI shortcut selector
+    /// (rome-evm-private #319, dispatched at `0xc654e119`) which combines
+    /// the Rome unified-user PDA + SPL ATA derivation into a single
+    /// syscall. Behavior is byte-identical to the prior two-hop path
+    /// through `0xFF…07` — verified on-chain against Marcus 121301 on
+    /// 2026-05-11 with EVM address `0xC777…2DAc` and USDC mint
+    /// `4zMMC9sr…ncDU` (resulting ATA `FkFYez2a…n8vw`).
+    ///
+    /// Saves ~152K Solana CU per call vs the two-hop path (3-sample
+    /// average on Marcus 121301: 281K → 129K, 54 % reduction).
     function ata(address user, bytes32 mint) internal view returns (bytes32) {
-        bytes32 owner = pda(user);
-        return AssociatedSplToken.get_associated_token_address_with_program_id(
-            owner,
-            mint,
-            SolanaConstants.SPL_TOKEN_PROGRAM,
-            SolanaConstants.ASSOCIATED_TOKEN_PROGRAM
-        );
+        return CpiProgram.derive_user_ata(user, mint);
     }
 
     /// Derive an ATA for a raw Solana pubkey (pool-side, fee receiver, etc.).
