@@ -139,6 +139,27 @@ The core abstraction layer. Rome-EVM exposes Solana programs as EVM precompiles 
 
 Global constants (`SplToken`, `AssociatedSplToken`, `SystemProgram`, `CpiProgram`, `Withdraw`) are pre-bound instances. Note: as of the rome-evm-private Mollusk refactor, `SplToken` and `AssociatedSplToken` no longer have dedicated precompile handlers — SPL operations are executed via Mollusk SVM in the emulator and CPI on-chain.
 
+**`CpiProgram` shortcut selectors** (rome-evm-private PRs #318 / #319 / #320, shipped 2026-05-06): the CPI precompile exposes six fast-path selectors that collapse common 2-3 syscall sequences into one:
+
+| Selector | Signature | Purpose |
+|---|---|---|
+| `0x593762e8` | `account_data_at(bytes32 pubkey, uint16 offset, uint16 length) → bytes` | Generic typed-slice read of any Solana account |
+| `0xb317d4c1` | `account_u64_at(bytes32 pubkey, uint16 offset) → uint64` | u64 LE read — saves ABI-encode roundtrip for the most common shape |
+| `0xde79ed54` | `account_lamports(bytes32 pubkey) → uint64` | Lamports-only probe — skips data buffer fetch |
+| `0x351aa22f` | `spl_transfer_checked_v1(src_ata, mint, dst_ata, amount, decimals, salts[]) → bool` | SPL Token Classic transfer signed by caller's unified PDA |
+| `0xc654e119` | `derive_user_ata(address evm_user, bytes32 mint) → bytes32` | Rome user PDA → SPL ATA in one syscall (replaces two `find_program_address` hops) |
+| `0x944336f8` | `pdas_batch_derive(bytes[][] seed_groups, bytes32 program_id) → (bytes32 pda, uint8 bump)[]` | N independent PDAs against one program in one dispatch (N ≤ 16, M ≤ 8 seeds) |
+
+Adoption status as of 2026-05-11:
+- **`derive_user_ata`**: live in production at 7 sites — `erc20spl.sol` (4: `getAta` / `_transfer` / `balanceOf` / `ensure_token_account`) and `RomeBridgeWithdraw.sol` (3: USDC + WETH burn paths). Verified on-chain against Marcus 121301: returns the correct ATA byte-for-byte vs off-chain two-hop derivation.
+- **`pdas_batch_derive`**: dispatched and verified on-chain (first-ever invocation on Marcus 121301 was 2026-05-11) but **zero production callers**. Cardo adapters that derive 3+ PDAs per call (Drift, Mango, Meteora, Raydium, Kamino) are the target consumers, as is the 12-findPda init sequence in `meteora/damm_v1_pool.sol _derive_permissionless_pool_with_config_keys`.
+- **v1 selectors** (`account_data_at`, `_u64_at`, `_lamports`, `spl_transfer_checked_v1`): adopted across `erc20spl` per rome-solidity PRs #109 / #110 / #112.
+- **`UserPda.ata(user, mint)`** library helper internally calls `derive_user_ata` — every consumer of the canonical helper inherits the saving without code changes.
+
+**Measured CU saving** (Marcus 121301, 3-sample average, 2026-05-11): a probe contract that does the OLD two-hop (`RomeEVMAccount.pda` + `AssociatedSplToken.get_associated_token_address_with_program_id`) consumed ~281K CU on Solana; the same probe via `CpiProgram.derive_user_ata` consumed ~129K CU — **~152K CU saved per call, 54 % reduction**. (PR #319's body claimed ~80K saving — measurement shows ~2 × more. EVM `gasUsed` is NOT a reliable proxy for Solana CU on Rome — use the Solana-side `computeUnitsConsumed` from the proxy's Solana tx receipt.) The bare `0xFF…07` `find_program_address` round-trip costs ~115K CU per hop end-to-end — far above the "1500 CU per `find_program_address` syscall" line in the [CU strategy spec](../rome-specs/active/technical/2026-04-25-rome-evm-cu-and-multi-hop-cpi-strategy.md), because of the EVM-side ABI marshaling + Solana atomic-tx wrapper overhead.
+
+When writing new wrappers or adapters, prefer these selectors over `0xFF…07` two-hop PDA derivation or `account_info` round-trips for individual field reads.
+
 ### Contract Layers
 
 - **`contracts/cpi/`** — Cardo CPI Foundation (library + templates). Shared Solidity helpers every Cardo app adapter builds on top of: `AccountMetaBuilder`, `AnchorInstruction`, `Cpi`, `PdaDeriver`, `SolanaConstants`, `UserPda`, `CostEstimate`, `CostEstimator`, `ICostView`, and the Pillar B cost-transparency trio. Also ships `templates/CpiAdapterBase.sol` (Ownable+Pausable+ReentrancyGuard+backend pointer scaffold) and `templates/CpiProgramWrapper.sol` (prose scaffold for golden-vector wrappers). See `contracts/cpi/README.md` for the adapter authoring guide, the three-layer pattern, and the `tx.origin`/`msg.sender` rule. Canonical spec: `rome-specs/active/technical/cardo-foundation.md`.
