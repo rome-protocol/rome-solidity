@@ -1,0 +1,6 @@
+{
+  "ERC20SPLFactory": {
+    "address": "0xd15c0c4ec4e997a044308a6c710222a69d909468",
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
+  }
+}
