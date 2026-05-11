@@ -2,5 +2,21 @@
   "ERC20SPLFactory": {
     "address": "0xd15c0c4ec4e997a044308a6c710222a69d909468",
     "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
+  },
+  "WUSDC": {
+    "address": "0x8c9e878433657b894c5cd74be9e522f54dad7796",
+    "mint": "EYsSA3ncqiiT3GzVEYf3AHb3Fi8SiWNXEDWia54PSjtR",
+    "mintBytes32": "0xc951f5f196c671888529d8b3948aa93fac61c982847d0a30f7616a474ce2c836",
+    "name": "Rome USDC",
+    "symbol": "wUSDC",
+    "deployTx": "0x306367f0a2821e127284655004cd0865d30bbb2f3559006f73c487d6581bba81"
+  },
+  "WSOL": {
+    "address": "0x598eb42a8d6648d06e39839d3edd303b95ab6ec8",
+    "mint": "So11111111111111111111111111111111111111112",
+    "mintBytes32": "0x069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+    "name": "Rome SOL",
+    "symbol": "wSOL",
+    "deployTx": "0x1c52ee83e891fad9df3b8d9fdce85c78098ce159d5c419ccc32b3c460a5984b5"
   }
 }
