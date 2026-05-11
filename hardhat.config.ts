@@ -22,6 +22,14 @@ export default defineConfig({
     },
   },
   networks: {
+    aurelius: {
+      type: "http",
+      chainType: "l1",
+      chainId: 30001,
+      url: "https://aurelius.real-testnet.romeprotocol.xyz/",
+      accounts: [configVariable("AURELIUS_PRIVATE_KEY")],
+    },
+
     augustus: {
       type: "http",
       chainType: "l1",
