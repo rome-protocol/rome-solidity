@@ -394,24 +394,29 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         require(value <= type(uint64).max, "Bridge amount exceeds uint64");
         require(solana_recipient != bytes32(0), "Solana recipient cannot be zero");
 
-        // Single unified user PDA per EVM address (post-0acabea):
-        //   userPda = find_program_address([EXTERNAL_AUTHORITY, evmAddr])
-        // Signs CPIs, owns ATAs (bridged-in and wrap-funded land here),
-        // and pays rent for new accounts. Pre-existing wrappers may
-        // expose a legacy `_users.get_user` mapping that historically
-        // returned PAYER_PDA (a salted sub-PDA); under the unified
-        // model, that mapping returns userPda — same value as
-        // RomeEVMAccount.pda(msg.sender). bridgeOutToSolana takes the
-        // direct path via RomeEVMAccount.pda to skip the mapping lookup.
-        bytes32 authority_pda = RomeEVMAccount.pda(msg.sender);
-        bytes32 from_ata = UserPda.ataForKey(authority_pda, mint_id);
+        // Source ATA = unified-user-PDA's ATA for this mint. Single CPI
+        // via the `derive_user_ata` shortcut selector (`0xc654e119` on
+        // the CPI precompile at `0xFF…08`), which composes
+        //   find_program_address([EXTERNAL_AUTHORITY, evmAddr], rome_evm)
+        // and
+        //   find_program_address([ownerPda, SPL_TOKEN, mint], ata_program)
+        // into one syscall. Replaces the prior two-hop derivation
+        // (`RomeEVMAccount.pda(msg.sender)` + `UserPda.ataForKey(...)`)
+        // — measured saving of ~145K Solana CU per call on Marcus 121301
+        // (controlled probe 2026-05-11: 270K → 125K). Byte-identical to
+        // the prior path: the shortcut runs the same two
+        // `find_program_address` syscalls in native Rust, returning the
+        // same `(ATA, bump)` for a given `(user, mint)`.
+        bytes32 from_ata = ICrossProgramInvocation(cpi_program).derive_user_ata(msg.sender, mint_id);
 
         // Recipient ATA — derive only. Caller must pre-create on Solana
         // if it doesn't exist (use ensureRecipientAta below as a separate
         // tx). Adding the in-tx ATA-create CPI failed on rome-evm's
         // CPI emulator (the two-CPI sequence reverts at sim time even
         // though the contract logic is correct). Single CPI (transfer
-        // only) works reliably on chain.
+        // only) works reliably on chain. Stays on `UserPda.ataForKey`
+        // because `solana_recipient` is a raw Solana pubkey (not an
+        // EVM-mapped address) — `derive_user_ata` doesn't apply.
         bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
         // SPL transfer_checked from AUTHORITY_PDA's ATA → recipient's ATA.
@@ -419,10 +424,9 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // data in Rust (saves ~250k CU vs the Solidity SplTokenLib helper)
         // and signs as the precompile-caller's unified PDA when salts is
         // empty. Delegatecall preserves caller = msg.sender, so the signer
-        // resolves to `external_auth(msg.sender)` = `authority_pda` =
-        // owner of `from_ata`. Direct authority match — no delegation,
+        // resolves to `external_auth(msg.sender)` — the same unified PDA
+        // that owns `from_ata`. Direct authority match — no delegation,
         // no salts.
-        authority_pda;  // owner of from_ata; precompile auto-derives same value
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
                 "spl_transfer_checked_v1(bytes32,bytes32,bytes32,uint64,uint8,bytes32[])",
