@@ -26,7 +26,7 @@ export default defineConfig({
       type: "http",
       chainType: "l1",
       chainId: 30001,
-      url: "https://aurelius.real-testnet.romeprotocol.xyz/",
+      url: "https://aurelius.testnet.romeprotocol.xyz/",
       accounts: [configVariable("AURELIUS_PRIVATE_KEY")],
     },
 
