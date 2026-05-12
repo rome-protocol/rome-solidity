@@ -103,7 +103,7 @@ interface IHelperProgram {
 
 address constant system_program_address = address(0xfF00000000000000000000000000000000000007);
 address constant cpi_program_address = address(0xFF00000000000000000000000000000000000008);
-address constant helper_program_address = address(0xFF00000000000000000000000000000000000009);
+address constant helper_program_address = address(0xff00000000000000000000000000000000000009);
 address constant withdraw_address = address(0x4200000000000000000000000000000000000016);
 address constant unwrap_spl_to_gas_address = address(0x4200000000000000000000000000000000000017);
 address constant wrap_gas_to_spl_address = address(0x4200000000000000000000000000000000000018);
