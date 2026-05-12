@@ -34,7 +34,6 @@ interface IWrapGasToSpl {
     // chain_mint_id set. Reverts with Unimplemented otherwise.
     function wrap_gas_to_spl(uint256 amount) external;
 }
-
 interface ICrossProgramInvocation {
     struct AccountMeta {
         bytes32 pubkey;
@@ -74,9 +73,37 @@ interface ICrossProgramInvocation {
     // Batch findPda — N independent PDAs against one program in one call.
     function pdas_batch_derive(bytes[][] memory seed_groups, bytes32 program_id) external view returns (PdaWithBump[] memory);
 }
+interface IHelperProgram {
+    // create associated spl-token account owned by external pda. Gas token mint is used.
+    // Is only applicable for rollup based on SPL-token.
+    function create_ata(address user) external;
+    // create associated spl-token account owned by external pda.
+    function create_ata(address user, bytes32 mint) external;
+    // create external pda
+    function create_pda(address user) external;
+    // create external pda with lamports
+    function create_pda(address user, uint64 lamports) external;
+    // swap gas-token to lamports (transfer from operator)
+    function swap_gas_to_lamport(uint64 lamports) external;
+    // transfer lamports between external pda
+    function transfer_lamports(address to, uint64 lamports) external;
+    // transfer spl-tokens between ata owned by external pda. Gas token mint is used.
+    // Is only applicable for rollup based on SPL-token.
+    function transfer_spl(address to, uint64 tokens) external;
+    // transfer spl-tokens between ata owned by external pds.
+    function transfer_spl(address to, uint64 tokens, bytes32 mint) external;
+    // external pda
+    function pda(address user) external view returns (bytes32);
+    // ata owned by external pda. Gas token mint is used.
+    // Is only applicable for rollup based on SPL-token.
+    function ata(address user) external view returns (bytes32);
+    // ata owned by external pda.
+    function ata(address user, bytes32 mint) external view returns (bytes32);
+}
 
 address constant system_program_address = address(0xfF00000000000000000000000000000000000007);
 address constant cpi_program_address = address(0xFF00000000000000000000000000000000000008);
+address constant helper_program_address = address(0xFF00000000000000000000000000000000000008);
 address constant withdraw_address = address(0x4200000000000000000000000000000000000016);
 address constant unwrap_spl_to_gas_address = address(0x4200000000000000000000000000000000000017);
 address constant wrap_gas_to_spl_address = address(0x4200000000000000000000000000000000000018);
@@ -86,7 +113,7 @@ ICrossProgramInvocation constant CpiProgram = ICrossProgramInvocation(cpi_progra
 IWithdraw constant Withdraw = IWithdraw(withdraw_address);
 IUnwrapSplToGas constant UnwrapSplToGas = IUnwrapSplToGas(unwrap_spl_to_gas_address);
 IWrapGasToSpl constant WrapGasToSpl = IWrapGasToSpl(wrap_gas_to_spl_address);
-
+IHelperProgram constant HelperProgram = IHelperProgram(helper_program_address);
 
 
 
