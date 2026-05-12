@@ -8,7 +8,8 @@
 //   - wsolWrapper     (SPL_ERC20)     — canonical wSOL wrapper
 //   - users           (ERC20Users)    — shared users mapping (from factory.users())
 //
-// Reads the wrapper + users addresses from env / sensible defaults.
+// Reads the wrapper + users addresses from deployments/<network>.json
+// (env vars as override). Hardcoded chain defaults removed — see issue #125.
 //
 // Writes deployment record to deployments/<network>.json under the
 // SimpleActivator key, matching the bridge / oracle / meteora convention. The
@@ -16,7 +17,13 @@
 // rome-solidity master after a CI deploy.
 
 import hardhat from "hardhat";
-import { readDeployments, writeDeployments } from "../lib/deployments.js";
+import {
+  readDeployments,
+  writeDeployments,
+  resolveWusdcWrapperAddress,
+  resolveWsolWrapperAddress,
+  resolveERC20SPLFactoryAddress,
+} from "../lib/deployments.js";
 
 // Three-call activation: 1 USDC for activate(), 0.5 USDC for each
 // ATA-create call. Total user cost = 1 + 0.5 + 0.5 = 2 USDC,
@@ -32,16 +39,13 @@ async function main() {
     throw new Error("No deployer wallet — set <NETWORK>_PRIVATE_KEY");
   }
 
-  // Marcus 121301 defaults — override via env for other chains.
-  const usdcWrapper =
-    (process.env.USDC_WRAPPER as `0x${string}`) ||
-    "0x39844f1d605a11acd87f766494291bbd11b406f4";
-  const wsolWrapper =
-    (process.env.WSOL_WRAPPER as `0x${string}`) ||
-    "0xc180a9133770d48f33cBDe630205a7B7DDA48fF6";
-  const factory =
-    (process.env.ERC20_SPL_FACTORY as `0x${string}`) ||
-    "0xbd0a59183cd4178b8b000036c64c7aeef4619be1";
+  // Resolve wrapper + factory addresses from deployments/<network>.json.
+  // Falls back to env vars (USDC_WRAPPER / WSOL_WRAPPER / ERC20_SPL_FACTORY_ADDRESS).
+  // Aborts with a clear error if neither source is available — no more
+  // hardcoded chain defaults (see #125).
+  const usdcWrapper = resolveWusdcWrapperAddress(networkName);
+  const wsolWrapper = resolveWsolWrapperAddress(networkName);
+  const factory = resolveERC20SPLFactoryAddress(networkName);
 
   // Read users() from the factory.
   const factoryContract = await viem.getContractAt("ERC20SPLFactory", factory);

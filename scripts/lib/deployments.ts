@@ -26,6 +26,24 @@ export type ERC20SPLFactoryDeployment = {
     cpiContractAddress?: string;
 };
 
+export type WusdcDeployment = {
+    address: string;
+    mint: string;
+    mintBytes32: string;
+    name: string;
+    symbol: string;
+    deployTx: string;
+};
+
+export type WsolDeployment = {
+    address: string;
+    mint: string;
+    mintBytes32: string;
+    name: string;
+    symbol: string;
+    deployTx: string;
+};
+
 export type SimpleActivatorDeployment = {
     address: string;
     activationCostWei: string;
@@ -41,6 +59,8 @@ export type DeploymentsFile = {
     MeteoraDAMMv1Router?: RouterDeployment;
     MeteoraDAMMv1Pools?: PoolDeployment[];
     ERC20SPLFactory?: ERC20SPLFactoryDeployment;
+    WUSDC?: WusdcDeployment;
+    WSOL?: WsolDeployment;
     SimpleActivator?: SimpleActivatorDeployment;
 };
 
@@ -254,5 +274,77 @@ export function resolveERC20SPLFactoryAddress(networkName: string): `0x${string}
 
     throw new Error(
         `ERC20SPLFactory address not found. Set ERC20_SPL_FACTORY_ADDRESS or create deployments/${networkName}.json`,
+    );
+}
+
+export function readWusdcWrapperAddressFromDeployments(networkName: string): `0x${string}` | null {
+    const parsed = readDeployments(networkName);
+    const address = parsed.WUSDC?.address;
+
+    if (!address) {
+        return null;
+    }
+
+    if (!isAddress(address)) {
+        throw new Error(
+            `Invalid WUSDC.address in deployments/${networkName}.json: ${address}`,
+        );
+    }
+
+    return getAddress(address);
+}
+
+export function resolveWusdcWrapperAddress(networkName: string): `0x${string}` {
+    const envAddress = process.env.USDC_WRAPPER;
+    if (envAddress) {
+        if (!isAddress(envAddress)) {
+            throw new Error(`Invalid USDC_WRAPPER: ${envAddress}`);
+        }
+        return getAddress(envAddress);
+    }
+
+    const fromFile = readWusdcWrapperAddressFromDeployments(networkName);
+    if (fromFile) {
+        return fromFile;
+    }
+
+    throw new Error(
+        `WUSDC wrapper address not found. Set USDC_WRAPPER env var or deploy WUSDC via bootstrap-bridged-wrappers.ts (writes deployments/${networkName}.json).`,
+    );
+}
+
+export function readWsolWrapperAddressFromDeployments(networkName: string): `0x${string}` | null {
+    const parsed = readDeployments(networkName);
+    const address = parsed.WSOL?.address;
+
+    if (!address) {
+        return null;
+    }
+
+    if (!isAddress(address)) {
+        throw new Error(
+            `Invalid WSOL.address in deployments/${networkName}.json: ${address}`,
+        );
+    }
+
+    return getAddress(address);
+}
+
+export function resolveWsolWrapperAddress(networkName: string): `0x${string}` {
+    const envAddress = process.env.WSOL_WRAPPER;
+    if (envAddress) {
+        if (!isAddress(envAddress)) {
+            throw new Error(`Invalid WSOL_WRAPPER: ${envAddress}`);
+        }
+        return getAddress(envAddress);
+    }
+
+    const fromFile = readWsolWrapperAddressFromDeployments(networkName);
+    if (fromFile) {
+        return fromFile;
+    }
+
+    throw new Error(
+        `WSOL wrapper address not found. Set WSOL_WRAPPER env var or deploy WSOL via bootstrap-bridged-wrappers.ts (writes deployments/${networkName}.json).`,
     );
 }
