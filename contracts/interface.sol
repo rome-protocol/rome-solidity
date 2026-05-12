@@ -84,7 +84,7 @@ interface IHelperProgram {
     // create external pda with lamports
     function create_pda(address user, uint64 lamports) external;
     // swap gas-token to lamports (transfer from operator)
-    function swap_gas_to_lamport(uint64 lamports) external;
+    function swap_gas_to_lamports(uint64 lamports) external;
     // transfer lamports between external pda
     function transfer_lamports(address to, uint64 lamports) external;
     // transfer spl-tokens between ata owned by external pda. Gas token mint is used.
@@ -103,7 +103,7 @@ interface IHelperProgram {
 
 address constant system_program_address = address(0xfF00000000000000000000000000000000000007);
 address constant cpi_program_address = address(0xFF00000000000000000000000000000000000008);
-address constant helper_program_address = address(0xFF00000000000000000000000000000000000008);
+address constant helper_program_address = address(0xff00000000000000000000000000000000000009);
 address constant withdraw_address = address(0x4200000000000000000000000000000000000016);
 address constant unwrap_spl_to_gas_address = address(0x4200000000000000000000000000000000000017);
 address constant wrap_gas_to_spl_address = address(0x4200000000000000000000000000000000000018);
