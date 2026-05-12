@@ -9,8 +9,14 @@
 //   - users           (ERC20Users)    — shared users mapping (from factory.users())
 //
 // Reads the wrapper + users addresses from env / sensible defaults.
+//
+// Writes deployment record to deployments/<network>.json under the
+// SimpleActivator key, matching the bridge / oracle / meteora convention. The
+// contract-deploys activation-deploy.yml workflow PRs this file back to
+// rome-solidity master after a CI deploy.
 
 import hardhat from "hardhat";
+import { readDeployments, writeDeployments } from "../lib/deployments.js";
 
 // Three-call activation: 1 USDC for activate(), 0.5 USDC for each
 // ATA-create call. Total user cost = 1 + 0.5 + 0.5 = 2 USDC,
@@ -59,11 +65,28 @@ async function main() {
   ]);
   console.log(`  address: ${activator.address}`);
 
+  // Persist deployment record to deployments/<network>.json so the
+  // contract-deploys activation-deploy.yml workflow PR-back step has a
+  // non-empty diff. Matches bridge / oracle / meteora convention.
+  const existing = readDeployments(networkName);
+  existing.SimpleActivator = {
+    address: activator.address,
+    activationCostWei: ACTIVATION_COST_WEI.toString(),
+    tokenAccountsCostWei: TOKEN_ACCOUNTS_COST_WEI.toString(),
+    usdcWrapper,
+    wsolWrapper,
+    users: usersAddr,
+    deployedAt: Math.floor(Date.now() / 1000),
+  };
+  writeDeployments(networkName, existing);
+  console.log(`  recorded in deployments/${networkName}.json`);
+
   console.log("\nNext steps:");
-  console.log(`  1. Update debug-portal/activate.html simpleActivator default.`);
-  console.log(`  2. From a fresh EVM address: UI fires activate() (1 USDC), createWusdcAta() (0.5 USDC), createWsolAta() (0.5 USDC) sequentially.`);
-  console.log(`  3. Verify on-chain: PDA exists with 890,880 lamports, WUSDC + WSOL ATAs both exist owned by PDA.`);
-  console.log(`  4. Then: try a Meteora swap from the same wallet — destination ATA exists now, should succeed.`);
+  console.log(`  1. Merge the contract-deploys PR-back to rome-solidity master.`);
+  console.log(`  2. Update chain.contracts.simpleActivator in registry/chains/<id>-<slug>/contracts.json.`);
+  console.log(`  3. Bump rome_ui_registry_ref in the chain's rome-ui inventory + redeploy rome-ui so ActivationGate picks up the new address.`);
+  console.log(`  4. From a fresh EVM address: UI fires activate() (1 USDC), createWusdcAta() (0.5 USDC), createWsolAta() (0.5 USDC) sequentially.`);
+  console.log(`  5. Verify on-chain: PDA exists with 890,880 lamports, WUSDC + WSOL ATAs both exist owned by PDA.`);
 }
 
 main().catch((err) => {

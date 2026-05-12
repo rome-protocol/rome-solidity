@@ -26,11 +26,22 @@ export type ERC20SPLFactoryDeployment = {
     cpiContractAddress?: string;
 };
 
+export type SimpleActivatorDeployment = {
+    address: string;
+    activationCostWei: string;
+    tokenAccountsCostWei: string;
+    usdcWrapper: string;
+    wsolWrapper: string;
+    users: string;
+    deployedAt: number;
+};
+
 export type DeploymentsFile = {
     MeteoraDAMMv1Factory?: FactoryDeployment;
     MeteoraDAMMv1Router?: RouterDeployment;
     MeteoraDAMMv1Pools?: PoolDeployment[];
     ERC20SPLFactory?: ERC20SPLFactoryDeployment;
+    SimpleActivator?: SimpleActivatorDeployment;
 };
 
 export function deploymentsFilePath(networkName: string): string {
