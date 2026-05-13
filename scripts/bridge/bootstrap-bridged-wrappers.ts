@@ -35,18 +35,20 @@ type WrapperSpec = {
 const DEVNET_SET: WrapperSpec[] = [
   { key: "SPL_ERC20_USDC", mintBase58: SPL_MINTS_DEVNET.USDC_NATIVE,   name: "Rome USDC", symbol: "wUSDC" },
   { key: "SPL_ERC20_WETH", mintBase58: SPL_MINTS_DEVNET.WETH_WORMHOLE, name: "Rome ETH",  symbol: "wETH"  },
+  { key: "SPL_ERC20_WSOL", mintBase58: SPL_MINTS_DEVNET.WSOL_NATIVE,   name: "Rome SOL",  symbol: "wSOL"  },
 ];
 
 const MAINNET_SET: WrapperSpec[] = [
   { key: "SPL_ERC20_USDC", mintBase58: SPL_MINTS_MAINNET.USDC_NATIVE,   name: "Rome USDC", symbol: "wUSDC" },
   { key: "SPL_ERC20_WETH", mintBase58: SPL_MINTS_MAINNET.WETH_WORMHOLE, name: "Rome ETH",  symbol: "wETH"  },
+  { key: "SPL_ERC20_WSOL", mintBase58: SPL_MINTS_MAINNET.WSOL_NATIVE,   name: "Rome SOL",  symbol: "wSOL"  },
 ];
 
 // Networks targeting Solana DEVNET use SPL_MINTS_DEVNET; mainnet networks use
 // SPL_MINTS_MAINNET. Update this list whenever a new chain is brought up.
 // Override via `BRIDGED_SET=devnet|mainnet` env var for one-off cases.
 const DEVNET_NETWORKS = new Set([
-  "marcus", "cassius", "subura", "esquiline", "aventine", "maximus", "local",
+  "marcus", "cassius", "subura", "esquiline", "aventine", "maximus", "augustus", "local",
 ]);
 
 function resolveSet(networkName: string): WrapperSpec[] {

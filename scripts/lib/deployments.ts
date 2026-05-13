@@ -51,6 +51,16 @@ export type DeploymentsFile = {
     MeteoraDAMMv1Pools?: PoolDeployment[];
     ERC20SPLFactory?: ERC20SPLFactoryDeployment;
     SimpleActivator?: SimpleActivatorDeployment;
+    // Canonical bridged-asset wrapper keys written by
+    // scripts/bridge/bootstrap-bridged-wrappers.ts. Names match what other
+    // scripts (deploy-withdraw-on-existing-paymaster, redeploy-withdraw-*)
+    // already consume so the type stays consistent across the repo.
+    SPL_ERC20_USDC?: WrapperDeployment;
+    SPL_ERC20_WETH?: WrapperDeployment;
+    SPL_ERC20_WSOL?: WrapperDeployment;
+    // Legacy aliases kept for back-compat with hand-edited deployments
+    // produced before the SPL_ERC20_* convention. Don't write new code
+    // against these.
     WUSDC?: WrapperDeployment;
     WSOL?: WrapperDeployment;
 };

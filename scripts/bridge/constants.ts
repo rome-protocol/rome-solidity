@@ -30,9 +30,15 @@ export const SOLANA_PROGRAM_IDS_DEVNET = {
 } as const;
 
 // Canonical Phase 1 mainnet mints (Solana mainnet-beta) — used on mainnet deploys.
+// WSOL_NATIVE is the canonical wrapped-SOL mint — same pubkey on devnet AND
+// mainnet because it's effectively a one-off "wrap SOL → SPL" mint owned by
+// the SPL Token program itself. Included alongside USDC/WETH so
+// SimpleActivator's `WSOL_WRAPPER` + Romeswap's wSOL pool seeding have a
+// wrapper to point at after bring-up.
 export const SPL_MINTS_MAINNET = {
   USDC_NATIVE: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   WETH_WORMHOLE: "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",
+  WSOL_NATIVE: "So11111111111111111111111111111111111111112",
 } as const;
 
 // Devnet mints — USDC is Circle's devnet USDC; wETH is the canonical
@@ -44,6 +50,7 @@ export const SPL_MINTS_MAINNET = {
 export const SPL_MINTS_DEVNET = {
   USDC_NATIVE: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
   WETH_WORMHOLE: "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs",
+  WSOL_NATIVE: "So11111111111111111111111111111111111111112",
 } as const;
 
 // Default export — points at devnet for now since active deploys target
