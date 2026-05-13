@@ -5,7 +5,7 @@ import {ERC2771Context} from "@openzeppelin/contracts/metatx/ERC2771Context.sol"
 import {SPL_ERC20} from "../erc20spl/erc20spl.sol";
 import {CCTPLib} from "./ICCTP.sol";
 import {WormholeTokenBridgeLib} from "./IWormholeTokenBridge.sol";
-import {ICrossProgramInvocation, CpiProgram} from "../interface.sol";
+import {ICrossProgramInvocation, CpiProgram, HelperProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {Convert} from "../convert.sol";
 import {RomeBridgeEvents} from "./RomeBridgeEvents.sol";
@@ -224,7 +224,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         // Anchor `AccountOwnedByWrongProgram` (3007) on burn_token_account.
         // Uses the `derive_user_ata` precompile shortcut: one syscall vs the
         // 2× findPda chain in `UserPda.ata` (~80k CU saved per call).
-        bytes32 userAta = CpiProgram.derive_user_ata(user, usdcMint);
+        bytes32 userAta = HelperProgram.ata(user, usdcMint);
 
         // Unified-PDA model (rome-solidity 0acabea): the user has ONE PDA.
         // CCTP's `event_rent_payer` slot is filled by the unified PDA —
@@ -320,7 +320,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 userPda = RomeEVMAccount.pda(user);
         // Canonical user-ATA via `derive_user_ata` precompile shortcut — see
         // comment in burnUSDC for rationale.
-        bytes32 userAta = CpiProgram.derive_user_ata(user, wethMint);
+        bytes32 userAta = HelperProgram.ata(user, wethMint);
 
         bytes32[] memory emptySigners = new bytes32[](0);
         (, ICrossProgramInvocation.AccountMeta[] memory approveMetas, bytes memory approveIx) =
@@ -371,7 +371,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 userPda  = RomeEVMAccount.pda(user);
         // Canonical user-ATA via `derive_user_ata` precompile shortcut — see
         // comment in burnUSDC for rationale.
-        bytes32 userAta  = CpiProgram.derive_user_ata(user, wethMint);
+        bytes32 userAta = HelperProgram.ata(user, wethMint);
 
         // Unified-PDA model: the user's single PDA fills both `payer`
         // (metas[0]) and `from_owner` (metas[3]). Same activation

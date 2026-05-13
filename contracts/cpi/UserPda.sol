@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {ISystemProgram, SystemProgram, ICrossProgramInvocation, CpiProgram} from "../interface.sol";
+import {ISystemProgram, SystemProgram, ICrossProgramInvocation, CpiProgram, HelperProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {AssociatedSplToken} from "../spl_token/associated_spl_token.sol";
 import {SolanaConstants} from "./SolanaConstants.sol";
@@ -40,7 +40,7 @@ library UserPda {
     /// Saves ~152K Solana CU per call vs the two-hop path (3-sample
     /// average on Marcus 121301: 281K → 129K, 54 % reduction).
     function ata(address user, bytes32 mint) internal view returns (bytes32) {
-        return CpiProgram.derive_user_ata(user, mint);
+        return HelperProgram.ata(user, mint);
     }
 
     /// Derive an ATA for a raw Solana pubkey (pool-side, fee receiver, etc.).

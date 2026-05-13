@@ -6,11 +6,11 @@
  *   2. settleInbound reverts on zero amount.
  *   3. settleInbound reverts with InsufficientBalance when user balance < amount.
  *   4. settleInbound reverts with InsufficientAllowance when allowance < amount.
- *   5. Happy path: pulls wrapper from user, calls unwrap precompile, forwards
- *      gas to user, emits SettledInbound. The unwrap precompile is stubbed at
- *      its canonical address (0x42..17) via hardhat_setCode.
+ *   5. Happy path: pulls wrapper from user, calls HelperProgram precompile,
+ *      forwards gas to user, emits SettledInbound. The HelperProgram precompile
+ *      is stubbed at its canonical address (0xff..09) via hardhat_setCode.
  *
- * CPI happy-path against the real `unwrap_spl_to_gas` precompile is deferred
+ * CPI happy-path against the real `deposit_from_ata` precompile is deferred
  * to an integration test against a live Rome stack (see Phase 1.4 pattern).
  */
 
@@ -23,8 +23,8 @@ import {
   type Address,
 } from "viem";
 
-const UNWRAP_PRECOMPILE: Address = getAddress(
-  "0x4200000000000000000000000000000000000017",
+const HELPER_PRECOMPILE: Address = getAddress(
+  "0xff00000000000000000000000000000000000009",
 );
 
 const MOCK_MINT =
@@ -48,21 +48,21 @@ describe("RomeBridgeInbound — unit tests", () => {
     const [userClient] = await viem.getWalletClients();
     user = userClient.account.address;
 
-    // Stub out the UnwrapSplToGas precompile at its canonical address.
-    // Deploy MockUnwrapSplToGas normally, copy its runtime bytecode to
-    // 0x42..17, then fund the precompile address so it can forward ETH.
-    const deployedMock = await viem.deployContract("MockUnwrapSplToGas");
+    // Stub out the HelperProgram precompile at its canonical address.
+    // Deploy MockHelperProgram normally, copy its runtime bytecode to
+    // 0xff..09, then fund the precompile address so it can forward ETH.
+    const deployedMock = await viem.deployContract("MockHelperProgram");
     const code = await publicClient.getCode({ address: deployedMock.address });
     assert.ok(code && code !== "0x", "mock bytecode not deployed");
     await conn.provider.request({
       method: "hardhat_setCode",
-      params: [UNWRAP_PRECOMPILE, code],
+      params: [HELPER_PRECOMPILE, code],
     });
-    // Fund the precompile so it has ETH to forward on each unwrap call.
-    // 100 ETH covers any plausible test load.
+    // Fund the precompile so it has ETH to forward on each deposit_from_ata
+    // call. 100 ETH covers any plausible test load.
     await conn.provider.request({
       method: "hardhat_setBalance",
-      params: [UNWRAP_PRECOMPILE, "0x" + parseEther("100").toString(16)],
+      params: [HELPER_PRECOMPILE, "0x" + parseEther("100").toString(16)],
     });
   });
 
@@ -252,22 +252,22 @@ describe("RomeBridgeInbound — unit tests", () => {
 
   // ─── Hardening A3: Slippage / balance-delta check ────────────────────────
 
-  describe("Slippage check on unwrap_spl_to_gas (A3)", () => {
+  describe("Slippage check on deposit_from_ata (A3)", () => {
     it("reverts with UnexpectedUnwrapDelta if precompile credits less than expected", async () => {
       // Deploy a partial-payout mock at the precompile address that only
       // forwards half the requested amount. This simulates a hypothetical
-      // precompile bug or version mismatch where the unwrap doesn't
-      // produce the expected wei delta.
+      // precompile bug or version mismatch where the deposit_from_ata
+      // doesn't produce the expected wei delta.
       const partialMock = await viem.deployContract("PartialPayoutUnwrap");
       const code = await publicClient.getCode({ address: partialMock.address });
       assert.ok(code && code !== "0x", "partial-payout mock not deployed");
       await conn.provider.request({
         method: "hardhat_setCode",
-        params: [UNWRAP_PRECOMPILE, code],
+        params: [HELPER_PRECOMPILE, code],
       });
       await conn.provider.request({
         method: "hardhat_setBalance",
-        params: [UNWRAP_PRECOMPILE, "0x" + parseEther("100").toString(16)],
+        params: [HELPER_PRECOMPILE, "0x" + parseEther("100").toString(16)],
       });
 
       const wrapperAmount = 1_000_000n;
@@ -288,15 +288,15 @@ describe("RomeBridgeInbound — unit tests", () => {
       );
 
       // Restore the full-payout mock for subsequent tests in the suite.
-      const goodMock = await viem.deployContract("MockUnwrapSplToGas");
+      const goodMock = await viem.deployContract("MockHelperProgram");
       const goodCode = await publicClient.getCode({ address: goodMock.address });
       await conn.provider.request({
         method: "hardhat_setCode",
-        params: [UNWRAP_PRECOMPILE, goodCode],
+        params: [HELPER_PRECOMPILE, goodCode],
       });
       await conn.provider.request({
         method: "hardhat_setBalance",
-        params: [UNWRAP_PRECOMPILE, "0x" + parseEther("100").toString(16)],
+        params: [HELPER_PRECOMPILE, "0x" + parseEther("100").toString(16)],
       });
     });
   });

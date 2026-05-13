@@ -17,23 +17,10 @@ interface ISystemProgram {
 
 interface IWithdraw {
     function withdrawal(bytes32 owner) payable external;
+    function withdraw_to_pda(uint256 wei_) external;
+    function withdraw_to_ata(uint256 wei_) external;
 }
 
-interface IUnwrapSplToGas {
-    // Convert ERC20-SPL wrapper balance -> native gas balance for the caller.
-    // `amount` is in wei (18 decimals) and must be a multiple of
-    // 10^(18 - mint_decimals). Non-payable. Only valid on chains with
-    // chain_mint_id set. Reverts with Unimplemented otherwise.
-    function unwrap_spl_to_gas(uint256 amount) external;
-}
-
-interface IWrapGasToSpl {
-    // Convert native gas balance -> ERC20-SPL wrapper balance for the caller.
-    // `amount` is in wei (18 decimals) and must be a multiple of
-    // 10^(18 - mint_decimals). Non-payable. Only valid on chains with
-    // chain_mint_id set. Reverts with Unimplemented otherwise.
-    function wrap_gas_to_spl(uint256 amount) external;
-}
 interface ICrossProgramInvocation {
     struct AccountMeta {
         bytes32 pubkey;
@@ -60,16 +47,10 @@ interface ICrossProgramInvocation {
 
     // Read a slice of any Solana account's data buffer.
     function account_data_at(bytes32 pubkey, uint16 offset, uint16 length) external view returns (bytes memory);
-    // SPL Token Classic transfer_checked, signed by caller's unified PDA
-    // (or salts-derived signer when salts non-empty).
-    function spl_transfer_checked_v1(bytes32 src_ata, bytes32 mint, bytes32 dst_ata, uint64 amount, uint8 decimals, bytes32[] memory salts) external returns (bool);
     // Read a u64 LE field at a known offset in a Solana account.
     function account_u64_at(bytes32 pubkey, uint16 offset) external view returns (uint64);
     // Lamports-only read — skips the data fetch.
     function account_lamports(bytes32 pubkey) external view returns (uint64);
-    // Compose Rome's EXTERNAL_AUTHORITY → unified-PDA → SPL ATA derivation
-    // in one syscall (replaces 2× find_program_address calls).
-    function derive_user_ata(address evm_user, bytes32 mint) external view returns (bytes32);
     // Batch findPda — N independent PDAs against one program in one call.
     function pdas_batch_derive(bytes[][] memory seed_groups, bytes32 program_id) external view returns (PdaWithBump[] memory);
 }
@@ -90,8 +71,13 @@ interface IHelperProgram {
     // transfer spl-tokens between ata owned by external pda. Gas token mint is used.
     // Is only applicable for rollup based on SPL-token.
     function transfer_spl(address to, uint64 tokens) external;
-    // transfer spl-tokens between ata owned by external pds.
+    // transfer spl-tokens between ata owned by external pda. Gas token mint is used.
+    // Is only applicable for rollup based on SPL-token.
+    function transfer_spl(bytes32 to_ata, uint64 tokens) external;
+    // transfer spl-tokens between ata owned by external pda.
     function transfer_spl(address to, uint64 tokens, bytes32 mint) external;
+    // transfer spl-tokens between ata owned by external pda.
+    function transfer_spl(bytes32 to_ata, uint64 tokens, bytes32 mint) external;
     // external pda
     function pda(address user) external view returns (bytes32);
     // ata owned by external pda. Gas token mint is used.
@@ -99,20 +85,18 @@ interface IHelperProgram {
     function ata(address user) external view returns (bytes32);
     // ata owned by external pda.
     function ata(address user, bytes32 mint) external view returns (bytes32);
+    // deposit gas-token from ata
+    function deposit_from_ata(uint256 wei_) external; 
 }
 
 address constant system_program_address = address(0xfF00000000000000000000000000000000000007);
 address constant cpi_program_address = address(0xFF00000000000000000000000000000000000008);
 address constant helper_program_address = address(0xff00000000000000000000000000000000000009);
 address constant withdraw_address = address(0x4200000000000000000000000000000000000016);
-address constant unwrap_spl_to_gas_address = address(0x4200000000000000000000000000000000000017);
-address constant wrap_gas_to_spl_address = address(0x4200000000000000000000000000000000000018);
 
 ISystemProgram constant SystemProgram = ISystemProgram(system_program_address);
 ICrossProgramInvocation constant CpiProgram = ICrossProgramInvocation(cpi_program_address);
 IWithdraw constant Withdraw = IWithdraw(withdraw_address);
-IUnwrapSplToGas constant UnwrapSplToGas = IUnwrapSplToGas(unwrap_spl_to_gas_address);
-IWrapGasToSpl constant WrapGasToSpl = IWrapGasToSpl(wrap_gas_to_spl_address);
 IHelperProgram constant HelperProgram = IHelperProgram(helper_program_address);
 
 

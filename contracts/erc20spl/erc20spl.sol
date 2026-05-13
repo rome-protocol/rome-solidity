@@ -5,7 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SplTokenLib} from "../spl_token/spl_token.sol";
 import {AssociatedSplToken} from "../spl_token/associated_spl_token.sol";
-import {ISystemProgram, ICrossProgramInvocation, CpiProgram} from "../interface.sol";
+import {ISystemProgram, ICrossProgramInvocation, CpiProgram, HelperProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {UserPda} from "../cpi/UserPda.sol";
 import {Convert} from "../convert.sol";
@@ -80,7 +80,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     ///      after any wrapper-mediated mutation). New callers should treat
     ///      this as the canonical lookup.
     function getAta(address user) external view returns (bytes32) {
-        return ICrossProgramInvocation(cpi_program).derive_user_ata(user, mint_id);
+        return HelperProgram.ata(user, mint_id);
     }
 
     error ERC20InvalidApprover(address approver);
@@ -156,7 +156,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         //  - `account_lamports` fetches lamports only — no data buffer pull,
         //    no Borsh decoding. The fast-path here only needs lamports != 0
         //    to confirm the account is initialized.
-        bytes32 ata = ICrossProgramInvocation(cpi_program).derive_user_ata(user, mint_id);
+        bytes32 ata = HelperProgram.ata(user, mint_id);
         uint64 lamports = ICrossProgramInvocation(cpi_program).account_lamports(ata);
         if (lamports != 0) {
             // Account already exists on Solana — no CPI needed.
@@ -188,7 +188,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
      *      mediated flows like Romeswap addLiquidity.
      */
     function get_token_account(address user) public view returns (bytes32) {
-        return ICrossProgramInvocation(cpi_program).derive_user_ata(user, mint_id);
+        return HelperProgram.ata(user, mint_id);
     }
 
     function name() public view virtual returns (string memory) {
@@ -217,7 +217,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // populated only after a wrapper-mediated `ensure_token_account`
         // call) would mismatch and report 0 for any user whose tokens
         // arrived via a non-wrapper path.
-        bytes32 ata = ICrossProgramInvocation(cpi_program).derive_user_ata(account, mint_id);
+        bytes32 ata = HelperProgram.ata(account, mint_id);
         // ERC20-standard total: an address that has never received the
         // token has balance 0, not a revert. When the user's ATA hasn't
         // been initialized on Solana yet, account_u64_at(ata, 64) would
@@ -266,23 +266,41 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // as Phantom and every other Solana wallet.
         bytes32 to_account = ensure_token_account(to);
 
-        // `spl_transfer_checked_v1` builds the AccountMeta[4] + 10-byte
-        // transfer_checked ix data in Rust (saves ~250k CU vs the
-        // Solidity-side SplTokenLib.transfer_checked marshaling) and
-        // signs as the precompile-caller's unified PDA when salts is
-        // empty. Delegatecall preserves caller = msg.sender, so:
-        //   - transfer(to, value): signer = unified_pda_of(msg.sender) =
-        //     source-ATA owner (`user` arg, kept for compatibility with
-        //     prior callers). Direct authority match.
-        //   - transferFrom(from, to, value): signer = unified_pda_of(spender),
-        //     which is the SPL Token delegate set by the prior approve()
-        //     call. SPL Token Classic accepts delegate-as-authority for
-        //     transfer_checked when delegated_amount ≥ amount.
-        user;  // arg is the unified PDA the precompile auto-derives — silenced
+        // `spl_transfer_checked_v1` shortcut was removed in the
+        // HelperProgram migration; `HelperProgram.transfer_spl` doesn't
+        // support delegate-as-authority (it always signs as the caller's
+        // unified PDA acting as ATA *owner*), so this path falls back to
+        // the canonical SplTokenLib.transfer_checked + CpiProgram.invoke
+        // pattern — same shape as `approve` below. Costs ~250k CU more
+        // than the shortcut did.
+        //
+        // `user` is the unified PDA of the call's signer:
+        //   - transfer(to, value)        → user = unified_pda_of(msg.sender),
+        //                                   which OWNS the source ATA →
+        //                                   SPL Token accepts as authority.
+        //   - transferFrom(from, to, v)  → user = unified_pda_of(spender),
+        //                                   which is the SPL delegate set
+        //                                   by the prior approve() → SPL
+        //                                   Token accepts as authority
+        //                                   when delegated_amount ≥ value.
+        (
+            bytes32 program_id,
+            ICrossProgramInvocation.AccountMeta[] memory accounts,
+            bytes memory data
+        ) = SplTokenLib.transfer_checked(
+            SplTokenLib.SPL_TOKEN_PROGRAM,
+            get_token_account(from),
+            mint_id,
+            to_account,
+            user,
+            new bytes32[](0),
+            uint64(value),
+            decimals
+        );
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
-                "spl_transfer_checked_v1(bytes32,bytes32,bytes32,uint64,uint8,bytes32[])",
-                get_token_account(from), mint_id, to_account, uint64(value), decimals, new bytes32[](0)
+                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
+                program_id, accounts, data
             )
         );
 
@@ -407,7 +425,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // the prior path: the shortcut runs the same two
         // `find_program_address` syscalls in native Rust, returning the
         // same `(ATA, bump)` for a given `(user, mint)`.
-        bytes32 from_ata = ICrossProgramInvocation(cpi_program).derive_user_ata(msg.sender, mint_id);
+        bytes32 from_ata = HelperProgram.ata(msg.sender, mint_id);
 
         // Recipient ATA — derive only. Caller must pre-create on Solana
         // if it doesn't exist (use ensureRecipientAta below as a separate
@@ -420,17 +438,18 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
         // SPL transfer_checked from AUTHORITY_PDA's ATA → recipient's ATA.
-        // `spl_transfer_checked_v1` builds the AccountMeta[4] + 10-byte ix
-        // data in Rust (saves ~250k CU vs the Solidity SplTokenLib helper)
-        // and signs as the precompile-caller's unified PDA when salts is
-        // empty. Delegatecall preserves caller = msg.sender, so the signer
-        // resolves to `external_auth(msg.sender)` — the same unified PDA
+        // Uses `HelperProgram.transfer_spl(bytes32 to_ata, uint64, bytes32 mint)`
+        // via delegatecall so the precompile sees `caller = msg.sender`
+        // and signs as `external_auth(msg.sender)` — the same unified PDA
         // that owns `from_ata`. Direct authority match — no delegation,
-        // no salts.
-        (bool success, bytes memory result) = address(cpi_program).delegatecall(
+        // no salts. The `bytes32 to_ata` overload is required here because
+        // `solana_recipient` is a raw Solana pubkey (not an EVM address),
+        // so the `(address,uint64,bytes32)` variant — which would derive
+        // the dest as ata(external_auth(to), mint) — does not apply.
+        (bool success, bytes memory result) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
-                "spl_transfer_checked_v1(bytes32,bytes32,bytes32,uint64,uint8,bytes32[])",
-                from_ata, mint_id, to_ata, uint64(value), decimals, new bytes32[](0)
+                "transfer_spl(bytes32,uint64,bytes32)",
+                to_ata, uint64(value), mint_id
             )
         );
         require(success, string(Convert.revert_msg(result)));

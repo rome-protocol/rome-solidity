@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
-import {CpiProgram, SystemProgram, UnwrapSplToGas, ISystemProgram, ICrossProgramInvocation} from "../interface.sol";
+import {CpiProgram, SystemProgram,  ISystemProgram, HelperProgram, ICrossProgramInvocation} from "../interface.sol";
 import {Convert} from "../convert.sol";
 import {SplTokenLib} from "../spl_token/spl_token.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
@@ -9,8 +9,8 @@ import {SystemProgramLib} from "../system_program/system_program.sol";
 
 contract UnwrapSplToGasContract  {
     function unwrap_spl_to_gas(uint256 value)  external {
-        (bool success, bytes memory result) = address(UnwrapSplToGas).delegatecall(
-            abi.encodeWithSignature("unwrap_spl_to_gas(uint256)", value)
+        (bool success, bytes memory result) = address(HelperProgram).delegatecall(
+            abi.encodeWithSignature("deposit_from_ata(uint256)", value)
         );
         require (success, string(Convert.revert_msg(result)));
     }
