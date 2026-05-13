@@ -5,7 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SplTokenLib} from "../spl_token/spl_token.sol";
 import {AssociatedSplToken} from "../spl_token/associated_spl_token.sol";
-import {ISystemProgram, ICrossProgramInvocation, CpiProgram} from "../interface.sol";
+import {ISystemProgram, ICrossProgramInvocation, CpiProgram, HelperProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {UserPda} from "../cpi/UserPda.sol";
 import {Convert} from "../convert.sol";
@@ -80,7 +80,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     ///      after any wrapper-mediated mutation). New callers should treat
     ///      this as the canonical lookup.
     function getAta(address user) external view returns (bytes32) {
-        return ICrossProgramInvocation(cpi_program).derive_user_ata(user, mint_id);
+        return HelperProgram.ata(user, mint_id);
     }
 
     error ERC20InvalidApprover(address approver);
@@ -156,7 +156,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         //  - `account_lamports` fetches lamports only — no data buffer pull,
         //    no Borsh decoding. The fast-path here only needs lamports != 0
         //    to confirm the account is initialized.
-        bytes32 ata = ICrossProgramInvocation(cpi_program).derive_user_ata(user, mint_id);
+        bytes32 ata = HelperProgram.ata(user, mint_id);
         uint64 lamports = ICrossProgramInvocation(cpi_program).account_lamports(ata);
         if (lamports != 0) {
             // Account already exists on Solana — no CPI needed.
@@ -188,7 +188,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
      *      mediated flows like Romeswap addLiquidity.
      */
     function get_token_account(address user) public view returns (bytes32) {
-        return ICrossProgramInvocation(cpi_program).derive_user_ata(user, mint_id);
+        return HelperProgram.ata(user, mint_id);
     }
 
     function name() public view virtual returns (string memory) {
@@ -217,7 +217,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // populated only after a wrapper-mediated `ensure_token_account`
         // call) would mismatch and report 0 for any user whose tokens
         // arrived via a non-wrapper path.
-        bytes32 ata = ICrossProgramInvocation(cpi_program).derive_user_ata(account, mint_id);
+        bytes32 ata = HelperProgram.ata(account, mint_id);
         // ERC20-standard total: an address that has never received the
         // token has balance 0, not a revert. When the user's ATA hasn't
         // been initialized on Solana yet, account_u64_at(ata, 64) would
@@ -407,7 +407,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // the prior path: the shortcut runs the same two
         // `find_program_address` syscalls in native Rust, returning the
         // same `(ATA, bump)` for a given `(user, mint)`.
-        bytes32 from_ata = ICrossProgramInvocation(cpi_program).derive_user_ata(msg.sender, mint_id);
+        bytes32 from_ata = HelperProgram.ata(msg.sender, mint_id);
 
         // Recipient ATA — derive only. Caller must pre-create on Solana
         // if it doesn't exist (use ensureRecipientAta below as a separate

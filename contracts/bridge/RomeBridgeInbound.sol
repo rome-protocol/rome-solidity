@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {ERC2771Context} from "@openzeppelin/contracts/metatx/ERC2771Context.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {SPL_ERC20} from "../erc20spl/erc20spl.sol";
-import {IUnwrapSplToGas, UnwrapSplToGas} from "../interface.sol";
+import {IHelperProgram, HelperProgram} from "../interface.sol";
 import {RomeBridgeEvents} from "./RomeBridgeEvents.sol";
 
 /// @title  RomeBridgeInbound
@@ -146,7 +146,7 @@ contract RomeBridgeInbound is ERC2771Context, ReentrancyGuard, RomeBridgeEvents 
         //    silently underforward to the user.
         gasAmountWei = wrapperAmount * scaleWeiPerUnit;
         uint256 balanceBefore = address(this).balance;
-        UnwrapSplToGas.unwrap_spl_to_gas(gasAmountWei);
+        HelperProgram.deposit_from_ata(gasAmountWei);
         uint256 actualDelta = address(this).balance - balanceBefore;
         if (actualDelta != gasAmountWei) {
             revert UnexpectedUnwrapDelta(gasAmountWei, actualDelta);
