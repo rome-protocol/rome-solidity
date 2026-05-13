@@ -78,6 +78,13 @@ interface IHelperProgram {
     function transfer_spl(address to, uint64 tokens, bytes32 mint) external;
     // transfer spl-tokens between ata owned by external pda.
     function transfer_spl(bytes32 to_ata, uint64 tokens, bytes32 mint) external;
+    // Delegate variant: src_ata is caller-supplied (the other transfer_spl
+    // overloads derive it from external_auth(caller)). Signs as
+    // external_auth(caller); SPL Token Program accepts this PDA as the
+    // transfer_checked authority when it is the source ATA's owner OR its
+    // delegate with delegated_amount >= tokens. Required by ERC20-style
+    // transferFrom flows (e.g. SPL_ERC20._transfer with from != msg.sender).
+    function transfer_spl(bytes32 src_ata, bytes32 to_ata, uint64 tokens, bytes32 mint) external;
     // external pda
     function pda(address user) external view returns (bytes32);
     // ata owned by external pda. Gas token mint is used.
