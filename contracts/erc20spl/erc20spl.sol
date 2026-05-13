@@ -266,23 +266,41 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // as Phantom and every other Solana wallet.
         bytes32 to_account = ensure_token_account(to);
 
-        // `spl_transfer_checked_v1` builds the AccountMeta[4] + 10-byte
-        // transfer_checked ix data in Rust (saves ~250k CU vs the
-        // Solidity-side SplTokenLib.transfer_checked marshaling) and
-        // signs as the precompile-caller's unified PDA when salts is
-        // empty. Delegatecall preserves caller = msg.sender, so:
-        //   - transfer(to, value): signer = unified_pda_of(msg.sender) =
-        //     source-ATA owner (`user` arg, kept for compatibility with
-        //     prior callers). Direct authority match.
-        //   - transferFrom(from, to, value): signer = unified_pda_of(spender),
-        //     which is the SPL Token delegate set by the prior approve()
-        //     call. SPL Token Classic accepts delegate-as-authority for
-        //     transfer_checked when delegated_amount ≥ amount.
-        user;  // arg is the unified PDA the precompile auto-derives — silenced
+        // `spl_transfer_checked_v1` shortcut was removed in the
+        // HelperProgram migration; `HelperProgram.transfer_spl` doesn't
+        // support delegate-as-authority (it always signs as the caller's
+        // unified PDA acting as ATA *owner*), so this path falls back to
+        // the canonical SplTokenLib.transfer_checked + CpiProgram.invoke
+        // pattern — same shape as `approve` below. Costs ~250k CU more
+        // than the shortcut did.
+        //
+        // `user` is the unified PDA of the call's signer:
+        //   - transfer(to, value)        → user = unified_pda_of(msg.sender),
+        //                                   which OWNS the source ATA →
+        //                                   SPL Token accepts as authority.
+        //   - transferFrom(from, to, v)  → user = unified_pda_of(spender),
+        //                                   which is the SPL delegate set
+        //                                   by the prior approve() → SPL
+        //                                   Token accepts as authority
+        //                                   when delegated_amount ≥ value.
+        (
+            bytes32 program_id,
+            ICrossProgramInvocation.AccountMeta[] memory accounts,
+            bytes memory data
+        ) = SplTokenLib.transfer_checked(
+            SplTokenLib.SPL_TOKEN_PROGRAM,
+            get_token_account(from),
+            mint_id,
+            to_account,
+            user,
+            new bytes32[](0),
+            uint64(value),
+            decimals
+        );
         (bool success, bytes memory result) = address(cpi_program).delegatecall(
             abi.encodeWithSignature(
-                "spl_transfer_checked_v1(bytes32,bytes32,bytes32,uint64,uint8,bytes32[])",
-                get_token_account(from), mint_id, to_account, uint64(value), decimals, new bytes32[](0)
+                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
+                program_id, accounts, data
             )
         );
 
@@ -420,17 +438,18 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
         // SPL transfer_checked from AUTHORITY_PDA's ATA → recipient's ATA.
-        // `spl_transfer_checked_v1` builds the AccountMeta[4] + 10-byte ix
-        // data in Rust (saves ~250k CU vs the Solidity SplTokenLib helper)
-        // and signs as the precompile-caller's unified PDA when salts is
-        // empty. Delegatecall preserves caller = msg.sender, so the signer
-        // resolves to `external_auth(msg.sender)` — the same unified PDA
+        // Uses `HelperProgram.transfer_spl(bytes32 to_ata, uint64, bytes32 mint)`
+        // via delegatecall so the precompile sees `caller = msg.sender`
+        // and signs as `external_auth(msg.sender)` — the same unified PDA
         // that owns `from_ata`. Direct authority match — no delegation,
-        // no salts.
-        (bool success, bytes memory result) = address(cpi_program).delegatecall(
+        // no salts. The `bytes32 to_ata` overload is required here because
+        // `solana_recipient` is a raw Solana pubkey (not an EVM address),
+        // so the `(address,uint64,bytes32)` variant — which would derive
+        // the dest as ata(external_auth(to), mint) — does not apply.
+        (bool success, bytes memory result) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
-                "spl_transfer_checked_v1(bytes32,bytes32,bytes32,uint64,uint8,bytes32[])",
-                from_ata, mint_id, to_ata, uint64(value), decimals, new bytes32[](0)
+                "transfer_spl(bytes32,uint64,bytes32)",
+                to_ata, uint64(value), mint_id
             )
         );
         require(success, string(Convert.revert_msg(result)));
