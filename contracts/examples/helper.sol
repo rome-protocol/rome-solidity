@@ -54,7 +54,7 @@ contract helper_example {
         address user = 0xe235b9caf55b58863Ae955A372e49362b0f93726;
 
         (bool success, ) = address(HelperProgram).delegatecall(
-            abi.encodeWithSignature("transfer_spl(address,uint64)", user, 1000000000)
+            abi.encodeWithSignature("transfer_spl(address,uint64)", user, 1000000)
         );
         require(success, "revert");
     }
@@ -63,7 +63,7 @@ contract helper_example {
         bytes32 mint = SystemProgram.mint_id();
 
         (bool success, ) = address(HelperProgram).delegatecall(
-            abi.encodeWithSignature("transfer_spl(address,uint64,bytes32)", user, 1000000000, mint)
+            abi.encodeWithSignature("transfer_spl(address,uint64,bytes32)", user, 1000000, mint)
         );
         require(success, "revert");
     }
