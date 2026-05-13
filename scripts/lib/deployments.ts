@@ -26,6 +26,15 @@ export type ERC20SPLFactoryDeployment = {
     cpiContractAddress?: string;
 };
 
+export type WrapperDeployment = {
+    address: string;
+    mint?: string;
+    mintBytes32?: string;
+    name?: string;
+    symbol?: string;
+    deployTx?: string;
+};
+
 export type SimpleActivatorDeployment = {
     address: string;
     activationCostWei: string;
@@ -42,6 +51,8 @@ export type DeploymentsFile = {
     MeteoraDAMMv1Pools?: PoolDeployment[];
     ERC20SPLFactory?: ERC20SPLFactoryDeployment;
     SimpleActivator?: SimpleActivatorDeployment;
+    WUSDC?: WrapperDeployment;
+    WSOL?: WrapperDeployment;
 };
 
 export function deploymentsFilePath(networkName: string): string {

@@ -8,14 +8,21 @@
 //   - wsolWrapper     (SPL_ERC20)     — canonical wSOL wrapper
 //   - users           (ERC20Users)    — shared users mapping (from factory.users())
 //
-// Reads the wrapper + users addresses from env / sensible defaults.
+// Address resolution per dependency, in precedence order:
+//   1. Explicit env var (USDC_WRAPPER / WSOL_WRAPPER / ERC20_SPL_FACTORY) —
+//      what the contract-deploys activation-deploy.yml workflow injects after
+//      reading deployments/<network>.json.
+//   2. Local deployments/<network>.json (WUSDC.address / WSOL.address /
+//      ERC20SPLFactory.address) — what bootstrap-bridged-wrappers.ts and
+//      erc20spl-factory deploy write.
+//   3. Hard fail with a clear message naming the missing entry.
 //
-// Writes deployment record to deployments/<network>.json under the
-// SimpleActivator key, matching the bridge / oracle / meteora convention. The
-// contract-deploys activation-deploy.yml workflow PRs this file back to
+// Writes its own deployment record to deployments/<network>.json under the
+// SimpleActivator key. The activation-deploy.yml workflow PRs that diff back to
 // rome-solidity master after a CI deploy.
 
 import hardhat from "hardhat";
+import { getAddress, isAddress } from "viem";
 import { readDeployments, writeDeployments } from "../lib/deployments.js";
 
 // Three-call activation: 1 USDC for activate(), 0.5 USDC for each
@@ -25,6 +32,37 @@ import { readDeployments, writeDeployments } from "../lib/deployments.js";
 const ACTIVATION_COST_WEI = 1_000_000_000_000_000_000n;
 const TOKEN_ACCOUNTS_COST_WEI = 500_000_000_000_000_000n;
 
+type AddressDep = {
+  envVar: string;
+  deploymentsKey: "WUSDC" | "WSOL" | "ERC20SPLFactory";
+  bootstrapHint: string;
+};
+
+function resolveAddress(networkName: string, dep: AddressDep): `0x${string}` {
+  const envValue = process.env[dep.envVar];
+  if (envValue) {
+    if (!isAddress(envValue)) {
+      throw new Error(`Invalid ${dep.envVar}: ${envValue}`);
+    }
+    return getAddress(envValue);
+  }
+
+  const fromFile = readDeployments(networkName)[dep.deploymentsKey]?.address;
+  if (fromFile) {
+    if (!isAddress(fromFile)) {
+      throw new Error(
+        `Invalid ${dep.deploymentsKey}.address in deployments/${networkName}.json: ${fromFile}`,
+      );
+    }
+    return getAddress(fromFile);
+  }
+
+  throw new Error(
+    `Cannot resolve ${dep.deploymentsKey} address for "${networkName}". ` +
+      `Set ${dep.envVar} or add a "${dep.deploymentsKey}.address" entry to deployments/${networkName}.json (${dep.bootstrapHint}).`,
+  );
+}
+
 async function main() {
   const { viem, networkName } = await hardhat.network.connect();
   const [deployer] = await viem.getWalletClients();
@@ -32,16 +70,21 @@ async function main() {
     throw new Error("No deployer wallet — set <NETWORK>_PRIVATE_KEY");
   }
 
-  // Marcus 121301 defaults — override via env for other chains.
-  const usdcWrapper =
-    (process.env.USDC_WRAPPER as `0x${string}`) ||
-    "0x39844f1d605a11acd87f766494291bbd11b406f4";
-  const wsolWrapper =
-    (process.env.WSOL_WRAPPER as `0x${string}`) ||
-    "0xc180a9133770d48f33cBDe630205a7B7DDA48fF6";
-  const factory =
-    (process.env.ERC20_SPL_FACTORY as `0x${string}`) ||
-    "0xbd0a59183cd4178b8b000036c64c7aeef4619be1";
+  const usdcWrapper = resolveAddress(networkName, {
+    envVar: "USDC_WRAPPER",
+    deploymentsKey: "WUSDC",
+    bootstrapHint: "run scripts/bridge/bootstrap-bridged-wrappers.ts on this chain first",
+  });
+  const wsolWrapper = resolveAddress(networkName, {
+    envVar: "WSOL_WRAPPER",
+    deploymentsKey: "WSOL",
+    bootstrapHint: "run scripts/bridge/deploy-wsol-v9.ts (or the canonical wSOL bootstrap) on this chain first",
+  });
+  const factory = resolveAddress(networkName, {
+    envVar: "ERC20_SPL_FACTORY",
+    deploymentsKey: "ERC20SPLFactory",
+    bootstrapHint: "run scripts/deploy_erc20spl_factory.ts on this chain first",
+  });
 
   // Read users() from the factory.
   const factoryContract = await viem.getContractAt("ERC20SPLFactory", factory);
