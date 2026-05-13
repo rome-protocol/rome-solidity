@@ -34,7 +34,7 @@ const TOKEN_ACCOUNTS_COST_WEI = 500_000_000_000_000_000n;
 
 type AddressDep = {
   envVar: string;
-  deploymentsKey: "WUSDC" | "WSOL" | "ERC20SPLFactory";
+  deploymentsKey: "SPL_ERC20_USDC" | "SPL_ERC20_WSOL" | "ERC20SPLFactory";
   bootstrapHint: string;
 };
 
@@ -72,13 +72,13 @@ async function main() {
 
   const usdcWrapper = resolveAddress(networkName, {
     envVar: "USDC_WRAPPER",
-    deploymentsKey: "WUSDC",
+    deploymentsKey: "SPL_ERC20_USDC",
     bootstrapHint: "run scripts/bridge/bootstrap-bridged-wrappers.ts on this chain first",
   });
   const wsolWrapper = resolveAddress(networkName, {
     envVar: "WSOL_WRAPPER",
-    deploymentsKey: "WSOL",
-    bootstrapHint: "run scripts/bridge/deploy-wsol-v9.ts (or the canonical wSOL bootstrap) on this chain first",
+    deploymentsKey: "SPL_ERC20_WSOL",
+    bootstrapHint: "run scripts/bridge/bootstrap-bridged-wrappers.ts on this chain first (registers WSOL alongside USDC/WETH since 2026-05-13)",
   });
   const factory = resolveAddress(networkName, {
     envVar: "ERC20_SPL_FACTORY",
