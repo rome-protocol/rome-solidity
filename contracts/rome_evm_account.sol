@@ -40,10 +40,14 @@ library RomeEVMAccount {
     }
 
     function pda(address user) internal view returns (bytes32) {
-        bytes32 rome_program = SystemProgram.rome_evm_program_id();
-        ISystemProgram.Seed[] memory pda_seeds = RomeEVMAccount.authority_seeds(user);
-        (bytes32 key,) = SystemProgram.find_program_address(rome_program, pda_seeds);
-        return key;
+        // Delegates to `HelperProgram.pda(user)` (selector `0x8854a299`).
+        // Byte-identity verified 2026-05-14 against rome-evm-private
+        // `non_evm/helper_ix.rs:159` → `state/pda.rs:98-105` — both paths
+        // compute `find_program_address([EXTERNAL_AUTHORITY, user], rome_evm_program)`.
+        // Measured saving on Hadrian (3-sample mean, 2026-05-14): −67,083 CU
+        // per call (−36%). Spec:
+        //   rome-specs/active/technical/2026-05-14-rome-primitive-cu-baseline.md
+        return HelperProgram.pda(user);
     }
 
     function pda_with_salt(address user, bytes32 salt) internal view returns (bytes32) {

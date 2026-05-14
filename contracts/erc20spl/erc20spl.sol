@@ -254,6 +254,11 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         uint256 value
     ) internal returns (bool) {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
+        // Suppress unused-parameter warning. `user` was the SPL Token
+        // authority passed explicitly in the legacy path. Post-migration
+        // the precompile derives `external_auth(msg.sender)` itself.
+        // Callers still compute `user` for the `ensure_user` mapping-side-effect.
+        user;
         // Auto-create the recipient's PDA-owned ATA on first transfer.
         // Without this, sending an SPL_ERC20 wrapper to a fresh address
         // reverts with "Token account does not exist" because the
@@ -267,43 +272,48 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // as Phantom and every other Solana wallet.
         bytes32 to_account = ensure_token_account(to);
 
-        // `spl_transfer_checked_v1` shortcut was removed in the
-        // HelperProgram migration; `HelperProgram.transfer_spl` doesn't
-        // support delegate-as-authority (it always signs as the caller's
-        // unified PDA acting as ATA *owner*), so this path falls back to
-        // the canonical SplTokenLib.transfer_checked + CpiProgram.invoke
-        // pattern — same shape as `approve` below. Costs ~250k CU more
-        // than the shortcut did.
-        //
-        // `user` is the unified PDA of the call's signer:
-        //   - transfer(to, value)        → user = unified_pda_of(msg.sender),
-        //                                   which OWNS the source ATA →
-        //                                   SPL Token accepts as authority.
-        //   - transferFrom(from, to, v)  → user = unified_pda_of(spender),
-        //                                   which is the SPL delegate set
-        //                                   by the prior approve() → SPL
-        //                                   Token accepts as authority
-        //                                   when delegated_amount ≥ value.
-        (
-            bytes32 program_id,
-            ICrossProgramInvocation.AccountMeta[] memory accounts,
-            bytes memory data
-        ) = SplTokenLib.transfer_checked(
-            SplTokenLib.SPL_TOKEN_PROGRAM,
-            get_token_account(from),
-            mint_id,
-            to_account,
-            user,
-            new bytes32[](0),
-            uint64(value),
-            decimals
-        );
-        (bool success, bytes memory result) = address(cpi_program).delegatecall(
-            abi.encodeWithSignature(
-                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
-                program_id, accounts, data
-            )
-        );
+        // Migration 2026-05-14 (spec: rome-specs/active/technical/
+        // 2026-05-14-rome-primitive-cu-baseline.md): switched from the
+        // legacy `SplTokenLib.transfer_checked + CpiProgram.invoke`
+        // pattern (~554K CU per call) to `HelperProgram.transfer_spl`
+        // overloads (~160K–182K CU per call). Two paths — one for the
+        // sender path where caller IS the owner of the source ATA, one
+        // for the delegate path where caller is the SPL delegate set
+        // by a prior `approve()`.
+        bool success;
+        bytes memory result;
+        if (from == msg.sender) {
+            // SENDER PATH (`transfer(to, value)`): caller owns the
+            // source ATA. The 3-arg overload `transfer_spl(address,
+            // uint64, bytes32)` derives `src_ata = HelperProgram.ata(
+            // msg.sender, mint)` server-side — matches the canonical
+            // owner ATA. Signs as `external_auth(msg.sender)` which IS
+            // the source ATA's owner. Measured saving: −394K CU
+            // (−71%) vs legacy.
+            (success, result) = address(HelperProgram).delegatecall(
+                abi.encodeWithSignature(
+                    "transfer_spl(address,uint64,bytes32)",
+                    to, uint64(value), mint_id
+                )
+            );
+        } else {
+            // DELEGATE PATH (`transferFrom(from, to, v)`): caller is
+            // the SPL delegate set by a prior `approve()` (which calls
+            // `SplTokenLib.approve` to write `spender_pda` as delegate
+            // of `from`'s ATA). Use the 4-arg overload with explicit
+            // source/dest ATAs since `from != msg.sender` — the 3-arg
+            // overload would derive the spender's ATA as source,
+            // which is wrong. Signs as `external_auth(msg.sender)` =
+            // the delegate PDA. SPL Token accepts delegate-as-authority
+            // when `delegated_amount ≥ value`. Measured saving:
+            // −372K CU (−67%) vs legacy.
+            (success, result) = address(HelperProgram).delegatecall(
+                abi.encodeWithSignature(
+                    "transfer_spl(bytes32,bytes32,uint64,bytes32)",
+                    get_token_account(from), to_account, uint64(value), mint_id
+                )
+            );
+        }
 
         require (success, string(Convert.revert_msg(result)));
         emit Transfer(from, to, value);
