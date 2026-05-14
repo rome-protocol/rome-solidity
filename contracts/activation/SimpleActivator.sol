@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {ICrossProgramInvocation, CpiProgram} from "../interface.sol";
+import {AccountReader} from "../cpi/AccountReader.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {SPL_ERC20, ERC20Users} from "../erc20spl/erc20spl.sol";
 
@@ -106,7 +107,7 @@ contract SimpleActivator {
         address user = msg.sender;
         bytes32 userPda = RomeEVMAccount.pda(user);
 
-        uint64 currentLamports = CpiProgram.account_lamports(userPda);
+        uint64 currentLamports = AccountReader.lamportsOf(userPda);
         if (currentLamports > 0) {
             (bool refundOk, ) = payable(user).call{value: msg.value}("");
             if (!refundOk) revert RefundFailed();
@@ -163,6 +164,6 @@ contract SimpleActivator {
     ///         whether step 2 / step 3 are still needed.
     function isActivated(address user) external view returns (bool) {
         bytes32 userPda = RomeEVMAccount.pda(user);
-        return CpiProgram.account_lamports(userPda) > 0;
+        return AccountReader.lamportsOf(userPda) > 0;
     }
 }
