@@ -302,7 +302,7 @@ Target: `0.8.28`. Production profile enables optimizer with 200 runs.
 | `ERC20SPLFactory.add_spl_token_no_metadata` / `TokenCreated` event | **rome-ui** backend's token-discovery indexer (watches `TokenCreated` to populate Redis token cache served at `/api/tokens`); `src/features/portfolio/hooks/useChainTokenBalances.ts` consumes the cache. `src/abis/ERC20SPLFactory.json` mirror only if the indexer's ABI parser uses it. |
 | `SimpleActivator.activate` / `createWusdcAta` / `createWsolAta` / `isActivated` / `activationCost` / `tokenAccountsCost` | **rome-ui** `src/features/portfolio/components/ActivateAccountButton.tsx` (primary CTA replacement on Swap/Bridge/Liquidity until activated; fires three txs sequentially on one click), `src/features/portfolio/hooks/useIsPdaActivated.ts` (visibility gate). Inline parseAbi; `chain.contracts.simpleActivator` field wires the address. |
 | `RomeBridgeWithdraw.burnUSDC` / `burnETH` / `approveBurnETH` | **rome-ui** `src/features/bridge/hooks/useOutboundCctpSend.ts`, `useOutboundWhSend.ts`. Inline parseAbi, no JSON regen. |
-| `RomeBridgePaymaster` | **Legacy** since 2026-04-26 inbound rewrite — superseded by `settle_inbound_bridge` on rome-evm-private. rome-ui keeps this in `chain.contracts` config for back-compat parsing only; no active call sites. `RomeBridgeInbound` was deleted alongside its `unwrap_spl_to_gas` / `wrap_gas_to_spl` precompiles in 2026-05-13. |
+| `RomeBridgePaymaster` / `RomeBridgeInbound` | **Legacy** since 2026-04-26 inbound rewrite — superseded by `settle_inbound_bridge` on rome-evm-private. rome-ui keeps these in `chain.contracts` config for back-compat parsing only; no active call sites. |
 | Oracle adapter interfaces | Consuming contracts in this repo that use the adapters |
 | SPL token wrapper logic | `rome-uniswap-v2/` (uses SPL wrappers for trading pairs); `rome-ui/src/features/portfolio` (renders wrapper rows via `useRomeHoldings`) |
 | Hardhat network config | `rome-solidity-sdk/` uses same network definitions |
@@ -335,7 +335,7 @@ rome-ui consumes a small, stable surface from this repo. Changes to that surface
 
 ### Legacy / not consumed
 
-`RomeBridgePaymaster` is kept in `chain.contracts` config for back-compat parsing of older chains.yaml files. `RomeBridgeInbound` was deleted in 2026-05-13 (rome-evm-private PRs #348/#349/#351/#352/#353/#354 retired the `unwrap_spl_to_gas` precompile it depended on). The current inbound flow is `settle_inbound_bridge` on rome-evm-private (signed by `SOLANA_SETTLE_PAYER_KEY` after Circle/Wormhole `receiveMessage` confirms) — no Rome EVM tx involved. Don't reintroduce inbound contract logic.
+`RomeBridgePaymaster` and `RomeBridgeInbound` are kept in `chain.contracts` config for back-compat parsing of older chains.yaml files. The current inbound flow is `settle_inbound_bridge` on rome-evm-private (signed by `SOLANA_SETTLE_PAYER_KEY` after Circle/Wormhole `receiveMessage` confirms) — no Rome EVM tx involved. Don't expand these contracts; deprecate them.
 
 ### Behavioral contracts (not just ABI)
 
