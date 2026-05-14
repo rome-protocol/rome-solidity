@@ -196,6 +196,12 @@ The post-consolidation home for Rome-specific Solana plumbing that EVM contracts
 
 **Measured CU saving** (Marcus 121301, 3-sample average, 2026-05-11): a probe contract that does the OLD two-hop (`RomeEVMAccount.pda` + `AssociatedSplToken.get_associated_token_address_with_program_id`) consumed ~281K CU on Solana; the same probe via the unified-derive selector (now `HelperProgram.ata(address, bytes32)`) consumed ~129K CU — **~152K CU saved per call, 54 % reduction**. EVM `gasUsed` is NOT a reliable proxy for Solana CU on Rome — use the Solana-side `computeUnitsConsumed` from the proxy's Solana tx receipt. The bare `0xFF…07` `find_program_address` round-trip costs ~115K CU per hop end-to-end — far above the "1500 CU per `find_program_address` syscall" line in the [CU strategy spec](../rome-specs/active/technical/2026-04-25-rome-evm-cu-and-multi-hop-cpi-strategy.md), because of the EVM-side ABI marshaling + Solana atomic-tx wrapper overhead.
 
+**Hadrian re-measurement, full primitive surface (2026-05-14):** see [`rome-specs/active/technical/2026-05-14-rome-primitive-cu-baseline.md`](../rome-specs/active/technical/2026-05-14-rome-primitive-cu-baseline.md). Probe contract `0x20137b68A4459c6e18fd682C0Fc437A6849F5c7e` exercises every Rome precompile primitive (PDA / ATA derive, account reads, wrap/unwrap, SPL transfer 3-arg / 4-arg delegate / legacy) and captures real on-chain Solana CU. Headline confirmations + new findings:
+
+- `HelperProgram.ata` saving on Hadrian: **−170,771 CU per call (−59%)** — matches the 2026-05-11 Marcus measurement within sampling noise.
+- `HelperProgram.pda` vs single `find_program_address`: **−67,083 CU (−36%)** — new datum.
+- `SplTokenLib.transfer_checked + invoke` (legacy fallback, current `SPL_ERC20._transfer` path at `erc20spl.sol:269-291`) → `HelperProgram.transfer_spl`: **−372,059 to −394,493 CU per transfer (−67% to −71%)**. This is the highest-leverage open migration in this repo. See `2026-05-14-rome-primitive-cu-baseline.md` §"Strategic recommendation" for full priority order.
+
 When writing new wrappers or adapters, prefer the `HelperProgram` selectors (single dispatch, signed by caller's `external_auth` PDA) over hand-rolled `0xFF…08` invoke + `0xFF…07` two-hop derivation.
 
 ### Contract Layers
