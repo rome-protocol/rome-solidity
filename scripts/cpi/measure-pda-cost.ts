@@ -57,7 +57,10 @@ async function rome_emulateTx(rpcUrl: string, signedTx: string): Promise<Emulate
 
 async function main() {
     const { networkConfig, networkName } = await hardhat.network.connect();
-    const url = (networkConfig as any).url as string;
+    const urlField = (networkConfig as any).url;
+    const url: string = typeof urlField === "string"
+        ? urlField
+        : (typeof urlField?.get === "function" ? await urlField.get() : String(urlField));
     const pk = await (networkConfig as any).accounts[0].get();
     const chainId = (networkConfig as any).chainId as number;
 
