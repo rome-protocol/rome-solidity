@@ -431,7 +431,13 @@ describe("MeteoraDAMMv1Router integration", { concurrency: false }, function () 
         });
         internalPool = await viem.getContractAt("DAMMv1Pool", await wrappedPool.read.internal_pool());
 
-        const liquidityAccounts = await internalPool.read.make_balance_liquidity_accounts_from_pool([payer]);
+        // Post-2026-05-14 migration: make_balance_liquidity_accounts_from_pool
+        // takes an EVM address (not the bytes32 PDA). The function derives
+        // the PDA + ATAs server-side via HelperProgram. Saves ~192K CU per
+        // liquidity op vs the legacy two-hop derivation pattern.
+        const liquidityAccounts = await internalPool.read.make_balance_liquidity_accounts_from_pool(
+            [deployer.account.address],
+        );
         userPoolLp = liquidityAccounts.user_pool_lp;
     });
 
