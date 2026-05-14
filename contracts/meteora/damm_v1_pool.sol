@@ -1265,8 +1265,14 @@ contract DAMMv1Pool {
         return lp_fee_e18 * (1e18 + protocol_fee_e18) / 1e18;
     }
 
+    /// @notice Build the swap-instruction account list for a user.
+    /// @param user_addr EVM address of the swapping user. PDA + ATAs are
+    ///        derived server-side by the HelperProgram precompile in a
+    ///        single dispatch each, saving ~64K CU per ATA call vs the
+    ///        legacy two-hop pattern. See:
+    ///          rome-specs/active/technical/2026-05-14-rome-primitive-cu-baseline.md
     function make_swap_accounts_from_pool(
-        bytes32 user,
+        address user_addr,
         PoolToken in_token
     ) public view returns (DAMMv1Lib.SwapAccountsInput memory out) {
         bytes32 protocol_token_fee = in_token == PoolToken.TokenA
@@ -1279,18 +1285,8 @@ contract DAMMv1Pool {
 
         out = DAMMv1Lib.SwapAccountsInput({
             pool: pool_address,
-            user_source_token: AssociatedSplToken.get_associated_token_address_with_program_id(
-                user,
-                in_token_mint,
-                SplTokenLib.SPL_TOKEN_PROGRAM,
-                AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
-            ),
-            user_destination_token: AssociatedSplToken.get_associated_token_address_with_program_id(
-                user,
-                out_token_mint,
-                SplTokenLib.SPL_TOKEN_PROGRAM,
-                AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
-            ),
+            user_source_token: HelperProgram.ata(user_addr, in_token_mint),
+            user_destination_token: HelperProgram.ata(user_addr, out_token_mint),
             a_vault_lp: a_vault_lp,
             b_vault_lp: b_vault_lp,
             a_vault: a_vault,
@@ -1299,15 +1295,20 @@ contract DAMMv1Pool {
             b_vault_lp_mint: vault_b.lp_mint,
             a_token_vault: vault_a.token_vault,
             b_token_vault: vault_b.token_vault,
-            user: user,
+            user: HelperProgram.pda(user_addr),
             vault_program: prog_dynamic_vault,
             token_program: SplTokenLib.SPL_TOKEN_PROGRAM,
             protocol_token_fee: protocol_token_fee
         });
     }
 
+    /// @notice Build the add/remove-liquidity instruction account list.
+    /// @param user_addr EVM address of the LP user. PDA + ATAs derived
+    ///        server-side via HelperProgram. Three ATAs total (pool LP,
+    ///        token_a, token_b) — saves ~192K CU per liquidity op vs
+    ///        the legacy two-hop pattern.
     function make_balance_liquidity_accounts_from_pool(
-        bytes32 user
+        address user_addr
     )
     public
     view
@@ -1316,12 +1317,7 @@ contract DAMMv1Pool {
         out = DAMMv1Lib.BalanceLiquidityAccountsInput({
             pool: pool_address,
             lp_mint: lp_mint,
-            user_pool_lp: AssociatedSplToken.get_associated_token_address_with_program_id(
-                user,
-                lp_mint,
-                SplTokenLib.SPL_TOKEN_PROGRAM,
-                AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
-            ),
+            user_pool_lp: HelperProgram.ata(user_addr, lp_mint),
             a_vault_lp: a_vault_lp,
             b_vault_lp: b_vault_lp,
             a_vault: a_vault,
@@ -1330,26 +1326,20 @@ contract DAMMv1Pool {
             b_vault_lp_mint: vault_b.lp_mint,
             a_token_vault: vault_a.token_vault,
             b_token_vault: vault_b.token_vault,
-            user_a_token: AssociatedSplToken.get_associated_token_address_with_program_id(
-                user,
-                token_a_mint,
-                SplTokenLib.SPL_TOKEN_PROGRAM,
-                AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
-            ),
-            user_b_token: AssociatedSplToken.get_associated_token_address_with_program_id(
-                user,
-                token_b_mint,
-                SplTokenLib.SPL_TOKEN_PROGRAM,
-                AssociatedSplToken.ASSOCIATED_TOKEN_PROGRAM_ID
-            ),
-            user: user,
+            user_a_token: HelperProgram.ata(user_addr, token_a_mint),
+            user_b_token: HelperProgram.ata(user_addr, token_b_mint),
+            user: HelperProgram.pda(user_addr),
             vault_program: prog_dynamic_vault,
             token_program: SplTokenLib.SPL_TOKEN_PROGRAM
         });
     }
 
+    /// @notice Variant of `make_balance_liquidity_accounts_from_pool`
+    /// where user_accounts are pre-derived (no ATA derivation here).
+    /// @param user_addr EVM address — PDA derived via HelperProgram for
+    ///        the `accounts_.user` AccountMeta only.
     function make_balance_liquidity_accounts_from_pool_and_user_accounts(
-        bytes32 user,
+        address user_addr,
         DAMMv1Lib.AddLiquidityUserAccountsInput memory user_accounts
     )
     public
@@ -1370,7 +1360,7 @@ contract DAMMv1Pool {
             b_token_vault: vault_b.token_vault,
             user_a_token: user_accounts.user_a_token,
             user_b_token: user_accounts.user_b_token,
-            user: user,
+            user: HelperProgram.pda(user_addr),
             vault_program: prog_dynamic_vault,
             token_program: SplTokenLib.SPL_TOKEN_PROGRAM
         });
@@ -1469,14 +1459,18 @@ contract ERC20DAMMv1Pool {
         DAMMv1Lib.BalanceLiquidityAccountsInput memory liquidity_accounts
     )
     {
-        bytes32 user = users.get_user(user_evm);
+        // `users.get_user` reverts if `user_evm` isn't registered — keep
+        // as a precondition check. Return value no longer needed by the
+        // downstream make_* helper (it now takes the EVM address and
+        // derives the PDA via HelperProgram.pda internally).
+        users.get_user(user_evm);
 
         pool_token_amount = quoteAddLiquidity(
             max_token_a_amount,
             max_token_b_amount,
             slippage_rate
         );
-        liquidity_accounts = internal_pool.make_balance_liquidity_accounts_from_pool(user);
+        liquidity_accounts = internal_pool.make_balance_liquidity_accounts_from_pool(user_evm);
     }
 
     function swapExactTokensForTokens(
@@ -1484,7 +1478,10 @@ contract ERC20DAMMv1Pool {
         uint256 amount_in,
         uint256 min_amount_out
     ) external {
-        bytes32 user = users.get_user(msg.sender);
+        // Precondition: caller must be registered. Return value unused
+        // post-migration; the make_* helper derives PDA + ATAs from the
+        // EVM address via HelperProgram (saves ~128K CU per swap).
+        users.get_user(msg.sender);
 
         DAMMv1Pool.PoolToken in_token =
             address(tokenA) == token_in
@@ -1496,7 +1493,7 @@ contract ERC20DAMMv1Pool {
 
         ICrossProgramInvocation.AccountMeta[] memory accounts = DAMMv1Lib.build_swap_account_metas(
             internal_pool.make_swap_accounts_from_pool(
-                user,
+                msg.sender,
                 in_token
             ),
             internal_pool.prog_dynamic_amm()
@@ -1523,7 +1520,9 @@ contract ERC20DAMMv1Pool {
         uint256 minimum_a_token_out,
         uint256 minimum_b_token_out
     ) external {
-        bytes32 user = users.get_user(msg.sender);
+        // Precondition: caller registered. Return value unused
+        // post-migration (saves ~192K CU per remove-liquidity).
+        users.get_user(msg.sender);
 
         require(pool_token_amount <= type(uint64).max, "pool_token_amount exceeds uint64");
         require(minimum_a_token_out <= type(uint64).max, "minimum_a_token_out exceeds uint64");
@@ -1531,7 +1530,7 @@ contract ERC20DAMMv1Pool {
 
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             DAMMv1Lib.build_balance_liquidity_account_metas(
-                internal_pool.make_balance_liquidity_accounts_from_pool(user),
+                internal_pool.make_balance_liquidity_accounts_from_pool(msg.sender),
                 internal_pool.prog_dynamic_amm()
             );
 
@@ -1561,7 +1560,9 @@ contract ERC20DAMMv1Pool {
         uint256 max_token_b_amount,
         DAMMv1Lib.AddLiquidityUserAccountsInput memory user_accounts
     ) external {
-        bytes32 user = users.get_user(msg.sender);
+        // Precondition: caller registered. Return value unused
+        // post-migration (saves ~67K CU for the user-PDA derivation).
+        users.get_user(msg.sender);
 
         require(pool_token_amount <= type(uint64).max, "pool_token_amount exceeds uint64");
         require(max_token_a_amount <= type(uint64).max, "max_token_a_amount exceeds uint64");
@@ -1570,7 +1571,7 @@ contract ERC20DAMMv1Pool {
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             DAMMv1Lib.build_balance_liquidity_account_metas(
                 internal_pool.make_balance_liquidity_accounts_from_pool_and_user_accounts(
-                    user,
+                    msg.sender,
                     user_accounts
                 ),
                 internal_pool.prog_dynamic_amm()
