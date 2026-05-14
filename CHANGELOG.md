@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Removed — retired `unwrap_spl_to_gas` / `wrap_gas_to_spl` precompile surface
+Companion to rome-evm-private PRs #348/#349/#351/#352/#353/#354 (2026-05-13), which retired the `0x42…17` (`UnwrapSplToGas`) and `0x42…18` (`WrapGasToSpl`) precompiles. Gas↔SPL conversions now live on the existing `HelperProgram` at `0xff…09` (`swap_gas_to_lamports(uint64)`) and on `Withdraw` at `0x42…16` (the new `withdraw_to_pda(uint256)` / `withdraw_to_ata(uint256)` selectors). Calls to the retired addresses revert on-chain.
+
+The Solidity surface is updated to match:
+
+- **`contracts/interface.sol`** — `IUnwrapSplToGas` and `IWrapGasToSpl` interfaces removed; `unwrap_spl_to_gas_address` / `wrap_gas_to_spl_address` constants removed; `UnwrapSplToGas` / `WrapGasToSpl` pre-bound instances removed. `IWithdraw` extended with the two new selectors: `withdraw_to_pda(uint256)` (`0x7f3124a0`) and `withdraw_to_ata(uint256)` (`0x8059abc0`); the existing `withdrawal(bytes32)` is now annotated with its `0x4d8b0ea4` selector. Selector hashes verified against `rome-evm-private/program/src/non_evm/withdraw.rs:12-16`.
+- **`contracts/bridge/RomeBridgeInbound.sol`** — file deleted. Was a Solidity wrapper around `unwrap_spl_to_gas` for the legacy inbound-bridge gas-split design that was superseded by `settle_inbound_bridge` on rome-evm-private (2026-04-26 inbound rewrite) and never re-deployed after the clean-slate transition. No live deployments (`deployments/aurelius.json` carries factory + wrappers only; `deployments/local.json` is regenerated per local stack restart).
+- **`contracts/bridge/RomeBridgeEvents.sol`** — `SettledInbound` event removed (only `RomeBridgeInbound` emitted it). `Withdrawn` and `PaymasterSponsored` are retained for `RomeBridgeWithdraw` and `RomeBridgePaymaster`.
+- **`contracts/examples/bridge.sol`** — `UnwrapSplToGasContract` example deleted. The full HelperProgram surface (including the canonical replacements `swap_gas_to_lamports`, `ata`, `pda`, `transfer_spl`) is declared in [`contracts/interface.sol`](contracts/interface.sol)'s `IHelperProgram`; callers should consume it directly.
+- **`contracts/bridge/test/MockUnwrapSplToGas.sol`, `contracts/bridge/test/PartialPayoutUnwrap.sol`, `contracts/bridge/test/ReentrantReceiver.sol`** — deleted; only consumed by `RomeBridgeInbound.test.ts`.
+- **`tests/bridge/RomeBridgeInbound.test.ts`** — deleted.
+- **`scripts/bridge/deploy-inbound.ts`, `scripts/bridge/redeploy-inbound.ts`, `scripts/bridge/REDEPLOY_HARDENING.md`** — deleted.
+- **`contracts/bridge/test/MockSplErc20.sol`** — retained (still consumed by `RomeBridgeWithdraw.test.ts`); docstring updated to drop the `RomeBridgeInbound` reference.
+- **`CLAUDE.md`** — design-principle bullet on `wrap_gas_to_spl` / `unwrap_spl_to_gas` rewritten to point at the canonical `Withdraw` / `HelperProgram` surface; Change Impact Map and Cross-repo dependencies tables updated to reflect that `RomeBridgeInbound` is now deleted rather than merely legacy.
+
+No on-chain behavior change for any live chain — `RomeBridgeInbound` was not deployed on Aurelius (real-testnet), Augustus (testnet), or any current devnet primary, and rome-ui had no active call sites (per `rome-ui/CLAUDE.md` "RomeBridgeInbound is kept in `chain.contracts` config for back-compat parsing only; no active call sites").
+
 ### Changed — `SimpleActivator` split into THREE calls (was two)
 End-to-end testing on Marcus surfaced that the two-call shape (`activate()` + `createTokenAccounts()`) emulated at ~1.65M CU on the canonical deploy — over Solana's 1.4M-CU per-tx cap — because `create_payer(activator, 5M)` doesn't fast-path at the rome-evm-private level even when the activator's PDA balance already exceeds the target. Bundling two ATA-create CPIs in one tx pushes total CU over the cap regardless of priming.
 
