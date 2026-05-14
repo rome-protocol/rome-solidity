@@ -6,6 +6,7 @@ import "./IAdapterFactory.sol";
 import "./IAdapterMetadata.sol";
 import "./SwitchboardParser.sol";
 import "../interface.sol";
+import {AccountReader} from "../cpi/AccountReader.sol";
 
 /// @title SwitchboardV3Adapter
 /// @notice Per-feed adapter that reads AggregatorAccountData from Switchboard V2
@@ -181,7 +182,7 @@ contract SwitchboardV3Adapter is IExtendedOracleAdapter, IAdapterMetadata {
     ///      PythPullAdapter._fetchAccount; see that contract for the M-5
     ///      audit-finding deferral rationale.
     function _fetchAccount() internal view virtual returns (bytes memory data) {
-        data = CpiProgram.account_data_at(switchboardAccount, 0, uint16(SwitchboardParser.MIN_DATA_LENGTH));
+        data = AccountReader.readBytesAt(switchboardAccount, 0, uint16(SwitchboardParser.MIN_DATA_LENGTH));
     }
 
     function _readAndParse() internal view returns (SwitchboardParser.SwitchboardPrice memory) {

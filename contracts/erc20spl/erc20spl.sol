@@ -8,6 +8,7 @@ import {AssociatedSplToken} from "../spl_token/associated_spl_token.sol";
 import {ISystemProgram, ICrossProgramInvocation, CpiProgram, HelperProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {UserPda} from "../cpi/UserPda.sol";
+import {AccountReader} from "../cpi/AccountReader.sol";
 import {Convert} from "../convert.sol";
 
 contract ERC20Users {
@@ -157,7 +158,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         //    no Borsh decoding. The fast-path here only needs lamports != 0
         //    to confirm the account is initialized.
         bytes32 ata = HelperProgram.ata(user, mint_id);
-        uint64 lamports = ICrossProgramInvocation(cpi_program).account_lamports(ata);
+        uint64 lamports = AccountReader.lamportsOf(ata);
         if (lamports != 0) {
             // Account already exists on Solana — no CPI needed.
             // Cache write-through is optional; legacy callers checking
@@ -205,7 +206,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // 46..81 freeze_authority COption. `account_u64_at` reads exactly
         // the 8-byte supply field directly — no full mint Borsh decode,
         // no 5-tuple ABI roundtrip.
-        return uint256(ICrossProgramInvocation(cpi_program).account_u64_at(mint_id, 36));
+        return uint256(AccountReader.readU64At(mint_id, 36));
     }
 
     function balanceOf(address account) public view virtual returns (uint256) {
@@ -226,11 +227,11 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // UIs that simulate balance reads on first-time wallets) to wrap
         // balanceOf in try/catch. account_lamports is cheap (no data
         // buffer pull) and returns 0 when the account doesn't exist.
-        if (ICrossProgramInvocation(cpi_program).account_lamports(ata) == 0) {
+        if (AccountReader.lamportsOf(ata) == 0) {
             return 0;
         }
         // SPL TokenAccount.amount is a u64 LE at offset 64.
-        return uint256(ICrossProgramInvocation(cpi_program).account_u64_at(ata, 64));
+        return uint256(AccountReader.readU64At(ata, 64));
     }
 
     function transfer(address to, uint256 value) public virtual returns (bool) {
@@ -322,7 +323,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // slice (skipping the unrelated mint/owner/amount/state/is_native
         // fields that `account_info` would also marshal). Decode via the
         // existing Convert.read_coption_bytes32 helper.
-        bytes memory delegateOption = ICrossProgramInvocation(cpi_program).account_data_at(ata, 72, 36);
+        bytes memory delegateOption = AccountReader.readBytesAt(ata, 72, 36);
         Convert.COptionBytes32 memory parsed;
         (parsed,) = Convert.read_coption_bytes32(delegateOption, 0);
         bytes32 delegate = parsed.is_some ? parsed.value : bytes32(0);
@@ -332,7 +333,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         }
 
         // Read the u64 delegated_amount at offset 121 directly.
-        return uint256(ICrossProgramInvocation(cpi_program).account_u64_at(ata, 121));
+        return uint256(AccountReader.readU64At(ata, 121));
     }
 
     function approve(address spender, uint256 value) public virtual returns (bool) {

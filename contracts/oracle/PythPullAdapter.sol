@@ -6,6 +6,7 @@ import "./IAdapterFactory.sol";
 import "./IAdapterMetadata.sol";
 import "./PythPullParser.sol";
 import "../interface.sol";
+import {AccountReader} from "../cpi/AccountReader.sol";
 
 /// @title PythPullAdapter
 /// @notice Per-feed adapter that reads PriceUpdateV2 from Pyth Solana Receiver
@@ -212,7 +213,7 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
     ///          Romeswap / cardo oracle read) outweigh that marginal
     ///          incremental security in Rome's threat model.
     function _fetchAccount() internal view virtual returns (bytes memory data) {
-        data = CpiProgram.account_data_at(pythAccount, 0, uint16(PythPullParser.MIN_DATA_LENGTH));
+        data = AccountReader.readBytesAt(pythAccount, 0, uint16(PythPullParser.MIN_DATA_LENGTH));
     }
 
     function _readAndParse() internal view returns (PythPullParser.PythPullPrice memory) {
