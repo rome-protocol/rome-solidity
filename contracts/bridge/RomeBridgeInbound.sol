@@ -13,19 +13,27 @@ import {RomeBridgeEvents} from "./RomeBridgeEvents.sol";
 ///         existing `do_tx` instruction (operator-signed, fee_addr=operator
 ///         so the user pays zero Rome gas).
 ///
-/// @dev    ## Flow
-///         1. CCTP receiveMessage / Wormhole redeem mints `total` rUSDC to
+/// @dev    LEGACY: this contract is no longer in the active inbound-bridge
+///         path (replaced by `settle_inbound_bridge` on rome-evm-private).
+///         Kept for back-compat config parsing only. The unwrap-leg
+///         precompile referenced below has also been retired and replaced
+///         by `HelperProgram.deposit_from_ata` at `0xff…09` — these doc
+///         comments describe the historical flow shape, not current behavior.
+///
+///         ## Flow (historical)
+///         1. CCTP receiveMessage / Wormhole redeem mints `total` wUSDC to
 ///            user's PDA-owned ATA (unchanged — happens on Solana side).
 ///         2. User signs one EVM tx calling `settleInbound(wrapperAmount)`.
 ///         3. Worker submits the tx via `do_tx(fee_addr=operator, rlp)` —
 ///            operator pays Rome gas; user pays nothing.
 ///         4. `settleInbound`:
-///              - Pulls `wrapperAmount` rUSDC from user's ATA into this
+///              - Pulls `wrapperAmount` wUSDC from user's ATA into this
 ///                contract's ATA via `SPL_ERC20.transferFrom`.
-///              - Calls `unwrap_spl_to_gas(gasAmountWei)` — wrapper balance
-///                in this contract's ATA becomes gas in this contract's
-///                Balance PDA. The precompile reads `msg.sender`, which
-///                from its point of view is this contract.
+///              - Calls the historical `unwrap_spl_to_gas(gasAmountWei)`
+///                precompile — wrapper balance in this contract's ATA
+///                becomes gas in this contract's Balance PDA. The
+///                precompile read `msg.sender`, which from its point of
+///                view was this contract.
 ///              - Forwards the just-minted gas to the user via a native
 ///                `user.call{value: gasAmountWei}("")`. This debits this
 ///                contract's Balance PDA and credits the user's.
@@ -45,13 +53,16 @@ import {RomeBridgeEvents} from "./RomeBridgeEvents.sol";
 ///         contract call via `do_tx` keeps the UX as standard
 ///         `writeContractAsync` on whatever wallet the user has.
 ///
-///         ## Why not just `user.call(unwrap_spl_to_gas)` directly
-///         `unwrap_spl_to_gas` reads `msg.sender` and unwraps the CALLER's
-///         wrapper balance into the CALLER's gas balance. If we want to
-///         atomically record events / enforce invariants / emit structured
-///         audit data, we need a contract wrapper. This is it.
+///         ## Why not just `user.call(<unwrap-precompile>)` directly
+///         The historical `unwrap_spl_to_gas` precompile read `msg.sender`
+///         and unwrapped the CALLER's wrapper balance into the CALLER's
+///         gas balance. If we want to atomically record events / enforce
+///         invariants / emit structured audit data, we need a contract
+///         wrapper. This is it. (Current canonical unwrap leg is
+///         `HelperProgram.deposit_from_ata` with the same caller-as-signer
+///         semantics.)
 contract RomeBridgeInbound is ERC2771Context, ReentrancyGuard, RomeBridgeEvents {
-    /// @notice ERC20-SPL wrapper for the chain's gas mint (e.g. rUSDC on Rome).
+    /// @notice ERC20-SPL wrapper for the chain's gas mint (e.g. wUSDC on Rome).
     SPL_ERC20 public immutable wrapper;
 
     /// @notice Chain's gas mint (bytes32 pubkey) — recorded in SettledInbound
@@ -100,7 +111,7 @@ contract RomeBridgeInbound is ERC2771Context, ReentrancyGuard, RomeBridgeEvents 
         }
     }
 
-    /// @notice Convert `wrapperAmount` of the user's rUSDC into native Rome
+    /// @notice Convert `wrapperAmount` of the user's wUSDC into native Rome
     ///         gas, crediting the user's Balance PDA.
     /// @param  wrapperAmount Mint-unit tokens to convert (e.g. for USDC with
     ///                       6 decimals, `1_000_000` = 1 USDC).

@@ -29,10 +29,12 @@ interface RomeBridgeEvents {
     );
 
     /// @notice Emitted when a user settles an inbound-bridge gas-split by
-    ///         converting rUSDC (or any chain-gas-mint wrapper) into native
-    ///         Rome gas via the `unwrap_spl_to_gas` precompile. Mirror of
-    ///         `Withdrawn`; indexers watch both events to reconcile CCTP /
-    ///         Wormhole attestation records against on-Rome settlement.
+    ///         converting wUSDC (or any chain-gas-mint wrapper) into native
+    ///         Rome gas via the unwrap-leg precompile (historically
+    ///         `unwrap_spl_to_gas`; now `HelperProgram.deposit_from_ata`).
+    ///         Mirror of `Withdrawn`; indexers watch both events to
+    ///         reconcile CCTP / Wormhole attestation records against
+    ///         on-Rome settlement.
     /// @param user            EVM address that received the gas.
     /// @param mint            SPL mint (bytes32 pubkey) whose wrapper was unwrapped.
     /// @param wrapperAmount   Mint-unit tokens pulled from user's wrapper balance.

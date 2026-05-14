@@ -29,13 +29,15 @@ library UserPda {
     /// different derivation; adapters that support Token-2022 call
     /// `ataWithProgram` directly.
     ///
-    /// Delegates to the `derive_user_ata` CPI shortcut selector
-    /// (rome-evm-private #319, dispatched at `0xc654e119`) which combines
-    /// the Rome unified-user PDA + SPL ATA derivation into a single
-    /// syscall. Behavior is byte-identical to the prior two-hop path
-    /// through `0xFF…07` — verified on-chain against Marcus 121301 on
-    /// 2026-05-11 with EVM address `0xC777…2DAc` and USDC mint
-    /// `4zMMC9sr…ncDU` (resulting ATA `FkFYez2a…n8vw`).
+    /// Delegates to `HelperProgram.ata(address, bytes32)` — selector
+    /// `0xfeb1c647` on `0xff…09` (HelperProgram precompile; rome-evm-
+    /// private #348/#349, post-2026-05-12 consolidation). The earlier
+    /// `derive_user_ata` shortcut at `0xc654e119` on `0xff…08` (#319)
+    /// was migrated to HelperProgram and no longer dispatches there.
+    /// Behavior is byte-identical to the prior two-hop path through
+    /// `0xFF…07` — verified on-chain against Marcus 121301 on 2026-05-
+    /// 11 with EVM address `0xC777…2DAc` and USDC mint `4zMMC9sr…ncDU`
+    /// (resulting ATA `FkFYez2a…n8vw`).
     ///
     /// Saves ~152K Solana CU per call vs the two-hop path (3-sample
     /// average on Marcus 121301: 281K → 129K, 54 % reduction).
