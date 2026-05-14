@@ -16,11 +16,23 @@ interface ISystemProgram {
 }
 
 interface IWithdraw {
+    // Burn `msg.value` Rome gas; mint+transfer to the Solana system-account
+    // `owner`. The only payable precompile method.
+    // Selector: 0x4d8b0ea4
     function withdrawal(bytes32 owner) payable external;
-    function withdraw_to_pda(uint256 wei_) external;
-    function withdraw_to_ata(uint256 wei_) external;
-}
 
+    // Burn `lamports` of Rome native gas; deposit to the caller's
+    // EXTERNAL_AUTHORITY PDA. Single-state chains only — rejected with
+    // UnsupportedByOpgeth on op-geth-stack chains.
+    // Selector: 0x7f3124a0
+    function withdraw_to_pda(uint256 lamports) external;
+
+    // Burn `tokens` of Rome native gas; deposit to getATA(caller_pda,
+    // chain_mint_id) — the wrap-gas-to-spl path on SPL-gas chains. Single-state
+    // chains only — rejected with UnsupportedByOpgeth on op-geth-stack chains.
+    // Selector: 0x8059abc0
+    function withdraw_to_ata(uint256 tokens) external;
+}
 interface ICrossProgramInvocation {
     struct AccountMeta {
         bytes32 pubkey;
