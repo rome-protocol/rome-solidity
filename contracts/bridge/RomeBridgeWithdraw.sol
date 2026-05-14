@@ -202,7 +202,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     // CCTP path — path=0
     // -------------------------------------------------------------------------
 
-    /// @notice Burns rUSDC on the Rome EVM and initiates a CCTP deposit_for_burn
+    /// @notice Burns wUSDC on the Rome EVM and initiates a CCTP deposit_for_burn
     ///         CPI on Solana, bridging funds to `ethereumRecipient` on Ethereum.
     /// @param amount           Token amount in SPL decimals (must fit uint64).
     /// @param ethereumRecipient Destination address on Ethereum.
