@@ -343,7 +343,11 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         }
 
         // Read the u64 delegated_amount at offset 121 directly.
-        return uint256(AccountReader.readU64At(ata, 121));
+        // Sentinel: if storage saturated at u64::MAX, surface as type(uint256).max
+        // so wallets that use MaxUint256 as the "infinite approval" sentinel keep
+        // working — see approve() below.
+        uint64 delegated = AccountReader.readU64At(ata, 121);
+        return delegated == type(uint64).max ? type(uint256).max : uint256(delegated);
     }
 
     function approve(address spender, uint256 value) public virtual returns (bool) {
@@ -356,14 +360,24 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         bytes32 ownerUser = _users.ensure_user(msg.sender);
         bytes32 spenderUser = _users.ensure_user(spender);
 
-        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) = 
+        // SPL Token stores delegated_amount as u64 on-chain; we cannot
+        // expand the storage layer. Saturate when the caller's value
+        // exceeds type(uint64).max. The companion allowance() reader
+        // surfaces uint64.max storage as type(uint256).max so the
+        // standard wallet pattern `if allowance == MaxUint256` keeps
+        // working as an "infinite approval" sentinel.
+        uint64 storedAmount = value > type(uint64).max
+            ? type(uint64).max
+            : uint64(value);
+
+        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) =
         SplTokenLib.approve(
             SplTokenLib.SPL_TOKEN_PROGRAM,
             get_token_account(msg.sender),
             spenderUser,
             ownerUser,
             new bytes32[](0),
-            uint64(value)
+            storedAmount
         );
 
         // Only the owner's unified user PDA signs — auto-detected from metas.
@@ -375,8 +389,15 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             )
         );
 
-        require (success, string(Convert.revert_msg(result)));
-        emit Approval(msg.sender, spender, value);
+        require(success, string(Convert.revert_msg(result)));
+
+        // Emit the effective approval — when storage saturates at u64::MAX
+        // surface as MaxUint256 so the on-chain event matches the readback
+        // from allowance().
+        uint256 emittedValue = storedAmount == type(uint64).max
+            ? type(uint256).max
+            : uint256(storedAmount);
+        emit Approval(msg.sender, spender, emittedValue);
         return true;
     }
 
