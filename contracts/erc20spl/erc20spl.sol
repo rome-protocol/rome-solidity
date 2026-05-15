@@ -24,10 +24,11 @@ contract ERC20Users {
     ///         **No PDA funding here.** PDA activation (turning the
     ///         seed-derived address into a real Solana account with SOL
     ///         lamports for rent-payer roles) is handled exclusively by
-    ///         the `SimpleActivator` three-call flow:
-    ///         `activate{value: cost}()` (PDA fund + ensure_user),
-    ///         `createWusdcAta{value: cost}()`, `createWsolAta{value:
-    ///         cost}()`. The earlier operator-subsidized
+    ///         the `SimpleActivator.activate{value: activationCost}()`
+    ///         one-tx flow, which creates + funds the user's PDA AND
+    ///         creates the wUSDC + wSOL ATAs AND registers in the
+    ///         ERC20Users mapping in a single user-paid Rome tx. The
+    ///         earlier operator-subsidized
     ///         `RomeEVMAccount.create_payer(user, 50_000_000)` call has
     ///         been removed — Sybil-vulnerable and antithetical to the
     ///         "user pays for activation" design.
@@ -444,28 +445,49 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     /// @notice Move this wrapper's underlying SPL out of the caller's
     /// PDA-owned ATA to an arbitrary Solana wallet. Generic Rome →
     /// Solana exit door for ANY wrapper deployed by the factory —
-    /// works the same for WUSDC, WETH, WSOL, JUP, BONK, custom long-tail
-    /// tokens. No Wormhole, no CCTP, no per-asset bridge contract: just
-    /// an SPL transfer_checked CPI signed by the caller's authority PDA.
+    /// works the same for wUSDC, wETH, wSOL, wJUP, wBONK, custom long-tail
+    /// tokens. No Wormhole, no CCTP, no per-asset bridge contract.
+    ///
+    /// Two CPIs per call:
+    ///   1. `AssociatedToken.CreateIdempotent(recipient ATA)` — funded
+    ///      by `msg.sender`'s unified user PDA. No-ops on the Solana
+    ///      side when the ATA already exists. Cost: ~0.002 SOL rent on
+    ///      first call per (recipient, mint) pair; zero on repeat. The
+    ///      sender's PDA must hold ≥ ATA_RENT lamports — provisioned
+    ///      by `SimpleActivator.activate()` and refillable via
+    ///      `SimpleActivator.topUpUserPda` once the
+    ///      `FRESH_TRANSFER_RESERVE` is drained.
+    ///   2. `HelperProgram.transfer_spl(to_ata, value, mint)` — actual
+    ///      SPL move from `from_ata` (caller's PDA-owned ATA) →
+    ///      `to_ata` (recipient's ATA). Signed as
+    ///      `external_auth(msg.sender)`.
     ///
     /// Asymmetry vs. the EVM-side `transfer(address, uint256)`:
     ///   - `to` is a raw Solana wallet pubkey, NOT derived from an EVM
     ///     address. The recipient does not need a Rome account.
-    ///   - The recipient's ATA for this wrapper's mint is created
-    ///     idempotently if missing — the caller's unified user PDA pays
-    ///     the ~0.002 SOL rent (matches Phantom's "send to fresh address"
-    ///     model). For repeat sends to the same recipient, the create
-    ///     is a no-op.
+    ///   - The recipient's ATA is created idempotently if missing —
+    ///     matches Phantom's "send to fresh address" UX.
     ///
     /// Behavior:
-    ///   - The wrapper's `balanceOf(msg.sender)` decreases by `value`
-    ///     since balanceOf reads the underlying SPL token account.
+    ///   - The wrapper's `balanceOf(msg.sender)` decreases by `value`.
     ///   - The Solana recipient's wallet shows `value` of the underlying
     ///     SPL after this tx confirms.
     ///   - For wSOL specifically (canonical mint
     ///     So11111111111111111111111111111111111111112), the recipient
     ///     can `close_account` on their wSOL ATA in a follow-up Solana
     ///     tx to convert the SPL back to native lamports.
+    ///
+    /// Why the inline ATA-create works now (it didn't pre-2026-05-15):
+    ///   The previous attempt at a two-CPI atomic `bridgeOutToSolana`
+    ///   failed in the rome-evm CPI emulator (the create + transfer
+    ///   sequence reverted at sim time even though the on-chain logic
+    ///   was sound). The recent rome-evm-private clean-up of the CPI
+    ///   precompile + the AssociatedSplToken idempotent path lets the
+    ///   two CPIs sit in one atomic Rome DoTx without busting the
+    ///   1.4M CU budget; the user PDA's pre-funded reserve covers the
+    ///   ATA-create rent. Measured 1-tx atomic CU on Hadrian (probe
+    ///   2026-05-15): mean ~234K for the analogous 5-CPI activator
+    ///   tx; 2-CPI bridgeOut is comfortably under that.
     ///
     /// @param solana_recipient The receiving wallet pubkey on Solana.
     ///        Recipient ATA = ata(solana_recipient, mint_id, spl_token).
@@ -479,47 +501,73 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         require(value <= type(uint64).max, "Bridge amount exceeds uint64");
         require(solana_recipient != bytes32(0), "Solana recipient cannot be zero");
 
-        // Source ATA = unified-user-PDA's ATA for this mint. Single CPI
-        // via the `derive_user_ata` shortcut selector (`0xc654e119` on
-        // the CPI precompile at `0xFF…08`), which composes
-        //   find_program_address([EXTERNAL_AUTHORITY, evmAddr], rome_evm)
-        // and
-        //   find_program_address([ownerPda, SPL_TOKEN, mint], ata_program)
-        // into one syscall. Replaces the prior two-hop derivation
-        // (`RomeEVMAccount.pda(msg.sender)` + `UserPda.ataForKey(...)`)
-        // — measured saving of ~145K Solana CU per call on Marcus 121301
-        // (controlled probe 2026-05-11: 270K → 125K). Byte-identical to
-        // the prior path: the shortcut runs the same two
-        // `find_program_address` syscalls in native Rust, returning the
-        // same `(ATA, bump)` for a given `(user, mint)`.
+        // Source ATA = caller's unified-user-PDA's ATA for this mint.
+        // Single CPI via `HelperProgram.ata(user, mint)` — composes the
+        // two `find_program_address` syscalls (EXTERNAL_AUTHORITY → user
+        // PDA → ATA-of-PDA) into one dispatch. Measured −152K Solana CU
+        // vs the prior two-hop path (Marcus 121301, 2026-05-11; Hadrian
+        // confirms −170K, 2026-05-14).
         bytes32 from_ata = HelperProgram.ata(msg.sender, mint_id);
 
-        // Recipient ATA — derive only. Caller must pre-create on Solana
-        // if it doesn't exist (use ensureRecipientAta below as a separate
-        // tx). Adding the in-tx ATA-create CPI failed on rome-evm's
-        // CPI emulator (the two-CPI sequence reverts at sim time even
-        // though the contract logic is correct). Single CPI (transfer
-        // only) works reliably on chain. Stays on `UserPda.ataForKey`
-        // because `solana_recipient` is a raw Solana pubkey (not an
-        // EVM-mapped address) — `derive_user_ata` doesn't apply.
+        // Recipient ATA pubkey — same canonical ATA derivation but for
+        // the raw Solana recipient pubkey (not an EVM address), so the
+        // `HelperProgram.ata(address, bytes32)` overload doesn't apply
+        // — `UserPda.ataForKey` keeps the deterministic two-step Solana
+        // find_program_address derivation for an arbitrary pubkey.
         bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
-        // SPL transfer_checked from AUTHORITY_PDA's ATA → recipient's ATA.
-        // Uses `HelperProgram.transfer_spl(bytes32 to_ata, uint64, bytes32 mint)`
-        // via delegatecall so the precompile sees `caller = msg.sender`
-        // and signs as `external_auth(msg.sender)` — the same unified PDA
-        // that owns `from_ata`. Direct authority match — no delegation,
-        // no salts. The `bytes32 to_ata` overload is required here because
-        // `solana_recipient` is a raw Solana pubkey (not an EVM address),
-        // so the `(address,uint64,bytes32)` variant — which would derive
-        // the dest as ata(external_auth(to), mint) — does not apply.
-        (bool success, bytes memory result) = address(HelperProgram).delegatecall(
+        // CPI 1 — `AssociatedToken.CreateIdempotent` for the recipient
+        // ATA, funded by `msg.sender`'s unified user PDA. Idempotent on
+        // the Solana side: no-op when the account already exists,
+        // create + rent when not. Removes the need for callers to run
+        // a separate `ensureRecipientAta` preflight (which is still
+        // exposed below as a public helper for callers that want it).
+        //
+        // Funder: `_users.ensure_user(msg.sender)` — the caller's PDA
+        // pre-funded by `SimpleActivator.activate()` with at least
+        // 2× ATA_RENT + reserve. If the PDA's reserve is drained, this
+        // CPI reverts at the System Program's CreateAccount step (not
+        // enough lamports to fund the new account); UI surfaces the
+        // revert as "top up your PDA reserve".
+        bytes32 funder_pda = _users.ensure_user(msg.sender);
+        (
+            bytes32 ata_program_id,
+            ICrossProgramInvocation.AccountMeta[] memory ata_accounts,
+            bytes memory ata_data,
+            /* derived ata — same as to_ata */
+        ) = AssociatedSplToken.create_associated_token_account_idempotent(
+            funder_pda,
+            solana_recipient,
+            mint_id,
+            system_program_id,
+            SplTokenLib.SPL_TOKEN_PROGRAM,
+            associated_token_program_id
+        );
+        (bool ataOk, bytes memory ataResult) = address(cpi_program).delegatecall(
+            abi.encodeWithSignature(
+                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
+                ata_program_id, ata_accounts, ata_data
+            )
+        );
+        require(ataOk, string(Convert.revert_msg(ataResult)));
+
+        // CPI 2 — SPL `transfer_checked` from caller's PDA-owned ATA
+        // to the recipient's ATA. The `bytes32 to_ata` overload is
+        // required because the recipient is a raw Solana pubkey (not
+        // an EVM address). Signs as `external_auth(msg.sender)`,
+        // matching `from_ata`'s owner.
+        (bool xferOk, bytes memory xferResult) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
                 "transfer_spl(bytes32,uint64,bytes32)",
                 to_ata, uint64(value), mint_id
             )
         );
-        require(success, string(Convert.revert_msg(result)));
+        require(xferOk, string(Convert.revert_msg(xferResult)));
+
+        // Reference `from_ata` so the compiler doesn't warn — kept as a
+        // doc-only variable since the precompile re-derives source ATA
+        // server-side from the caller's external_auth PDA.
+        from_ata;
 
         emit BridgedOutToSolana(msg.sender, solana_recipient, mint_id, value);
         return true;
@@ -535,20 +583,20 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         uint256 value
     );
 
-    /// @notice Create the associated token account on Solana for a
-    /// given recipient + this wrapper's mint. Pays rent from the
-    /// caller's pre-funded unified user PDA (no Solana wallet needed).
+    /// @notice Standalone helper to create a recipient's ATA on Solana
+    /// for this wrapper's mint, paid for from the caller's pre-funded
+    /// unified user PDA.
     ///
-    /// Companion to `bridgeOutToSolana`. The single-CPI design of
-    /// bridgeOutToSolana requires the recipient ATA to exist on
-    /// Solana already; for first-time recipients the UI prompts the
-    /// EVM user to sign this tx first, then the bridge tx. Two
-    /// MetaMask popups, zero Phantom — same model as Wormhole's
-    /// outbound `approveBurnETH` + `burnETH` pattern.
+    /// **Status post-2026-05-15 collapse:** `bridgeOutToSolana` now
+    /// inlines this same CreateIdempotent CPI internally, so callers
+    /// no longer NEED to preflight. This function is kept as a public
+    /// idempotent helper for callers (off-chain scripts, custom flows)
+    /// that want to pre-warm an ATA without spending tokens. The
+    /// rome-ui hook `useOutboundSplBridge` skips this call in the new
+    /// path; the legacy probe-then-call dance is no longer required.
     ///
     /// Idempotent: returns the same ATA address whether it pre-existed
-    /// or was created. Operators / hooks can probe Solana for existence
-    /// first to skip this call when the ATA is already there.
+    /// or was created.
     ///
     /// @param solana_recipient Wallet pubkey on Solana that will own
     ///        the new ATA.

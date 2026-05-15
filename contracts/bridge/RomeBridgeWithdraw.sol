@@ -231,11 +231,11 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         // same as `owner`. The PDA must already hold ≥ ~13M lamports for
         // CCTP's inner System::create_account on `messageSentEventData`;
         // users activate it (one-time, user-paid) by calling
-        // `SimpleActivator.activate{value: cost}()` (and then
-        // `createTokenAccounts()` for ATA bootstrap) before any rent-
-        // paying outbound. The rome-ui surfaces this as the Activate
-        // Account primary CTA on Bridge / Swap / Liquidity pages until
-        // `external_auth(user)` has lamports.
+        // `SimpleActivator.activate{value: activationCost}()` — a single
+        // tx that creates + funds the PDA AND creates the wUSDC + wSOL
+        // ATAs AND registers in ERC20Users. The rome-ui surfaces this
+        // as the Activate Account primary CTA on Bridge / Swap /
+        // Liquidity pages until `external_auth(user)` has lamports.
 
         // Per-tx message data account derived as a salted PDA under the user.
         // Salt includes per-user nonce instead of block.number — block.number on

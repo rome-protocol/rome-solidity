@@ -37,7 +37,7 @@ The two Phase-2 flows (Rome ↔ Solana, any SPL):
 ```
                                                                                   Rome rome (Solana)
                                                                               ┌─────────────────────────────┐
-  Outbound Phase 2 (user on Rome → Solana wallet)                             │ ensureRecipientAta + bridgeOutToSolana │ → SPL minted to recipient ATA
+  Outbound Phase 2 (user on Rome → Solana wallet)                             │ bridgeOutToSolana (inlines ATA-create) │ → SPL minted to recipient ATA
   Inbound Phase 2  (user on Solana → Rome) — native deposit                  │ user signs Solana SPL transfer ; Hercules indexes; W{Symbol} balance reflects │
                                                                               └─────────────────────────────┘
 ```
@@ -78,10 +78,10 @@ A complement to Phase 1's CCTP/Wormhole outbound paths. **Solana-native SPL toke
 
 | Method | Role |
 |---|---|
-| `bridgeOutToSolana(bytes32 recipient, uint256 value) → bool` | Single CPI: SPL `transfer_checked` from `getATA(AUTHORITY_PDA, mint)` → recipient ATA. Authority = `AUTHORITY_PDA = find_program_address([EXTERNAL_AUTHORITY, evmAddr])`, signed with **empty seeds** in `invoke_signed`. Recipient ATA must exist (use `ensureRecipientAta` first). Emits `BridgedOutToSolana`. |
-| `ensureRecipientAta(bytes32 recipient) → bytes32` | Single CPI: idempotent `create_associated_token_account_idempotent`. Funded by sender's unified user PDA — no Solana wallet on the recipient side. Emits `RecipientAtaEnsured`. |
+| `bridgeOutToSolana(bytes32 recipient, uint256 value) → bool` | Two CPIs in one atomic Rome tx: (1) `AssociatedToken.CreateIdempotent` for the recipient ATA, funded by `msg.sender`'s unified user PDA (no-ops when the ATA already exists); (2) SPL `transfer_checked` from `getATA(AUTHORITY_PDA, mint)` → recipient ATA. Authority = `AUTHORITY_PDA = find_program_address([EXTERNAL_AUTHORITY, evmAddr])`. Emits `BridgedOutToSolana`. |
+| `ensureRecipientAta(bytes32 recipient) → bytes32` | Standalone idempotent ATA-create helper. Funded by sender's unified user PDA. Emits `RecipientAtaEnsured`. Kept as a public utility — `bridgeOutToSolana` no longer requires this as a preflight (the create CPI is inlined). |
 
-The two-step pattern (preflight → ensureRecipientAta if missing → bridgeOutToSolana) is required because rome-evm's `eth_call` simulation rejects the single-tx two-CPI variant with `"Cannot revert cross-program invocation"`. Splitting is architectural, not just UX.
+Post-2026-05-15 collapse: `bridgeOutToSolana` inlines the recipient-ATA-create CPI internally. The legacy two-step preflight pattern (probe Solana → call `ensureRecipientAta` if missing → call `bridgeOutToSolana`) is no longer required; the rome-ui hook drops the probe-then-call dance. The atomic two-CPI Rome DoTx fits under the 1.4M CU budget (the 5-CPI activator tx measures ~234K CU mean on Hadrian; a 2-CPI bridgeOut sits comfortably below that).
 
 **Asset-origin asymmetry** — combined with Phase 1:
 
