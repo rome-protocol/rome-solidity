@@ -38,7 +38,6 @@ export type WrapperDeployment = {
 export type SimpleActivatorDeployment = {
     address: string;
     activationCostWei: string;
-    tokenAccountsCostWei: string;
     usdcWrapper: string;
     wsolWrapper: string;
     users: string;

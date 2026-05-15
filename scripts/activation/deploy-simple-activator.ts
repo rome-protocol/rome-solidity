@@ -25,12 +25,12 @@ import hardhat from "hardhat";
 import { getAddress, isAddress } from "viem";
 import { readDeployments, writeDeployments } from "../lib/deployments.js";
 
-// Three-call activation: 1 USDC for activate(), 0.5 USDC for each
-// ATA-create call. Total user cost = 1 + 0.5 + 0.5 = 2 USDC,
-// matching the prior two-call total. Operator margin per call covers
-// the ~2M lamports of SOL outflow (ATA rent + activator PDA topup).
-const ACTIVATION_COST_WEI = 1_000_000_000_000_000_000n;
-const TOKEN_ACCOUNTS_COST_WEI = 500_000_000_000_000_000n;
+// One-tx activation: 2 USDC for activate(). Covers operator's SOL
+// outflow for HelperProgram.create_pda (≈ 0.015 SOL = 14_969_440
+// lamports of user PDA funding = rent + 2× ATA rent + ~5 fresh-recipient
+// transfer reserve) plus a margin for Sybil resistance. Single tx,
+// single popup — collapsed from the legacy 3-tx flow.
+const ACTIVATION_COST_WEI = 2_000_000_000_000_000_000n;
 
 type AddressDep = {
   envVar: string;
@@ -96,12 +96,10 @@ async function main() {
   console.log(`[${networkName}] factory:         ${factory}`);
   console.log(`[${networkName}] users (resolved): ${usersAddr}`);
   console.log(`[${networkName}] activationCost:    ${ACTIVATION_COST_WEI} wei (= ${Number(ACTIVATION_COST_WEI) / 1e18} USDC)`);
-  console.log(`[${networkName}] tokenAccountsCost: ${TOKEN_ACCOUNTS_COST_WEI} wei (= ${Number(TOKEN_ACCOUNTS_COST_WEI) / 1e18} USDC)`);
 
   console.log("\nDeploying SimpleActivator ...");
   const activator = await viem.deployContract("SimpleActivator", [
     ACTIVATION_COST_WEI,
-    TOKEN_ACCOUNTS_COST_WEI,
     usdcWrapper,
     wsolWrapper,
     usersAddr,
@@ -115,7 +113,6 @@ async function main() {
   existing.SimpleActivator = {
     address: activator.address,
     activationCostWei: ACTIVATION_COST_WEI.toString(),
-    tokenAccountsCostWei: TOKEN_ACCOUNTS_COST_WEI.toString(),
     usdcWrapper,
     wsolWrapper,
     users: usersAddr,
@@ -128,8 +125,8 @@ async function main() {
   console.log(`  1. Merge the contract-deploys PR-back to rome-solidity master.`);
   console.log(`  2. Update chain.contracts.simpleActivator in registry/chains/<id>-<slug>/contracts.json.`);
   console.log(`  3. Bump rome_ui_registry_ref in the chain's rome-ui inventory + redeploy rome-ui so ActivationGate picks up the new address.`);
-  console.log(`  4. From a fresh EVM address: UI fires activate() (1 USDC), createWusdcAta() (0.5 USDC), createWsolAta() (0.5 USDC) sequentially.`);
-  console.log(`  5. Verify on-chain: PDA exists with 890,880 lamports, WUSDC + WSOL ATAs both exist owned by PDA.`);
+  console.log(`  4. From a fresh EVM address: UI fires a single activate() tx (2 USDC) — one MetaMask popup, one wait.`);
+  console.log(`  5. Verify on-chain: PDA exists with USER_PDA_FUNDING lamports (~14.97M), wUSDC + wSOL ATAs both exist owned by PDA.`);
 }
 
 main().catch((err) => {
