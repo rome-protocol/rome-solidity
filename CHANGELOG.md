@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added — `UserPda.atas(user, mints[])` — batch ATA derivation across mints
+New ergonomic helper on the `UserPda` library: derives N ATAs for one EVM user across N classic SPL Token mints in two precompile dispatches total (vs N calls today). Composes:
+
+1. `RomeEVMAccount.pda(user)` — single dispatch, returns AUTHORITY_PDA
+2. `PdasBatch.derive(seedGroups, ASSOCIATED_TOKEN_PROGRAM)` — N PDAs in one syscall, each `[authority_pda, SPL_TOKEN_PROGRAM, mint_i]`
+
+CU comparison vs N×`UserPda.ata(user, mint)`:
+- The per-mint `HelperProgram.ata` shortcut is ~129K CU each (Hadrian 2026-05-14).
+- The new batch path is one `find_program_address` for AUTHORITY_PDA (~115K CU) + one `pdas_batch_derive` (N PDAs at ~50-80K CU each).
+- Pays off at N ≥ 2; per-PDA saving grows with N.
+
+Target consumers: Compound bulker supply/borrow lists, multi-token swap UIs that probe per-mint balances, portfolio screens. Single-mint and arbitrary-owner cases keep using `ata(user, mint)` / `ataForKey(...)`.
+
+CHANGELOG cross-ref: this composes `PdasBatch` (introduced same release) — no separate precompile selector. Live-precompile path verified via the UserPdaWrapper, adapter integration tests pick up the rest end-to-end.
+
 ### Changed — Meteora `_derive_permissionless_pool_with_config_keys` migrated to PdasBatch
 First production consumer of the new `PdasBatch` library. The Meteora permissionless-pool init helper in `meteora/damm_v1_pool.sol` previously called `find_program_address` 12 times in a row (4 distinct dynamic_vault_program PDAs, 5 dynamic_amm_program PDAs, 1 pool, 2 LP-mint, 1 metadata). After this PR the 9 fully-batchable derivations collapse into **3 PdasBatch calls** — saving 6 syscalls per pool init:
 

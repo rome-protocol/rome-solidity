@@ -5,6 +5,8 @@ import {ISystemProgram, SystemProgram, ICrossProgramInvocation, CpiProgram, Help
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {AssociatedSplToken} from "../spl_token/associated_spl_token.sol";
 import {SolanaConstants} from "./SolanaConstants.sol";
+import {PdaDeriver} from "./PdaDeriver.sol";
+import {PdasBatch} from "./PdasBatch.sol";
 
 /// @title UserPda
 /// @notice EVM address → Solana user PDA + ATA lookup.
@@ -76,5 +78,54 @@ library UserPda {
             tokenProgram,
             SolanaConstants.ASSOCIATED_TOKEN_PROGRAM
         );
+    }
+
+    /// Batch-derive N ATAs for one EVM user across N classic SPL Token mints.
+    ///
+    /// Composes two primitives:
+    ///   1. `RomeEVMAccount.pda(user)` — single dispatch, returns AUTHORITY_PDA
+    ///   2. `PdasBatch.derive(seedGroups, ASSOCIATED_TOKEN_PROGRAM)` — N PDAs
+    ///      in one syscall, each `[authority_pda, SPL_TOKEN_PROGRAM, mint_i]`
+    ///
+    /// CU vs N×`ata(user, mint)`: the per-mint `HelperProgram.ata` shortcut
+    /// is ~129K CU each (Hadrian 2026-05-14 baseline). This path is one
+    /// `find_program_address` for the AUTHORITY_PDA plus one
+    /// `pdas_batch_derive` for the N ATAs — pays off at N ≥ 2 mints, with the
+    /// per-PDA saving growing with N. Measurement post-deploy lands in
+    /// `rome-specs/active/technical/2026-05-14-rome-primitive-cu-baseline.md`.
+    ///
+    /// Use this when one user owns ATAs across multiple mints (Compound
+    /// bulker supply/borrow lists, multi-token swap UIs probing balances,
+    /// portfolio screens enumerating per-mint balances). For single-mint or
+    /// arbitrary-owner cases, prefer `ata(user, mint)` / `ataForKey(...)`.
+    function atas(address user, bytes32[] memory mints)
+        internal
+        view
+        returns (bytes32[] memory result)
+    {
+        uint256 n = mints.length;
+        result = new bytes32[](n);
+        if (n == 0) return result;
+
+        bytes32 owner = pda(user);
+
+        // Each ATA = find_program_address(
+        //   [owner_pda, SPL_TOKEN_PROGRAM, mint_i],
+        //   ASSOCIATED_TOKEN_PROGRAM
+        // )
+        ISystemProgram.Seed[][] memory groups = new ISystemProgram.Seed[][](n);
+        for (uint256 i = 0; i < n; ++i) {
+            groups[i] = PdaDeriver.makeSeeds(
+                PdaDeriver.seedBytes(owner),
+                PdaDeriver.seedBytes(SolanaConstants.SPL_TOKEN_PROGRAM),
+                PdaDeriver.seedBytes(mints[i])
+            );
+        }
+
+        ICrossProgramInvocation.PdaWithBump[] memory pdas =
+            PdasBatch.derive(groups, SolanaConstants.ASSOCIATED_TOKEN_PROGRAM);
+        for (uint256 i = 0; i < n; ++i) {
+            result[i] = pdas[i].pda;
+        }
     }
 }

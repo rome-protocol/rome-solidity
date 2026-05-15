@@ -27,4 +27,21 @@ contract UserPdaWrapper {
     {
         return UserPda.ataWithProgram(user, mint, tokenProgram);
     }
+
+    /// Live-precompile path: N ATAs for one user via PdasBatch under the hood.
+    function atas(address user, bytes32[] memory mints)
+        external
+        view
+        returns (bytes32[] memory)
+    {
+        return UserPda.atas(user, mints);
+    }
+
+    /// Empty-input shape check — exercises the early-return path that
+    /// short-circuits before touching the precompile, so this can run on
+    /// hardhatMainnet without a live Rome stack.
+    function atasEmptyLength(address user) external view returns (uint256) {
+        bytes32[] memory mints = new bytes32[](0);
+        return UserPda.atas(user, mints).length;
+    }
 }

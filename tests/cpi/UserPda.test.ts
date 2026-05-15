@@ -77,4 +77,20 @@ describe("UserPda", () => {
         // (Meteora / Kamino / Drift, Phase 2) which runs against Rome.
         assert.ok(true);
     });
+
+    // ──────────────────────────────────────────────────────────────────
+    // UserPda.atas — multi-mint batch (compose of HelperProgram.pda +
+    // PdasBatch.derive). Live-precompile path is skipped on hardhatMainnet.
+    // ──────────────────────────────────────────────────────────────────
+
+    it("UserPda.atas exists and takes (address, bytes32[])", () => {
+        const src = readFileSync(USER_PDA_PATH, "utf8");
+        // The signature must accept an address user and a bytes32[] mints.
+        assert.ok(
+            /function\s+atas\s*\(\s*address\s+\w+\s*,\s*bytes32\[\]\s+memory\s+\w+\s*\)/.test(
+                src,
+            ),
+            "UserPda.atas(address, bytes32[]) signature must be present",
+        );
+    });
 });
