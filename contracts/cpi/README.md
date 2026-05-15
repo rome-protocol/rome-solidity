@@ -259,7 +259,8 @@ See cardo-foundation.md §12 for the full list. Highlights:
 | `CostEstimator.sol` | Rent formula + USD helpers + oracleReads audit trail |
 | `CpiError.sol` | AmountTooLarge + 3 other shared errors |
 | `ICostView.sol` | `quoteCost(address, bytes) view → CostEstimate` |
-| `PdaDeriver.sol` | `find_program_address` + typed seed helpers + N-arg makeSeeds |
+| `PdaDeriver.sol` | `find_program_address` + typed seed helpers + N-arg makeSeeds (single PDA via `0xFF…07`) |
+| `PdasBatch.sol` | `pdas_batch_derive` wrapper — N PDAs against one program in one syscall (`0xFF…08` / `0x944336f8`). Use over N×`PdaDeriver.derive` whenever you derive ≥2 PDAs back-to-back. Convenience: `pair` / `triplet` / `quad` for common shapes. Worked example: `contracts/examples/pdas_batch.sol`. |
 | `SolanaConstants.sol` | Sysvars + System/Token programs |
 | `UserPda.sol` | EVM user → Solana PDA + ATA (no tx.origin) |
 | `templates/CpiAdapterBase.sol` | Ownable + Pausable + ReentrancyGuard + backend |
