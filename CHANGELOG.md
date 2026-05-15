@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added — `PdasBatch` library — surfaces `pdas_batch_derive` for everybody
+New library `contracts/cpi/PdasBatch.sol` wraps the `pdas_batch_derive` CPI shortcut selector (`0x944336f8` on `0xFF…08`) — N independent PDAs against one Solana program in one syscall. Counterpart to the existing `PdaDeriver` (single PDA via `0xFF…07`); both stay available, callers pick by shape.
+
+Primary surface:
+- `PdasBatch.derive(ISystemProgram.Seed[][] groups, bytes32 programId) → ICrossProgramInvocation.PdaWithBump[]` — arbitrary N (≤ 16)
+- `PdasBatch.pair(seedsA, seedsB, programId)` — common 2-PDA shape
+- `PdasBatch.triplet(seedsA, seedsB, seedsC, programId)` — 3-PDA
+- `PdasBatch.quad(seedsA, seedsB, seedsC, seedsD, programId)` — 4-PDA
+
+Hard limits enforced by the precompile (per `rome-evm-private/program/src/non_evm/derive_helpers.rs`): N ≤ 16, M ≤ 8 inner seeds, len ≤ 32 bytes per seed. Output ordering is deterministic — `result[i]` corresponds to `seedGroups[i]`, a stability contract every downstream consumer (rome-sdk TS + Rust mirrors, off-chain previews) depends on.
+
+No new types: input element is `ISystemProgram.Seed` (reused — compatible with existing `PdaDeriver.seedBytes` / `makeSeeds` builders), result element is `ICrossProgramInvocation.PdaWithBump` (already declared in `interface.sol`). The library lives next to the precompile that owns the call, not under `SystemProgram`.
+
+Files added:
+- `contracts/cpi/PdasBatch.sol` — the library
+- `contracts/cpi/test/PdasBatchWrapper.sol` — Hardhat test wrapper
+- `contracts/examples/pdas_batch.sol` — worked example (5-PDA Meteora-shape + 2-PDA Cardo-shape)
+- `tests/cpi/PdasBatch.test.ts` — network-independent shape assertions
+
+Live-precompile path is exercised end-to-end via the paired Meteora migration PR.
+
 ### Changed — `SimpleActivator` split into THREE calls (was two)
 End-to-end testing on Marcus surfaced that the two-call shape (`activate()` + `createTokenAccounts()`) emulated at ~1.65M CU on the canonical deploy — over Solana's 1.4M-CU per-tx cap — because `create_payer(activator, 5M)` doesn't fast-path at the rome-evm-private level even when the activator's PDA balance already exceeds the target. Bundling two ATA-create CPIs in one tx pushes total CU over the cap regardless of priming.
 
