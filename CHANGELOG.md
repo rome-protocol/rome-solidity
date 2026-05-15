@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Changed — Meteora `_derive_permissionless_pool_with_config_keys` migrated to PdasBatch
+First production consumer of the new `PdasBatch` library. The Meteora permissionless-pool init helper in `meteora/damm_v1_pool.sol` previously called `find_program_address` 12 times in a row (4 distinct dynamic_vault_program PDAs, 5 dynamic_amm_program PDAs, 1 pool, 2 LP-mint, 1 metadata). After this PR the 9 fully-batchable derivations collapse into **3 PdasBatch calls** — saving 6 syscalls per pool init:
+
+| Batch | Program | PDAs |
+|---|---|---|
+| A | `dynamic_vault_program` | `a_vault`, `b_vault` (2-PDA `PdasBatch.pair`) |
+| B | `dynamic_vault_program` | `a_token_vault`, `b_token_vault` (2-PDA `PdasBatch.pair`; depends on Batch A) |
+| C | `dynamic_amm_program`   | `lp_mint`, `a_vault_lp`, `b_vault_lp`, `protocol_token_a_fee`, `protocol_token_b_fee` (5-PDA `PdasBatch.derive`) |
+
+Preserved as individual derivations (can't batch — different programs / conditional):
+- `pool` (single dynamic_amm_program derivation, no peer derivations to batch with)
+- `a_vault_lp_mint` / `b_vault_lp_mint` (conditional Devnet-override short-circuit in `derive_lp_mint_key`)
+- `mint_metadata` (Metaplex Token Metadata — different program)
+
+Side effects:
+- `_derive_permissionless_pool_with_config_keys` mutability flipped `pure → view` because `PdasBatch.derive` calls `CpiProgram.pdas_batch_derive` which is `view`-declared upstream.
+- `derive_initialize_permissionless_constant_product_pool_with_config_accounts` (single library caller) cascaded `pure → view`. Factory caller (`damm_v1_factory.sol:120`) is already `view`, so no further cascade.
+
+No ABI change. Output is byte-identical to the prior derivation chain (output ordering contract from PdasBatch's NatSpec: `result[i]` ↔ `seedGroups[i]`).
+
+CU measurement post-deploy will land in `rome-specs/active/technical/2026-05-14-rome-primitive-cu-baseline.md` — paired follow-up, not gating this ship per the surface rollout plan.
+
 ### Added — `PdasBatch` library — surfaces `pdas_batch_derive` for everybody
 New library `contracts/cpi/PdasBatch.sol` wraps the `pdas_batch_derive` CPI shortcut selector (`0x944336f8` on `0xFF…08`) — N independent PDAs against one Solana program in one syscall. Counterpart to the existing `PdaDeriver` (single PDA via `0xFF…07`); both stay available, callers pick by shape.
 
