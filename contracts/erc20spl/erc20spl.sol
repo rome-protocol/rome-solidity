@@ -206,6 +206,18 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // 46..81 freeze_authority COption. `account_u64_at` reads exactly
         // the 8-byte supply field directly — no full mint Borsh decode,
         // no 5-tuple ABI roundtrip.
+        //
+        // ERC-20 spec invariant (FB-2c): never revert on a view method.
+        // When the mint account is uninitialized — wrapper deployed against
+        // a stale or never-funded mint address — `account_u64_at(mint, 36)`
+        // would revert "account_u64_at: offset 36 + 8 out of 0 bytes",
+        // breaking every consumer that probes totalSupply on chain
+        // bring-up. `account_lamports` is the cheap existence probe (no
+        // data buffer pull) used symmetrically by `balanceOf` and
+        // `allowance` below.
+        if (AccountReader.lamportsOf(mint_id) == 0) {
+            return 0;
+        }
         return uint256(AccountReader.readU64At(mint_id, 36));
     }
 
@@ -321,8 +333,31 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     function allowance(address owner, address spender) public view virtual returns (uint256) {
-        bytes32 spenderUser = _users.get_user(spender);
+        // FB-2a: derive the spender's unified PDA directly via the
+        // global precompile instead of `_users.get_user(spender)`,
+        // which reverted "User does not exist" when the spender had
+        // never been registered in this wrapper's ERC20Users mapping.
+        // Both paths compute `find_program_address([EXTERNAL_AUTHORITY,
+        // spender], rome_evm)` — byte-identical result. The mapping is
+        // still needed by `approve()` (which calls `ensure_user` to
+        // record the EVM addr) but a read-only `allowance()` consumer
+        // (DEX router probe, wallet UI) must not require any prior
+        // wrapper-side registration of the spender. ERC-20 spec: the
+        // allowance of any unapproved pair is 0, NEVER a revert.
+        bytes32 spenderUser = HelperProgram.pda(spender);
         bytes32 ata = get_token_account(owner);
+
+        // FB-2b: gate the data read behind a lamports existence probe.
+        // When the owner's ATA is uninitialized — fresh user, never
+        // received this token — the underlying buffer is 0 bytes and
+        // `account_data_at(ata, 72, 36)` reverts
+        //   "account_data_at: range 72..108 out of 0 bytes"
+        // forcing every wallet / router / multicall probe to wrap
+        // `allowance()` in try/catch. Same symmetric pattern as
+        // `balanceOf`: no ATA → no balance → no delegate possible → 0.
+        if (AccountReader.lamportsOf(ata) == 0) {
+            return 0;
+        }
 
         // SPL TokenAccount delegate is `COption<Pubkey>` at offset 72:
         //   72..75 tag (u32 LE; 0 = None, 1 = Some)
