@@ -14,13 +14,13 @@
     "@nomicfoundation/hardhat-toolbox-viem": "^5.0.5",
     "@types/chai": "^5.2.3",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^25.6.2",
+    "@types/node": "^25.8.0",
     "chai": "^6.2.2",
     "forge-std": "github:foundry-rs/forge-std#v1.16.1",
     "mocha": "^11.7.5",
     "typescript": "~6.0.3",
-    "viem": "^2.48.11",
-    "vitest": "^4.1.4"
+    "viem": "^2.49.0",
+    "vitest": "^4.1.6"
   },
   "overrides": {
     "utf-8-validate": "^6.0.2",
