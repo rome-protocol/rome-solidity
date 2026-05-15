@@ -11,6 +11,8 @@ import {SystemProgramLib} from "../system_program/system_program.sol";
 import {AssociatedSplToken} from "../spl_token/associated_spl_token.sol";
 import {MplTokenMetadataLib} from "../mpl_token_metadata/lib.sol";
 import {ICrossProgramInvocation} from "../interface.sol";
+import {PdaDeriver} from "../cpi/PdaDeriver.sol";
+import {PdasBatch} from "../cpi/PdasBatch.sol";
 
 library DAMMv1Lib {
     bytes32 public constant PROG_DYNAMIC_AMM =
@@ -522,7 +524,7 @@ library DAMMv1Lib {
         InitializePermissionlessPoolWithConfigConfig memory config
     )
     internal
-    pure
+    view
     returns (InitializePermissionlessPoolWithConfigAccounts memory accounts_)
     {
         PermissionlessPoolWithConfigDerivedKeys memory derived = _derive_permissionless_pool_with_config_keys(config);
@@ -574,19 +576,62 @@ library DAMMv1Lib {
         InitializePermissionlessPoolWithConfigConfig memory config
     )
     private
-    pure
+    view
     returns (PermissionlessPoolWithConfigDerivedKeys memory derived)
     {
+        // Step 1: pool (1 derivation on dynamic_amm_program; can't batch —
+        // depends on token_a + token_b + config, no peer derivations).
         derived.pool = derive_permissionless_constant_product_pool_with_config_key(
             config.token_a_mint,
             config.token_b_mint,
             config.config,
             config.dynamic_amm_program
         );
-        derived.a_vault = derive_vault_key(config.token_a_mint, config.dynamic_vault_program);
-        derived.b_vault = derive_vault_key(config.token_b_mint, config.dynamic_vault_program);
-        derived.a_token_vault = derive_token_vault_key(derived.a_vault, config.dynamic_vault_program);
-        derived.b_token_vault = derive_token_vault_key(derived.b_vault, config.dynamic_vault_program);
+
+        // Step 2 — BATCH A — a_vault + b_vault on dynamic_vault_program.
+        // PdasBatch.pair replaces 2 separate find_program_address syscalls.
+        {
+            ISystemProgram.Seed[] memory aVaultSeeds = PdaDeriver.makeSeeds(
+                PdaDeriver.seedBytesRaw(DYNAMIC_VAULT_VAULT_PREFIX),
+                PdaDeriver.seedBytes(config.token_a_mint),
+                PdaDeriver.seedBytes(DYNAMIC_VAULT_BASE_KEY)
+            );
+            ISystemProgram.Seed[] memory bVaultSeeds = PdaDeriver.makeSeeds(
+                PdaDeriver.seedBytesRaw(DYNAMIC_VAULT_VAULT_PREFIX),
+                PdaDeriver.seedBytes(config.token_b_mint),
+                PdaDeriver.seedBytes(DYNAMIC_VAULT_BASE_KEY)
+            );
+            (
+                ICrossProgramInvocation.PdaWithBump memory aVault,
+                ICrossProgramInvocation.PdaWithBump memory bVault
+            ) = PdasBatch.pair(aVaultSeeds, bVaultSeeds, config.dynamic_vault_program);
+            derived.a_vault = aVault.pda;
+            derived.b_vault = bVault.pda;
+        }
+
+        // Step 3 — BATCH B — a_token_vault + b_token_vault on
+        // dynamic_vault_program (depends on a_vault + b_vault from Batch A).
+        {
+            ISystemProgram.Seed[] memory aTokenVaultSeeds = PdaDeriver.makeSeeds(
+                PdaDeriver.seedBytesRaw(DYNAMIC_VAULT_TOKEN_VAULT_PREFIX),
+                PdaDeriver.seedBytes(derived.a_vault)
+            );
+            ISystemProgram.Seed[] memory bTokenVaultSeeds = PdaDeriver.makeSeeds(
+                PdaDeriver.seedBytesRaw(DYNAMIC_VAULT_TOKEN_VAULT_PREFIX),
+                PdaDeriver.seedBytes(derived.b_vault)
+            );
+            (
+                ICrossProgramInvocation.PdaWithBump memory aTokenVault,
+                ICrossProgramInvocation.PdaWithBump memory bTokenVault
+            ) = PdasBatch.pair(aTokenVaultSeeds, bTokenVaultSeeds, config.dynamic_vault_program);
+            derived.a_token_vault = aTokenVault.pda;
+            derived.b_token_vault = bTokenVault.pda;
+        }
+
+        // Step 4: a/b_vault_lp_mint — kept on the conditional helper because
+        // `derive_lp_mint_key` short-circuits to a hardcoded value for the
+        // Devnet override (`lookup_non_pda_based_lp_mint`). Batching would
+        // unconditionally derive — semantically incorrect for Devnet pools.
         derived.a_vault_lp_mint = derive_lp_mint_key(
             derived.a_vault,
             config.dynamic_vault_program,
@@ -597,27 +642,52 @@ library DAMMv1Lib {
             config.dynamic_vault_program,
             config.override_network
         );
-        derived.lp_mint = derive_pool_lp_mint_key(derived.pool, config.dynamic_amm_program);
-        derived.a_vault_lp = derive_vault_lp_key(
-            derived.a_vault,
-            derived.pool,
-            config.dynamic_amm_program
-        );
-        derived.b_vault_lp = derive_vault_lp_key(
-            derived.b_vault,
-            derived.pool,
-            config.dynamic_amm_program
-        );
-        derived.protocol_token_a_fee = derive_protocol_fee_key(
-            config.token_a_mint,
-            derived.pool,
-            config.dynamic_amm_program
-        );
-        derived.protocol_token_b_fee = derive_protocol_fee_key(
-            config.token_b_mint,
-            derived.pool,
-            config.dynamic_amm_program
-        );
+
+        // Step 5 — BATCH C — 5 PDAs on dynamic_amm_program (all depend on
+        // derived.pool from Step 1 and a_vault/b_vault from Batch A).
+        // PdasBatch.derive replaces 5 separate find_program_address syscalls.
+        {
+            ISystemProgram.Seed[][] memory groups = new ISystemProgram.Seed[][](5);
+
+            // [0] lp_mint = [DYNAMIC_AMM_LP_MINT_PREFIX, pool]
+            groups[0] = PdaDeriver.makeSeeds(
+                PdaDeriver.seedBytesRaw(DYNAMIC_AMM_LP_MINT_PREFIX),
+                PdaDeriver.seedBytes(derived.pool)
+            );
+            // [1] a_vault_lp = [a_vault, pool]
+            groups[1] = PdaDeriver.makeSeeds(
+                PdaDeriver.seedBytes(derived.a_vault),
+                PdaDeriver.seedBytes(derived.pool)
+            );
+            // [2] b_vault_lp = [b_vault, pool]
+            groups[2] = PdaDeriver.makeSeeds(
+                PdaDeriver.seedBytes(derived.b_vault),
+                PdaDeriver.seedBytes(derived.pool)
+            );
+            // [3] protocol_token_a_fee = [PROTOCOL_FEE_PREFIX, token_a_mint, pool]
+            groups[3] = PdaDeriver.makeSeeds(
+                PdaDeriver.seedBytesRaw(DYNAMIC_AMM_PROTOCOL_FEE_PREFIX),
+                PdaDeriver.seedBytes(config.token_a_mint),
+                PdaDeriver.seedBytes(derived.pool)
+            );
+            // [4] protocol_token_b_fee = [PROTOCOL_FEE_PREFIX, token_b_mint, pool]
+            groups[4] = PdaDeriver.makeSeeds(
+                PdaDeriver.seedBytesRaw(DYNAMIC_AMM_PROTOCOL_FEE_PREFIX),
+                PdaDeriver.seedBytes(config.token_b_mint),
+                PdaDeriver.seedBytes(derived.pool)
+            );
+
+            ICrossProgramInvocation.PdaWithBump[] memory ammPhase =
+                PdasBatch.derive(groups, config.dynamic_amm_program);
+            derived.lp_mint              = ammPhase[0].pda;
+            derived.a_vault_lp           = ammPhase[1].pda;
+            derived.b_vault_lp           = ammPhase[2].pda;
+            derived.protocol_token_a_fee = ammPhase[3].pda;
+            derived.protocol_token_b_fee = ammPhase[4].pda;
+        }
+
+        // Step 6: mint_metadata (Metaplex Token Metadata program — different
+        // program, can't batch with the dynamic_amm_program group).
         (derived.mint_metadata,) = MplTokenMetadataLib.find_metadata_pda(
             derived.lp_mint,
             MplTokenMetadataLib.MPL_TOKEN_METADATA_PROGRAM_ID
