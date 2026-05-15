@@ -10,9 +10,26 @@ on:
 permissions:
   contents: read
 
+# Cancel earlier runs of this workflow on the same ref. Closes the
+# stuck-queued failure mode we hit on 2026-05-15: a build-and-test job
+# sat in `queued` state for 50+ minutes (GitHub Actions runner-pickup
+# glitch); the parent workflow eventually got marked `failure` even
+# though no test had run. Subsequent pushes used to leave the stuck
+# run alongside the new one. With this group, the next push cancels
+# the prior queue + lets the new run start clean.
+#
+# Group key uses `github.ref` so PRs (branch-scoped) and master
+# (master-scoped) each cancel their own predecessors independently.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    # Fail-fast instead of hanging when a runner doesn't pick the job up.
+    # Average successful run is <2 min; 15 min is generous headroom.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -52,6 +69,7 @@ jobs:
     # when tx.origin was present. `tx.origin` is unambiguous enough in
     # Solidity that anchors aren't needed.
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
       - name: Ban tx.origin in contracts/ (strict)
@@ -94,6 +112,7 @@ jobs:
     # any future CU constants in rome-solidity (e.g. an ERC20SPL deposit
     # CU budget) are caught without a config change.
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
       - name: Check CU_* recon comment freshness
@@ -171,6 +190,7 @@ jobs:
     #     to mocha tests; never deployed.
     runs-on: ubuntu-latest
     continue-on-error: true
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
