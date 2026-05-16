@@ -1,0 +1,152 @@
+{
+  "network": "hadrian",
+  "chainId": 200010,
+  "runAt": "2026-05-16T22:13:09.934Z",
+  "methodology": "real production-contract tx -> rome_solanaTxForEvmTx -> Solana CU. multi-tx flows summed.",
+  "deployer": "0x1f4946Be340F06c46A50E65084790968aBcc48F6",
+  "pairs": {
+    "A": {
+      "tokens": [
+        "0x94AC3E5e998d72088045853C1CfB910F6CE90E56",
+        "0xD39EC36aadfe6ca262b9c2d7D1230414B3c49501"
+      ],
+      "pair": "0x45350dF36fA7334C2E267598Af8fC136e4982A9E"
+    },
+    "B": {
+      "tokens": [
+        "0x94AC3E5e998d72088045853C1CfB910F6CE90E56",
+        "0x5cB734B113E31005487D7E4bcA39BCC3e17B8e9A"
+      ],
+      "pair": "0x9FB2471A400CA670F5459829b622A2f4d4824642"
+    }
+  },
+  "mockToken": "0x5cB734B113E31005487D7E4bcA39BCC3e17B8e9A",
+  "results": [
+    {
+      "label": "[A] addLiquidity flow (wUSDC x wBench)",
+      "samples": [
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003b53696d75"
+        },
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003b53696d75"
+        },
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003b53696d75"
+        }
+      ],
+      "mean": "n/a"
+    },
+    {
+      "label": "[A] swap flow (wUSDC -> wBench)",
+      "samples": [
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003b53696d75"
+        },
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003b53696d75"
+        },
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003b53696d75"
+        }
+      ],
+      "mean": "n/a"
+    },
+    {
+      "label": "[A] removeLiquidity flow (wUSDC x wBench)",
+      "samples": [
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "no LP balance — addLiq must run first"
+        },
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "no LP balance — addLiq must run first"
+        },
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "no LP balance — addLiq must run first"
+        }
+      ],
+      "mean": "n/a"
+    },
+    {
+      "label": "[B] addLiquidity flow (wUSDC x MOCK)",
+      "samples": [
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003b53696d75"
+        },
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003b53696d75"
+        },
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003b53696d75"
+        }
+      ],
+      "mean": "n/a"
+    },
+    {
+      "label": "[B] swap flow (wUSDC -> MOCK)",
+      "samples": [
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003b53696d75"
+        },
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003b53696d75"
+        },
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003b53696d75"
+        }
+      ],
+      "mean": "n/a"
+    },
+    {
+      "label": "[B] removeLiquidity flow (wUSDC x MOCK)",
+      "samples": [
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "no LP balance"
+        },
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "no LP balance"
+        },
+        {
+          "hashes": [],
+          "totalCu": 0,
+          "error": "no LP balance"
+        }
+      ],
+      "mean": "n/a"
+    }
+  ]
+}
