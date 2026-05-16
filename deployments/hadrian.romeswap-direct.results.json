@@ -1,0 +1,129 @@
+{
+  "network": "hadrian",
+  "chainId": 200010,
+  "runAt": "2026-05-16T22:33:31.120Z",
+  "methodology": "RomeswapDirect single-tx wrappers. Pre-computed amounts. transferFrom x2 + pair.X inline.",
+  "deployer": "0x1f4946Be340F06c46A50E65084790968aBcc48F6",
+  "directContract": "0x95E85BEaeF5D3043f415D61216bAECb1b131BE44",
+  "pairA": "0x45350dF36fA7334C2E267598Af8fC136e4982A9E",
+  "tokens": {
+    "wUSDC": "0x94AC3E5e998d72088045853C1CfB910F6CE90E56",
+    "wBench": "0xD39EC36aadfe6ca262b9c2d7D1230414B3c49501"
+  },
+  "results": [
+    {
+      "label": "[direct] addLiq (1-tx, wUSDC x wBench, post-init)",
+      "samples": [
+        {
+          "evmHash": "0xa563588d0773ad2049907dc97a0bf3bdbb6193975a197fb1079fddbddb015c9f",
+          "sigs": [
+            "4fgmWDBcApZ3PuT9awEGLXM2G5zLCktPsqV4TC7BKbFVMbcJwy8vxdMEzTZxaLwzYUKgZty16BEdsrSKfhVVg18X"
+          ],
+          "perTx": [
+            1073102
+          ],
+          "totalCu": 1073102
+        },
+        {
+          "evmHash": "0x031540c9c5579c4d622b3c5ddf34b17ff1c43bc575ff73a63b2375701eaddf52",
+          "sigs": [
+            "3KiGJiPsK1bp61MuZ8eV7ArkMPpQqv8JFnp3eZPruZQaGvVgfQ3HTd4iJF1z1JSbhUjkfCqizS3N31DNpFML13mX"
+          ],
+          "perTx": [
+            929628
+          ],
+          "totalCu": 929628
+        },
+        {
+          "evmHash": "0xa063f6f24c1c7aa432292d33185abe08cd98c64602cc7beb390d23e1435663e1",
+          "sigs": [
+            "3dHR5vFN8w439y3ipK2g9zyfkG8aNehPFpJcbsZRDkYkMbzK6paBJWU4rXbT2BuEXyoomNUzH54cL5tQsm3Bc2RN"
+          ],
+          "perTx": [
+            916075
+          ],
+          "totalCu": 916075
+        }
+      ],
+      "mean": 972935
+    },
+    {
+      "label": "[direct] swap (1-tx, wUSDC -> wBench)",
+      "samples": [
+        {
+          "evmHash": "0xac27609948a8c622ac73f78efc9837dd53d00d018b58b9c10b09a34a1ef27a8b",
+          "sigs": [
+            "isJuNsHXCq9DsoZHLY8XhpE8shZiLR3cTKzgPXPUY2CpM2tx1AzsnD5LCSYQgoRCkmmNXBepdLVCydBZjxVHnRi",
+            "mSWsJXVw6Jtvm4qBq2XYMjHcbDmTRSWB3tj9qeVrDspDRBsfAiCmFKbZmT8cbPbjWiWd738kRuikaMLHZvZG6Na"
+          ],
+          "perTx": [
+            11197,
+            886107
+          ],
+          "totalCu": 897304
+        },
+        {
+          "evmHash": "0x1ee41e4544196c78e73036f39767ea71b20cb0f652cdb0e1915df4e1b4c07eeb",
+          "sigs": [
+            "wGcKHLF6kckLCspRJkfWEm5cK7CzZVPA4tU96ggGc4PWPBK9v7LVNR3fb5g3P2zM2go7ajL1mTW3uWEx43bQACH",
+            "3DvW5UDnwVf9zrwAhWZQ5EJ1qHz61q9wrv1beSaVQPj6is8RNwLF4WAf4EhwivT679NWDvvyMRJWXtsAMkaRddBy"
+          ],
+          "perTx": [
+            11197,
+            870367
+          ],
+          "totalCu": 881564
+        },
+        {
+          "evmHash": "0x7ee233abaceff8618ee7b4a03f0695b1fa93519472100e842a0006e64c370d69",
+          "sigs": [
+            "2bAxi2ci4EjiqtC2wE5D8H1V6tBYg1iKwCLWd7qioysJ2Ttr7EFP9stDDKS1ZJZpmLndy5yPwzZFbDra81gSVKS4",
+            "4tyHQ3Xfeb8AJEQLVZioMUXvX3HtZgzUPwacTHdrSG5YhtPj1SCyyZ3GLj969wtmust3d1XZNC4EgVJwLECy9FHM"
+          ],
+          "perTx": [
+            10609,
+            868879
+          ],
+          "totalCu": 879488
+        }
+      ],
+      "mean": 886119
+    },
+    {
+      "label": "[direct] removeLiq (1-tx, wUSDC x wBench)",
+      "samples": [
+        {
+          "evmHash": "0x6cd6202103457d0652fdf88506c453774a73856e4c87a749fca289502f0bb042",
+          "sigs": [
+            "gP4Luo3RKUqhB7xD74HNKbTz3TLmbh1bDcBXRZAa75tX8TFNsts9mBR8opbeEDM9FLpX9bsjdyerZmEZf9XzEzA"
+          ],
+          "perTx": [
+            1200709
+          ],
+          "totalCu": 1200709
+        },
+        {
+          "evmHash": "0x0296ca0ffd6dd3978b2ffc9cea97d7c66a93d5ee774acd20ce0230be392448f4",
+          "sigs": [
+            "RnwzgDZcJ4o96KEGFE3tmVLWjFjnq7AVfxtZbap3M1rPnxYMBQKCREjw7PHZ1HemBac75rxqQfYExrZpwV4otuq"
+          ],
+          "perTx": [
+            1180440
+          ],
+          "totalCu": 1180440
+        },
+        {
+          "evmHash": "0x3a3617e3efbff57a69d2678a55348fb20f0c77638e359f7218ce70fa4676f1e3",
+          "sigs": [
+            "3pdSJtDRmpvDzN8Rm4U5eaVbALAjjBT1dxd2T2Eegv1soQnx2Y2UhwBaxK4qbi3Ej3wh7jFstvuZJXRji1qVrDG8"
+          ],
+          "perTx": [
+            1181948
+          ],
+          "totalCu": 1181948
+        }
+      ],
+      "mean": 1187699
+    }
+  ]
+}
