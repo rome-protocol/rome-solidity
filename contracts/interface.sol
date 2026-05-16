@@ -92,22 +92,23 @@ interface IHelperProgram {
     // Distinct from the bytes32-ATA variant above (0x766b362a).
     // Replaces SPL_ERC20.transferFrom's delegate path.
     function transfer_spl(address from, address to, uint64 tokens, bytes32 mint) external;
-    // Same with explicit token_program (Token-2022-ready).
-    function transfer_spl(address from, address to, uint64 tokens, bytes32 mint, bytes32 token_program) external;
     // approve_spl — caller-PDA-as-owner sets delegate_pda(spender) on the
     // owner-ATA via SPL approve_checked. Replaces v1 SPL_ERC20.approve's
     // SplTokenLib.approve + raw invoke_signed marshaling path. Signs as
     // external_auth(caller).
     function approve_spl(address spender, uint64 amount, bytes32 mint) external;
-    // Same with explicit token_program.
-    function approve_spl(address spender, uint64 amount, bytes32 mint, bytes32 token_program) external;
     // mint_spl — caller-PDA-as-mint-authority mints to dest user's ATA
     // via SPL mint_to_checked. SPL Token runtime enforces caller-PDA ==
     // on-chain mint authority. Replaces v1 SPL_ERC20.mint_to's
     // SplTokenLib.mint_to_checked + raw invoke marshaling path.
     function mint_spl(address to, uint64 amount, bytes32 mint) external;
-    // Same with explicit token_program.
-    function mint_spl(address to, uint64 amount, bytes32 mint, bytes32 token_program) external;
+    // Token-2022 4-arg overloads (`approve_spl(...,token_program)` `0xc9884b1e`,
+    // `mint_spl(...,token_program)` `0x406ee21b`,
+    // `transfer_spl(...,token_program)` `0x7b11c48f`) were removed in
+    // rome-evm-private PR #364 — their impls still called mint_owner_decimals,
+    // defeating the explicit token_program argument and delivering zero CU
+    // saving vs the 3-arg variants. Token-2022 raw-delegate flows will get
+    // fresh selectors with proper plumbing when use cases emerge.
     // external pda
     function pda(address user) external view returns (bytes32);
     // ata owned by external pda. Gas token mint is used.
