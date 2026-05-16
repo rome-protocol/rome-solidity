@@ -85,6 +85,29 @@ interface IHelperProgram {
     // delegate with delegated_amount >= tokens. Required by ERC20-style
     // transferFrom flows (e.g. SPL_ERC20._transfer with from != msg.sender).
     function transfer_spl(bytes32 src_ata, bytes32 to_ata, uint64 tokens, bytes32 mint) external;
+    // Addr-keyed delegate variant — both endpoints by EVM address.
+    // Derives src_ata = ata(external_auth(from), mint) and
+    // dst_ata = ata(external_auth(to), mint) internally. Signs as
+    // external_auth(caller); SPL Token accepts PDA as owner OR delegate.
+    // Distinct from the bytes32-ATA variant above (0x766b362a).
+    // Replaces SPL_ERC20.transferFrom's delegate path.
+    function transfer_spl(address from, address to, uint64 tokens, bytes32 mint) external;
+    // Same with explicit token_program (Token-2022-ready).
+    function transfer_spl(address from, address to, uint64 tokens, bytes32 mint, bytes32 token_program) external;
+    // approve_spl — caller-PDA-as-owner sets delegate_pda(spender) on the
+    // owner-ATA via SPL approve_checked. Replaces v1 SPL_ERC20.approve's
+    // SplTokenLib.approve + raw invoke_signed marshaling path. Signs as
+    // external_auth(caller).
+    function approve_spl(address spender, uint64 amount, bytes32 mint) external;
+    // Same with explicit token_program.
+    function approve_spl(address spender, uint64 amount, bytes32 mint, bytes32 token_program) external;
+    // mint_spl — caller-PDA-as-mint-authority mints to dest user's ATA
+    // via SPL mint_to_checked. SPL Token runtime enforces caller-PDA ==
+    // on-chain mint authority. Replaces v1 SPL_ERC20.mint_to's
+    // SplTokenLib.mint_to_checked + raw invoke marshaling path.
+    function mint_spl(address to, uint64 amount, bytes32 mint) external;
+    // Same with explicit token_program.
+    function mint_spl(address to, uint64 amount, bytes32 mint, bytes32 token_program) external;
     // external pda
     function pda(address user) external view returns (bytes32);
     // ata owned by external pda. Gas token mint is used.
@@ -92,8 +115,21 @@ interface IHelperProgram {
     function ata(address user) external view returns (bytes32);
     // ata owned by external pda.
     function ata(address user, bytes32 mint) external view returns (bytes32);
+    // user_balance — read SPL TokenAccount.amount on user's PDA-owned
+    // ATA. Returns 0 if ATA doesn't exist (fresh-chain probe; matches
+    // v1 SPL_ERC20.balanceOf semantic). Collapses 3 v1 dispatches
+    // (HelperProgram.ata + AccountReader.lamportsOf + AccountReader.readU64At)
+    // into one CrossStateEthCall.
+    function user_balance(address account, bytes32 mint) external view returns (uint64);
+    // allowance_of — read owner-ATA's delegated_amount IFF on-chain
+    // delegate matches external_auth(spender). Returns 0 otherwise.
+    // HARD REQ for ERC-20 semantics: without the delegate-equality
+    // check, routers see non-zero allowance for one spender while the
+    // actual delegate is another, then transferFrom reverts. Collapses
+    // 5 v1 dispatches into one.
+    function allowance_of(address owner, address spender, bytes32 mint) external view returns (uint64);
     // deposit gas-token from ata
-    function deposit_from_ata(uint256 wei_) external; 
+    function deposit_from_ata(uint256 wei_) external;
 }
 
 address constant system_program_address = address(0xfF00000000000000000000000000000000000007);

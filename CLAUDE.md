@@ -177,6 +177,14 @@ The post-consolidation home for Rome-specific Solana plumbing that EVM contracts
 | `0x8854a299` | `pda(address user) view → bytes32` | Returns `external_auth(user)` — replaces the prior `RomeEVMAccount.pda` helper for new code. |
 | `0x31db4f82` | `ata(address user) view → bytes32` | User's gas-mint ATA. Gas-mint chains only. |
 | `0xfeb1c647` | `ata(address user, bytes32 mint) view → bytes32` | User's ATA for an arbitrary mint. Replaces the old `CpiProgram.derive_user_ata(0xc654e119)` shortcut; `UserPda.ata(user, mint)` now delegates here. |
+| `0xabf6f675` | `approve_spl(address spender, uint64 amount, bytes32 mint)` | Caller-PDA-as-owner sets `delegate_pda(spender)` on owner-ATA via SPL `approve_checked`. Replaces v1 `SPL_ERC20.approve`'s Solidity-side `SplTokenLib.approve` + raw `invoke_signed` marshaling. Saves ~150-200K CU per call. |
+| `0xc9884b1e` | `approve_spl(address spender, uint64 amount, bytes32 mint, bytes32 token_program)` | Same with explicit `token_program` (Token-2022-ready). |
+| `0xd795522b` | `mint_spl(address to, uint64 amount, bytes32 mint)` | Caller-PDA-as-mint-authority mints to dest user's ATA via SPL `mint_to_checked`. SPL Token runtime enforces caller-PDA == on-chain mint authority. Replaces v1 `SPL_ERC20.mint_to`'s Solidity-side `SplTokenLib.mint_to_checked` + `invoke` marshaling. |
+| `0x406ee21b` | `mint_spl(address to, uint64 amount, bytes32 mint, bytes32 token_program)` | Same with explicit `token_program`. |
+| `0xe479df56` | `transfer_spl(address from, address to, uint64 amount, bytes32 mint)` | **Addr-keyed delegate variant.** Derives both ATAs from EVM addresses internally; signs as `external_auth(caller)`. SPL Token accepts PDA as owner OR delegate. Replaces `SPL_ERC20.transferFrom`'s prior bytes32-ATA delegate variant (`0x766b362a`). |
+| `0x7b11c48f` | `transfer_spl(address from, address to, uint64 amount, bytes32 mint, bytes32 token_program)` | Same with explicit `token_program`. |
+| `0xdd0119c8` | `user_balance(address account, bytes32 mint) view → uint64` | Read SPL TokenAccount.amount (u64 LE at offset 64) on user's PDA-owned ATA. Returns 0 if ATA doesn't exist (fresh-chain probe). Collapses 3 v1 dispatches (`ata` + `lamports` + `readU64At`) into one CrossStateEthCall. Backs `SPL_ERC20.balanceOf`. |
+| `0xed72dbc8` | `allowance_of(address owner, address spender, bytes32 mint) view → uint64` | Read owner-ATA's `delegated_amount` IFF on-chain delegate matches `external_auth(spender)` (HARD REQ in Rust to enforce ERC-20 semantics; otherwise routers probe non-zero allowance when actual delegate is someone else). Collapses 5 v1 dispatches into one. Backs `SPL_ERC20.allowance`. |
 | `0x4479b709` | `deposit_from_ata(uint256 wei_)` | Move wrapper SPL balance from caller's ATA into gas-token credit. Unwrap leg of the gas-wrapper bridge. |
 
 #### `Withdraw` surface (`0x42..16`)
