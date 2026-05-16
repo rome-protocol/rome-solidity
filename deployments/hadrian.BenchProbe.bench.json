@@ -1,0 +1,877 @@
+{
+  "network": "hadrian",
+  "chainId": 200010,
+  "probeAddress": "0x4ddB8e15D1405869a050395602e5BE53ac81316e",
+  "mintId": "0x3b442cb3912157f13a933d0134282d032b5ffecd01a2dbf1b7790608df002ea7",
+  "operator": "0x1ba57c905417b673784efcc630fbcc9302e2d3b04c8e9c939145a0105ccf5cdc",
+  "solanaRpc": "https://api.devnet.solana.com/",
+  "runAt": "2026-05-16T20:23:33.647Z",
+  "methodology": "submit probe tx → rome_solanaTxForEvmTx → Solana getTransaction → meta.computeUnitsConsumed",
+  "results": [
+    {
+      "label": "[baseline] probe_mintId",
+      "group": "baseline",
+      "tier": 1,
+      "samples": [
+        {
+          "evmHash": "0x68b677167ff16001ede20f0a4a680cc1a52ab2afeb621ece9cd65911f7a7fbfd",
+          "sigs": [
+            "5aAm7K8GdpxiQmgrSsGmgwLeBzYz5eWxS9JygSg5nfCgZgTq8YGvDg9AybKdtkjvKZarJrN54wRyLpxa6kAinRPv"
+          ],
+          "perTx": [
+            108620
+          ],
+          "totalCu": 108620
+        },
+        {
+          "evmHash": "0x61c3d59c64218c9c3a55a3199b5ef34c2d90ba333668e5b576dae3790b482886",
+          "sigs": [
+            "4BtJs9h2H68D3Tgx4CdzeAMHEzLfwzYUub2FwYLBZzh6LKFocJ9hJvhsUSGP8CrQzWqPBamQLxMqmqhGTfqrgWKq"
+          ],
+          "perTx": [
+            104120
+          ],
+          "totalCu": 104120
+        },
+        {
+          "evmHash": "0xc77c28d9830fc54211ce0f3703baae177bdff6b7ddfed67a160858cdba231ec4",
+          "sigs": [
+            "2oPCF51ov6nvoQz1BQsQQ1hUwRd5dXQT4KcqH82JQYCW9RNdoBXrK8oqUeuUWsP9EszZmnj1XUBCqUg7VvB5rvEt"
+          ],
+          "perTx": [
+            104120
+          ],
+          "totalCu": 104120
+        }
+      ],
+      "mean": 105620
+    },
+    {
+      "label": "[baseline] probe_operator",
+      "group": "baseline",
+      "tier": 1,
+      "samples": [
+        {
+          "evmHash": "0xaa66db9626bad8621942e56e285b2bf49e30b2aff73b062e7c3dcc6258351eee",
+          "sigs": [
+            "4mCiP8RGoZP4trqm7nYpdnBvWxUbM96ExQY5MYtT3h8aELhcBnKYb86pRPqmPsfLyDhWGiYjXXaEoPRMJCE7H51x"
+          ],
+          "perTx": [
+            108919
+          ],
+          "totalCu": 108919
+        },
+        {
+          "evmHash": "0x3d6060ecc7086d38536b361e7d076bd2c8889c166ec15bd836536cf8b3f4f68f",
+          "sigs": [
+            "59pje54sCu2x3Dd24n7s2HD82bAKsZu7VKSHQdsTaXoz1SupC9DdxjV6wWWvFxePP5t5voVLZWYrecHo7bmHXngi"
+          ],
+          "perTx": [
+            102949
+          ],
+          "totalCu": 102949
+        },
+        {
+          "evmHash": "0xe81fc31b86298befc2f43e6a3c868578b87bf7bdbd32030c578ed56be603a559",
+          "sigs": [
+            "rpg4dNRQpy2EsEsDaPx2vkm2MkPzTrie8RVCySFyt6Dr45eL12rFCs3iLJE7HaDuigPmJ545aUEwHBuqi54Z3Hr"
+          ],
+          "perTx": [
+            110411
+          ],
+          "totalCu": 110411
+        }
+      ],
+      "mean": 107426
+    },
+    {
+      "label": "OLD findPda × 1 (single derive)",
+      "group": "pda",
+      "tier": 1,
+      "samples": [
+        {
+          "evmHash": "0x91a753e56b75e0447b98935ba66aec574c5a423be509ca529b85ed2cae44583b",
+          "sigs": [
+            "29Zkg7XzNPSZ5kPNRgAFrSN2K2sJqAQx6NuFkxLsqKf3FTWJgsqP7EXuPfqhdx2B92VJ6YoXHggHvaE8Bxonj4Ha"
+          ],
+          "perTx": [
+            180011
+          ],
+          "totalCu": 180011
+        },
+        {
+          "evmHash": "0x1451a0eb1ba0fb9185fdd39951911107506fafffcd41a62ced1b8fd42515e963",
+          "sigs": [
+            "3sUCi3yRdJmHmp8f2Nf5AmRMjEQYGGHzsF3RV9Xy4KAUBmtjV463ATS1ZC8z2q8d8nx5U6RAkTBJ61uh7KzPd7cX"
+          ],
+          "perTx": [
+            181653
+          ],
+          "totalCu": 181653
+        },
+        {
+          "evmHash": "0x31d189f1e3df1b3c60fd6d67e313d7721382ed587f8d69d61cd555635447eb9b",
+          "sigs": [
+            "1XFaCudSUe9GQj6qWZsGXUs8j9FQyaBdQszCT3HH2oe5YczhKxYZabQRgUvZjVJGRbvvkSj7VZGWMN9tPSPiEX6"
+          ],
+          "perTx": [
+            178511
+          ],
+          "totalCu": 178511
+        }
+      ],
+      "mean": 180058
+    },
+    {
+      "label": "OLD findPda × 2 (two-hop ATA path)",
+      "group": "pda",
+      "tier": 1,
+      "pairWith": "OLD findPda × 1 (single derive)",
+      "samples": [
+        {
+          "evmHash": "0x968faae70d6561e969e7fc52f3d619b80feccd63930d4f04195fc647eeb415ea",
+          "sigs": [
+            "1tYxCSsaQMyvju4UBtBZDhf81fbENbdgvsGpvYqWoSeqjR28Ua7USRpcb7UzADArA7zXPDbYdNTJ9dXyGdL4haB"
+          ],
+          "perTx": [
+            291371
+          ],
+          "totalCu": 291371
+        },
+        {
+          "evmHash": "0xfd1a7e63d9286bd050aa46c455ab38fa97bcab11392b81e60b148448a54dd14d",
+          "sigs": [
+            "2s3Zbcfbhd6yTA8aFv7yHpAVq3NnMPK2RxQ9Xn6Ujno9dFgpzjHT44V5DLNWrreQqw2A3JwuicnD8E4SjGiKDShM"
+          ],
+          "perTx": [
+            288371
+          ],
+          "totalCu": 288371
+        },
+        {
+          "evmHash": "0x5a6197a38a865467545d133753a2360b036364a9b52f1ad98af3c29f3648dbc8",
+          "sigs": [
+            "5oJaJxTSFqjbGYLrpUoJardrcHyK31E1v3M6EftWEi6rB7vdPEyR72JhCyoCnnRSyo2UmPDuJcC7SdXLwMXTcQgV"
+          ],
+          "perTx": [
+            289871
+          ],
+          "totalCu": 289871
+        }
+      ],
+      "mean": 289871
+    },
+    {
+      "label": "NEW HelperProgram.pda(user)",
+      "group": "pda",
+      "tier": 1,
+      "pairWith": "OLD findPda × 1 (single derive)",
+      "samples": [
+        {
+          "evmHash": "0x910f20751127998b29797613e833cb08bcfd90df4569cebccda295b16efd3e0e",
+          "sigs": [
+            "4nWRX8DQS6BDvsFcKD96uZUaN7gFixx6KhqoP7pEmcjNAcTRUGPXdupH2GjoP3jpAVQWjajJW29WcqAMaTHdUsVp"
+          ],
+          "perTx": [
+            120249
+          ],
+          "totalCu": 120249
+        },
+        {
+          "evmHash": "0x30bd5e0a44646846324842a93a2d67ffbffbf492b842cdb6a0cc82a53f700142",
+          "sigs": [
+            "62edYD1C8RF7KPD3L4qu6F5LrUt5cUW4rupyA9ERy2cF79ZyDLNobHZdaLT3sQgokYNSCWnt5GWFutezGi2rfESk"
+          ],
+          "perTx": [
+            118757
+          ],
+          "totalCu": 118757
+        },
+        {
+          "evmHash": "0x5658e308a1f24a897627eb74f6746aa87dcb4980e58e5a21c4a9b1bd479c59d1",
+          "sigs": [
+            "4e4ze79eLzUUH6wZpLQKXdhZzjBZpLGU7U7RuPeGQwPJhfxQuvtRna56u4PYYYVnxTLHQjynQrVSoNdUExy2knWZ"
+          ],
+          "perTx": [
+            114257
+          ],
+          "totalCu": 114257
+        }
+      ],
+      "mean": 117754
+    },
+    {
+      "label": "NEW HelperProgram.ata(user, mint)",
+      "group": "ata",
+      "tier": 1,
+      "pairWith": "OLD findPda × 2 (two-hop ATA path)",
+      "samples": [
+        {
+          "evmHash": "0x08012379a7933d12a46c5018ac6fbe4d682800618f64d7d8e640c035670f8950",
+          "sigs": [
+            "45rBSNFPDu7rzmb7kNkLiGyqa5GzKrwnY12DezLQJ61dZZVkVX3ao9JSRfsbx8SDa4Jpa4AjvawcUTJCLQkTXm7E"
+          ],
+          "perTx": [
+            115430
+          ],
+          "totalCu": 115430
+        },
+        {
+          "evmHash": "0xa114fe7d15262aa90eaf46b4f2dd357f224839761270a0c831be47d8478daa8c",
+          "sigs": [
+            "5BiAGmecij9by7ekjkiqWkobhrqUX5yxt3d86dZujgLiHWVkTFYheZ1zgix6pZkv7NXgYBs3LHS5Kpdf8hRTiX2C"
+          ],
+          "perTx": [
+            112438
+          ],
+          "totalCu": 112438
+        },
+        {
+          "evmHash": "0x844598dbe2ebc96ee1f5d05428b2359cb6625fa15e5dbf3a6469758cfa8aa37b",
+          "sigs": [
+            "2jVFq8MCKSW9VpzQqxctS4coEkT2fu5WoWguWWxRCqCHh3yb9K9rHJvj6VEb6nn5PJ7CDdp6skhRCCTjRAYEtYnB"
+          ],
+          "perTx": [
+            112430
+          ],
+          "totalCu": 112430
+        }
+      ],
+      "mean": 113433
+    },
+    {
+      "label": "NEW create_program_address (find+create)",
+      "group": "pda",
+      "tier": 1,
+      "pairWith": "OLD findPda × 1 (single derive)",
+      "samples": [
+        {
+          "evmHash": "0x2d55ef6f074e22c0705467e5d38a43614b393450a2558091a34fd33327e8de44",
+          "sigs": [
+            "2bNRgLDkoccqaVQ9pmDqpkBsZUhYJokC2JsdJ6XELHgVGJiYPChpYpnjwga6xpUDgANNQEWeumws8n5hY9kCabPG"
+          ],
+          "perTx": [
+            206495
+          ],
+          "totalCu": 206495
+        },
+        {
+          "evmHash": "0x2cd589eb4c1cf6bd373b25d865d4361dc860aed4e939fd755b3dd7aad46da2d7",
+          "sigs": [
+            "cR4ApgxWpXhLoPfEJmgM2oYBd3Xg2P5eov1tCgdyE5Hp36uyz6kfFsi29uuYX5U3iFco5CkK4RyrxgzUZVvw7sR"
+          ],
+          "perTx": [
+            206519
+          ],
+          "totalCu": 206519
+        },
+        {
+          "evmHash": "0x68ac73a913c798f238375532b518864059571ecbcbc0abdf0513f74d822ddb5a",
+          "sigs": [
+            "2s6CH1PZupe4F69WoMXrPrZRAgEzZ2sTD4nwpKz1K12NBdCB6TvenG4XgirGRnbFoBpz4CmbAKJpmtU9kXPsJqju"
+          ],
+          "perTx": [
+            206495
+          ],
+          "totalCu": 206495
+        }
+      ],
+      "mean": 206503
+    },
+    {
+      "label": "OLD findPda × 7 (sequential)",
+      "group": "batch",
+      "tier": 1,
+      "samples": [
+        {
+          "evmHash": "0xd0fa402bdfd85c6650642ad2c7d914527b89b02e37058319b9b58c7fc5932ef9",
+          "sigs": [
+            "LULGnfiou5LCuEqgrxy8Cp5d9g2VHELwLJckYK21yC8pwJYGYVcHXPnoKp7NA7fLNcrBNks5NW1X8n4EYe6NpBq"
+          ],
+          "perTx": [
+            659535
+          ],
+          "totalCu": 659535
+        },
+        {
+          "evmHash": "0x7920d6bfb38297d75c170c02214f577e1e414eff12bb9783b5470cbc59ba30f9",
+          "sigs": [
+            "3bUxrNGuKTFCuRz66E7rqWMFfzC3YB2AWcbgqPQyuGR2yUKkB3wkCjvws9E1ahnUVJuSnePLZhYzfCbyvExhvE2P"
+          ],
+          "perTx": [
+            658027
+          ],
+          "totalCu": 658027
+        },
+        {
+          "evmHash": "0x0ca9e75e9c70806078eec7222bd4bdc56c3ce84f11580af43c2295790d63df8a",
+          "sigs": [
+            "3juDi4XBAgFkXJUwHsEDjUKAZzWwnBG2X5x7U2vewqp2LuK8zkMHsKqgansW12Y6zkv6njXvyY6Y4okF7WBdj3LX"
+          ],
+          "perTx": [
+            658027
+          ],
+          "totalCu": 658027
+        }
+      ],
+      "mean": 658530
+    },
+    {
+      "label": "NEW pdas_batch_derive × 7",
+      "group": "batch",
+      "tier": 1,
+      "pairWith": "OLD findPda × 7 (sequential)",
+      "samples": [
+        {
+          "evmHash": "0x8f3f5f3281875ac5f2db202bcea17d2fab91c78bfe8b48988fa656bf9cc9c9a8",
+          "sigs": [
+            "2Bdhy2Zdiku7xm4Sg1FjEGdCxhEVDz6mJNGnt7SS59XQnUJgr61T84bV5C43BQ62xV38aAdE3GfGEVTjDu9eAfJe"
+          ],
+          "perTx": [
+            627061
+          ],
+          "totalCu": 627061
+        },
+        {
+          "evmHash": "0x2c61c9a1fee977168f774f46d7e3cf671924964ead0cff56703c483b6752634a",
+          "sigs": [
+            "2t9M99LzYcTF6K22hgrAMcT5WALXBvmYXekWwjZgFFF8SYsCyDjBfFtf7sdXTiS7B2j3RvG1hHh7kQ1pvvLkyPpy"
+          ],
+          "perTx": [
+            622569
+          ],
+          "totalCu": 622569
+        },
+        {
+          "evmHash": "0x9eccfc9b0c0d3e2ed5d57a53c4b1af365ec436ba0109115c2dee87afb9851910",
+          "sigs": [
+            "2o3GJSAJrcN4UqYcMhpnM115N454dA4Ppb9CZK2NXgGjuAMhYg6wdEeaaz9WX7gYHW2EG7AtPQUrUDWe6xaziqib"
+          ],
+          "perTx": [
+            625561
+          ],
+          "totalCu": 625561
+        }
+      ],
+      "mean": 625064
+    },
+    {
+      "label": "OLD account_info (full marshal)",
+      "group": "account",
+      "tier": 1,
+      "samples": [
+        {
+          "evmHash": "0x052eea5451f69681a6a70cbd62107aaffe93596f38d5480541df73b410174355",
+          "sigs": [
+            "4THqyhJupdhgjJBBXi8uWfkxXLt4Ch7hThpBxHSjcAiASUCj5xbRBqeqoaH596PpLD983X7uzFNBpJzfwdfU8ZzH"
+          ],
+          "perTx": [
+            136226
+          ],
+          "totalCu": 136226
+        },
+        {
+          "evmHash": "0x7a308758dc8d361303ea12316d0519f97cfacece5cd638682f31652da884632b",
+          "sigs": [
+            "wrgWwMgdUES9YFvmPAmsEMsbwX9J5LPXLzBG3oMeQWgw6eVzoKtDwfp6sqEdJ4bxm4H1pUJEhEkSLqUfFGcW4EM"
+          ],
+          "perTx": [
+            136218
+          ],
+          "totalCu": 136218
+        },
+        {
+          "evmHash": "0xa4b2b4e83072c66743537ca1525ca4bc147fce9cd509481e9963353082580a17",
+          "sigs": [
+            "32wo8ADdFRynbNKDmfR7UEUdm83jH9CCftzUqGfWoPk1WDTykX81DoK3PVu3xoTmsZtNATYnUWKE2Ayc5Uv1DnJa"
+          ],
+          "perTx": [
+            136226
+          ],
+          "totalCu": 136226
+        }
+      ],
+      "mean": 136223
+    },
+    {
+      "label": "NEW account_data_at (slice 0..82)",
+      "group": "account",
+      "tier": 1,
+      "pairWith": "OLD account_info (full marshal)",
+      "samples": [
+        {
+          "evmHash": "0x14d7d243024594b57c99063b1d4b0e5f3de54dc5c5fca33ef1c263738f53606e",
+          "sigs": [
+            "2megfQ59natSUCCb8Gqre9HEwfPtdpBnBdry9eSmj2dRfMFqfTFuLq7LyMcUs6Ya97WH4MfEWTZmTm1cFUaryEv9"
+          ],
+          "perTx": [
+            130438
+          ],
+          "totalCu": 130438
+        },
+        {
+          "evmHash": "0xa115c9511d6880a7b2a9e7030999295f5fb99a190131774c395fe707ef5b90f1",
+          "sigs": [
+            "2Rx5cgBU2uDV68iNRgs8TtSZgTUj7pdZYZmDbQNhfqXMMUGTDg5iJWByrhNtAgvQkEYgFNGhxCkAhauDSoggyTDK"
+          ],
+          "perTx": [
+            127438
+          ],
+          "totalCu": 127438
+        },
+        {
+          "evmHash": "0x517e00f81e0a2efa86ceb8d870eb9b19084a559ae2f192f61ce4f0aa90d4843a",
+          "sigs": [
+            "ZjpviRHDdrRdQpUbRv6ksVz5cXpn4UftFmfRZKHU6WcHfnYgxhZuniwMzHY2BWo4uaXHtX7HBexp5wzpNR2Agrt"
+          ],
+          "perTx": [
+            127438
+          ],
+          "totalCu": 127438
+        }
+      ],
+      "mean": 128438
+    },
+    {
+      "label": "NEW account_u64_at (offset 36)",
+      "group": "account",
+      "tier": 1,
+      "pairWith": "OLD account_info (full marshal)",
+      "samples": [
+        {
+          "evmHash": "0x12d89161df9b21129e6ea4c5ee0e6c161b5583bd6ed62a4b912fad81fe811046",
+          "sigs": [
+            "2Db9sd97pM1jMbpsE76GKCUuf2ht8PxuoeEg9wNToaNRoA1aJkFeUFq6YkMYQ2PCD3dmVjYXzp3UUwQoEUngvSVJ"
+          ],
+          "perTx": [
+            116892
+          ],
+          "totalCu": 116892
+        },
+        {
+          "evmHash": "0x00580e4a647c9c07461f09779f8794819e46b0396e2e5f02fbab4a354acbed17",
+          "sigs": [
+            "5rXeKw2Na6iWMwCSpRnZMUPyvzbwyKe98mf6ZJE2UuqefHLEavkt6kjtT3VXtygouD5VtDAsCgGXvkRDv8pqZ9wG"
+          ],
+          "perTx": [
+            116892
+          ],
+          "totalCu": 116892
+        },
+        {
+          "evmHash": "0x62444b08ee89fa0bab7d61a0c509025a6b363d5d3206333ed6fcd813119acc9c",
+          "sigs": [
+            "a3d4UDef8bKJbw7ZGz3WgQaqV2h9yXdJ9vL2ZcxvMmXfijfLabkaWh6HJ4Uxsf2aRWYBJtPo9prQ3G754zUfkmA"
+          ],
+          "perTx": [
+            116884
+          ],
+          "totalCu": 116884
+        }
+      ],
+      "mean": 116889
+    },
+    {
+      "label": "NEW account_lamports",
+      "group": "account",
+      "tier": 1,
+      "pairWith": "OLD account_info (full marshal)",
+      "samples": [
+        {
+          "evmHash": "0xe346eba2aa1ffb513fd19dc1bad8d50c5306df9c39fcb143b1952edf5bebe7ea",
+          "sigs": [
+            "3SSTjQQF9JjAWZVY4JzPkvQZfFf9kZUij3SfhBjLHSLDxjtH1FDqsE5Uu23eKoiEWmW6xt62GnRBwuzPpAfob8iD"
+          ],
+          "perTx": [
+            115982
+          ],
+          "totalCu": 115982
+        },
+        {
+          "evmHash": "0xd8024b9ae55e6ebf5289bdb5ea21e93d786d2bc31d44939efbc76c56f031df9c",
+          "sigs": [
+            "2V2G5pucrf5Nrssa7Kz9jxLGcB2KnrDR3GkXtRmF4kSYCSbesvHSnd9o493gTSa168xoy2jRZLX6LSzn9szHx1FZ"
+          ],
+          "perTx": [
+            111444
+          ],
+          "totalCu": 111444
+        },
+        {
+          "evmHash": "0x4314c2e3adcda395062106e80a6443bbbf04e0b5f7d49590e0e539d98adbd11c",
+          "sigs": [
+            "5QMVAAzinzZHLSnXbeDm46VVkSjpowkQJyD8WXq6DdBFNzwaDZsnoK7SSpyBj7Sw2MeCH1mWhqKaMTWsJMhUcd2V"
+          ],
+          "perTx": [
+            109952
+          ],
+          "totalCu": 109952
+        }
+      ],
+      "mean": 112459
+    },
+    {
+      "label": "[T2] Wrap NEW (Withdraw.withdraw_to_ata)",
+      "group": "wrap",
+      "tier": 2,
+      "samples": [
+        {
+          "evmHash": "0x766e493b1e73eacdc6571146810b84a73e65ed8fad699d35aa31104aabd4494e",
+          "sigs": [
+            "5DV9tPfcPCvt562d1ZhhDJRBShswyKxLD27jpWvcZnQbpumdJmbWZbeweTNU3MsjANNAUAandZiWhUvut5yeMYD1",
+            "2CFRj7NyuhVYA3hAwJpZhZxPrGLWpEaKjmjc5nj5Bu62YSnba1MmXqcf5zbrdJLHgX8wosTrpf3XjT7uzydjUXTD"
+          ],
+          "perTx": [
+            11171,
+            165586
+          ],
+          "totalCu": 176757
+        },
+        {
+          "evmHash": "0x2a4232a6dacb7cb2fce19456e91a238b9c1fdd5d1bb6d99d017690ff0888b06f",
+          "sigs": [
+            "5DAce94RcfsFGrWVk7yNmEgLJ41r3NxWEv5xxjU6pcMmUkvZ16dfUo8y31Ebmgzf7DWYFjKUazQZCbtjCVXGn246",
+            "3mk9q9ytLpB9xbzi3KspfKzsYHJGsf1gK4CY9Xmjz9VrdtvNJdUM4x1828uFLecZUdHmG9maVXx1TZ7dZaUA565P"
+          ],
+          "perTx": [
+            10609,
+            161196
+          ],
+          "totalCu": 171805
+        },
+        {
+          "evmHash": "0x6bcb4edf7fe7bd47d1e806e69fd8a185bcc7cefc70fa0b0cc33ec34422a096ed",
+          "sigs": [
+            "5ZfqYWCQygA1Lbo1Lyv8FFw7iaUKmuUxfaQiJUNKGXqvg5s4rUkHhtRtVA9c5XfjXX9X17k4ttn4jABh2cFdj8hq",
+            "84gCZiVxSkidcGmxKq29vJc6xBMmYKfpcnLgm88nEeTzHvJfZ6BHDvurBx4ibPY7XRd8zYqCBGDJnY4QXV5kohE"
+          ],
+          "perTx": [
+            10609,
+            167078
+          ],
+          "totalCu": 177687
+        }
+      ],
+      "mean": 175416
+    },
+    {
+      "label": "[T2] Unwrap NEW (HelperProgram.deposit_from_ata)",
+      "group": "wrap",
+      "tier": 2,
+      "samples": [
+        {
+          "evmHash": "0x5d17dbee6c4b50bf618689d002fcaf4685eb2d42b6a5f17f5d4efdb5d9f181c9",
+          "sigs": [
+            "49hTMWFXTMguVZrRgKmJx1vpfoHAJBXbrnUAfw29Web9vNgCkY4kzG2xG4NWJd8JHdzERneVBwj8trL4NacxUXt2"
+          ],
+          "perTx": [
+            139722
+          ],
+          "totalCu": 139722
+        },
+        {
+          "evmHash": "0x2d584462df7a7d884ea36df2a2c870b4d89d027a581b3eea97b34286a0290059",
+          "sigs": [
+            "29W1uzNkxuPjePFofMJ41pQTD3wsnAf3AMLyp3SSmopNmRr6dBwLiq87EkEdVWbvpg8i3S81iyp5DxCtZY4TS4G8"
+          ],
+          "perTx": [
+            144222
+          ],
+          "totalCu": 144222
+        },
+        {
+          "evmHash": "0x19fb65a43aa03602972a28ce2adc4683210bb012436c083dd45afca5f4d8bc4f",
+          "sigs": [
+            "JPgXFSK7dzxN6wFZEKbv9SpUJtFQeMS2mQd2LiRfCHa6JBwrjpbrooKdKyEpJDKq54xdfgh4FUNFm69xt2BirdN"
+          ],
+          "perTx": [
+            136760
+          ],
+          "totalCu": 136760
+        }
+      ],
+      "mean": 140235
+    },
+    {
+      "label": "[T2] SPL transfer NEW 3-arg (addr)",
+      "group": "transfer",
+      "tier": 2,
+      "samples": [
+        {
+          "evmHash": "0x475b8fafb02918b7db80f9ce695a084c1080039d3fa467e2854bde2cc9cc6dd3",
+          "sigs": [
+            "5cq8XcwrZBYgjmfPJk64GbY3SM6L7amh4bJY4XLD94nGSqsCrEPScbV1K2nDgN7k7WDc9mGEdJoACjNkkthinkAW"
+          ],
+          "perTx": [
+            158716
+          ],
+          "totalCu": 158716
+        },
+        {
+          "evmHash": "0xd559fa0f1d986ce8e0bfc7808d1be6b362aeab3ceb7792ff72d22af99219d9d6",
+          "sigs": [
+            "3uQbBqgyhSrBUnh6qCDYFSdyAoX3Zrsu6JrBd1fLJNbEbMpAMMndyfyVTf59bXRevbHe8pHxaDz7pbV1PFka6QjQ"
+          ],
+          "perTx": [
+            158716
+          ],
+          "totalCu": 158716
+        },
+        {
+          "evmHash": "0xf4a7d36ef17929a40278e67f1d5d16e301bdd40e290d2784f25dd4f5545b07df",
+          "sigs": [
+            "2d3ozWotwEaAZKyyxZYnUK1oEUJhXGp4ff2hbxKyvA7hCfjy4a2vQg4ZBTXQHrmPoB76RLHSqYLAUZXMnCTHWDrp"
+          ],
+          "perTx": [
+            158708
+          ],
+          "totalCu": 158708
+        }
+      ],
+      "mean": 158713
+    },
+    {
+      "label": "[T2] SPL transfer NEW 4-arg delegate",
+      "group": "transfer",
+      "tier": 2,
+      "pairWith": "[T2] SPL transfer LEGACY (SplTokenLib + invoke)",
+      "samples": [
+        {
+          "evmHash": "0x6b3b5827386b700b6b037806609a6cacfad8c8435a61420823d92efd2000bdc7",
+          "sigs": [
+            "LKYKp4QGStt8mugWgSHTNgKy3WPNkWVfARH4QktQfZWGWAxjDiLSa6LHj4C1J7U6kJsxkFExiYwze9DhyR6wKHS"
+          ],
+          "perTx": [
+            180342
+          ],
+          "totalCu": 180342
+        },
+        {
+          "evmHash": "0x24072d0be76da26684e57146749facc12ed9294c7c342e8f6d18d5e8f5985eac",
+          "sigs": [
+            "4oBa36KoiHudxZGcxwsXYxFuUEQkJkHTGRfEd4NFSkZiBvMuEa2wBaWA4ZxV4WCGiaudMywX4BUS9JFB1REjtU3H"
+          ],
+          "perTx": [
+            181850
+          ],
+          "totalCu": 181850
+        },
+        {
+          "evmHash": "0x2df5019804b4f35af01efc9dc886eb34bc124c8da84fbca26cf14753a45007ba",
+          "sigs": [
+            "2tDcrqFfeoeyNzdyuducZCiP1EqtNvrELE5v6HQZNx4Fgtb8tHvTcEyfUFrcfChKxJnx3GXZjvfVNQTLnu8QgHZg"
+          ],
+          "perTx": [
+            183342
+          ],
+          "totalCu": 183342
+        }
+      ],
+      "mean": 181845
+    },
+    {
+      "label": "[T2] SPL transfer LEGACY (SplTokenLib + invoke)",
+      "group": "transfer",
+      "tier": 2,
+      "samples": [
+        {
+          "evmHash": "0x2fd638c6149e72bd25bac6a8d72fc422d8b28d0f2d6121feb4bb6cab78963c75",
+          "sigs": [
+            "61AweVRY5YFbqxtzBFzwH4k5vH3ecszHbuiSbg5BhSq29Gd29xjjCeTPZLsfSTP9G7vLspsns1nJidj7KkBZZWuh"
+          ],
+          "perTx": [
+            555752
+          ],
+          "totalCu": 555752
+        },
+        {
+          "evmHash": "0x739a14d9d1e06c40c3bf3516b036b2a2c03eef8c94e088e4dd7e0a648ddf50c7",
+          "sigs": [
+            "4kUooohkTi8ioKGFeLRZK25LD8Jac6aZCjTpWVigWjyeYQZdKPUodNAT85ZzeEANcowxTzZJ1U5pv3EZ2puMnA4G"
+          ],
+          "perTx": [
+            554236
+          ],
+          "totalCu": 554236
+        },
+        {
+          "evmHash": "0x1d928059c6f51eb98780e982c6b5f6fd86caecd26444c9b4fa386b28ac29732f",
+          "sigs": [
+            "2XKNMM7pJtxrASv4LBe8uWka6Nq9UA4Tgxf5WH5tyjRAUXK4JQLZVmAfA3PWYgwhyTk2bQt7ni6BayzZnP5HqQfv"
+          ],
+          "perTx": [
+            555752
+          ],
+          "totalCu": 555752
+        }
+      ],
+      "mean": 555247
+    },
+    {
+      "label": "[T3] A3 OLD pda_with_salt (rome_evm_program_id + find_program_address)",
+      "group": "salted-pda",
+      "tier": 3,
+      "samples": [
+        {
+          "evmHash": "0xb018e9a9521cec0c20ecbad87974b9565d16f07476f46c7c0552651e2f9a57b8",
+          "sigs": [
+            "63mcSmhhm31RSZTV22knTBBKn5Hs13EKTvKK92X4vjQe4c88MZutLKw68dmiYXATw6jCLsVpaAkxrVYARPYk7qyP"
+          ],
+          "perTx": [
+            210665
+          ],
+          "totalCu": 210665
+        },
+        {
+          "evmHash": "0x52a11213f82b0667c63cfbba23e6b20ece6cb091e5d0e2dc9185a813eeb451b7",
+          "sigs": [
+            "MQLSn8WqsRT4iLEwCtTnyRgSL3AHau2QRXA9Pq81UFSi9WQ67W2X2NpLaqLHc4bDDBgH9jyG5EiuE6UaYurjwqk"
+          ],
+          "perTx": [
+            207665
+          ],
+          "totalCu": 207665
+        },
+        {
+          "evmHash": "0x17c1019de87d4a19504128b1fe12a5d3bb7f29a6a56ab71271a75dfe1ecd19cd",
+          "sigs": [
+            "58Cv3UKpewknbgYk2AmxBCMDLNAUC7rr1yosd1FVznaei8LundWCXqSnTC4N7Q3ygBsZisScgtAW92Q4tVRMSe1i"
+          ],
+          "perTx": [
+            207673
+          ],
+          "totalCu": 207673
+        }
+      ],
+      "mean": 208668
+    },
+    {
+      "label": "[T3] A3 NEW HelperProgram.pda_with_salt",
+      "group": "salted-pda",
+      "tier": 3,
+      "pairWith": "[T3] A3 OLD pda_with_salt (rome_evm_program_id + find_program_address)",
+      "samples": [
+        {
+          "evmHash": "0x2aeb4017ab1fdf14f41d6977d1d9acbcc8c80dc02b9363a9ceb89a838d801bbf",
+          "sigs": [
+            "YqfXUrGTNdMoQoiFuy79Uc444NGkhirJ9VFU2YuxY1X7TDC224RwVzGisu8A6GXVFrLe6j6F3ns3heTEBwLe1da"
+          ],
+          "perTx": [
+            114691
+          ],
+          "totalCu": 114691
+        },
+        {
+          "evmHash": "0x1f3e267560a45408939ee5194526b9192cda443be476605955af42f5f635fd67",
+          "sigs": [
+            "28fBcZLHVzHzFHNY7EcxL9xSJED16QaEuDFePCjc8SCVdKFU28bomFXiMAmTsrNKZsc81axAjFAZbtstcEGwuVih"
+          ],
+          "perTx": [
+            116191
+          ],
+          "totalCu": 116191
+        },
+        {
+          "evmHash": "0x5b918ea30ee295ec631d56c94c5c40d742b32fc8f27bff1a1424f844febfd7f7",
+          "sigs": [
+            "3gkMzwJLxVihEjiwLks399VQjzYkYjJr4M2cYTbDA5sjjirbsitQwfW5jQGSjAbBQUf6X51poCLLEkjZJTkdbSmM"
+          ],
+          "perTx": [
+            114683
+          ],
+          "totalCu": 114683
+        }
+      ],
+      "mean": 115188
+    },
+    {
+      "label": "[T3] A2 OLD approve (SplTokenLib.approve + invoke_signed)",
+      "group": "approve",
+      "tier": 3,
+      "samples": [
+        {
+          "evmHash": "0xd8b1b306ad066a0ebd9ad08a49424bfc49191b538cda2560bf9dbfa9afbb729f",
+          "sigs": [
+            "5U3eKmopUPY19yon8cczsAo6V122f1ccxyqDLhDTcJrNXSbcW9vEGMvZ4MmhrfsohsMdvQYM9bnMWfnUdjLaNMLt",
+            "7qK3zkCo7BfFqAy2opgy9b15MJmvAh88rcyLnPEQzZzTkx3c8DZMsALPstuHNHaWM4fEo1Um2ccmghZR3QDrqJi"
+          ],
+          "perTx": [
+            11197,
+            316609
+          ],
+          "totalCu": 327806
+        },
+        {
+          "evmHash": "0x53e51fbcd30c7841d8d96b76ae50c5df97d155c8b76925f3a2122fca89c822ce",
+          "sigs": [
+            "2nBXSxeJ8VqxdUv5grA95DC2g4BBKWJXCmRckDJcypyAavgfF8K92iikdrCykZqHTExoCQ3CEtmH9V3N4PaVFT8z",
+            "WtpjEcy67DXEDwnsYmeZVXoXi5ZK1cSQm1P67M2ffy8w2upWix12E8q1oVWd7Au6XPBbYyHyuaC6tR6fJGJbE6G"
+          ],
+          "perTx": [
+            10609,
+            321117
+          ],
+          "totalCu": 331726
+        },
+        {
+          "evmHash": "0x7c8b71f8bb70f6d687220b11a8efba978a5a05c5cb878d7a21195fcdadabecb8",
+          "sigs": [
+            "3edK59Zgxq27KpxweGGS5jjj9imh4SUYZE78nL4eyAKZjewu8XYXnm72z9GovCg6TXf7EtVoHUKkZzesDQB834kY",
+            "45VEXetadkyZGDg33EHABcDrimC5NvoXKng2m78kPwUsJDgQbLznoANTqqiXfgpn9cPNkLnqGuvcSm2BQrhkcUZD"
+          ],
+          "perTx": [
+            10609,
+            319609
+          ],
+          "totalCu": 330218
+        }
+      ],
+      "mean": 329917
+    },
+    {
+      "label": "[T3] A2 NEW HelperProgram.approve_spl_raw_delegate",
+      "group": "approve",
+      "tier": 3,
+      "pairWith": "[T3] A2 OLD approve (SplTokenLib.approve + invoke_signed)",
+      "samples": [
+        {
+          "evmHash": "0x71f56809f7f7afb9946bcb5764969c490f200a9e7de728d5d9d02f2d5d5d278e",
+          "sigs": [
+            "2ATsaYr82Wipw38DrA2XQauD48sepaQfnjmSUDzKbUsskhUNjNYP23jTw8ANrQoVpK1TCrwbbvBDisNUT24trdTU",
+            "WcMDnKbh8uUtERJwQ8dsVGaGfUL3RoRk1mw85WoQyQuUbsURkuCcCURFTJY7FC2x7txaWyPvo2SMWSmXJLUFffJ"
+          ],
+          "perTx": [
+            11171,
+            167997
+          ],
+          "totalCu": 179168
+        },
+        {
+          "evmHash": "0x3e3b802a74f3d0f23a5f0da38af3f03a6ea7e30fa92a172317d82fac0bde70e9",
+          "sigs": [
+            "59c9MSnea4tvvmihFBduovut86meMWJL6qoNdSg1hxErLXootT8QsKbcEpe5H4Gm2bdtQ5jNddkeaaMgQ3Mp4Ggq",
+            "4czCubyo8y6ZEziEo7SpfMH9pEnrLUNALR8uAioXMHKvXJpXjgefdnmomAo1xSDTPj26AY3cbpUcPqsuoVU8nRiB"
+          ],
+          "perTx": [
+            11197,
+            161997
+          ],
+          "totalCu": 173194
+        },
+        {
+          "evmHash": "0x29167c1aaaef9699cfb9f0c486cd549b2a5f1ab3f35f39df9e0f33157943300f",
+          "sigs": [
+            "3q6Eje8jZQrZ1AxqJMPxdrhW27mh6LPDc4em6cmjLJZNgYzcMn6DdR44wk6LBbgSiQVnsdQQxRHNHzP8TAT8ACvb",
+            "zc2krYvRbRd1NLXxZgDKWZviVDghZ3GHHBqnH9unQF4U9VfEopeAZRyofeyRpbqWEoHbBtP5GAjrQDt5SKRtfWd"
+          ],
+          "perTx": [
+            11171,
+            163535
+          ],
+          "totalCu": 174706
+        }
+      ],
+      "mean": 175689
+    }
+  ]
+}
