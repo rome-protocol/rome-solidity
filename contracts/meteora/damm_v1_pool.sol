@@ -13,6 +13,7 @@ import {MplTokenMetadataLib} from "../mpl_token_metadata/lib.sol";
 import {ICrossProgramInvocation} from "../interface.sol";
 import {PdaDeriver} from "../cpi/PdaDeriver.sol";
 import {PdasBatch} from "../cpi/PdasBatch.sol";
+import {AccountReader} from "../cpi/AccountReader.sol";
 
 library DAMMv1Lib {
     bytes32 public constant PROG_DYNAMIC_AMM =
@@ -358,20 +359,28 @@ library DAMMv1Lib {
     // Reads DAMMv1 pool account from Solana and parses it
     // @param pool_pubkey address of DAMMv1 Pool account in Solana
     // @return instance PoolState structure
-    function load_pool(bytes32 pool_pubkey, address cpi_program)
+    function load_pool(bytes32 pool_pubkey, address /* cpi_program (unused — typed slice via AccountReader) */)
     internal
     view
     returns (PoolState memory) {
-        (,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(pool_pubkey);
+        // Slice-only read via account_data_at (selector 0x593762e8) — skips
+        // the lamports/owner/flags fields of the prior account_info 6-tuple
+        // since parse_pool only consumes data[0..POOL_PREFIX_MIN_LEN].
+        // Saves ~10-15K CU per load_pool call (Agent 3 audit, 2026-05-16).
+        bytes memory data = AccountReader.readBytesAt(pool_pubkey, 0, uint16(POOL_PREFIX_MIN_LEN));
         return parse_pool(data);
     }
 
-    function load_vault(bytes32 vault_pubkey, address cpi_program)
+    function load_vault(bytes32 vault_pubkey, address /* cpi_program (unused — typed slice via AccountReader) */)
     internal
     view
     returns (VaultState memory)
     {
-        (,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(vault_pubkey);
+        // Slice-only read via account_data_at. parse_vault consumes the full
+        // VAULT_MIN_LEN-byte prefix (including the 960-byte strategies skip);
+        // saving ~15-25K CU per load_vault call vs the prior account_info
+        // 6-tuple decode (Agent 3 audit, 2026-05-16).
+        bytes memory data = AccountReader.readBytesAt(vault_pubkey, 0, uint16(VAULT_MIN_LEN));
         return parse_vault(data);
     }
 
@@ -1257,20 +1266,26 @@ contract DAMMv1Pool {
         DAMMv1Lib.VaultState memory vault_a_state = DAMMv1Lib.load_vault(a_vault, cpi_program);
         DAMMv1Lib.VaultState memory vault_b_state = DAMMv1Lib.load_vault(b_vault, cpi_program);
 
-        SplTokenLib.SplMint memory a_lp_mint = SplTokenLib.load_mint(vault_a_state.lp_mint, cpi_program);
-        SplTokenLib.SplMint memory b_lp_mint = SplTokenLib.load_mint(vault_b_state.lp_mint, cpi_program);
-
-        uint64 pool_lp_a = SplTokenLib.load_token_amount(a_vault_lp, cpi_program);
-        uint64 pool_lp_b = SplTokenLib.load_token_amount(b_vault_lp, cpi_program);
+        // Read only the fields we actually use — `supply` from each LP mint
+        // (offset 36 in SPL Mint layout) and `amount` from each vault LP token
+        // account (offset 64 in SPL TokenAccount layout). Typed `account_u64_at`
+        // (selector 0xb317d4c1) skips the full account_info 6-tuple decode +
+        // 82/165-byte data buffer fetch that SplTokenLib.load_mint/load_token_amount
+        // were doing. Saves ~22K CU per typed read; 4 reads per call → ~88K CU
+        // per get_price_e18 (Agent 3 audit measurement, 2026-05-16).
+        uint64 a_lp_supply = AccountReader.readU64At(vault_a_state.lp_mint, 36);
+        uint64 b_lp_supply = AccountReader.readU64At(vault_b_state.lp_mint, 36);
+        uint64 pool_lp_a = AccountReader.readU64At(a_vault_lp, 64);
+        uint64 pool_lp_b = AccountReader.readU64At(b_vault_lp, 64);
         uint64 current_time = uint64(block.timestamp);
 
-        token_a_amount = a_lp_mint.supply == 0
+        token_a_amount = a_lp_supply == 0
             ? 0
-            : get_amount_by_share(vault_a_state, current_time, pool_lp_a, a_lp_mint.supply);
+            : get_amount_by_share(vault_a_state, current_time, pool_lp_a, a_lp_supply);
 
-        token_b_amount = b_lp_mint.supply == 0
+        token_b_amount = b_lp_supply == 0
             ? 0
-            : get_amount_by_share(vault_b_state, current_time, pool_lp_b, b_lp_mint.supply);
+            : get_amount_by_share(vault_b_state, current_time, pool_lp_b, b_lp_supply);
     }
 
     function get_reserves()
@@ -1291,25 +1306,28 @@ contract DAMMv1Pool {
     returns (uint256)
     {
         Reserves memory r = get_reserves();
-        SplTokenLib.SplMint memory mint_a = SplTokenLib.load_mint(token_a_mint, cpi_program);
-        SplTokenLib.SplMint memory mint_b = SplTokenLib.load_mint(token_b_mint, cpi_program);
+        // Read only mint.decimals (offset 44 in SPL Mint layout — 1 byte).
+        // Typed account_data_at slice (1 byte) vs prior full account_info
+        // 6-tuple decode. Saves ~20-30K CU per get_price_e18 call.
+        uint8 dec_a = uint8(AccountReader.readBytesAt(token_a_mint, 44, 1)[0]);
+        uint8 dec_b = uint8(AccountReader.readBytesAt(token_b_mint, 44, 1)[0]);
 
         if (token == PoolToken.TokenA) {
             if (r.a_reserve == 0) revert ZeroReserve();
 
             return uint256(r.b_reserve)
-                * (10 ** uint256(mint_a.decimals))
+                * (10 ** uint256(dec_a))
                 * 1e18
                 / uint256(r.a_reserve)
-                / (10 ** uint256(mint_b.decimals));
+                / (10 ** uint256(dec_b));
         } else {
             if (r.b_reserve == 0) revert ZeroReserve();
 
             return uint256(r.a_reserve)
-                * (10 ** uint256(mint_b.decimals))
+                * (10 ** uint256(dec_b))
                 * 1e18
                 / uint256(r.b_reserve)
-                / (10 ** uint256(mint_a.decimals));
+                / (10 ** uint256(dec_a));
         }
     }
 
