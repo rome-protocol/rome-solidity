@@ -25,15 +25,6 @@ library RomeEVMAccount {
         return seeds;
     }
 
-    function authority_seeds_with_salt_for_invoke(address user, bytes32 salt) internal pure returns(bytes32[] memory) {
-        bytes32[] memory seeds = new bytes32[](3);
-        seeds[0] = Convert.bytes_to_bytes32(bytes("EXTERNAL_AUTHORITY"));
-        seeds[1] = Convert.bytes_to_bytes32(abi.encodePacked(user));
-        seeds[2] = salt;
-
-        return seeds;
-    }
-
     function minimum_balance(uint64 len) internal pure returns(uint64) {
         // (ACCOUNT_STORAGE_OVERHEAD + len) * LAMPORTS_PER_BYTE_YEAR * EXEMPTION_THRESHOLD
         return (128 + len) * 3480 * 2;

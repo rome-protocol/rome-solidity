@@ -178,10 +178,4 @@ library Convert {
         return abi.decode(mes, (string));
     }
 
-    function to_uint64(uint256 value) internal pure returns (uint64) {
-        if (value > type(uint64).max) {
-            revert SafeCastOverflowedUintDowncast(64, value);
-        }
-        return uint64(value);
-    }
 }
