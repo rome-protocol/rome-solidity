@@ -109,6 +109,23 @@ interface IHelperProgram {
     // defeating the explicit token_program argument and delivering zero CU
     // saving vs the 3-arg variants. Token-2022 raw-delegate flows will get
     // fresh selectors with proper plumbing when use cases emerge.
+    // create_mint_account — System CreateAccount for a salt-derived PDA with
+    // space=82 (SPL_MINT_LEN), owner=SPL Token, lamports=rent-floor. Funder =
+    // caller's external_auth PDA. New account = external_auth_with_salt(caller, salt).
+    // Two PDA signers (funder + new mint). Consumed by ERC20SPLFactory.create_token_mint.
+    // Shipped in rome-evm-private PR #364 (selector 0xe97d3291).
+    function create_mint_account(bytes32 salt) external;
+    // init_spl_mint — SPL Token InitializeMint2 against a pre-allocated mint
+    // account. No PDA signer needed (mint_authority + freeze_authority stored
+    // as account data, not runtime signers). Consumed by ERC20SPLFactory.init_token_mint.
+    // Shipped in rome-evm-private PR #364 (selector 0x4f75e987).
+    function init_spl_mint(bytes32 mint, uint8 decimals, bytes32 mint_authority, bool has_freeze_authority, bytes32 freeze_authority) external;
+    // create_and_init_mint — Composed: System CreateAccount + SPL InitializeMint2
+    // in one dispatch. Saves one Rome DoTx envelope + one Solidity delegatecall
+    // vs calling create_mint_account + init_spl_mint separately. Optional
+    // one-call flow for callers that prefer it. Shipped in rome-evm-private
+    // PR #364 (selector 0x20972d0f).
+    function create_and_init_mint(uint8 decimals, bytes32 mint_authority, bool has_freeze_authority, bytes32 freeze_authority, bytes32 salt) external;
     // external pda
     function pda(address user) external view returns (bytes32);
     // ata owned by external pda. Gas token mint is used.
