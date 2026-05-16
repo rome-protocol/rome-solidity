@@ -130,39 +130,29 @@ contract ERC20SPLFactory {
      * @return (bytes32 mint) Address of the created SPL Token mint.
      */
     function create_token_mint() external returns (bytes32) {
-        // Direct PDA derivation — was `users.get_user(msg.sender)` which
-        // reverted "User does not exist" pre-registration. The new path
-        // derives external_auth(msg.sender) without the mapping lookup
-        // (HelperProgram.pda has been the canonical derivation since
-        // 2026-05-12). Behavior equivalence: same returned address;
-        // runtime still catches a fund-less PDA when create_account CPI
-        // executes (Solana System Program rejects insufficient lamports).
-        bytes32 user = HelperProgram.pda(msg.sender);
         (bytes32 mint, bytes32 mintSeed) = get_current_mint(msg.sender);
         _assert_mint_account_missing(mint);
 
-        SystemProgramLib.Instruction memory createMintAccount = SystemProgramLib.create_account(
-            user,
-            mint,
-            RomeEVMAccount.minimum_balance(SPL_MINT_LEN),
-            SPL_MINT_LEN,
-            SplTokenLib.SPL_TOKEN_PROGRAM
-        );
-
-        bytes32[] memory seeds = new bytes32[](1);
-        seeds[0] = mintSeed;
-
-        (bool success, bytes memory result) = address(cpi_program).delegatecall(
+        // System CreateAccount via HelperProgram.create_mint_account (selector
+        // 0xe97d3291, shipped in rome-evm-private PR #364). Allocates the
+        // salt-derived mint PDA with space=82 (SPL_MINT_LEN), owner=SPL Token,
+        // lamports=rent-floor for 82 bytes — all hardcoded inside the precompile.
+        // Funder = caller's external_auth PDA; new account = external_auth_with_salt
+        // (caller, mintSeed). Two PDA signers handled internally. Replaces the
+        // prior SystemProgramLib.create_account + invoke_signed marshaling path
+        // — saves ~30-50K EVM CU per call.
+        //
+        // The new mint address is deterministic from (caller, mintSeed); we
+        // return the client-computed `mint` value (same bytes32 that
+        // get_current_mint derived above).
+        (bool success, bytes memory result) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
-                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
-                createMintAccount.program_id,
-                createMintAccount.accounts,
-                abi.encodePacked(createMintAccount.data),
-                seeds
+                "create_mint_account(bytes32)",
+                mintSeed
             )
         );
+        require(success, string(Convert.revert_msg(result)));
 
-        require (success, string(Convert.revert_msg(result)));
         uint64 nonce = creator_nonce[msg.sender];
         creator_nonce[msg.sender] = nonce + 1;
         return mint;
@@ -172,32 +162,30 @@ contract ERC20SPLFactory {
      * Initializes previously created mint account.
      */
     function init_token_mint(bytes32 mint) external {
-        // Direct PDA derivation — see create_token_mint above for the
-        // get_user migration rationale.
+        // Mint authority = caller's external_auth PDA. Stored in the mint
+        // account as data — NOT a runtime signer for InitializeMint2.
         bytes32 user = HelperProgram.pda(msg.sender);
 
-        (
-            bytes32 tokenProgramId,
-            ICrossProgramInvocation.AccountMeta[] memory initAccounts,
-            bytes memory initData
-        ) = SplTokenLib.initialize_mint(
-            SplTokenLib.SPL_TOKEN_PROGRAM,
-            mint,
-            user,
-            false,
-            bytes32(0),
-            DEFAULT_DECIMALS
-        );
-
-        (bool success, bytes memory result) = address(cpi_program).delegatecall(
+        // SPL Token InitializeMint2 via HelperProgram.init_spl_mint
+        // (selector 0x4f75e987, shipped in rome-evm-private PR #364).
+        // No PDA signer needed (mint_authority + freeze_authority are stored
+        // as account data, not runtime signers). Replaces the prior
+        // SplTokenLib.initialize_mint + invoke marshaling path — saves
+        // ~30-50K EVM CU per call.
+        //
+        // has_freeze_authority = false → freeze_authority arg is ignored
+        // (pass bytes32(0) for explicitness; the COption tag inside the
+        // precompile is what controls the SPL ix encoding).
+        (bool success, bytes memory result) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
-                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
-                tokenProgramId,
-                initAccounts,
-                initData
+                "init_spl_mint(bytes32,uint8,bytes32,bool,bytes32)",
+                mint,
+                DEFAULT_DECIMALS,
+                user,
+                false,
+                bytes32(0)
             )
         );
-
-        require (success, string(Convert.revert_msg(result)));
+        require(success, string(Convert.revert_msg(result)));
     }
 }
