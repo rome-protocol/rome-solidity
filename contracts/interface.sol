@@ -60,6 +60,13 @@ interface IHelperProgram {
     function create_ata(address user) external;
     // create associated spl-token account owned by external pda.
     function create_ata(address user, bytes32 mint) external;
+    // create_ata_for_key — idempotent ATA-create for an arbitrary raw Solana
+    // pubkey owner (NOT derived via external_auth from an EVM address).
+    // Operator pays rent. Used for raw-pubkey recipients in
+    // SPL_ERC20.bridgeOutToSolana / ensureRecipientAta / create_token_account
+    // (replaces the prior AssociatedSplToken + CpiProgram.invoke marshaling).
+    // Shipped in rome-evm-private PR #364.
+    function create_ata_for_key(bytes32 wallet, bytes32 mint) external;
     // create external pda
     function create_pda(address user) external;
     // create external pda with lamports
@@ -97,6 +104,13 @@ interface IHelperProgram {
     // SplTokenLib.approve + raw invoke_signed marshaling path. Signs as
     // external_auth(caller).
     function approve_spl(address spender, uint64 amount, bytes32 mint) external;
+    // approve_spl_raw_delegate — SPL approve_checked with a caller-supplied
+    // raw Solana pubkey as delegate (e.g. Wormhole authority_signer PDA, no
+    // EVM-address equivalent). Caller passes uint8 decimals to skip the
+    // on-chain mint read (~30-50K CU saving). spl_program hardcoded to SPL
+    // Token. Signer = external_auth(caller). Shipped in PR #364; consumed
+    // by RomeBridgeWithdraw.approveBurnETH.
+    function approve_spl_raw_delegate(bytes32 src_ata, bytes32 delegate, uint64 amount, bytes32 mint, uint8 decimals) external;
     // mint_spl — caller-PDA-as-mint-authority mints to dest user's ATA
     // via SPL mint_to_checked. SPL Token runtime enforces caller-PDA ==
     // on-chain mint authority. Replaces v1 SPL_ERC20.mint_to's
@@ -111,6 +125,13 @@ interface IHelperProgram {
     // fresh selectors with proper plumbing when use cases emerge.
     // external pda
     function pda(address user) external view returns (bytes32);
+    // pda_with_salt — salt-derived EXTERNAL_AUTHORITY PDA in one dispatch.
+    // Collapses the Solidity-side 2-call composition
+    // (rome_evm_program_id() + find_program_address(seeds)). Used by
+    // RomeEVMAccount.pda_with_salt (called by RomeBridgeWithdraw.burnUSDC /
+    // burnETH for the CCTP messageSentEventData / Wormhole messageAccount
+    // PDA derivations). Shipped in PR #364.
+    function pda_with_salt(address user, bytes32 salt) external view returns (bytes32);
     // ata owned by external pda. Gas token mint is used.
     // Is only applicable for rollup based on SPL-token.
     function ata(address user) external view returns (bytes32);

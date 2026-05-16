@@ -106,28 +106,36 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
      * @param user EVM address of the user for whom to create the associated token account
      * @return associated_account_address The address of the associated token account created or existing for the user
      */
-    function create_token_account(address user, bytes32 payer) public returns(bytes32) {
-        bytes32 new_user = _users.ensure_user(user);
-        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data, bytes32 associated_account_address) = 
-            AssociatedSplToken.create_associated_token_account_idempotent(
-                payer,
-                new_user,
-                mint_id, 
-                system_program_id,
-                SplTokenLib.SPL_TOKEN_PROGRAM,
-                associated_token_program_id
-            );
-        
-        // Only the unified user PDA needs to sign — auto-detected from metas.
-        // No salt-derived signer involved → use `invoke`, not `invoke_signed`.
-        (bool success, bytes memory result) = address(cpi_program).delegatecall(
+    function create_token_account(address user, bytes32 /* payer (deprecated post-#364) */) public returns(bytes32) {
+        // Register the user in the ERC20Users mapping (idempotent EVM SSTORE,
+        // no Solana CPI).
+        _users.ensure_user(user);
+
+        // Idempotent ATA-create via `HelperProgram.create_ata(address, bytes32)`
+        // (selector `0x3de2251a`). The precompile derives the ATA owner as
+        // external_auth(user) internally and dispatches the AssociatedToken
+        // CreateIdempotent CPI in one Rust selector call. Replaces the prior
+        // `AssociatedSplToken + CpiProgram.invoke` marshaling — saves ~30-50K
+        // EVM CU per call.
+        //
+        // **Rent-payer change post-rome-evm-private #364:** the `payer` arg
+        // is now ignored (kept in the signature for back-compat — 5 off-chain
+        // test/deploy scripts pass it). The operator pays rent and is
+        // reimbursed via Rome's standard gas accounting. Callers that
+        // previously sized their PDA reserve to cover ATA rent no longer
+        // need that buffer for this path; gas balance suffices.
+        (bool success, bytes memory result) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
-                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
-                program_id, accounts, data
+                "create_ata(address,bytes32)",
+                user, mint_id
             )
         );
+        require(success, string(Convert.revert_msg(result)));
 
-        require (success, string(Convert.revert_msg(result)));
+        // Cache the derived ATA in `_accounts` for back-compat — derive
+        // client-side using the canonical ATA formula (deterministic from
+        // wallet + mint + spl_program).
+        bytes32 associated_account_address = HelperProgram.ata(user, mint_id);
         _accounts[user] = associated_account_address;
         return associated_account_address;
     }
@@ -457,36 +465,29 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
         // CPI 1 — `AssociatedToken.CreateIdempotent` for the recipient
-        // ATA, funded by `msg.sender`'s unified user PDA. Idempotent on
-        // the Solana side: no-op when the account already exists,
-        // create + rent when not. Removes the need for callers to run
-        // a separate `ensureRecipientAta` preflight (which is still
-        // exposed below as a public helper for callers that want it).
+        // ATA via `HelperProgram.create_ata_for_key(wallet, mint)`
+        // (selector `0xd258a69d`, shipped in rome-evm-private PR #364).
+        // The precompile accepts a raw Solana pubkey as the ATA owner
+        // (the prior 3-arg / addr-keyed `create_ata` variants only
+        // handle EVM-derived owners). Idempotent on the Solana side:
+        // no-op when the account already exists, create + rent when
+        // not. Removes the need for callers to run a separate
+        // `ensureRecipientAta` preflight (still exposed below).
         //
-        // Funder: `_users.ensure_user(msg.sender)` — the caller's PDA
-        // pre-funded by `SimpleActivator.activate()` with at least
-        // 2× ATA_RENT + reserve. If the PDA's reserve is drained, this
-        // CPI reverts at the System Program's CreateAccount step (not
-        // enough lamports to fund the new account); UI surfaces the
-        // revert as "top up your PDA reserve".
-        bytes32 funder_pda = _users.ensure_user(msg.sender);
-        (
-            bytes32 ata_program_id,
-            ICrossProgramInvocation.AccountMeta[] memory ata_accounts,
-            bytes memory ata_data,
-            /* derived ata — same as to_ata */
-        ) = AssociatedSplToken.create_associated_token_account_idempotent(
-            funder_pda,
-            solana_recipient,
-            mint_id,
-            system_program_id,
-            SplTokenLib.SPL_TOKEN_PROGRAM,
-            associated_token_program_id
-        );
-        (bool ataOk, bytes memory ataResult) = address(cpi_program).delegatecall(
+        // **Rent payer change post-#364:** the operator pays rent (not
+        // the caller's PDA). Reimbursed via Rome's standard gas
+        // accounting (operator → user gas-token debit). UX: callers no
+        // longer need a pre-funded PDA reserve for the ATA-create step
+        // — gas balance alone suffices. The `_users.ensure_user` call
+        // is preserved (mapping-only, EVM SSTORE) because subsequent
+        // bridge-out flows (CCTP burnUSDC / Wormhole burnETH) still
+        // rely on the user being registered + having a PDA-reserve
+        // for the per-tx message account rent.
+        _users.ensure_user(msg.sender);
+        (bool ataOk, bytes memory ataResult) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
-                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
-                ata_program_id, ata_accounts, ata_data
+                "create_ata_for_key(bytes32,bytes32)",
+                solana_recipient, mint_id
             )
         );
         require(ataOk, string(Convert.revert_msg(ataResult)));
@@ -549,30 +550,29 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     {
         require(solana_recipient != bytes32(0), "Solana recipient cannot be zero");
 
-        // Unified user PDA — funds the ATA-create rent and serves as
-        // the rent-payer in the AssociatedToken `Create` instruction.
-        bytes32 user_pda = _users.ensure_user(msg.sender);
+        // Preserved for ERC20Users registration side-effect (EVM-storage
+        // SSTORE only, no Solana CPI). Other downstream wrapper flows
+        // expect the caller to be registered.
+        _users.ensure_user(msg.sender);
 
-        (
-            bytes32 program_id,
-            ICrossProgramInvocation.AccountMeta[] memory accounts,
-            bytes memory data,
-            bytes32 to_ata
-        ) = AssociatedSplToken.create_associated_token_account_idempotent(
-            user_pda,
-            solana_recipient,
-            mint_id,
-            system_program_id,
-            SplTokenLib.SPL_TOKEN_PROGRAM,
-            associated_token_program_id
-        );
+        // Derive the recipient ATA pubkey client-side via SystemProgram
+        // find_program_address — `create_ata_for_key` is an Invoke that
+        // doesn't return a value, but the ATA address is deterministic
+        // from (wallet, mint, spl_program). Same single `find_program_address`
+        // syscall as the prior derivation inside AssociatedSplToken.
+        bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
-        // Caller's unified user PDA pays rent (= `user_pda` arg above) —
-        // auto-detected from metas. No salt-derived signer → use `invoke`.
-        (bool success, bytes memory result) = address(cpi_program).delegatecall(
+        // Idempotent ATA-create via `HelperProgram.create_ata_for_key`
+        // (selector `0xd258a69d`, shipped in rome-evm-private PR #364).
+        // Operator pays rent (no longer drawn from caller's PDA reserve);
+        // reimbursed via Rome's standard gas accounting. Replaces the
+        // prior `AssociatedSplToken + CpiProgram.invoke` marshaling —
+        // saves ~50-80K EVM CU per call (Solana-side CPI identical to
+        // the ATA Program instruction either way).
+        (bool success, bytes memory result) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
-                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
-                program_id, accounts, data
+                "create_ata_for_key(bytes32,bytes32)",
+                solana_recipient, mint_id
             )
         );
         require(success, string(Convert.revert_msg(result)));

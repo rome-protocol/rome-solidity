@@ -51,10 +51,14 @@ library RomeEVMAccount {
     }
 
     function pda_with_salt(address user, bytes32 salt) internal view returns (bytes32) {
-        bytes32 rome_program = SystemProgram.rome_evm_program_id();
-        ISystemProgram.Seed[] memory seeds = RomeEVMAccount.authority_seeds_with_salt(user, salt);
-        (bytes32 key,) = SystemProgram.find_program_address(rome_program, seeds);
-        return key;
+        // Delegates to `HelperProgram.pda_with_salt(user, salt)` (selector
+        // `0x5c6d04b3`). Single dispatch replaces the prior 2-call composition
+        // (rome_evm_program_id() + find_program_address(seeds)). Byte-identity
+        // verified 2026-05-16 against rome-evm-private
+        // `non_evm/helper_ix.rs::pda_with_salt` → `state/pda.rs::external_auth_with_salt`
+        // — both paths compute `find_program_address([EXTERNAL_AUTHORITY, user, salt],
+        // rome_evm_program)`. Shipped in rome-evm-private PR #364.
+        return HelperProgram.pda_with_salt(user, salt);
     }
 
     function get_payer(address user) internal view returns (bytes32) {

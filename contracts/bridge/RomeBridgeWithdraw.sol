@@ -27,6 +27,12 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     SPL_ERC20 public immutable wethWrapper;
     bytes32 public immutable usdcMint;
     bytes32 public immutable wethMint;
+    // wethDecimals cached at construction (read from `_weth.decimals()` which
+    // is set as immutable on the SPL_ERC20 wrapper). Used by approveBurnETH
+    // to feed SPL approve_checked through HelperProgram.approve_spl_raw_delegate
+    // without an on-chain mint read at each call (~30-50K CU saving per
+    // approveBurnETH). Shipped alongside rome-evm-private PR #364.
+    uint8 public immutable wethDecimals;
 
     // -------------------------------------------------------------------------
     // CCTP Solana-side immutables (set at construction from deploy script)
@@ -166,6 +172,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         wethWrapper = _weth;
         usdcMint = _usdc.mint_id();
         wethMint = _weth.mint_id();
+        wethDecimals = _weth.decimals();
         // CCTP
         cctpTokenMessengerProgram     = cctp.tokenMessengerProgram;
         cctpMessageTransmitterProgram = cctp.messageTransmitterProgram;
@@ -317,30 +324,29 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         }
         address user = _msgSender();
 
-        bytes32 userPda = RomeEVMAccount.pda(user);
-        // Canonical user-ATA via `derive_user_ata` precompile shortcut — see
-        // comment in burnUSDC for rationale.
+        // Canonical user-ATA via HelperProgram.ata precompile shortcut.
         bytes32 userAta = HelperProgram.ata(user, wethMint);
 
-        bytes32[] memory emptySigners = new bytes32[](0);
-        (, ICrossProgramInvocation.AccountMeta[] memory approveMetas, bytes memory approveIx) =
-            SplTokenLib.approve(
-                whSplTokenProgram,
+        // SPL approve_checked via HelperProgram.approve_spl_raw_delegate.
+        // Delegate = wormholeAuthoritySigner (raw Solana PDA owned by the
+        // Wormhole Token Bridge program — no EVM-address equivalent, which is
+        // why the existing 3-arg approve_spl(address,uint64,bytes32) doesn't
+        // fit). Signer = external_auth(caller) auto-derived from EVM tx
+        // origin. wethDecimals passed from immutable cache to skip the
+        // on-chain mint read inside the precompile. spl_program is hardcoded
+        // SPL Token inside the precompile (Wormhole-wrapped wETH is SPL
+        // Token, not Token-2022). Replaces the prior 3-call composition
+        // (SplTokenLib.approve + CpiProgram.invoke marshaling) — saves
+        // ~50-100K EVM CU per approveBurnETH call. Shipped in rome-evm-private
+        // PR #364 (selector 0x7881d453).
+        (bool ok, bytes memory result) = address(HelperProgram).delegatecall(
+            abi.encodeWithSignature(
+                "approve_spl_raw_delegate(bytes32,bytes32,uint64,bytes32,uint8)",
                 userAta,
                 wormholeAuthoritySigner,
-                userPda,
-                emptySigners,
-                uint64(amount)
-            );
-        // SPL approve signs as the owner's unified user PDA (= `userPda`
-        // arg above) — auto-detected from metas. No salt-derived signer
-        // → use `invoke`, not `invoke_signed`.
-        (bool ok, bytes memory result) = address(CpiProgram).delegatecall(
-            abi.encodeWithSignature(
-                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
-                whSplTokenProgram,
-                approveMetas,
-                approveIx
+                uint64(amount),
+                wethMint,
+                wethDecimals
             )
         );
         if (!ok) revert CpiFailed(result);
