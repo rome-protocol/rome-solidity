@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Changed — `SPL_ERC20` hot paths direct-precompile rewrite (5 new HelperProgram selectors)
+
+Five `IHelperProgram` selectors (8 ABI sigs) added in [`rome-evm-private#363`](https://github.com/rome-protocol/rome-evm-private/pull/363) — `approve_spl` / `mint_spl` / `transfer_spl(addr,addr,...)` / `user_balance` / `allowance_of`. This PR migrates `SPL_ERC20`'s `approve` / `transferFrom` / `mint_to` / `balanceOf` / `allowance` off the Solidity-side SPL ix marshaling (`SplTokenLib.approve` / `SplTokenLib.mint_to_checked` + raw `CpiProgram.invoke_signed` via `delegatecall`) into the new dedicated HelperProgram selectors.
+
+CU per call:
+- Writes (approve / transferFrom delegate path / mint_to): ~140-180K Solana CU saved per call (Solidity-side AccountMeta[] + ix-data marshaling removed). Mirrors the measured −372 to −394K CU `transfer_spl` migration on Hadrian (2026-05-14 baseline).
+- Reads (balanceOf / allowance): ~37K CU saved per call (3-5 dispatch composition → 1 CrossStateEthCall).
+
+Other changes:
+- Deleted `SPL_ERC20.getAta(address) → bytes32` (no callers in this repo; cross-repo dependency sweep clean). New callers compose via `HelperProgram.ata(user, mint_id)` directly.
+- Internal helpers `ensure_token_account` / `get_token_account` / `create_token_account` kept (still used by `_transfer`, `mint_to`, and off-chain test/deploy scripts in `scripts/bridge/`, `tests/damm_v1_*.integration.ts`).
+- `ERC20Users.get_user` kept (8 callers in `damm_v1_factory.sol` + `damm_v1_pool.sol` rely on its "revert if unregistered" gate; migration deferred).
+- `ERC20SPLFactory.create_token_mint` + `init_token_mint` migrated off `users.get_user` to direct `HelperProgram.pda(msg.sender)` derivation (no behavior change — same address; runtime still catches under-funded PDA at `create_account`).
+- `mint_id` kept public (legit identity, analogous to `bridgeOutToSolana(bytes32 recipient, ...)` which spec explicitly keeps as "legit bytes32").
+- `ensureRecipientAta` kept (per `contracts/bridge/README.md:82` — "public utility"; consumed by rome-ui's `useOutboundSplBridge` legacy path).
+- `interface.sol` declares all 8 new selector signatures under `IHelperProgram`.
+- `CLAUDE.md` HelperProgram surface table extended with the 8 new rows.
+
+Status: hardhat compile passes (79 files). 39 erc20spl regression tests pass (view-defensive + approve-saturation + bridge-out-collapse helpers). On-chain integration testing pending Hadrian rome-evm program upgrade to [`rome-evm-private#363`](https://github.com/rome-protocol/rome-evm-private/pull/363).
+
+Spec: [`rome-specs/active/technical/2026-05-16-spl-erc20-direct-precompile-rewrite.md`](https://github.com/rome-protocol/rome-specs/blob/main/active/technical/2026-05-16-spl-erc20-direct-precompile-rewrite.md).
+
 ### Added — `UserPda.atas(user, mints[])` — batch ATA derivation across mints
 New ergonomic helper on the `UserPda` library: derives N ATAs for one EVM user across N classic SPL Token mints in two precompile dispatches total (vs N calls today). Composes:
 

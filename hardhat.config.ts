@@ -22,6 +22,14 @@ export default defineConfig({
     },
   },
   networks: {
+    hadrian: {
+      type: "http",
+      chainType: "l1",
+      chainId: 200010,
+      url: "https://hadrian.testnet.romeprotocol.xyz/",
+      accounts: [configVariable("HADRIAN_PRIVATE_KEY")],
+    },
+
     aurelius: {
       type: "http",
       chainType: "l1",

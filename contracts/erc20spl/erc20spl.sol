@@ -52,6 +52,12 @@ contract ERC20Users {
         }
     }
 
+    /// @notice Returns the previously-registered unified PDA for `user`,
+    ///         reverting if `user` has not yet been registered via
+    ///         `ensure_user`. Used by meteora pool + factory to gate
+    ///         operations on caller registration. Kept for cross-contract
+    ///         back-compat; new code should prefer `HelperProgram.pda`
+    ///         (direct derivation, no revert).
     function get_user(address user) public view returns (bytes32) {
         bytes32 existing_user = users[user];
         require(existing_user != bytes32(0), "User does not exist");
@@ -73,17 +79,6 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     string private _symbol;
     ERC20Users private _users;
     mapping(address => bytes32) private _accounts;
-
-    /// @notice Public reader for the SPL token account owned by this EVM user.
-    /// @dev Returns the canonical user-PDA ATA derived from the unified PDA
-    ///      (post-0acabea). Equivalent to `UserPda.ata(user, mint_id)`. The
-    ///      legacy `_accounts` cache is retained for write-through (callers
-    ///      that previously relied on a non-zero cache value still see one
-    ///      after any wrapper-mediated mutation). New callers should treat
-    ///      this as the canonical lookup.
-    function getAta(address user) external view returns (bytes32) {
-        return HelperProgram.ata(user, mint_id);
-    }
 
     error ERC20InvalidApprover(address approver);
     error ERC20InvalidSpender(address spender);
@@ -223,28 +218,14 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     function balanceOf(address account) public view virtual returns (uint256) {
-        // Always read AUTHORITY_PDA's ATA — that's the canonical
-        // cross-chain location where bridged-in SPL tokens live
-        // (Wormhole's complete_transfer_wrapped, useNativeDepositSend,
-        // any inbound flow). Same source bridgeOutToSolana spends from.
-        // Falling back to the legacy _accounts mapping (which was
-        // populated only after a wrapper-mediated `ensure_token_account`
-        // call) would mismatch and report 0 for any user whose tokens
-        // arrived via a non-wrapper path.
-        bytes32 ata = HelperProgram.ata(account, mint_id);
-        // ERC20-standard total: an address that has never received the
-        // token has balance 0, not a revert. When the user's ATA hasn't
-        // been initialized on Solana yet, account_u64_at(ata, 64) would
-        // revert with `account_u64_at: offset 64 + 8 out of 0 bytes`,
-        // forcing every consumer (DEX routers, allowance checks, wallet
-        // UIs that simulate balance reads on first-time wallets) to wrap
-        // balanceOf in try/catch. account_lamports is cheap (no data
-        // buffer pull) and returns 0 when the account doesn't exist.
-        if (AccountReader.lamportsOf(ata) == 0) {
-            return 0;
-        }
-        // SPL TokenAccount.amount is a u64 LE at offset 64.
-        return uint256(AccountReader.readU64At(ata, 64));
+        // Single CrossStateEthCall via HelperProgram.user_balance. Reads
+        // SPL TokenAccount.amount (u64 LE at offset 64) on the user's
+        // PDA-owned ATA. Returns 0 if the ATA doesn't exist (fresh-chain
+        // probe — same canonical AUTHORITY_PDA-ATA semantic as the legacy
+        // 3-dispatch composition: HelperProgram.ata + AccountReader.lamportsOf
+        // + AccountReader.readU64At). Projected saving: ~37K Solana CU
+        // per call (3 dispatches → 1).
+        return uint256(HelperProgram.user_balance(account, mint_id));
     }
 
     function transfer(address to, uint256 value) public virtual returns (bool) {
@@ -311,19 +292,24 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             );
         } else {
             // DELEGATE PATH (`transferFrom(from, to, v)`): caller is
-            // the SPL delegate set by a prior `approve()` (which calls
-            // `SplTokenLib.approve` to write `spender_pda` as delegate
-            // of `from`'s ATA). Use the 4-arg overload with explicit
-            // source/dest ATAs since `from != msg.sender` — the 3-arg
-            // overload would derive the spender's ATA as source,
-            // which is wrong. Signs as `external_auth(msg.sender)` =
-            // the delegate PDA. SPL Token accepts delegate-as-authority
-            // when `delegated_amount ≥ value`. Measured saving:
-            // −372K CU (−67%) vs legacy.
+            // the SPL delegate set by a prior `approve()` (which now
+            // writes external_auth(spender) as delegate via the new
+            // approve_spl selector). Use the addr-keyed 4-arg overload
+            // — Rust internally derives src_ata = ata(external_auth(from),
+            // mint) and dst_ata = ata(external_auth(to), mint). Signs as
+            // external_auth(msg.sender) = the delegate PDA. SPL Token
+            // accepts delegate-as-authority when delegated_amount ≥ value.
+            // Replaces the prior bytes32-ATA variant (0x766b362a) —
+            // selectors are distinct; this is 0xe479df56. Eliminates
+            // Solidity-side ATA derivation via get_token_account.
+            // Reference `to_account` so the compiler doesn't warn —
+            // ensure_token_account(to) above still creates the ATA when
+            // missing; the precompile re-derives but won't create.
+            to_account;
             (success, result) = address(HelperProgram).delegatecall(
                 abi.encodeWithSignature(
-                    "transfer_spl(bytes32,bytes32,uint64,bytes32)",
-                    get_token_account(from), to_account, uint64(value), mint_id
+                    "transfer_spl(address,address,uint64,bytes32)",
+                    from, to, uint64(value), mint_id
                 )
             );
         }
@@ -334,67 +320,28 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     }
 
     function allowance(address owner, address spender) public view virtual returns (uint256) {
-        // FB-2a: derive the spender's unified PDA directly via the
-        // global precompile instead of `_users.get_user(spender)`,
-        // which reverted "User does not exist" when the spender had
-        // never been registered in this wrapper's ERC20Users mapping.
-        // Both paths compute `find_program_address([EXTERNAL_AUTHORITY,
-        // spender], rome_evm)` — byte-identical result. The mapping is
-        // still needed by `approve()` (which calls `ensure_user` to
-        // record the EVM addr) but a read-only `allowance()` consumer
-        // (DEX router probe, wallet UI) must not require any prior
-        // wrapper-side registration of the spender. ERC-20 spec: the
-        // allowance of any unapproved pair is 0, NEVER a revert.
-        bytes32 spenderUser = HelperProgram.pda(spender);
-        bytes32 ata = get_token_account(owner);
-
-        // FB-2b: gate the data read behind a lamports existence probe.
-        // When the owner's ATA is uninitialized — fresh user, never
-        // received this token — the underlying buffer is 0 bytes and
-        // `account_data_at(ata, 72, 36)` reverts
-        //   "account_data_at: range 72..108 out of 0 bytes"
-        // forcing every wallet / router / multicall probe to wrap
-        // `allowance()` in try/catch. Same symmetric pattern as
-        // `balanceOf`: no ATA → no balance → no delegate possible → 0.
-        if (AccountReader.lamportsOf(ata) == 0) {
-            return 0;
-        }
-
-        // SPL TokenAccount delegate is `COption<Pubkey>` at offset 72:
-        //   72..75 tag (u32 LE; 0 = None, 1 = Some)
-        //   76..107 pubkey (only valid when tag=1)
-        // delegated_amount is `u64 LE` at offset 121.
-        //
-        // `account_data_at(ata, 72, 36)` reads exactly the 36-byte COption
-        // slice (skipping the unrelated mint/owner/amount/state/is_native
-        // fields that `account_info` would also marshal). Decode via the
-        // existing Convert.read_coption_bytes32 helper.
-        bytes memory delegateOption = AccountReader.readBytesAt(ata, 72, 36);
-        Convert.COptionBytes32 memory parsed;
-        (parsed,) = Convert.read_coption_bytes32(delegateOption, 0);
-        bytes32 delegate = parsed.is_some ? parsed.value : bytes32(0);
-
-        if (delegate != spenderUser) {
-            return uint256(0);
-        }
-
-        // Read the u64 delegated_amount at offset 121 directly.
-        // Sentinel: if storage saturated at u64::MAX, surface as type(uint256).max
-        // so wallets that use MaxUint256 as the "infinite approval" sentinel keep
-        // working — see approve() below.
-        uint64 delegated = AccountReader.readU64At(ata, 121);
+        // Single CrossStateEthCall via HelperProgram.allowance_of. Reads
+        // owner-ATA's delegated_amount IFF on-chain delegate ==
+        // external_auth(spender) (HARD REQ enforced inside Rust — see
+        // 2026-05-16 spec). Returns 0 otherwise — covers fresh user (no
+        // ATA), unapproved spender (no delegate or wrong delegate), and
+        // expired allowance. Collapses 5 v1 dispatches into 1. Projected
+        // saving: ~37K Solana CU per call.
+        uint64 delegated = HelperProgram.allowance_of(owner, spender, mint_id);
+        // Saturation sentinel: u64::MAX storage → uint256::MAX readback.
+        // Pairs with the saturation cap inside approve() so wallets that
+        // probe `if allowance == MaxUint256` (infinite-approval sentinel)
+        // keep working.
         return delegated == type(uint64).max ? type(uint256).max : uint256(delegated);
     }
 
     function approve(address spender, uint256 value) public virtual returns (bool) {
-        // ensure_user on both sides — both owner AND spender need
-        // ERC20Users entries (the SPL approve sets the spender's unified
-        // PDA as delegate, and transferFrom signs as that PDA). Without
-        // auto-register, contract spenders (DEX routers, paymasters)
-        // can never be approved-to since they don't go through any
-        // user-initiated activation flow themselves.
-        bytes32 ownerUser = _users.ensure_user(msg.sender);
-        bytes32 spenderUser = _users.ensure_user(spender);
+        // Register owner in ERC20Users mapping (mapping-side-effect for
+        // any consumers still reading _users). Spender registration is no
+        // longer required — allowance_of uses external_auth(spender)
+        // directly and the new approve_spl selector signs as the caller's
+        // PDA without needing the spender's mapping entry.
+        _users.ensure_user(msg.sender);
 
         // SPL Token stores delegated_amount as u64 on-chain; we cannot
         // expand the storage layer. Saturate when the caller's value
@@ -406,25 +353,18 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
             ? type(uint64).max
             : uint64(value);
 
-        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data) =
-        SplTokenLib.approve(
-            SplTokenLib.SPL_TOKEN_PROGRAM,
-            get_token_account(msg.sender),
-            spenderUser,
-            ownerUser,
-            new bytes32[](0),
-            storedAmount
-        );
-
-        // Only the owner's unified user PDA signs — auto-detected from metas.
-        // No salt-derived signer → use `invoke`.
-        (bool success, bytes memory result) = address(cpi_program).delegatecall(
+        // Migration to HelperProgram.approve_spl — moves SPL Approve ix
+        // marshaling from Solidity (SplTokenLib.approve + raw invoke,
+        // ~150-200K CU of EVM bytecode) into Rust (~5-10K CU). Signs
+        // as external_auth(msg.sender) which IS the owner of the source
+        // ATA. SPL Token runtime stores external_auth(spender) as the
+        // delegate; allowance_of compares against the same derivation.
+        (bool success, bytes memory result) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
-                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
-                program_id, accounts, data
+                "approve_spl(address,uint64,bytes32)",
+                spender, storedAmount, mint_id
             )
         );
-
         require(success, string(Convert.revert_msg(result)));
 
         // Emit the effective approval — when storage saturates at u64::MAX
@@ -654,33 +594,32 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     function mint_to(address to, uint256 value) public virtual returns (bool) {
         require(value <= type(uint64).max, "Mint amount exceeds uint64");
 
-        bytes32 user = _users.ensure_user(msg.sender);
-        // Mint to a fresh address: ensure the recipient's PDA-owned
-        // ATA exists before the SPL mint_to_checked CPI. Same
-        // idempotent pattern as `_transfer` above — no-op when the
-        // ATA already exists.
-        bytes32 to_account = ensure_token_account(to);
-        (bytes32 program_id, ICrossProgramInvocation.AccountMeta[] memory accounts, bytes memory data)
-            = SplTokenLib.mint_to_checked(
-            SplTokenLib.SPL_TOKEN_PROGRAM,
-            mint_id,
-            to_account,
-            user,
-            new bytes32[](0),
-            uint64(value),
-            decimals
-        );
+        // Register caller (mint authority) in ERC20Users mapping for any
+        // consumers still reading _users. The new selector signs as
+        // external_auth(msg.sender) — SPL Token runtime enforces that
+        // this PDA is the on-chain mint authority.
+        _users.ensure_user(msg.sender);
 
-        // mint_to_checked signs as the mint authority's unified user PDA —
-        // auto-detected from metas. No salt-derived signer → use `invoke`.
-        (bool success, bytes memory result) = address(cpi_program).delegatecall(
+        // Mint to a fresh address: ensure the recipient's PDA-owned
+        // ATA exists before the SPL mint_to_checked CPI. New mint_spl
+        // selector assumes the ATA exists — same as legacy. Idempotent
+        // on repeat (lamports != 0 fast-path).
+        ensure_token_account(to);
+
+        // Migration to HelperProgram.mint_spl — moves SPL MintTo ix
+        // marshaling from Solidity (SplTokenLib.mint_to_checked + raw
+        // invoke) into Rust. Signs as external_auth(msg.sender); SPL
+        // runtime enforces caller-PDA == on-chain mint authority.
+        // Projected saving: ~150-200K CU per call (matches transfer_spl
+        // migration which measured -372K CU on Hadrian).
+        (bool success, bytes memory result) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
-                "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
-                program_id, accounts, data
+                "mint_spl(address,uint64,bytes32)",
+                to, uint64(value), mint_id
             )
         );
+        require(success, string(Convert.revert_msg(result)));
 
-        require (success, string(Convert.revert_msg(result)));
         emit Transfer(address(0), to, value);
         return true;
     }

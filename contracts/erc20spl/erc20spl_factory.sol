@@ -5,7 +5,7 @@ import "./erc20spl.sol";
 import {MplTokenMetadataLib} from "../mpl_token_metadata/lib.sol";
 import {SplTokenLib} from "../spl_token/spl_token.sol";
 import {SystemProgramLib} from "../system_program/system_program.sol";
-import {ICrossProgramInvocation, ISystemProgram, SystemProgram} from "../interface.sol";
+import {ICrossProgramInvocation, ISystemProgram, SystemProgram, HelperProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {Convert} from "../convert.sol";
 
@@ -130,7 +130,14 @@ contract ERC20SPLFactory {
      * @return (bytes32 mint) Address of the created SPL Token mint.
      */
     function create_token_mint() external returns (bytes32) {
-        bytes32 user = users.get_user(msg.sender);
+        // Direct PDA derivation — was `users.get_user(msg.sender)` which
+        // reverted "User does not exist" pre-registration. The new path
+        // derives external_auth(msg.sender) without the mapping lookup
+        // (HelperProgram.pda has been the canonical derivation since
+        // 2026-05-12). Behavior equivalence: same returned address;
+        // runtime still catches a fund-less PDA when create_account CPI
+        // executes (Solana System Program rejects insufficient lamports).
+        bytes32 user = HelperProgram.pda(msg.sender);
         (bytes32 mint, bytes32 mintSeed) = get_current_mint(msg.sender);
         _assert_mint_account_missing(mint);
 
@@ -165,7 +172,9 @@ contract ERC20SPLFactory {
      * Initializes previously created mint account.
      */
     function init_token_mint(bytes32 mint) external {
-        bytes32 user = users.get_user(msg.sender);
+        // Direct PDA derivation — see create_token_mint above for the
+        // get_user migration rationale.
+        bytes32 user = HelperProgram.pda(msg.sender);
 
         (
             bytes32 tokenProgramId,
