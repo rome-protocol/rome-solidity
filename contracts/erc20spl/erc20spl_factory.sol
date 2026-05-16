@@ -8,6 +8,7 @@ import {SystemProgramLib} from "../system_program/system_program.sol";
 import {ICrossProgramInvocation, ISystemProgram, SystemProgram, HelperProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {Convert} from "../convert.sol";
+import {AccountReader} from "../cpi/AccountReader.sol";
 
 contract ERC20SPLFactory {
     uint8 public constant DEFAULT_DECIMALS = 9;
@@ -114,8 +115,10 @@ contract ERC20SPLFactory {
 
     function _assert_mint_account_missing(bytes32 mint) internal view {
         require(token_by_mint[mint] == address(0), "Token exists");
-        (uint64 lamports,,,,,) = ICrossProgramInvocation(cpi_program).account_info(mint);
-        if (lamports != 0) {
+        // Typed lamports-only probe via account_lamports (selector 0xde79ed54)
+        // — skips the full account_info 6-tuple decode + 82-byte data buffer.
+        // Saves ~15-30K CU per create_token_mint call (Agent 2/4 audit, 2026-05-16).
+        if (AccountReader.lamportsOf(mint) != 0) {
             revert MintAccountAlreadyExists(mint);
         }
     }
