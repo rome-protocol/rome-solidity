@@ -1,0 +1,670 @@
+{
+  "network": "hadrian",
+  "chainId": 200010,
+  "runAt": "2026-05-16T21:52:01.656Z",
+  "methodology": "submit production-contract tx -> rome_solanaTxForEvmTx -> Solana getTransaction -> meta.computeUnitsConsumed",
+  "deployer": "0x1f4946Be340F06c46A50E65084790968aBcc48F6",
+  "v1Addresses": {
+    "ERC20SPLFactory": "0x21cc267ff924aeca4de781db9b5bdf7a4c495e72",
+    "SPL_ERC20_USDC": "0x94AC3E5e998d72088045853C1CfB910F6CE90E56",
+    "SPL_ERC20_WETH": "0xcFc9D0A9ad8cd7bc7c2E44e98b4BE8C939c9E684",
+    "SPL_ERC20_WSOL": "0xEeC1F12206DCf2415313d3B380ae89faef230983",
+    "RomeBridgeWithdraw": "0xf48902e4a30f5d9b93dd0a9c0c0ab379ce37587c",
+    "RomeBridgePaymaster": "0xf83cc7f68c91deb0d1909d120753fd1c84f70a13",
+    "usdcMint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+    "wethMint": "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs",
+    "wsolMint": "So11111111111111111111111111111111111111112"
+  },
+  "v2Addresses": {
+    "ERC20SPLFactory": "0xfF96ab9E97062236ed7AA8B1C7DC4b53E72Dd14d",
+    "ERC20Users": "0x5cB546099f98922c8B96a914f57869A5Ea5e84f8",
+    "wBenchMint": "0x3cafbdbbf2bef4b190cb0beb22a329bf570b8af31b9e26d6cb129f5492bc584d",
+    "wBenchSalt": "0x4d494e540000000000000000ff96ab9e97062236ed7aa8b1c7dc4b53e72dd14d",
+    "SPL_ERC20_wBench": "0xD39EC36aadfe6ca262b9c2d7D1230414B3c49501",
+    "RomeBridgeWithdraw": "0xAa457897556Dd616Bc840EC0Fabe9B3198df8d38"
+  },
+  "results": [
+    {
+      "label": "[v1] SPL_ERC20.transfer",
+      "samples": [
+        {
+          "evmHash": "0xbf1819928064c4d388140ded4a01f0f2935198ff1ede306af5baa511df82d9df",
+          "sigs": [
+            "3Lvt5PkmHUCccAhAbV5FcrkHN4B55oPbXJaBV6NYeMmknBYe3AxDmqFqA4AfSj8tBQmHAWunWsLapAeARWyswxZv",
+            "pm8jFTt7VR4EYp7KiiSUAyeoignU2cQkfdpPEDFCzaXVwMMf7z3n8DRSks6kmE6fgBaTdrWEwHYxgXFZofE9Qsa"
+          ],
+          "perTx": [
+            10609,
+            249836
+          ],
+          "totalCu": 260445
+        },
+        {
+          "evmHash": "0xf7fac0d3aabaf20085ab536f287fedfda3681decf5d1ce025648512302112c90",
+          "sigs": [
+            "3QZzfzBLjrmGgZswdWtFCPqdXNC4DVxdH196og66Xe5dr1gP22ep2PMJMWNzcHQgeFhY8x3M5ZMFAGfF3DyUiqYf",
+            "2HnYKKEaNEHHw3XqJNAHjGpAxrQkNAHuqnMi5sH7pJ25c8CR7mzRJgbqPqin7fqgz3RQ3AKn6Quo3xtHS4SBisYN"
+          ],
+          "perTx": [
+            10609,
+            252804
+          ],
+          "totalCu": 263413
+        },
+        {
+          "evmHash": "0x1ee5f5e7f7f3b7a7505dcf56f4da7f6da0c2d1ca226618f1037f8f1d55579a5d",
+          "sigs": [
+            "5ufMvmdsQ6FRd3WMb4rzxCq2LEBJ8MHVREEeYabZKvsDp7xbLSQ8pYsJpg1Z64HLzL8v4PGPRJdcauLHF8GdJkTG",
+            "5RMn5YKB9yA2C1tsq6k5BmMBd2uqGbPP2cX4qGsoB2PPc5wG1p7cv6UMKwMp2DLEWuhvWW9nuSBmREhCfg6hq2b"
+          ],
+          "perTx": [
+            10609,
+            249828
+          ],
+          "totalCu": 260437
+        }
+      ],
+      "mean": 261432
+    },
+    {
+      "label": "[v2] SPL_ERC20.transfer",
+      "samples": [
+        {
+          "evmHash": "0x2f13269eeeb32f519132bf1170338b4e20982c8eb1a987b4b33b87b99bf5d369",
+          "sigs": [
+            "KjG9qzkwCNdXkEYu8NGR27pAqqcSBuQuSG32J7WW1nG4uMu8TwfgR7z4C7zDAPKQ6sJk6WKHYhFsVgqkHSd7PH7",
+            "4CHyVebYRctJb8zUKGbB2n4LdbAPQFVBHsXGrt4dL5GQxxam3Dd4b5urF7oY1eMuGcAkiu2cpMUWmuf4xAjXZgWM"
+          ],
+          "perTx": [
+            10609,
+            251128
+          ],
+          "totalCu": 261737
+        },
+        {
+          "evmHash": "0x8579e988e5c3cbcd45db8166d70da4801c2b8f007bbc129e1336bfd868efce3e",
+          "sigs": [
+            "4u7Pz2xqpYpCm1PFfzRb2NGGdykGuiLquBQNEGfDEgMYTA4XVCeKeYW4xt5kkwkEbryemPztCmNBPdDNDR6opdtQ",
+            "4xbGXA3dU2sHic6GvqqxGNTPY7ZnSyFZAy41P8NisLeNhBaVrFp8z5psT4ZjqGQa7KnJz54RZUXyuZdf3srf3shY"
+          ],
+          "perTx": [
+            10609,
+            252596
+          ],
+          "totalCu": 263205
+        },
+        {
+          "evmHash": "0x6d171222b3a09be78d68691824760ae708c747e2ba5fa9c9f5a0413dbd4273be",
+          "sigs": [
+            "45eFtGgkT1UoFrUzx2XdMCQZ7V6SVExddAxkojfDXjQYrj6PiK3TRq7XCSgZCn7YcLeEH3wHtzivwK5VHVMiBFG5",
+            "5MpKVREyLgUh2vah8yxjkSNS7Zmde4TrXDNNQQv3MNJor1irzgTjXHZrreAzFCuScc67CBWHhDjfPar3ZAp5b1g2"
+          ],
+          "perTx": [
+            10609,
+            252620
+          ],
+          "totalCu": 263229
+        }
+      ],
+      "mean": 262724
+    },
+    {
+      "label": "[v1] SPL_ERC20.approve",
+      "samples": [
+        {
+          "evmHash": "0xe9f6be1118c03868c1d37ac71a415a0d9cc4af774369209afbcb128da674bee0",
+          "sigs": [
+            "4iC6aLQo1v4FgYhWMePekrFAgT6NQYGoM1TFCLtQFmpm7ixwcUCg3duCggJ22kcjPCH6waKAiNk7qRTReweW4vdC",
+            "14qneGKghnZNV1BxCPWvP3jG8DK3UBQwCXmzvMKjKwnA3FfNLcUQY81u4ZxbXhHhypMnjRkM1FmvBjpKoRC33rf"
+          ],
+          "perTx": [
+            11171,
+            428488
+          ],
+          "totalCu": 439659
+        },
+        {
+          "evmHash": "0xfb56eb66e7c7814e97cabf7b7aa5f2e0b7fd7d7bbfd358e8d52daa3ef3a26b03",
+          "sigs": [
+            "4bxD4VVSM2MEtRsAueKY3ymbNUL162WDRZTKzpbrVE6UQHWgoL6ngALUDzpjYn6b47adXcKYkq6Bm3oyzi29DsZ5",
+            "eUuRgrfUEhASLztswKcAGPoazgPn75GP1LFoxxuGRyMPLAeN3xRU4tRFnxhG5r119MUrqGWGxvKDNrL7YQVcpTq"
+          ],
+          "perTx": [
+            11171,
+            391933
+          ],
+          "totalCu": 403104
+        },
+        {
+          "evmHash": "0x22cc496addfe733c475e392ef9fc4fcb4e90d9d0878df96874545710e4604e79",
+          "sigs": [
+            "294zHEERPvC4qJWNgxNs4iLPjjYS8AYuiYRzFFN8WTKRUBnj7p37Nt2oQLUCVsvuDxYTGdcpsb2SShdcrBMfp3Lz",
+            "5kojsBan5DH8A9kUwWvHkAZidhYMUaRwD9VHpo3mAc4hS4UXc8hcvTJ1ZgjQCaqiUpk6SpDcpBod9GXPEdDXLcrf"
+          ],
+          "perTx": [
+            10609,
+            388941
+          ],
+          "totalCu": 399550
+        }
+      ],
+      "mean": 414104
+    },
+    {
+      "label": "[v2] SPL_ERC20.approve",
+      "samples": [
+        {
+          "evmHash": "0x8fc1611bfad65aee8f642f6414943ac3029b5f23e05839f1dbf220d803513b66",
+          "sigs": [
+            "ehRZtnBz4NGzs5NjybmkYwJ5fH2Aoq216QXbUpomf8HJZUzf1YuZzdxJWgzW69s4ZeabR8VTKNyJZXT6RFQadrA",
+            "3cKAXpA8FugHvBzo7JgSYM7zrx4GnUjC3ZXz9oJZqr1AXBxn3o49P9irgLu4CDb5XA1RNwsY1hejGMxC2fNGuuj3"
+          ],
+          "perTx": [
+            10609,
+            202198
+          ],
+          "totalCu": 212807
+        },
+        {
+          "evmHash": "0x171f27b740ec53633de1436d17460fc971994fbd71383a94d33ad3e8184bde35",
+          "sigs": [
+            "2RRDV427wEQWEiJUPRcYquq2bXgqeytXVvsxuws36DrtsHFFAwNUWpc1ezT9cjBEZLr1pvmu1o6zp1k9pmjvrjwg",
+            "9YyRTF61LtyYE2vtxsiSSea7xjfj8eEF1gbnTuhY6dhKHwhkFsvY14xc2CHMDZyqRGyYFtsMjUA9VHmCR1zojg7"
+          ],
+          "perTx": [
+            11171,
+            199206
+          ],
+          "totalCu": 210377
+        },
+        {
+          "evmHash": "0x6ce8d64a08b74061141015303d83175cd76dea18f8cf5054e0b10404062a2878",
+          "sigs": [
+            "3FNqF1Z8jv8iiw4G6DJSdygnGzazbuVyFCBZmXRPZ7fp3GnKBQAVeUauaK2mi39twRN3y5tk7MCXKbrpqknoeuF2",
+            "5765mecSf6UkEPCdk6Z4F7mE8JVL2KC7gqihqngUiPUuuGfbHidPgyBBFdxADek2usP6xg5txGtJdhZ9BQ74NFTw"
+          ],
+          "perTx": [
+            10609,
+            202198
+          ],
+          "totalCu": 212807
+        }
+      ],
+      "mean": 211997
+    },
+    {
+      "label": "[v1] SPL_ERC20.transferFrom (self-allowance)",
+      "samples": [
+        {
+          "evmHash": "0xfe7ac2eaec5d848e32cc0a8110165f0067aeb2de7f359ff88bc6492668031320",
+          "sigs": [
+            "3Kz3UDCid1zBikUw6DiRSfaGxhKpPygx3vN5zkLvzHPTtgJVmuF7gRCRfyzyBv9H4fkyHMywHfS3eN1zgBptrXxc",
+            "3N59LE3ubZZ2qWUCZahimwcen5tmFoPjffCphmgJNpAncQiGxaak2Mp7iKDTcWrnUjRrqErEyx25DW612U3PHUuN"
+          ],
+          "perTx": [
+            11197,
+            246999
+          ],
+          "totalCu": 258196
+        },
+        {
+          "evmHash": "0xfc0b9485cf156545e67df9ca31865009ea44303045c6a079f377fa8b71e31943",
+          "sigs": [
+            "TtxgVgF9JURSamGMr6p2pJBqqED4zXM7hAeBsfFm2pPAjMWPhEkesNL4i8SdeHDPbByyxQMLZTbZJ9gCRbh5qeB",
+            "2E3iRVuG9RoGDFqFj8YmBe7DtKeUcn6nnFonoSSqS1oFmAY4K5UyBcRJTSDqKt2YW4xYF6VA8FqGJYAsnWgSsMb9"
+          ],
+          "perTx": [
+            11197,
+            248521
+          ],
+          "totalCu": 259718
+        },
+        {
+          "evmHash": "0xda2e5f2c2a8f10c5a0b805c46c889346b56ad4da43d01fae418abc7ee461bde5",
+          "sigs": [
+            "gQ8gebtRac8auiGSKiofPoYPJMkwZ2E3Yi5EwLJ4wbs8umobgGeHNPYiC89MzLLR1PLQsQZCpRpo7NAe1Yhy6FB",
+            "CsTGVWABPqyrJU5p1j2HdPKZ19aHrVNPB48KWjZE99xx2E891dgf5XNAEkW9NS5aE8mj88GepqAw5FsnMjN73SV"
+          ],
+          "perTx": [
+            10609,
+            245523
+          ],
+          "totalCu": 256132
+        }
+      ],
+      "mean": 258015
+    },
+    {
+      "label": "[v2] SPL_ERC20.transferFrom (self-allowance)",
+      "samples": [
+        {
+          "evmHash": "0xc135b06fe20161a0ae35754080f24fe17a2fa77a222c16375779cd20ff325132",
+          "sigs": [
+            "3Y1EYFzYFhqmngohiHmJ2a49cMb24oMDpqxPpWw8Cuwv2y1q29VoyRhCPGz1RopnJY9oKkVR2vkTn9yyQ111a7aF",
+            "62ECFsE3xoXqvZkFUXSbXxh16A9Wy6QXn2z5ftek2twKXCWqobscSnjNXzE7F6TzmA7bkCQcGt63LJcqN9ASmAhi"
+          ],
+          "perTx": [
+            11197,
+            249807
+          ],
+          "totalCu": 261004
+        },
+        {
+          "evmHash": "0x2daafa2b4633d8999cc51033e9bcbafc03b769e0b74b499d3fd24f3a1611192d",
+          "sigs": [
+            "46cT5114y4KVG5GgmrHCqBTSYPaeQ48EwQryPRC2ZHjhp8eZGty3cyb2MAc7UDEHAoPC5mRn4XsLGkvYnedTLT7d",
+            "3F6Ch5AMiyRcyg7YJq8K1GxKpGybnSNWFKv9dZgAF1QM2fgeicsfjLsAWGoKKAtW9r63S76X4bNSuZHScGFDZT87"
+          ],
+          "perTx": [
+            10609,
+            255815
+          ],
+          "totalCu": 266424
+        },
+        {
+          "evmHash": "0x99b2862d333360b5946aeab66cd067a33b082a915388970232c850d8be425703",
+          "sigs": [
+            "5S2JmD1xefnTDRtQpQEAsFjyoxcirnJ7rD7VQWTnCCMMtaSVFMLjoV6zjv6mW7Y1tNBtL3D1njex4mLJmbzavPRC",
+            "2Pi5b6wt6zHoDjkyiZnrZJGN5WNqjugfmndvgsYMv1aimRecizAzk1Ukcz1hBBNnGWeV9UX9ApQb7TV5bLT66RRT"
+          ],
+          "perTx": [
+            11197,
+            251315
+          ],
+          "totalCu": 262512
+        }
+      ],
+      "mean": 263313
+    },
+    {
+      "label": "[v1] SPL_ERC20.bridgeOutToSolana",
+      "samples": [
+        {
+          "evmHash": "0xdd6a09a4c28312e7b2eb170ba1e399379e1d460c0e36397d35264f2c398319b5",
+          "sigs": [
+            "4qs6RzhJCxmR3awKaRPWyoUj39K1dtno3kS1pNrygopWGLScjxKQb4ZTkyNjYmWZwhCnBgckkStFpEpSYE7mFxg5",
+            "4csGky8YUT3ULmkev2QUkeN7UfY4VLdkpEkNUUvXfJpRytHhaF6qVGLcnc5GBTZ7SRcgDxyDsMj4iMG3GBJHHi63"
+          ],
+          "perTx": [
+            11171,
+            570722
+          ],
+          "totalCu": 581893
+        },
+        {
+          "evmHash": "0x496c4671f270217fa1c18ec4cae5e00b47a37028bc4eab3be7d8be18969c2a73",
+          "sigs": [
+            "4awYUJgezf8BFqFYzv21JaE2uLr5wfSA1CdXgUr3xLZnAHNdFEnwBoTCh1po8iFraxcQVuzfE5Uukq1YKY2CGSr8",
+            "4r8v386yPwmz1r3jxzrhjKFGv1PVJWhvqnisHGhPmKY65iBg7vy9tktS6VHoiq5ZwKJYyFgKGx3nz5KNdyTXFusN"
+          ],
+          "perTx": [
+            11171,
+            570730
+          ],
+          "totalCu": 581901
+        },
+        {
+          "evmHash": "0x5ebb2c060e3e660e29608329aa4cf34f91d266171df29ae9a176d598e3029fdb",
+          "sigs": [
+            "2wiVxZKefmsCNiZfA8sKypJ1bgKiNNFmB8imtQkPsDXGYwbhUE24sA56ardyUtYqu2nxZMRyk1jhfTYUY7h6UXZ2",
+            "2QttrfmDHstdatvMdSvQLv8TAjfREcF25X59j3h9YND73rHvwxp237UrmRpKeKHKGkpPUGkojMP9uywGQcu6nVEA"
+          ],
+          "perTx": [
+            11197,
+            572230
+          ],
+          "totalCu": 583427
+        }
+      ],
+      "mean": 582407
+    },
+    {
+      "label": "[v2] SPL_ERC20.bridgeOutToSolana",
+      "samples": [
+        {
+          "evmHash": "0xf9820a6bc43bf3cd0282713335d8ab3e36b0b1e99972a68098426dc8e2ee8980",
+          "sigs": [
+            "3cBwJP8tjyWCwV4QP6staxj8pVjj6VyLFbSimwG4v9FfYFmCiAjK4waK2LzhiuKmKJEXyxhKKs1WBbVXcaRUwa7c",
+            "pMmMXpBZEks5Ekzq43oKpJUoxTueerD2umUXZqhdAvx3x61dLZQEBxngqR8gwaKVpYNxASSYCwvoZXk9ynPHpo4"
+          ],
+          "perTx": [
+            10609,
+            341846
+          ],
+          "totalCu": 352455
+        },
+        {
+          "evmHash": "0xa7a611ded80514ef6cd07ffed42177443b6e78de10333b58a82133afa14c449d",
+          "sigs": [
+            "5no2FcL5o5ZKiz9q22Ykm9AyUPaxvHqQqR69fa22BryG5kYhaLTWbAWKcAgySuDz3YhcS4n8H1hdXYhzjPFa6K75",
+            "4brtBZYteL3bXUsXGKSBnQUCXbC5QTGhgPZ8ZErgUQpujXtL9XUb6H1C3yCLuxHxERdXZxNnZn5TuhxHkjhtU2xD"
+          ],
+          "perTx": [
+            10609,
+            340362
+          ],
+          "totalCu": 350971
+        },
+        {
+          "evmHash": "0x765babe2c706aff2c1847fcd875362caf1f871179540eaf937b733a34bb4f89e",
+          "sigs": [
+            "3WVza6VVEKfDxweCxosAQyZx3QBUGBxLnHLPDmgt2XTX66jQetWiNc2nPb1gnhmfaw5Cd9XUeBfSWwFxejeH8CB7",
+            "4fVPtMFcP88NPEamSvAP8PFtf7G3Jmo4TZrkXsPCRBzqg6jgEnXMbht9tDa2A3CkQgQQzEaLBUHFPFZyBUhMgJ7j"
+          ],
+          "perTx": [
+            10609,
+            341870
+          ],
+          "totalCu": 352479
+        }
+      ],
+      "mean": 351968
+    },
+    {
+      "label": "[v1] RomeBridgeWithdraw.approveBurnETH",
+      "samples": [
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000004453696d75"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000004453696d75"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000004453696d75"
+        }
+      ],
+      "mean": "n/a"
+    },
+    {
+      "label": "[v2] RomeBridgeWithdraw.approveBurnETH",
+      "samples": [
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000004453696d75"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000004453696d75"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000004453696d75"
+        }
+      ],
+      "mean": "n/a"
+    },
+    {
+      "label": "[v1] RomeBridgeWithdraw.burnETH",
+      "samples": [
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000004453696d75"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000004453696d75"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000004453696d75"
+        }
+      ],
+      "mean": "n/a"
+    },
+    {
+      "label": "[v2] RomeBridgeWithdraw.burnETH",
+      "samples": [
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000004453696d75"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000004453696d75"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": 3, \"data\": \"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000004453696d75"
+        }
+      ],
+      "mean": "n/a"
+    },
+    {
+      "label": "[v1] RomeBridgeWithdraw.burnUSDC",
+      "samples": [
+        {
+          "evmHash": "0x157a97c9bfdce1887890eeb817a0d2992a20165e620be811820122b2e321e4cd",
+          "sigs": [
+            "bMANtiyu96hs54AXt4vM7sZss15dmx4yrpYLFhzmfmyDiunoDZ4vH37HvfQRuJ9JTH5sVKLLiVHd6wvkrwscDnC",
+            "3Yx4SAByMnXwtqo5Q3g2TmfmUZX44qswa4htiN739htgRqxXo4RDr2yXXc68FJd6ynfU3Zt2qMYs4p1mdDQJNpau"
+          ],
+          "perTx": [
+            10609,
+            949280
+          ],
+          "totalCu": 959889
+        },
+        {
+          "evmHash": "0x1e1dc42ad54bb0d8c813ec35f6f98ac3538462b9e6e298412bf2a0bf5f3d234e",
+          "sigs": [
+            "2cRavasMU854JUiwhNpgXJeMru3RRVgnVPm9LLK2kwDmTx8sJnBtMR5uAbLkDfYEmC7WWurSP9ZNLVH3usxi4jre",
+            "2vJmxecefabEFdxys5jVgrc6Xs5E3cP3Xx1EsvKmezFNCBTY3CviU99C1npuajwcW6g8ufSuXX9qcUCF5MPFA2Sw"
+          ],
+          "perTx": [
+            10609,
+            938413
+          ],
+          "totalCu": 949022
+        },
+        {
+          "evmHash": "0x4cfb7f29a7728fdedeaef3aff327b0a6dde44254f884c39319c6b08461fcfdba",
+          "sigs": [
+            "43Somh33Vz4k6u2JyKoSMt7zRhqMYAxwppC9zuBsSy6WBtnkY9Fe2dgNduitgSchpfHGhLg4x2QSTYuHcscvanV7",
+            "2znWarkqqr2EC6ZhG7W4Lr8d5bF44Mq4AVnYxFUqrKQfGa9RLuA6NfJJWYuWkv3XE95sQaTXuXPGrhH6M9RAXsfZ"
+          ],
+          "perTx": [
+            10609,
+            938405
+          ],
+          "totalCu": 949014
+        }
+      ],
+      "mean": 952642
+    },
+    {
+      "label": "[v2] RomeBridgeWithdraw.burnUSDC",
+      "samples": [
+        {
+          "evmHash": "0xc0e2686a2e064e55e5eacf8be41e0b41283476e7696fcedaa3e5d3ee840a3e76",
+          "sigs": [
+            "3Z6FEqhwTqu2wUHeZWC42RMNnnjuwMZ6HAuyGJhVEf6U7XHyJULw7hrFvMWFv3KVngQtqPwDJ4Jnq9Hs26TJZRaV",
+            "5FKnZ4d2yXWf6A5nLwLGj3Hon4ezqsCij1WSbK89TQwz3j1bhkAWvG8N6raG5dZ4ttNBn3SjXrSPm6BFb8RCEQwN"
+          ],
+          "perTx": [
+            10609,
+            796254
+          ],
+          "totalCu": 806863
+        },
+        {
+          "evmHash": "0xdb17dc2daebe8d1f39601a1d212b6c0e0d74e539bd2663c0846a3fb928868c08",
+          "sigs": [
+            "4xhgnPwzLDepB8x2eybbjqrMV5Mm5tVEqtLu4BWfN8BP2c545AQCL6w7howL4rcURPb5SnyZ3h9VJ3ZegSSaywAp",
+            "ve1DMDve6MD9TL1quU7aTqM9wtkRD4EQR4MxX99ZTyqXoLuFjte95NsV4Nh8T2M3UFtYQuzXZSK3JZZZ25b4E9E"
+          ],
+          "perTx": [
+            10609,
+            789844
+          ],
+          "totalCu": 800453
+        },
+        {
+          "evmHash": "0x14d183056d0cea71f0b087dcb87d5143fc03ec3763d901d1db062bd0028f8161",
+          "sigs": [
+            "4yMFYVbDT1ZSLNoaLB3vRHUmMGDTTnwJWC2RGPmKVMyEvYST1zabXGuWozfvqCofhbtk4LnoXH5Lsoyz4tZa3MjR",
+            "1C35LbipVniUfLsEtycGhEZaHHFqjFnQGFb57ePyT4EFegTxe8oUFRsXL8LfMVu3pgMvbhius69ghFpH1BL3rZf"
+          ],
+          "perTx": [
+            10609,
+            780986
+          ],
+          "totalCu": 791595
+        }
+      ],
+      "mean": 799637
+    },
+    {
+      "label": "[v1] ERC20SPLFactory.create_token_mint",
+      "samples": [
+        {
+          "evmHash": "0x3bd09d25223419f066600e93c0c1b772e9be43a4cf2c42ab280d40a2222a7342",
+          "sigs": [
+            "LLFq4FJcMXXJPn5xsjniAKcpt1GRiiLGTPbrH4seweiSuYntPi8Bo1xFYu4o6kzzdE6oqA7GT1rb1w8ktgS9BYe"
+          ],
+          "perTx": [
+            463817
+          ],
+          "totalCu": 463817
+        },
+        {
+          "evmHash": "0x635f42c7c29717dd6892d2482b3019db2fca3ef461228c6dcd64734e6a7168c0",
+          "sigs": [
+            "5Fy5MtALaxJtMwYA3KU8fwPqgQvDcX9UR1zfVQJ9Dw9xGdCd1UEpHHUPStY2XSrRoBsfYd2rmCv8nNV7BSen6Aty"
+          ],
+          "perTx": [
+            456347
+          ],
+          "totalCu": 456347
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 897, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf86f82022185025ff7a6008401312d009421cc267ff"
+        }
+      ],
+      "mean": 460082
+    },
+    {
+      "label": "[v2] ERC20SPLFactory.create_token_mint",
+      "samples": [
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 907, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf86f82022185025ff7a6008401312d0094ff96ab9e9"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 917, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf86f82022185025ff7a6008401312d0094ff96ab9e9"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 927, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf86f82022185025ff7a6008401312d0094ff96ab9e9"
+        }
+      ],
+      "mean": "n/a"
+    },
+    {
+      "label": "[v1] ERC20SPLFactory.init_token_mint",
+      "samples": [
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 939, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf86f82022185025ff7a6008401312d009421cc267ff"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 951, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf86f82022185025ff7a6008401312d009421cc267ff"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 963, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf86f82022185025ff7a6008401312d009421cc267ff"
+        }
+      ],
+      "mean": "n/a"
+    },
+    {
+      "label": "[v2] ERC20SPLFactory.init_token_mint",
+      "samples": [
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 975, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf86f82022185025ff7a6008401312d0094ff96ab9e9"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 987, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf86f82022185025ff7a6008401312d0094ff96ab9e9"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 999, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf86f82022185025ff7a6008401312d0094ff96ab9e9"
+        }
+      ],
+      "mean": "n/a"
+    }
+  ]
+}

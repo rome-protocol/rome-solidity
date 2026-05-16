@@ -1,0 +1,25 @@
+{
+  "network": "hadrian",
+  "chainId": 200010,
+  "deployedAt": "2026-05-16T21:23:48.550Z",
+  "deployer": "0x1f4946Be340F06c46A50E65084790968aBcc48F6",
+  "v1": {
+    "ERC20SPLFactory": "0x21cc267ff924aeca4de781db9b5bdf7a4c495e72",
+    "SPL_ERC20_USDC": "0x94AC3E5e998d72088045853C1CfB910F6CE90E56",
+    "SPL_ERC20_WETH": "0xcFc9D0A9ad8cd7bc7c2E44e98b4BE8C939c9E684",
+    "SPL_ERC20_WSOL": "0xEeC1F12206DCf2415313d3B380ae89faef230983",
+    "RomeBridgeWithdraw": "0xf48902e4a30f5d9b93dd0a9c0c0ab379ce37587c",
+    "RomeBridgePaymaster": "0xf83cc7f68c91deb0d1909d120753fd1c84f70a13",
+    "usdcMint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+    "wethMint": "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs",
+    "wsolMint": "So11111111111111111111111111111111111111112"
+  },
+  "v2": {
+    "ERC20SPLFactory": "0xfF96ab9E97062236ed7AA8B1C7DC4b53E72Dd14d",
+    "ERC20Users": "0x5cB546099f98922c8B96a914f57869A5Ea5e84f8",
+    "wBenchMint": "0x3cafbdbbf2bef4b190cb0beb22a329bf570b8af31b9e26d6cb129f5492bc584d",
+    "wBenchSalt": "0x4d494e540000000000000000ff96ab9e97062236ed7aa8b1c7dc4b53e72dd14d",
+    "SPL_ERC20_wBench": "0xD39EC36aadfe6ca262b9c2d7D1230414B3c49501",
+    "RomeBridgeWithdraw": "0xAa457897556Dd616Bc840EC0Fabe9B3198df8d38"
+  }
+}
