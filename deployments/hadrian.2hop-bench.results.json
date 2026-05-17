@@ -1,0 +1,27 @@
+{
+  "network": "hadrian",
+  "chainId": 200010,
+  "runAt": "2026-05-17T05:13:50.342Z",
+  "route": "wBench → wUSDC → MOCK",
+  "pair1": "0x45350dF36fA7334C2E267598Af8fC136e4982A9E",
+  "pair2": "0x9FB2471A400CA670F5459829b622A2f4d4824642",
+  "directContract": "0xEb21d5F7a6533dB4fd16d9FB8fFf77Ed1612490B",
+  "mean": 0,
+  "samples": [
+    {
+      "evmHash": "0x",
+      "totalCu": 0,
+      "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 156, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf9019182024e85025ff7a6008404c4b40094eb21d5f7a6533db4fd16d9fb8fff77ed1612490b80b90124831621670"
+    },
+    {
+      "evmHash": "0x",
+      "totalCu": 0,
+      "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 170, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf9019182024e85025ff7a6008404c4b40094eb21d5f7a6533db4fd16d9fb8fff77ed1612490b80b90124831621670"
+    },
+    {
+      "evmHash": "0x",
+      "totalCu": 0,
+      "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 184, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf9019182024e85025ff7a6008404c4b40094eb21d5f7a6533db4fd16d9fb8fff77ed1612490b80b90124831621670"
+    }
+  ]
+}

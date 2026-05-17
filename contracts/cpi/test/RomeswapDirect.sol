@@ -61,4 +61,24 @@ contract RomeswapDirect {
         IERC20Minimal(pair).transferFrom(msg.sender, pair, lpAmt);
         (amount0, amount1) = IUniswapV2PairMinimal(pair).burn(to);
     }
+
+    /// @notice 1-tx 2-hop swap. Pulls amtIn of tokenIn into pair1, swaps
+    ///         pair1 → pair2 (intermediate token sent directly between pairs),
+    ///         then pair2 sends final output to `to`. Caller pre-computes
+    ///         all four output amounts off-chain.
+    function swap2Hop(
+        address tokenIn,
+        address pair1,
+        address pair2,
+        uint256 amtIn,
+        uint256 amount0OutPair1,
+        uint256 amount1OutPair1,
+        uint256 amount0OutPair2,
+        uint256 amount1OutPair2,
+        address to
+    ) external {
+        IERC20Minimal(tokenIn).transferFrom(msg.sender, pair1, amtIn);
+        IUniswapV2PairMinimal(pair1).swap(amount0OutPair1, amount1OutPair1, pair2, "");
+        IUniswapV2PairMinimal(pair2).swap(amount0OutPair2, amount1OutPair2, to, "");
+    }
 }
