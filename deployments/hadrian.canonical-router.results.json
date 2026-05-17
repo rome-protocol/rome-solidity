@@ -1,0 +1,159 @@
+{
+  "network": "hadrian",
+  "chainId": 200010,
+  "runAt": "2026-05-17T07:13:47.497Z",
+  "router": "0xB342f70D56855F11B0721FcBE2804A200d0F0533",
+  "deployer": "0x1f4946Be340F06c46A50E65084790968aBcc48F6",
+  "results": [
+    {
+      "label": "[canonical] router.swapExactTokensForTokens single-hop (wUSDC→wBench)",
+      "samples": [
+        {
+          "evmHash": "0x5e0010542fcb5a8c652f66c04a2c0ecbb976a3402021b4190d1285089927b610",
+          "sigs": [
+            "47yxsEwnTAXHq7GYpSYgvS4NYr7suUhn4MSvZ7UpAhW8yEsMZKVJeUNSwYvDJ7eW4WRrSd26YrgiRBhGvS3sJLob",
+            "2CW2YbbPyXBXaV2ssfm1uXdkWdJmgND2GU2yKQ7j6uCxd4tmaME5624528Cc6ZktJNCVSFCoEjQbnaAQDA56Bs71"
+          ],
+          "perTx": [
+            10609,
+            1092440
+          ],
+          "totalCu": 1103049
+        },
+        {
+          "evmHash": "0x32b78e5c51c0f2335a1d6a4eef9757f7ee175e7901d5485fdf24efa9ee0053d7",
+          "sigs": [
+            "3mjhaMomkbapASZ9QRMYjfsBu6Hro1yduUgMZFqiyLkY4jk8Y7oTApfTYHgjACQRuAgY1tYmm7B5giUvhtbuYawF",
+            "5NrVvVvLaxuUb7yquM8ZuieEyZzqLzPgLEezmnN4Qa6MQjRtsXALF1h7SgFzmiscVYdFcxd98ptPSox6biFmDXFB"
+          ],
+          "perTx": [
+            10609,
+            1089440
+          ],
+          "totalCu": 1100049
+        },
+        {
+          "evmHash": "0x52d5f45e02b48e9dd78402756c8e378051052efed196eeadbd3bcbe0354ddc9a",
+          "sigs": [
+            "5jfVSb8pUMW1SgT9QjoQ1hDiY8VQNMWnyE4SGFrtHR4Q8WWVLnYFqqYRZpHZ5UyWvE8TfxGS1vGTWSX1kF6fkcSy",
+            "NTrE6SZ8dARvUTK9aRX3HBFJArg3N4HJQikFkShmUcA5WBvLM9Rv15HQbFxAfn3WUagNhoRWLVn6LyfQfZrVqbV"
+          ],
+          "perTx": [
+            10609,
+            1089424
+          ],
+          "totalCu": 1100033
+        }
+      ],
+      "mean": 1101044
+    },
+    {
+      "label": "[canonical] router.swapExactTokensForTokens 2-hop (wBench→wUSDC→MOCK)",
+      "samples": [
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 104, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf9019182025b85025ff7a6008402faf08094b342f70d56855f11b0721fcbe28"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 116, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf9019182025b85025ff7a6008402faf08094b342f70d56855f11b0721fcbe28"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 128, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf9019182025b85025ff7a6008402faf08094b342f70d56855f11b0721fcbe28"
+        }
+      ],
+      "mean": "n/a"
+    },
+    {
+      "label": "[canonical] router.addLiquidity (wUSDC × wBench)",
+      "samples": [
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 138, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf9017182025b85025ff7a6008404c4b40094b342f70d56855f11b0721fcbe28"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 148, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf9017182025b85025ff7a6008404c4b40094b342f70d56855f11b0721fcbe28"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 158, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf9017182025b85025ff7a6008404c4b40094b342f70d56855f11b0721fcbe28"
+        }
+      ],
+      "mean": "n/a"
+    },
+    {
+      "label": "[canonical] router.removeLiquidity (assumes LP pre-approved)",
+      "samples": [
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 170, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf9015082025b85025ff7a6008402faf08094b342f70d56855f11b0721fcbe28"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 182, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf9015082025b85025ff7a6008402faf08094b342f70d56855f11b0721fcbe28"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 194, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf9015082025b85025ff7a6008402faf08094b342f70d56855f11b0721fcbe28"
+        }
+      ],
+      "mean": "n/a"
+    },
+    {
+      "label": "[canonical] router.removeLiquidityWithPermit (1-tx with LP permit signature)",
+      "samples": [
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 209, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf901d182025b85025ff7a6008402faf08094b342f70d56855f11b0721fcbe28"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 224, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf901d182025b85025ff7a6008402faf08094b342f70d56855f11b0721fcbe28"
+        },
+        {
+          "evmHash": "0x",
+          "sigs": [],
+          "perTx": [],
+          "totalCu": 0,
+          "error": "could not coalesce error (error={ \"code\": -32000, \"message\": \"\" }, payload={ \"id\": 239, \"jsonrpc\": \"2.0\", \"method\": \"eth_sendRawTransaction\", \"params\": [ \"0xf901d182025b85025ff7a6008402faf08094b342f70d56855f11b0721fcbe28"
+        }
+      ],
+      "mean": "n/a"
+    }
+  ]
+}
