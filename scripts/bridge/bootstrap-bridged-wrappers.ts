@@ -48,7 +48,7 @@ const MAINNET_SET: WrapperSpec[] = [
 // SPL_MINTS_MAINNET. Update this list whenever a new chain is brought up.
 // Override via `BRIDGED_SET=devnet|mainnet` env var for one-off cases.
 const DEVNET_NETWORKS = new Set([
-  "marcus", "cassius", "subura", "esquiline", "aventine", "maximus", "augustus", "local",
+  "marcus", "cassius", "subura", "esquiline", "aventine", "maximus", "augustus", "hadrian", "local",
 ]);
 
 function resolveSet(networkName: string): WrapperSpec[] {
