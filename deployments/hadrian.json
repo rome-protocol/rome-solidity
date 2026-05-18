@@ -54,5 +54,8 @@
         }
       ]
     }
+  },
+  "MeteoraDAMMv1Factory": {
+    "address": "0xa3a4a27567f12133f3fe90c11403518c922de185"
   }
 }
