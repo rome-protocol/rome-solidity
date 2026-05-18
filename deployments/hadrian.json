@@ -89,5 +89,13 @@
   "RomeBridgeWithdraw": {
     "address": "0x5dbe5e8b3697516637cc967b428b0d903c93bb43",
     "deployedAt": 1779081505
+  },
+  "SimpleActivator": {
+    "address": "0x6f09def2c283fa5c10616ca440846760ae6e4382",
+    "activationCostWei": "2000000000000000000",
+    "usdcWrapper": "0x9fD4D58dbB041CaFF77d323d2410c16DE339eB18",
+    "wsolWrapper": "0x28E7c064E734cB3edeA65A98927c1c20581c8934",
+    "users": "0x46066102B8E848d67Cf5f96212B92C8A24b51d8b",
+    "deployedAt": 1779082242
   }
 }
