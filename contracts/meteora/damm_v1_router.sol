@@ -6,6 +6,7 @@ import {DAMMv1Lib, DAMMv1Pool, ERC20DAMMv1Pool} from "./damm_v1_pool.sol";
 import {SPL_ERC20} from "../erc20spl/erc20spl.sol";
 import {Convert} from "../convert.sol";
 import {ICrossProgramInvocation} from "../interface.sol";
+import {EnsureAta} from "../cpi/EnsureAta.sol";
 
 contract MeteoraDAMMv1Router {
     MeteoraDAMMv1Factory public immutable factory;
@@ -24,6 +25,18 @@ contract MeteoraDAMMv1Router {
     ) external {
         address pool = factory.getPool(token_in, token_out);
         require(pool != address(0), "Pool does not exist");
+
+        // Pre-flight: idempotently ensure user's ATAs exist for both sides.
+        // Meteora's swap declares `Account<'info, TokenAccount>` constraints
+        // on user_source_token / user_destination_token; Anchor rejects with
+        // Custom(3012) AccountNotInitialized before the handler runs if
+        // either is missing. Composing the create-idempotent calls in the
+        // same EVM tx keeps the swap atomic at the user-visible layer.
+        // CU: ~50K per side when ATA exists (idempotent no-op CPI), ~110K
+        // when creating. Two sides = 100-220K total; well under the 1.4M
+        // atomic envelope alongside the swap (~700-900K typical).
+        EnsureAta.ensure(msg.sender, SPL_ERC20(token_in).mint_id());
+        EnsureAta.ensure(msg.sender, SPL_ERC20(token_out).mint_id());
 
         (bool success, bytes memory result) = pool.delegatecall(
             abi.encodeWithSelector(
