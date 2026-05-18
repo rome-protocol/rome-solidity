@@ -31,7 +31,15 @@ library DAMMv1Lib {
         bytes8(sha256(bytes("global:remove_balance_liquidity")));
 
     uint256 internal constant POOL_PREFIX_MIN_LEN = 379;
-    uint256 internal constant VAULT_MIN_LEN = 1197;
+    // VAULT_MIN_LEN is the exact byte count parse_vault advances through.
+    // Doubles as the slice length load_vault requests from account_data_at.
+    // Layout (see parse_vault below):
+    //   8 (discriminator) + 3 (3× u8) + 8 (u64 total_amount) + 128 (4× bytes32)
+    //   + 960 (strategies[30]) + 96 (base+admin+operator) + 24 (3× u64 locked_profit_tracker)
+    //   = 1227
+    // If this number ever drifts below the actual parser consumption,
+    // load_vault's slice will be too short and parse_vault reverts "oob u64".
+    uint256 internal constant VAULT_MIN_LEN = 1227;
     uint64 internal constant DEFAULT_TRADE_FEE_BPS = 25;
     bytes internal constant DYNAMIC_VAULT_VAULT_PREFIX = "vault";
     bytes internal constant DYNAMIC_VAULT_TOKEN_VAULT_PREFIX = "token_vault";
