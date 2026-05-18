@@ -26,10 +26,12 @@ import { getAddress, isAddress } from "viem";
 import { readDeployments, writeDeployments } from "../lib/deployments.js";
 
 // One-tx activation: 2 USDC for activate(). Covers operator's SOL
-// outflow for HelperProgram.create_pda (≈ 0.015 SOL = 14_969_440
+// outflow for HelperProgram.create_pda (≈ 0.030 SOL = 29_969_440
 // lamports of user PDA funding = rent + 2× ATA rent + ~5 fresh-recipient
-// transfer reserve) plus a margin for Sybil resistance. Single tx,
-// single popup — collapsed from the legacy 3-tx flow.
+// transfer reserve + 1 CCTP MessageSent rent) plus a margin for Sybil
+// resistance. Single tx, single popup — collapsed from the legacy 3-tx
+// flow. CCTP reserve added 2026-05-18 to unblock first outbound CCTP
+// burn from a freshly-activated user (pre-fix reverted with Custom(1)).
 const ACTIVATION_COST_WEI = 2_000_000_000_000_000_000n;
 
 type AddressDep = {
@@ -126,7 +128,7 @@ async function main() {
   console.log(`  2. Update chain.contracts.simpleActivator in registry/chains/<id>-<slug>/contracts.json.`);
   console.log(`  3. Bump rome_ui_registry_ref in the chain's rome-ui inventory + redeploy rome-ui so ActivationGate picks up the new address.`);
   console.log(`  4. From a fresh EVM address: UI fires a single activate() tx (2 USDC) — one MetaMask popup, one wait.`);
-  console.log(`  5. Verify on-chain: PDA exists with USER_PDA_FUNDING lamports (~14.97M), wUSDC + wSOL ATAs both exist owned by PDA.`);
+  console.log(`  5. Verify on-chain: PDA exists with USER_PDA_FUNDING lamports (~29.97M), wUSDC + wSOL ATAs both exist owned by PDA.`);
 }
 
 main().catch((err) => {

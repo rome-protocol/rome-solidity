@@ -29,8 +29,20 @@ describe("SimpleActivator post-FB-4 arithmetic + predicates", function () {
     const PDA_RENT_LAMPORTS = 890_880n;
     const ATA_RENT_LAMPORTS = 2_039_280n;
     const FRESH_TRANSFER_RESERVE = 10_000_000n;
+    // CCTP MessageSent event-account rent reserve. CCTP burns create a
+    // ~1.6KB MessageSent event account whose rent_payer is the user's
+    // PDA. (128 + 1600) × 3480 × 2 ≈ 12M lamports per burn; reserve set
+    // at 15M to cover rent + tx fee + small margin for Solana rent-rate
+    // adjustments. Sized for 1 burn — burst capacity beyond 1 requires
+    // a topUpUserPda call before subsequent burns (or fold-in via #83
+    // Option B). Rent reclaims on Circle attestation (~30 min) so
+    // typical paced usage refills naturally.
+    const CCTP_BURN_RESERVE = 15_000_000n;
     const EXPECTED_USER_PDA_FUNDING =
-        PDA_RENT_LAMPORTS + 2n * ATA_RENT_LAMPORTS + FRESH_TRANSFER_RESERVE;
+        PDA_RENT_LAMPORTS +
+        2n * ATA_RENT_LAMPORTS +
+        FRESH_TRANSFER_RESERVE +
+        CCTP_BURN_RESERVE;
 
     before(async function () {
         const { viem } = await hardhat.network.connect();
@@ -64,6 +76,18 @@ describe("SimpleActivator post-FB-4 arithmetic + predicates", function () {
             const result = await helper.read.FRESH_TRANSFER_RESERVE();
             assert.equal(result, FRESH_TRANSFER_RESERVE);
         });
+
+        it("CCTP_BURN_RESERVE covers 1 MessageSent event-account rent", async function () {
+            // CCTP burns create a ~1.6KB MessageSent event account whose
+            // rent_payer is the user's PDA. (128 + 1600) × 3480 × 2 ≈ 12M
+            // lamports per burn; 15M is rent + tx fee + small margin for
+            // Solana rent-rate adjustments. Pre-fix, freshly-activated
+            // users reverted on their first CCTP burn with
+            // System Program `ResultWithNegativeLamports` (`Custom(1)`)
+            // because USER_PDA_FUNDING didn't include this reserve.
+            const result = await helper.read.CCTP_BURN_RESERVE();
+            assert.equal(result, CCTP_BURN_RESERVE);
+        });
     });
 
     // ──────────────────────────────────────────────────────────────────
@@ -72,16 +96,21 @@ describe("SimpleActivator post-FB-4 arithmetic + predicates", function () {
     // ──────────────────────────────────────────────────────────────────
 
     describe("expectedUserPdaFunding", function () {
-        it("equals PDA_RENT + 2 * ATA_RENT + FRESH_TRANSFER_RESERVE", async function () {
+        it("equals PDA_RENT + 2 * ATA_RENT + FRESH_TRANSFER_RESERVE + CCTP_BURN_RESERVE", async function () {
             const result = await helper.read.expectedUserPdaFunding();
             assert.equal(result, EXPECTED_USER_PDA_FUNDING);
         });
 
-        it("equals 14,969,440 lamports (≈ 0.015 SOL)", async function () {
+        it("equals 29,969,440 lamports (≈ 0.030 SOL)", async function () {
             // Sanity check on the absolute value — anything wildly off
-            // here means a constant got bumped without intent.
+            // here means a constant got bumped without intent. Was
+            // 14_969_440 (≈ 0.015 SOL) pre-CCTP-burn-reserve; bumped
+            // 2026-05-18 by +15M to cover the first CCTP MessageSent
+            // event-account rent. Aligns with the ≥0.05 SOL recommended
+            // floor in useOutboundCctpSend.ts (29.97M for activation +
+            // future topUpUserPda calls if the user wants headroom).
             const result = await helper.read.expectedUserPdaFunding();
-            assert.equal(result, 14_969_440n);
+            assert.equal(result, 29_969_440n);
         });
     });
 
