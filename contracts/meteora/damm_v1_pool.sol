@@ -910,25 +910,31 @@ library DAMMv1Lib {
         return bytes32(0);
     }
 
-    /// @dev The 16th account (`prog_dynamic_amm`) is a Rome-EVM emulator
-    ///      workaround required by `rome-evm-private/emulator/src/state.rs`'s
-    ///      `ix_store` filter — see `contracts/bridge/ICCTP.sol:27-59` for the
-    ///      same pattern applied to CCTP outbound. The Meteora Anchor IDL
-    ///      stops at 15 accounts; trailing entries are ignored by the on-chain
-    ///      Anchor account-validation (per Solana's standard CPI ABI) but are
-    ///      required so Mollusk's `load_elf` can find the AMM program in the
-    ///      per-ix store during `eth_estimateGas`. Without it, gas-estimate
-    ///      reverts with `program account not found: <amm-id>` before
-    ///      reaching the actual swap dispatcher.
+    /// @notice Build the 15-account swap instruction meta list per the
+    ///         Meteora dynamic-amm Anchor IDL.
+    ///
+    /// Historical note: a trailing 16th meta (`prog_dynamic_amm`) used to be
+    /// appended here as a Rome-EVM emulator workaround for the pre-#368
+    /// `ix_store` filter in `rome-evm-private/emulator/src/state.rs`, which
+    /// dropped `ix.program_id` from the per-CPI store and prevented
+    /// `mollusk.rs::load_elf` from finding the AMM program. rome-evm-private
+    /// PR #368 (the tightened allowlist that explicitly includes
+    /// `ix.program_id`) made the workaround redundant.
+    ///
+    /// Verified empirically on 2026-05-18 via `simulateTransaction` against
+    /// Solana devnet: with the trailing entry, both real Solana and Mollusk
+    /// fire `<amm>'s writable privilege escalated` during the inner CPI to
+    /// dynamic-vault (the swap aborts at ~32.7K CU before tokens move).
+    /// Without the trailing entry, the same swap completes Deposit (vault A)
+    /// + Withdraw (vault B) cleanly at ~99.5K CU.
     function build_swap_account_metas(
-        SwapAccountsInput memory a,
-        bytes32 prog_dynamic_amm
+        SwapAccountsInput memory a
     )
     internal
     pure
     returns (ICrossProgramInvocation.AccountMeta[] memory metas)
     {
-        metas = new ICrossProgramInvocation.AccountMeta[](16);
+        metas = new ICrossProgramInvocation.AccountMeta[](15);
 
         metas[0] = ICrossProgramInvocation.AccountMeta(a.pool, false, true);
         metas[1] = ICrossProgramInvocation.AccountMeta(
@@ -981,11 +987,6 @@ library DAMMv1Lib {
             false,
             false
         );
-        metas[15] = ICrossProgramInvocation.AccountMeta(
-            prog_dynamic_amm,
-            false,
-            false
-        );
     }
 
     function build_swap_ix_data(uint64 in_amount, uint64 minimum_out_amount)
@@ -996,18 +997,22 @@ library DAMMv1Lib {
         return abi.encodePacked(SWAP_PREFIX, Convert.u64le(in_amount), Convert.u64le(minimum_out_amount));
     }
 
-    /// @dev The 17th account (`prog_dynamic_amm`) is the same Rome-EVM
-    ///      emulator workaround applied in `build_swap_account_metas` —
-    ///      see comment there for the full rationale.
+    /// @notice Build the 16-account balance-liquidity (add/remove) meta list
+    ///         per the Meteora dynamic-amm Anchor IDL.
+    ///
+    /// Historical note: same trailing-meta workaround as
+    /// `build_swap_account_metas` (drop it for the same reasons — see comment
+    /// above). Both swap and balance-liquidity paths go through dynamic-amm
+    /// → dynamic-vault inner CPIs that trigger the same writable privilege
+    /// escalation when the trailing entry is present.
     function build_balance_liquidity_account_metas(
-        BalanceLiquidityAccountsInput memory a,
-        bytes32 prog_dynamic_amm
+        BalanceLiquidityAccountsInput memory a
     )
     internal
     pure
     returns (ICrossProgramInvocation.AccountMeta[] memory metas)
     {
-        metas = new ICrossProgramInvocation.AccountMeta[](17);
+        metas = new ICrossProgramInvocation.AccountMeta[](16);
 
         metas[0] = ICrossProgramInvocation.AccountMeta(a.pool, false, true);
         metas[1] = ICrossProgramInvocation.AccountMeta(a.lp_mint, false, true);
@@ -1025,7 +1030,6 @@ library DAMMv1Lib {
         metas[13] = ICrossProgramInvocation.AccountMeta(a.user, true, false);
         metas[14] = ICrossProgramInvocation.AccountMeta(a.vault_program, false, false);
         metas[15] = ICrossProgramInvocation.AccountMeta(a.token_program, false, false);
-        metas[16] = ICrossProgramInvocation.AccountMeta(prog_dynamic_amm, false, false);
     }
 
     function build_add_balance_liquidity_ix_data(
@@ -1591,8 +1595,7 @@ contract ERC20DAMMv1Pool {
             internal_pool.make_swap_accounts_from_pool(
                 msg.sender,
                 in_token
-            ),
-            internal_pool.prog_dynamic_amm()
+            )
         );
 
         bytes memory data = DAMMv1Lib.build_swap_ix_data(uint64(amount_in), uint64(min_amount_out));
@@ -1626,8 +1629,7 @@ contract ERC20DAMMv1Pool {
 
         ICrossProgramInvocation.AccountMeta[] memory accounts =
             DAMMv1Lib.build_balance_liquidity_account_metas(
-                internal_pool.make_balance_liquidity_accounts_from_pool(msg.sender),
-                internal_pool.prog_dynamic_amm()
+                internal_pool.make_balance_liquidity_accounts_from_pool(msg.sender)
             );
 
         bytes memory data = DAMMv1Lib.build_remove_balance_liquidity_ix_data(
@@ -1669,8 +1671,7 @@ contract ERC20DAMMv1Pool {
                 internal_pool.make_balance_liquidity_accounts_from_pool_and_user_accounts(
                     msg.sender,
                     user_accounts
-                ),
-                internal_pool.prog_dynamic_amm()
+                )
             );
 
         bytes memory data = DAMMv1Lib.build_add_balance_liquidity_ix_data(
