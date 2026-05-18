@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added — `EnsureAta` library + Meteora swap pre-flight (closes user-side ATA stalls)
+
+New library `contracts/cpi/EnsureAta.sol`: idempotently ensure a user's ATA for a given SPL mint exists, before an EVM contract dispatches a Solana CPI that requires it. Wraps `HelperProgram.create_ata(address, bytes32)` — selector `0x3de2251a` — which itself dispatches Solana's `create_associated_token_account_idempotent`, so the probe-and-skip dance at the EVM layer is collapsed into a single call. CU: ~50K (ATA exists, idempotent no-op CPI) to ~110K (creates).
+
+Wired into `MeteoraDAMMv1Router.swapExactTokensForTokens` — call once per side (in / out) before dispatching the swap. Empirically validated on Hadrian 2026-05-18: a swap that previously failed `Custom(3012) AccountNotInitialized` (when the user had no wETH ATA) now passes the ATA pre-flight gate; remaining downstream failure mode (`PrivilegeEscalation` in Meteora dispatch) is unrelated and tracked separately.
+
+Tests: 3 integration cases in `tests/ensure_ata.integration.ts` (hadrian-only) — existing-ATA noop, missing-ATA create, idempotency on re-run. All 25 tests across the parser + EnsureAta suite pass.
+
+Scope of this PR: library + Meteora swap consumer + tests. Out of scope: applying to `addLiquidity` / `removeLiquidity` (separate routes); applying to Romeswap / Compound / Bridge (each adapter opts in independently); fixing the PrivilegeEscalation blocker (separate issue).
+
 ### Fixed — `DAMMv1Lib.VAULT_MIN_LEN` was 30 bytes short of parser consumption (Meteora pool registration broken)
 
 `VAULT_MIN_LEN = 1197` was inconsistent with `parse_vault`'s actual byte consumption (1227 bytes — 8 disc + 3 u8 + 8 u64 + 128 (4× bytes32) + 960 strategies + 96 (3× bytes32) + 24 (3× u64)). The constant doubles as the slice length `load_vault` requests from `account_data_at`, so the slice arrived 30 bytes short and `parse_vault` reverted "oob u64" on the locked_profit_tracker fields at offsets 1203/1211/1219.
