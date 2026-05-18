@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Fixed — `DAMMv1Lib.VAULT_MIN_LEN` was 30 bytes short of parser consumption (Meteora pool registration broken)
+
+`VAULT_MIN_LEN = 1197` was inconsistent with `parse_vault`'s actual byte consumption (1227 bytes — 8 disc + 3 u8 + 8 u64 + 128 (4× bytes32) + 960 strategies + 96 (3× bytes32) + 24 (3× u64)). The constant doubles as the slice length `load_vault` requests from `account_data_at`, so the slice arrived 30 bytes short and `parse_vault` reverted "oob u64" on the locked_profit_tracker fields at offsets 1203/1211/1219.
+
+Empirical impact: `MeteoraDAMMv1Factory.addPool` and any view-side read that calls `update_state` / `get_reserves` / `get_price_e18` / `get_pool_token_amounts` reverted on the freshly-deployed Meteora factory `0xa3a4a275…` on Hadrian (deploy run 26014212331, 2026-05-18). Swap / addLiquidity / removeLiquidity write paths were unaffected since they don't re-parse vault data (they dispatch CPI with pubkeys cached at pool init).
+
+Introduced in #167 (`aa7e0cb`, 2026-05-16) — that PR converted `load_vault` from full `account_info` to typed slice `account_data_at` for ~15-25K CU savings, but the byte arithmetic for the new slice length missed the `locked_profit_tracker` trailing fields. The old `account_info` path read the full 1232-byte account, masking the off-by-30.
+
+This PR fixes the constant to 1227 and adds three unit tests (`tests/meteora_vault_parser.test.ts` + `contracts/meteora/test/DAMMv1VaultParserHarness.sol`) pinning the constant ≥ actual parser consumption, so any future trim to either side is caught at CI rather than in a deploy.
+
+Post-merge: `MeteoraDAMMv1Factory` needs a redeploy (the buggy constant is baked into the deployed bytecode via library linking); existing Meteora pool wrappers on the OLD factory `0x040f9c26…` are unaffected because that bytecode predates #167.
+
 ### Changed — `SPL_ERC20` hot paths direct-precompile rewrite (5 new HelperProgram selectors)
 
 Five `IHelperProgram` selectors (8 ABI sigs) added in [`rome-evm-private#363`](https://github.com/rome-protocol/rome-evm-private/pull/363) — `approve_spl` / `mint_spl` / `transfer_spl(addr,addr,...)` / `user_balance` / `allowance_of`. This PR migrates `SPL_ERC20`'s `approve` / `transferFrom` / `mint_to` / `balanceOf` / `allowance` off the Solidity-side SPL ix marshaling (`SplTokenLib.approve` / `SplTokenLib.mint_to_checked` + raw `CpiProgram.invoke_signed` via `delegatecall`) into the new dedicated HelperProgram selectors.
