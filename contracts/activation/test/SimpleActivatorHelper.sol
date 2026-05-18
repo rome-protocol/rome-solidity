@@ -45,14 +45,29 @@ contract SimpleActivatorHelper {
     /// to topUpUserPda.
     uint64 public constant FRESH_TRANSFER_RESERVE = 10_000_000;
 
+    /// Reserve for 1 outbound CCTP burn. CCTP's `deposit_for_burn`
+    /// creates a ~1.6KB `MessageSent` event account whose rent_payer is
+    /// the user's PDA. (128 + 1600) × 3480 × 2 ≈ 12M lamports per burn;
+    /// 15M covers rent + tx fee + small margin for Solana rent-rate
+    /// adjustments. Pre-fix (2026-05-18), freshly-activated users
+    /// reverted on their first CCTP burn with System Program
+    /// `ResultWithNegativeLamports` (`Custom(1)`) because USER_PDA_FUNDING
+    /// didn't include this reserve. The rent is reclaimed when Circle
+    /// attests (~30 min) so typical paced usage refills naturally;
+    /// burst capacity beyond 1 burn requires a `topUpUserPda` call.
+    uint64 public constant CCTP_BURN_RESERVE = 15_000_000;
+
     /// Mirror of SimpleActivator.USER_PDA_FUNDING:
-    ///   PDA_RENT + 2 * ATA_RENT + FRESH_TRANSFER_RESERVE.
+    ///   PDA_RENT + 2 * ATA_RENT + FRESH_TRANSFER_RESERVE + CCTP_BURN_RESERVE.
     /// Pure function — no on-chain side-effect — so this is the value
     /// the real `activate()` will pass to `HelperProgram.create_pda(user,
     /// lamports)`. Treat any deviation between this and the real
     /// constant as a regression.
     function expectedUserPdaFunding() external pure returns (uint64) {
-        return PDA_RENT_LAMPORTS + 2 * ATA_RENT_LAMPORTS + FRESH_TRANSFER_RESERVE;
+        return PDA_RENT_LAMPORTS +
+            2 * ATA_RENT_LAMPORTS +
+            FRESH_TRANSFER_RESERVE +
+            CCTP_BURN_RESERVE;
     }
 
     /// Mirror of the msg.value gate the real `activate()` enforces. The

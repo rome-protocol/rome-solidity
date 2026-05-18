@@ -65,14 +65,32 @@ contract SimpleActivator {
     ///         refill.
     uint64 public constant FRESH_TRANSFER_RESERVE = 10_000_000;
 
+    /// @notice Reserve for 1 outbound CCTP burn. CCTP's
+    ///         `deposit_for_burn` creates a ~1.6KB `MessageSent` event
+    ///         account whose rent_payer is the user's PDA.
+    ///         (128 + 1600) × 3480 × 2 ≈ 12M lamports per burn; 15M
+    ///         covers rent + tx fee + small margin for Solana rent-rate
+    ///         adjustments. Pre-fix (2026-05-18), freshly-activated
+    ///         users reverted on their first CCTP burn with System
+    ///         Program `ResultWithNegativeLamports` (`Custom(1)`)
+    ///         because USER_PDA_FUNDING didn't include this reserve.
+    ///         Rent is reclaimed when Circle attests (~30 min) so
+    ///         typical paced usage refills naturally; burst capacity
+    ///         beyond 1 burn requires a `topUpUserPda` call.
+    uint64 public constant CCTP_BURN_RESERVE = 15_000_000;
+
     /// @notice Total lamports the user's `external_auth` PDA receives
     ///         at activation time:
     ///           PDA_RENT (rent-exempt floor)
     ///         + 2 × ATA_RENT (wUSDC + wSOL ATA rents)
-    ///         + FRESH_TRANSFER_RESERVE.
-    ///         = 14_969_440 lamports ≈ 0.015 SOL.
+    ///         + FRESH_TRANSFER_RESERVE
+    ///         + CCTP_BURN_RESERVE.
+    ///         = 29_969_440 lamports ≈ 0.030 SOL.
     uint64 public constant USER_PDA_FUNDING =
-        PDA_RENT_LAMPORTS + 2 * ATA_RENT_LAMPORTS + FRESH_TRANSFER_RESERVE;
+        PDA_RENT_LAMPORTS +
+        2 * ATA_RENT_LAMPORTS +
+        FRESH_TRANSFER_RESERVE +
+        CCTP_BURN_RESERVE;
 
     /// @notice Wei the caller must pay per `activate()`. Strict equality —
     ///         no overpay refund. Caller reads this view first and
