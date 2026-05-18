@@ -139,28 +139,29 @@ export async function ensureErc20Users(): Promise<`0x${string}`> {
   return users.address as `0x${string}`;
 }
 
-export async function deploySplErc20(
+// Forward-only: wrappers are ALWAYS created via `bootstrap-bridged-wrappers.ts`
+// (which calls `ERC20SPLFactory.add_spl_token_no_metadata` and emits the
+// `TokenCreated` event the rome-ui backend indexer subscribes to). This
+// helper reads the resulting addresses out of `deployments/<network>.json`
+// and hard-fails if missing — there is intentionally no fallback to a
+// direct `new SPL_ERC20(...)` deploy because that path would create a
+// duplicate wrapper invisible to the indexer (the historic "throwaway
+// wrapper" footgun from the pre-2026-05-18 deploy.ts).
+function requireExistingWrapper(
+  networkName: string,
   key: "SPL_ERC20_USDC" | "SPL_ERC20_WETH",
-  name: string,
   symbol: string,
-  mintBase58: string,
-  cpiProgramAddress: `0x${string}`
-) {
-  const { viem, networkName } = await hardhat.network.connect();
-  const usersAddr = await ensureErc20Users();
-  const mintBytes32 = base58ToBytes32(mintBase58);
-  const wrapper = await viem.deployContract("SPL_ERC20", [
-    mintBytes32,
-    cpiProgramAddress,
-    name,
-    symbol,
-    usersAddr,
-  ]);
-  console.log(`[${networkName}] SPL_ERC20 ${symbol} → ${wrapper.address} (mint ${mintBase58})`);
-  const d = readDeployments(networkName) as Record<string, any>;
-  d[key] = { address: wrapper.address, mintId: mintBase58 };
-  writeDeployments(networkName, d as any);
-  return wrapper;
+): { address: `0x${string}` } {
+  const existing = (readDeployments(networkName) as Record<string, any>)?.[key]?.address;
+  if (!existing) {
+    throw new Error(
+      `[${networkName}] ${key} missing from deployments.json. ` +
+      `Run scripts/bridge/bootstrap-bridged-wrappers.ts first ` +
+      `(deploys canonical wrapper via factory, fires TokenCreated event).`,
+    );
+  }
+  console.log(`[${networkName}] reusing ${symbol} wrapper at ${existing}`);
+  return { address: existing as `0x${string}` };
 }
 
 export async function deployWithdraw(
@@ -270,12 +271,8 @@ async function main() {
 
   const paymaster = await deployPaymaster(admin.account!.address);
 
-  const usdc = usdcMint
-    ? await deploySplErc20("SPL_ERC20_USDC", "Wrapped USDC", "WUSDC", usdcMint, CPI_PROGRAM_ADDRESS)
-    : null;
-  const weth = wethMint
-    ? await deploySplErc20("SPL_ERC20_WETH", "Wrapped ETH", "WETH", wethMint, CPI_PROGRAM_ADDRESS)
-    : null;
+  const usdc = usdcMint ? requireExistingWrapper(networkName, "SPL_ERC20_USDC", "wUSDC") : null;
+  const weth = wethMint ? requireExistingWrapper(networkName, "SPL_ERC20_WETH", "wETH") : null;
 
   if (usdc && weth && usdcMint && wethMint) {
     await deployWithdraw(paymaster.address, usdc.address, weth.address, usdcMint, wethMint);
