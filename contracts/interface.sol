@@ -169,6 +169,72 @@ interface IHelperProgram {
     function allowance_of(address owner, address spender, bytes32 mint) external view returns (uint64);
     // deposit gas-token from ata
     function deposit_from_ata(uint256 wei_) external;
+
+    // ─── Pyth Lazer wrapper (signed-price oracle) ─────────────────────────
+    //
+    // Spec: rome-specs/main/active/technical/2026-05-19-pyth-lazer-integration.md
+    // Selector: 0xa5f15a86 = keccak256("lazer_price(bytes,uint8,uint8)")[..4]
+    // Body: rome-evm-private/program/src/non_evm/lazer_ix.rs::lazer_price
+    //
+    // Verifies a Pyth Lazer signed payload via the IEd25519 primitive +
+    // returns per-feed prices + the envelope-level publish timestamp.
+    // Pure-read CrossStateEthCall; single-state Rome chains only.
+    //
+    // Wire-format invariants the wrapper enforces:
+    //   - envelope: SOLANA_FORMAT_MAGIC (0x821A01B9 in u32 LE), 102-byte
+    //     header + payload_size (u16 LE, max 8192 bytes)
+    //   - PayloadData: PAYLOAD_FORMAT_MAGIC (0x93C7D375), 13 property tag
+    //     dispatch arms across three wire-encoding strategies (0-sentinel
+    //     Option<Price>, explicit-flag Option<T>, bare scalars)
+    //
+    // Allowlist is hardcoded to Pyth's mainnet Lazer signer pubkey
+    // (9gKEEcFzSd1PDYBKWAKZi4Sq4ZCUaVX5oTr8kEjdwsfR, expires 2035-01-15).
+    // Rotation = rome-evm-private program upgrade.
+
+    /// Per-feed price returned by the Lazer wrapper.
+    ///
+    /// `price` is an int64 mantissa scaled by `expo` (Pyth wire format —
+    /// real price = price * 10^expo; e.g. BTC at $76,815 with expo=-8 →
+    /// price = 7_681_500_000_000).
+    ///
+    /// `conf` follows the same scaling. `conf == 0` signals "no confidence
+    /// published" — this matches Pyth's own 0-sentinel wire convention for
+    /// the `Option<Price>` tag (the wire i64 mantissa is 0 ⇒ None).
+    ///
+    /// Feeds where the publisher posted no price for this batch are
+    /// silently dropped before encoding — consumers iterate this array
+    /// and detect "no value" by the absence of the expected feed_id, not
+    /// by a sentinel value on `price`.
+    struct LazerFeedPrice {
+        uint32 feed_id;
+        int64  price;
+        uint64 conf;
+        int32  expo;
+    }
+
+    /// Verify and parse a Pyth Lazer signed price payload.
+    ///
+    /// Returns the parsed prices for all feeds in the payload, plus the
+    /// payload's publish timestamp in **microseconds** (uint64). Consumers
+    /// that want seconds divide by 1_000_000.
+    ///
+    /// The caller MUST enforce replay protection and freshness per their
+    /// use case (see examples/lazer_consumer.sol). The wrapper does not
+    /// store any state.
+    ///
+    /// @param envelope The on-wire SolanaMessage envelope from a Pyth
+    ///        Lazer subscription. Byte-equal to the data embedded in the
+    ///        prefix Ed25519SigVerify ix of the current Solana tx.
+    /// @param ed25519_ix_idx Index of the Ed25519SigVerify ix in the
+    ///        current Solana tx.
+    /// @param sig_idx Which signature within that ix to check.
+    /// @return feeds Array of LazerFeedPrice (one per publishing feed).
+    /// @return publish_time_us Envelope-level publish timestamp in microseconds.
+    function lazer_price(
+        bytes calldata envelope,
+        uint8 ed25519_ix_idx,
+        uint8 sig_idx
+    ) external view returns (LazerFeedPrice[] memory feeds, uint64 publish_time_us);
 }
 
 // IEd25519 — generic ed25519 signature verification primitive at `0xff..0a`.
