@@ -171,15 +171,50 @@ interface IHelperProgram {
     function deposit_from_ata(uint256 wei_) external;
 }
 
+// IEd25519 — generic ed25519 signature verification primitive at `0xff..0a`.
+// Confirms the Solana runtime cryptographically verified a signature in the
+// current transaction against `allowed_signers` and `expected_message`.
+// Pure-read CrossStateEthCall; single-state Rome chains only.
+//
+// Spec: rome-specs/main/active/technical/2026-05-19-rome-ed25519-precompile.md
+// Source of truth: rome-evm-private/program/src/non_evm/ed25519.rs +
+// rome-evm-private/program/src/non_evm/ed25519_ix.rs.
+//
+// First consumer: the Pyth Lazer wrapper (separate spec at
+// 2026-05-19-pyth-lazer-integration.md). Future consumers (signed-payload
+// bridges, additional oracle providers, capability tokens) reuse this
+// primitive without modification.
+interface IEd25519 {
+    /// @param allowed_signers MUST be non-empty (max 16 — DoS guard).
+    /// @param expected_message MUST be non-empty. The byte sequence the caller
+    ///        asserts was verified. Must byte-equal what the precompile
+    ///        actually verified, or this function reverts.
+    /// @param ed25519_ix_idx Index of the Ed25519SigVerify ix in the current
+    ///        Solana tx.
+    /// @param sig_idx Which signature within that ix to check (the ix
+    ///        supports multi-sig batching).
+    /// @return verified_signer The pubkey from the precompile ix data that the
+    ///        runtime confirmed signed `expected_message`. Guaranteed
+    ///        member of `allowed_signers`.
+    function verify_from_allowlist(
+        bytes32[] calldata allowed_signers,
+        bytes calldata expected_message,
+        uint8 ed25519_ix_idx,
+        uint8 sig_idx
+    ) external view returns (bytes32 verified_signer);
+}
+
 address constant system_program_address = address(0xfF00000000000000000000000000000000000007);
 address constant cpi_program_address = address(0xFF00000000000000000000000000000000000008);
 address constant helper_program_address = address(0xff00000000000000000000000000000000000009);
+address constant ed25519_program_address = address(0xfF0000000000000000000000000000000000000a);
 address constant withdraw_address = address(0x4200000000000000000000000000000000000016);
 
 ISystemProgram constant SystemProgram = ISystemProgram(system_program_address);
 ICrossProgramInvocation constant CpiProgram = ICrossProgramInvocation(cpi_program_address);
 IWithdraw constant Withdraw = IWithdraw(withdraw_address);
 IHelperProgram constant HelperProgram = IHelperProgram(helper_program_address);
+IEd25519 constant Ed25519 = IEd25519(ed25519_program_address);
 
 
 
