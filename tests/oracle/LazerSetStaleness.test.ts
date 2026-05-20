@@ -52,14 +52,23 @@ describe("PythLazerCache.setMaxStaleness", function () {
 
     it("non-owner caller reverts with OnlyFactoryOwner", async function () {
         const { cache } = await deployAll();
-        // accounts[1] is a different signer
+        // Get a contract handle that uses accounts[1] as the wallet —
+        // overriding `account` on the call lost ABI info needed to decode
+        // the custom error.
         const otherClient = accounts[1];
+        const cacheAsOther = await viem.getContractAt(
+            "PythLazerCache",
+            cache.address,
+            { client: { wallet: otherClient } },
+        );
         await assert.rejects(
-            async () =>
-                cache.write.setMaxStaleness([60n], {
-                    account: otherClient.account,
-                }),
-            (err: any) => err?.message?.includes("OnlyFactoryOwner") ?? false,
+            async () => cacheAsOther.write.setMaxStaleness([60n]),
+            (err: any) =>
+                err?.message?.includes("OnlyFactoryOwner") ||
+                // Selector fallback: keccak256("OnlyFactoryOwner()")[:4]
+                err?.message?.includes("0x4bf08e86")
+                    ? true
+                    : false,
         );
     });
 
