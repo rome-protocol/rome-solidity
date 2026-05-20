@@ -4,28 +4,28 @@
     "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
   },
   "OracleGatewayV2": {
-    "deployedAt": "2026-05-20T12:39:53.910Z",
+    "deployedAt": "2026-05-20T13:28:03.137Z",
     "defaultMaxStaleness": 60,
     "pythReceiverProgramId": "0x0cb7fabb52f7a648bb5b317d9a018b9057cb024774fafe01e6c4df98cc385881",
     "switchboardProgramId": "0x068851c68c6832f02fa581b1bf491b77ca41776ba2b988b5a6faba8ee3a2ec90",
-    "PythPullAdapterImpl": "0x4577d234e8e5222048d36d38758dc8124947e726",
-    "SwitchboardV3AdapterImpl": "0x0ec451b3874a2ba53a1465d85fb25c644fdb166e",
-    "OracleAdapterFactory": "0xa2f096f5f99874fbf647e91a29aaa46d3d6b6daa",
-    "BatchReader": "0x8fed803a8e76ade6be7f36507b4bb95ed1481c52",
+    "PythPullAdapterImpl": "0x06cb7025c920948929ca10f7e0d5213aa4c3326a",
+    "SwitchboardV3AdapterImpl": "0x84f8df3dbe71b32df5e7fa2cea677ab056aeb2e9",
+    "OracleAdapterFactory": "0xaef715944cbc97f6624b4fe25a0294e7cd3a8958",
+    "BatchReader": "0x754a6971eefe2d66e919f4c7c9c9fd964b7a1100",
     "feeds": {
       "pyth": [],
       "switchboard": []
     },
     "PythLazerFeedAdapter": {
-      "address": "0x2127adbd426deb3367bcea4835d38c21c9a1891d",
+      "address": "0x0479b40d0852ac7475a41d906235323993b5a104",
       "type": "implementation"
     },
     "PythLazerCache": {
-      "address": "0xa6f9ac4cca545bdfd3741d72be99891cef8588af",
+      "address": "0x6d9741e554a104ee00a0e2bdfde8a08771fe37cc",
       "maxStaleness": 30
     },
     "LazerFeeds": [],
-    "lazerDeployedAt": "2026-05-20T12:40:14.644Z"
+    "lazerDeployedAt": "2026-05-20T13:28:24.829Z"
   },
   "MeteoraDAMMv1Factory": {
     "address": "0x6ce0e90db2b54b9a433530cd5b3d31573a401c3e"
