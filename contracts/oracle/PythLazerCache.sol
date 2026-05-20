@@ -95,20 +95,41 @@ contract PythLazerCache is IPythLazerCache {
     /// @notice Internal: write the parsed feeds to storage. Extracted from
     ///         refresh() so unit tests can exercise it via a harness without
     ///         going through the IHelperProgram precompile path.
+    /// @dev CU-conscious for Rome's storage model. Two optimizations vs the
+    ///      naive form (field-by-field `c.X = Y`):
+    ///        1. Single struct-level assignment of `_prices[feed_id]`. The
+    ///           compiler coalesces writes into 2 SSTOREs (one per touched
+    ///           slot) instead of 4+ read-modify-write cycles on the packed
+    ///           slot (confidence + timestamp + roundId share slot 2).
+    ///        2. Cache the new values in memory and pass them to `emit` rather
+    ///           than re-reading from storage. Saves 4 SLOADs/feed.
+    ///      Measured on Hadrian 2026-05-20: pre-fix 5-feed cold cache.refresh
+    ///      was 556K CU; post-fix expected ~310K. Per-feed marginal drops
+    ///      from ~87K to an expected ~37K.
     function _writeFeeds(ILazerHelper.LazerFeedPrice[] memory feeds) internal {
         uint64 nowTs = uint64(block.timestamp);
-        for (uint i = 0; i < feeds.length; i++) {
+        uint256 len = feeds.length;
+        for (uint i = 0; i < len; ++i) {
             ILazerHelper.LazerFeedPrice memory f = feeds[i];
-            CachedPrice storage c = _prices[f.feed_id];
 
-            c.answer = _normalize(f.price, f.expo);
+            // Compute new values in memory.
+            int256 newAnswer = _normalize(f.price, f.expo);
             // Normalize conf at the same scale as answer. Cast uint64 → int64
             // is safe because Lazer's conf is bounded well below 2^63.
-            c.confidence = uint64(uint256(_normalize(int64(uint64(f.conf)), f.expo)));
-            c.timestamp = nowTs;
-            c.roundId = c.roundId + 1;
+            uint64 newConfidence = uint64(uint256(_normalize(int64(uint64(f.conf)), f.expo)));
+            // Read prior roundId once; increment in memory. Reads only slot 2.
+            uint80 newRoundId = _prices[f.feed_id].roundId + 1;
 
-            emit PriceUpdated(f.feed_id, c.answer, c.confidence, c.timestamp, c.roundId);
+            // Single struct-level assignment — see @dev note above.
+            _prices[f.feed_id] = CachedPrice({
+                answer:     newAnswer,
+                confidence: newConfidence,
+                timestamp:  nowTs,
+                roundId:    newRoundId
+            });
+
+            // Emit from memory vars; avoids 4 SLOADs back on the slot we just wrote.
+            emit PriceUpdated(f.feed_id, newAnswer, newConfidence, nowTs, newRoundId);
         }
     }
 
