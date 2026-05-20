@@ -4,56 +4,28 @@
     "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
   },
   "OracleGatewayV2": {
-    "deployedAt": "2026-05-18T04:51:50.382Z",
+    "deployedAt": "2026-05-20T12:39:53.910Z",
     "defaultMaxStaleness": 60,
     "pythReceiverProgramId": "0x0cb7fabb52f7a648bb5b317d9a018b9057cb024774fafe01e6c4df98cc385881",
     "switchboardProgramId": "0x068851c68c6832f02fa581b1bf491b77ca41776ba2b988b5a6faba8ee3a2ec90",
-    "PythPullAdapterImpl": "0x96b313ed492a5263bc42f62e2b440b54442cdc38",
-    "SwitchboardV3AdapterImpl": "0xc66d1c5291f7e4ddf2fc47a335fc532626599c6b",
-    "OracleAdapterFactory": "0xcf67d0f88ecddc42135c5b4e8620f32846546b12",
-    "BatchReader": "0x4fd88a8d5044ffff49a094305542e551df3d041e",
+    "PythPullAdapterImpl": "0x4577d234e8e5222048d36d38758dc8124947e726",
+    "SwitchboardV3AdapterImpl": "0x0ec451b3874a2ba53a1465d85fb25c644fdb166e",
+    "OracleAdapterFactory": "0xa2f096f5f99874fbf647e91a29aaa46d3d6b6daa",
+    "BatchReader": "0x8fed803a8e76ade6be7f36507b4bb95ed1481c52",
     "feeds": {
-      "pyth": [
-        {
-          "pair": "SOL/USD",
-          "adapter": "0x770e43FDa46a8c5fe4EA52A3b001a13E5d1bD6E4",
-          "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
-          "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
-        },
-        {
-          "pair": "BTC/USD",
-          "adapter": "0xd9DB95d05262A6B7929809fB957cd1d58970683D",
-          "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
-          "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
-        },
-        {
-          "pair": "ETH/USD",
-          "adapter": "0xda50Bd3B13dE9d8F5fEF7819c27c2848B30708A4",
-          "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
-          "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
-        },
-        {
-          "pair": "USDC/USD",
-          "adapter": "0x2831Df63A68724eAbAD5320eDF8B12D788B03BFb",
-          "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
-          "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
-        },
-        {
-          "pair": "USDT/USD",
-          "adapter": "0xc09d036B75c91569Fcc25612AA3d0872fCf2A0E0",
-          "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
-          "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
-        }
-      ],
-      "switchboard": [
-        {
-          "pair": "SOL/USD",
-          "adapter": "0xa8FC5fd77c6F466bA01c1C9e2D364ee295EA6693",
-          "pubkey": "GvDMxPzN1sCj7L26YDK2HnMRXEQmQ2aemov8YBtPS7vR",
-          "pubkeyBytes32": "0xec81105112a257d61df4cf5f13ee0a1b019197c8c5343b4f2a7ec8846ae22c1a"
-        }
-      ]
-    }
+      "pyth": [],
+      "switchboard": []
+    },
+    "PythLazerFeedAdapter": {
+      "address": "0x2127adbd426deb3367bcea4835d38c21c9a1891d",
+      "type": "implementation"
+    },
+    "PythLazerCache": {
+      "address": "0xa6f9ac4cca545bdfd3741d72be99891cef8588af",
+      "maxStaleness": 30
+    },
+    "LazerFeeds": [],
+    "lazerDeployedAt": "2026-05-20T12:40:14.644Z"
   },
   "MeteoraDAMMv1Factory": {
     "address": "0x6ce0e90db2b54b9a433530cd5b3d31573a401c3e"
