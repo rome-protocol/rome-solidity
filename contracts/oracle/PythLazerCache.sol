@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./IPythLazerCache.sol";
-import "../interface.sol";
+import "./lazer/ILazerHelper.sol";
 
 /// @dev Slim local interface for reading the factory's owner. The cache
 ///      doesn't need anything else from the factory (read-side adapters
@@ -69,8 +69,8 @@ contract PythLazerCache is IPythLazerCache {
     ///      Use rome-sdk's `send_with_lazer*` to construct the Solana tx;
     ///      see sibling spec for the canonical path.
     function refresh(bytes calldata envelope, uint8 ed25519_ix_idx, uint8 sig_idx) external {
-        try HelperProgram.lazer_price(envelope, ed25519_ix_idx, sig_idx)
-            returns (IHelperProgram.LazerFeedPrice[] memory feeds, uint64 /* publish_time_us */)
+        try LazerHelper.lazer_price(envelope, ed25519_ix_idx, sig_idx)
+            returns (ILazerHelper.LazerFeedPrice[] memory feeds, uint64 /* publish_time_us */)
         {
             _writeFeeds(feeds);
         } catch {
@@ -95,10 +95,10 @@ contract PythLazerCache is IPythLazerCache {
     /// @notice Internal: write the parsed feeds to storage. Extracted from
     ///         refresh() so unit tests can exercise it via a harness without
     ///         going through the IHelperProgram precompile path.
-    function _writeFeeds(IHelperProgram.LazerFeedPrice[] memory feeds) internal {
+    function _writeFeeds(ILazerHelper.LazerFeedPrice[] memory feeds) internal {
         uint64 nowTs = uint64(block.timestamp);
         for (uint i = 0; i < feeds.length; i++) {
-            IHelperProgram.LazerFeedPrice memory f = feeds[i];
+            ILazerHelper.LazerFeedPrice memory f = feeds[i];
             CachedPrice storage c = _prices[f.feed_id];
 
             c.answer = _normalize(f.price, f.expo);
