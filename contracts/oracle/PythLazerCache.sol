@@ -3,6 +3,13 @@ pragma solidity ^0.8.20;
 
 import "./IPythLazerCache.sol";
 
+/// @dev Slim local interface for reading the factory's owner. The cache
+///      doesn't need anything else from the factory (read-side adapters
+///      use IAdapterFactory.isPaused).
+interface IFactoryOwnerProbe {
+    function owner() external view returns (address);
+}
+
 /// @title PythLazerCache
 /// @notice Singleton shared cache for Pyth Lazer prices on a Rome chain.
 ///         One cache per chain; many `PythLazerFeedAdapter` clones read from it.
@@ -30,6 +37,14 @@ contract PythLazerCache is IPythLazerCache {
     mapping(uint32 feedId => CachedPrice) private _prices;
 
     error StalenessOutOfRange(uint64 staleness);
+    error OnlyFactoryOwner();
+
+    event MaxStalenessUpdated(uint64 newValue);
+
+    modifier onlyFactoryOwner() {
+        if (msg.sender != IFactoryOwnerProbe(factory).owner()) revert OnlyFactoryOwner();
+        _;
+    }
 
     constructor(address _factory, uint64 _maxStaleness) {
         if (_maxStaleness < 1 || _maxStaleness > 24 hours) {
@@ -42,6 +57,17 @@ contract PythLazerCache is IPythLazerCache {
     /// @inheritdoc IPythLazerCache
     function getPrice(uint32 feedId) external view returns (CachedPrice memory) {
         return _prices[feedId];
+    }
+
+    /// @notice Admin: update chain-wide staleness threshold without redeploy.
+    /// @dev Gated by the factory's owner so admin uses the same governance as
+    ///      the rest of OG-V2. No-op cap on relative change — emergency
+    ///      tightening for MEV concerns is fast (one tx) and matches the
+    ///      "no redeploy required for freshness changes" guarantee in the spec.
+    function setMaxStaleness(uint64 _new) external onlyFactoryOwner {
+        if (_new < 1 || _new > 24 hours) revert StalenessOutOfRange(_new);
+        maxStaleness = _new;
+        emit MaxStalenessUpdated(_new);
     }
 
     /// @notice Normalize a raw Lazer price to 8 decimals (Chainlink convention).
