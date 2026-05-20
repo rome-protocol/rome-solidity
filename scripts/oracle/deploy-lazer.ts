@@ -69,8 +69,13 @@ async function main() {
         );
     }
     const content = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    // deploy-v2-polish.ts writes the factory address as a flat string
+    // (`OracleAdapterFactory: "0xabc..."`); earlier ad-hoc deploys nested it
+    // (`OracleAdapterFactory: { address: "0xabc..." }`). Handle both so this
+    // script doesn't break against either schema.
+    const factoryRaw = content.OracleGatewayV2?.OracleAdapterFactory;
     const factoryAddr: string | undefined =
-        content.OracleGatewayV2?.OracleAdapterFactory?.address;
+        typeof factoryRaw === "string" ? factoryRaw : factoryRaw?.address;
     if (!factoryAddr) {
         throw new Error(
             `OracleAdapterFactory address not found in ${filePath}. Run scripts/oracle/deploy.ts first.`,
