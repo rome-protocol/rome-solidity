@@ -321,3 +321,124 @@ describe("emitRegistryUpdate — contracts.json output (redeploy onto existing)"
     expect(v1.deprecatedAt).toBe("2026-05-18T05:30:00Z");
   });
 });
+
+describe("emitRegistryUpdate — preserves non-managed contracts.json entries", () => {
+  it("passes through ERC20SPLFactory, Multicall3, and any other unmanaged entries untouched", () => {
+    // Mimic a real Hadrian contracts.json that has many non-OG entries.
+    const realisticPrior: RegistryContractsFile = [
+      {
+        name: "ERC20SPLFactory",
+        versions: [
+          {
+            address: "0x3c971ea1c7cf7a1b0a8af46f8a9e0648a82f9869",
+            version: "3.0.0",
+            status: "live",
+            deployedAt: "2026-05-18T05:30:00Z",
+            sourceGitSha: "506961ed1fe4f368a4c6a8793960a754b777b9fd",
+            compilerVersion: "0.8.28+commit.7893614a",
+          },
+        ],
+      },
+      {
+        name: "Multicall3",
+        versions: [
+          {
+            address: "0x000000000000000000000000000000000000ca11",
+            version: "3.0.0",
+            status: "live",
+            deployedAt: "2026-05-21T04:49:00Z",
+            sourceGitSha: "deadbeef",
+            compilerVersion: "0.8.28+commit.7893614a",
+          },
+        ],
+      },
+      {
+        name: "RomeBridgePaymaster",
+        versions: [
+          {
+            address: "0xe5b515d69590044a994d88c8bb8a87b36cd7b6d2",
+            version: "3.0.0",
+            status: "live",
+            deployedAt: "2026-05-18T05:30:00Z",
+            sourceGitSha: "506961ed1fe4f368a4c6a8793960a754b777b9fd",
+            compilerVersion: "0.8.28+commit.7893614a",
+          },
+        ],
+      },
+    ];
+    const { contracts } = emitRegistryUpdate({
+      deployments: HADRIAN_DEPLOYMENTS,
+      oracle: EMPTY_ORACLE,
+      contracts: realisticPrior,
+      options: META,
+    });
+    // The 3 non-managed entries should pass through unchanged
+    const erc20 = contracts.find((c) => c.name === "ERC20SPLFactory")!;
+    const multicall = contracts.find((c) => c.name === "Multicall3")!;
+    const paymaster = contracts.find((c) => c.name === "RomeBridgePaymaster")!;
+    expect(erc20).toEqual(realisticPrior[0]);
+    expect(multicall).toEqual(realisticPrior[1]);
+    expect(paymaster).toEqual(realisticPrior[2]);
+    // The 4 managed entries should be appended (since they weren't in prior)
+    const managedNames = contracts
+      .filter((c) =>
+        ["BatchReader", "OracleAdapterFactory", "PythPullAdapterImpl", "SwitchboardV3AdapterImpl"].includes(c.name),
+      )
+      .map((c) => c.name);
+    expect(managedNames.sort()).toEqual([
+      "BatchReader",
+      "OracleAdapterFactory",
+      "PythPullAdapterImpl",
+      "SwitchboardV3AdapterImpl",
+    ]);
+    // Total entries: 3 preserved + 4 new = 7
+    expect(contracts).toHaveLength(7);
+    // Non-managed entries appear FIRST (in input order); managed entries appended.
+    expect(contracts[0].name).toBe("ERC20SPLFactory");
+    expect(contracts[1].name).toBe("Multicall3");
+    expect(contracts[2].name).toBe("RomeBridgePaymaster");
+  });
+
+  it("preserves non-managed entries even on a redeploy that retires managed ones", () => {
+    const mixedPrior: RegistryContractsFile = [
+      {
+        name: "Multicall3",
+        versions: [
+          {
+            address: "0x000000000000000000000000000000000000ca11",
+            version: "3.0.0",
+            status: "live",
+            deployedAt: "2026-05-21T04:49:00Z",
+            sourceGitSha: "deadbeef",
+            compilerVersion: "0.8.28+commit.7893614a",
+          },
+        ],
+      },
+      {
+        name: "OracleAdapterFactory",
+        versions: [
+          {
+            address: "0xold_factory_address0000000000000000000000",
+            version: "1.0.0",
+            status: "live",
+            deployedAt: "2026-05-20T00:00:00Z",
+            sourceGitSha: "old",
+            compilerVersion: "0.8.28+commit.7893614a",
+          },
+        ],
+      },
+    ];
+    const { contracts } = emitRegistryUpdate({
+      deployments: HADRIAN_DEPLOYMENTS,
+      oracle: EMPTY_ORACLE,
+      contracts: mixedPrior,
+      options: META,
+    });
+    const multicall = contracts.find((c) => c.name === "Multicall3")!;
+    expect(multicall).toEqual(mixedPrior[0]); // unchanged
+    const factory = contracts.find((c) => c.name === "OracleAdapterFactory")!;
+    expect(factory.versions).toHaveLength(2); // 1 retired + 1 new live
+    expect(factory.versions.find((v) => v.version === "2.0.0")!.status).toBe("live");
+    expect(factory.versions.find((v) => v.version === "1.0.0")!.status).toBe("retired");
+  });
+});
