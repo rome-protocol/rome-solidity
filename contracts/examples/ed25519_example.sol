@@ -15,9 +15,9 @@ import "../interface.sol";
 /// Reverts otherwise. See rome-evm-private's `non_evm/ed25519_ix.rs` for the
 /// 15 error variants and what triggers each.
 ///
-/// Real consumers (e.g. the Pyth Lazer wrapper) inline this pattern but pin
-/// `allowed_signers` to a hardcoded allowlist (e.g. just the Lazer signer
-/// pubkey) and supply the on-wire envelope as `expected_message`.
+/// Real consumers inline this pattern but pin `allowed_signers` to a
+/// hardcoded allowlist (e.g. just one well-known signer pubkey) and supply
+/// the on-wire envelope as `expected_message`.
 contract ed25519_example {
     function verify_one(
         bytes32[] calldata allowed_signers,
