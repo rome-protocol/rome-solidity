@@ -81,11 +81,8 @@ npx hardhat run scripts/deploy_meteora_pool.ts --network <chain>
 
 # Deploy Oracle Gateway V2
 npx hardhat run scripts/oracle/deploy.ts --network <chain>
-npx hardhat run scripts/oracle/deploy-factory.ts --network <chain>
-npx hardhat run scripts/oracle/deploy-and-test.ts --network <chain>  # end-to-end deploy + test
 
 # Test oracle feeds on live network
-npx hardhat run scripts/oracle/test-feeds.ts --network <chain>       # Pyth v1 feeds
 npx hardhat run scripts/oracle/test-feeds-v2.ts --network <chain>    # Oracle Gateway V2 (Pyth Pull + batch reader)
 npx hardhat run scripts/oracle/test-switchboard.ts --network <chain> # Switchboard V2 feeds
 
