@@ -53,17 +53,7 @@
           "pubkeyBytes32": "0xec81105112a257d61df4cf5f13ee0a1b019197c8c5343b4f2a7ec8846ae22c1a"
         }
       ]
-    },
-    "PythLazerFeedAdapter": {
-      "address": "0x3dd9ede93c942aadfb50a595fd0d265eecda5736",
-      "type": "implementation"
-    },
-    "PythLazerCache": {
-      "address": "0x37e5c6ebac2e06199300a4d8a51c2be2a9e924bd",
-      "maxStaleness": 30
-    },
-    "LazerFeeds": [],
-    "lazerDeployedAt": "2026-05-20T13:49:30.023Z"
+    }
   },
   "MeteoraDAMMv1Factory": {
     "address": "0x6ce0e90db2b54b9a433530cd5b3d31573a401c3e"

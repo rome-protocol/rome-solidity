@@ -4,7 +4,6 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/proxy/Clones.sol";
 import "./PythPullAdapter.sol";
 import "./SwitchboardV3Adapter.sol";
-import "./PythLazerFeedAdapter.sol";
 import "../interface.sol";
 
 /// @title OracleAdapterFactory
@@ -25,27 +24,15 @@ contract OracleAdapterFactory {
 
     mapping(bytes32 => address) public pythAdapters;
     mapping(bytes32 => address) public switchboardAdapters;
-    /// @notice Per-feed Lazer adapter registry. Populated by createLazerFeed.
-    ///         Keyed by Pyth Lazer feedId (uint32 in the wire format).
-    mapping(uint32 => address) public lazerAdapters;
     address[] public allAdapters;
     mapping(address => bool) public pausedAdapters;
     /// @notice Reverse lookup so pause/unpause ops can reject arbitrary
-    ///         addresses. Populated in `createPythFeed` / `createSwitchboardFeed` / `createLazerFeed`.
+    ///         addresses. Populated in `createPythFeed` / `createSwitchboardFeed`.
     mapping(address => bool) public isRegisteredAdapter;
-
-    /// @notice PythLazerCache singleton — one cache per chain shared by all
-    ///         per-feed Lazer adapter clones. Set once via setLazerImplementations.
-    address public lazerCache;
-    /// @notice PythLazerFeedAdapter implementation address (clone target).
-    ///         Set once via setLazerImplementations.
-    address public lazerAdapterImpl;
 
     // --- Events ---
     event PythFeedCreated(address indexed adapter, bytes32 indexed pythAccount, string description);
     event SwitchboardFeedCreated(address indexed adapter, bytes32 indexed sbAccount, string description);
-    event LazerFeedCreated(address indexed adapter, uint32 indexed feedId, string description);
-    event LazerImplementationsSet(address indexed cache, address indexed adapterImpl);
     event AdapterPaused(address indexed adapter);
     event AdapterUnpaused(address indexed adapter);
     event OwnershipTransferred(address indexed oldOwner, address indexed newOwner);
@@ -58,8 +45,6 @@ contract OracleAdapterFactory {
     error StalenessOutOfRange(uint256 staleness);
     error ZeroAddress();
     error AdapterNotRegistered();
-    error LazerImplementationsAlreadySet();
-    error LazerImplementationsNotSet();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert OnlyOwner();
@@ -164,59 +149,6 @@ contract OracleAdapterFactory {
         isRegisteredAdapter[adapter] = true;
 
         emit SwitchboardFeedCreated(adapter, sbAccountPubkey, desc);
-    }
-
-    /// @notice One-time setter for the Lazer cache singleton + adapter
-    ///         implementation. Owner-only. Once set, neither can be changed
-    ///         (avoid governance surface for swapping production oracle
-    ///         infrastructure mid-life).
-    /// @dev    Splitting setup out of the constructor keeps the existing
-    ///         factory ABI stable for chains already deployed before the
-    ///         Lazer adapter family was added. New chains can set
-    ///         immediately post-deploy.
-    function setLazerImplementations(address _cache, address _adapterImpl)
-        external
-        onlyOwner
-    {
-        if (lazerCache != address(0)) revert LazerImplementationsAlreadySet();
-        if (_cache == address(0) || _adapterImpl == address(0)) revert ZeroAddress();
-        lazerCache = _cache;
-        lazerAdapterImpl = _adapterImpl;
-        emit LazerImplementationsSet(_cache, _adapterImpl);
-    }
-
-    /// @notice Deploy a new Pyth Lazer per-feed adapter. Owner-only because
-    ///         Lazer has no per-feed Solana account ownership to validate
-    ///         against (unlike Pyth Pull / Switchboard) — feed curation is
-    ///         the foundation's responsibility.
-    /// @param feedId Pyth Lazer feed id.
-    /// @param desc Human-readable description (e.g. "BTC / USD").
-    /// @param maxConfBps Confidence rejection threshold in bps (0 → default 200; cap 1000).
-    function createLazerFeed(
-        uint32 feedId,
-        string calldata desc,
-        uint256 maxConfBps
-    ) external onlyOwner returns (address adapter) {
-        if (lazerCache == address(0) || lazerAdapterImpl == address(0)) {
-            revert LazerImplementationsNotSet();
-        }
-        if (lazerAdapters[feedId] != address(0)) revert FeedAlreadyExists();
-
-        adapter = Clones.clone(lazerAdapterImpl);
-        PythLazerFeedAdapter(adapter).initialize(
-            lazerCache,
-            feedId,
-            desc,
-            maxConfBps,
-            address(this)
-        );
-
-        // Register
-        lazerAdapters[feedId] = adapter;
-        allAdapters.push(adapter);
-        isRegisteredAdapter[adapter] = true;
-
-        emit LazerFeedCreated(adapter, feedId, desc);
     }
 
     /// @notice Check if an adapter is paused
