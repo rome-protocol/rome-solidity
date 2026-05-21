@@ -9,8 +9,6 @@ Deploy and ops scripts for the Oracle Gateway V2 stack: `PythPullAdapter`, `Swit
 - `deploy.ts` — original V1-era deploy. Deploys `PythPullAdapter` impl, `SwitchboardV3Adapter` impl, `OracleAdapterFactory`, and `BatchReader`. Override program IDs via `PYTH_PRICE_FEED_PROGRAM_ID`, `SWITCHBOARD_PROGRAM_ID`, `DEFAULT_MAX_STALENESS`.
 - `deploy-v2-polish.ts` — current polished V2 deployer (post-audit, with staleness guards + `metadata()`). **Idempotent**: skips redeploy if `deployments/<network>.json` already has a populated `OracleGatewayV2` block. Set `FORCE_REDEPLOY=1` to override. Does **not** seed feeds.
 - `deploy-seed-feeds.ts` — registers Pyth Pull + Switchboard V3 adapter clones against an already-deployed `OracleAdapterFactory`. Reads the factory address from `deployments/<network>.json`. Idempotent — skips pubkeys already registered.
-- `deploy-factory.ts` — factory-only deploy.
-- `deploy-and-test.ts` — end-to-end deploy + smoke test.
 
 ## Manual deploy flow
 
@@ -57,7 +55,6 @@ If/when a future requirement justifies CI deploys (e.g., approaching mainnet, or
 
 ## Live-network validation scripts (non-deploying)
 
-- `test-feeds.ts` — V1 Pyth feed health probe.
 - `test-feeds-v2.ts` — V2 Pyth Pull + BatchReader health probe.
 - `test-switchboard.ts` — Switchboard V3 feed health probe.
 - `validate-pyth-pull-offsets.ts`, `validate-switchboard-offsets.ts` — re-validate parser offsets against live Solana accounts. Run before any parser change.
