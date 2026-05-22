@@ -65,6 +65,22 @@ interface ISystemCached {
 }
 
 interface ISplCached {
+    enum AccountState {
+        Uninitialized,
+        Initialized,
+        Frozen
+    }
+    struct Account {
+        bytes32 mint;
+        bytes32 owner;
+        uint64 amount;
+        bytes32 delegate;
+        AccountState state;
+        bool is_native;
+        uint64 native_value;
+        uint64 delegated_amount;
+        bytes32 close_authority;
+    }
     // 0xa9059cbb — IERC20.transfer
     function transfer(address to, uint256 amount) external;
     // 0x6a467394 — to_pda, amount
@@ -76,7 +92,7 @@ interface ISplCached {
     // 0x0b0ad508 — ata, mint, owner
     function init(bytes32 ata, bytes32 mint, bytes32 owner) external;
     // 0x73b9aa91 — cross-state eth_call
-    function account(address user) external view returns (bytes memory);
+    function account(bytes32) external view returns(Account memory);
 }
 
 interface IAssociatedSplCached {
