@@ -21,6 +21,93 @@ interface IWithdraw {
     function withdraw_to_ata(uint256 wei_) external;
 }
 
+// ─── Cached precompiles ──────────────────────────────────────────────
+// Route through the rome-evm-private journal so non-EVM side effects
+// (SPL / ATA / System CPIs + Withdraw) are revertable alongside EVM
+// diffs. The non-cached precompiles above (Withdraw at 0x42..16,
+// System at 0xff..07, etc.) remain wired and continue to dispatch the
+// legacy non-revertable path.
+//
+// Source of truth: rome-evm-private/restore_non_evm_state branch,
+//                  program/src/non_evm_cached/.
+// Selectors below were re-derived from canonical signatures via ethers
+// `id(sig).slice(0,10)` against the Rust dispatch bytes — do not trust
+// the inline `// 0x…` comments in the Rust source if they conflict.
+
+interface IWithdrawCached {
+    // 0x4d8b0ea4 — payable
+    function withdrawal(bytes32 owner) payable external;
+    // 0x7f3124a0
+    function withdraw_to_pda(uint256 wei_) external;
+    // 0x8059abc0
+    function withdraw_to_ata(uint256 wei_) external;
+}
+
+interface ISystemCached {
+    // 0xe0402a8d
+    function create_pda() external;
+    // 0x4ceab657 — lamports
+    function create_pda(uint64 lamports) external;
+    // 0x48e2bb86 — lamports, salt
+    function create_pda(uint64 lamports, bytes32 salt) external;
+    // 0xcc258bbf — owner, len, salt
+    function create_pda(bytes32 owner, uint64 len, bytes32 salt) external;
+    // 0x93225c9f — len, salt
+    function allocate(uint64 len, bytes32 salt) external;
+    // 0x8ac00bdc — owner, salt
+    function assign(bytes32 owner, bytes32 salt) external;
+    // 0x5d359fbd — to, lamports
+    function transfer(address to, uint64 lamports) external;
+    // 0xfd54d1ea — to_pda, lamports
+    function transfer(bytes32 to, uint64 lamports) external;
+    // 0x875abfc0 — to_pda, lamports, salt
+    function transfer(bytes32 to, uint64 lamports, bytes32 salt) external;
+}
+
+interface ISplCached {
+    enum AccountState {
+        Uninitialized,
+        Initialized,
+        Frozen
+    }
+    struct Account {
+        bytes32 mint;
+        bytes32 owner;
+        uint64 amount;
+        bytes32 delegate;
+        AccountState state;
+        bool is_native;
+        uint64 native_value;
+        uint64 delegated_amount;
+        bytes32 close_authority;
+    }
+    // 0xa9059cbb — IERC20.transfer
+    function transfer(address to, uint256 amount) external;
+    // 0x6a467394 — to_pda, amount
+    function transfer(bytes32 to_pda, uint256 amount) external;
+    // 0x57cfeeee — to, amount, mint
+    function transfer(address to, uint256 amount, bytes32 mint) external;
+    // 0x7db527f9 — to_pda, amount, mint
+    function transfer(bytes32 to_pda, uint256 amount, bytes32 mint) external;
+    // 0x0b0ad508 — ata, mint, owner
+    function init(bytes32 ata, bytes32 mint, bytes32 owner) external;
+    // 0x73b9aa91 — derives ATA(external_auth(user), chain_mint) internally
+    function account(address user) external view returns(Account memory);
+    // 0x882358ae — raw 32-byte ATA pubkey
+    function account(bytes32 ata) external view returns(Account memory);
+}
+
+interface IAssociatedSplCached {
+    // 0xb6d336ed
+    function create_ata() external;
+    // 0x81972e35 — mint
+    function create_ata(bytes32 mint) external;
+    // 0x5a7c3259 — user (same selector as IHelperProgram.create_ata(address))
+    function create_ata(address user) external;
+    // 0x3de2251a — user, mint (same selector as IHelperProgram.create_ata(address,bytes32))
+    function create_ata(address user, bytes32 mint) external;
+}
+
 interface ICrossProgramInvocation {
     struct AccountMeta {
         bytes32 pubkey;
@@ -203,10 +290,14 @@ interface IEd25519 {
     ) external view returns (bytes32 verified_signer);
 }
 
+address constant system_cached_address = address(0xFf00000000000000000000000000000000000004);
+address constant spl_cached_address = address(0xff00000000000000000000000000000000000005);
+address constant associated_spl_cached_address = address(0xFF00000000000000000000000000000000000006);
 address constant system_program_address = address(0xfF00000000000000000000000000000000000007);
 address constant cpi_program_address = address(0xFF00000000000000000000000000000000000008);
 address constant helper_program_address = address(0xff00000000000000000000000000000000000009);
 address constant ed25519_program_address = address(0xfF0000000000000000000000000000000000000a);
+address constant withdraw_cached_address = address(0xFF0000000000000000000000000000000000000B);
 address constant withdraw_address = address(0x4200000000000000000000000000000000000016);
 
 ISystemProgram constant SystemProgram = ISystemProgram(system_program_address);
@@ -214,6 +305,10 @@ ICrossProgramInvocation constant CpiProgram = ICrossProgramInvocation(cpi_progra
 IWithdraw constant Withdraw = IWithdraw(withdraw_address);
 IHelperProgram constant HelperProgram = IHelperProgram(helper_program_address);
 IEd25519 constant Ed25519 = IEd25519(ed25519_program_address);
+ISystemCached constant SystemCached = ISystemCached(system_cached_address);
+ISplCached constant SplCached = ISplCached(spl_cached_address);
+IAssociatedSplCached constant AssociatedSplCached = IAssociatedSplCached(associated_spl_cached_address);
+IWithdrawCached constant WithdrawCached = IWithdrawCached(withdraw_cached_address);
 
 
 
