@@ -6,12 +6,12 @@
     "@openzeppelin/contracts": "^5.6.1",
     "@solana/web3.js": "^1.98.4",
     "bs58": "^6.0.0",
-    "hardhat": "^3.4.5"
+    "hardhat": "^3.5.1"
   },
   "type": "module",
   "devDependencies": {
-    "@nomicfoundation/hardhat-ignition": "^3.1.5",
-    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.5",
+    "@nomicfoundation/hardhat-ignition": "^3.1.6",
+    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.6",
     "@types/chai": "^5.2.3",
     "@types/mocha": "^10.0.10",
     "@types/node": "^25.9.1",
