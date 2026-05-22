@@ -50,11 +50,8 @@ interface ISystemCached {
     function create_pda(uint64 lamports) external;
     // 0x48e2bb86 — lamports, salt
     function create_pda(uint64 lamports, bytes32 salt) external;
-    // 0x284031af — owner_tag, len, salt. The Rust source comment labels
-    // these (owner, len, salt); the uint64 is a packed owner identifier
-    // (NOT a Solana owner pubkey, which would be bytes32 and produce
-    // selector 0xcc258bbf).
-    function create_pda(uint64 owner_tag, uint64 len, bytes32 salt) external;
+    // 0xcc258bbf — owner, len, salt
+    function create_pda(bytes32 owner, uint64 len, bytes32 salt) external;
     // 0x93225c9f — len, salt
     function allocate(uint64 len, bytes32 salt) external;
     // 0x8ac00bdc — owner, salt
