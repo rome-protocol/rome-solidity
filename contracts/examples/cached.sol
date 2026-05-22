@@ -158,21 +158,14 @@ contract cached_example {
         require(success, "revert");
     }
 
-    // Read the SPL token-account state for `user`'s gas-mint ATA. The
-    // on-chain precompile reads the 32-byte ABI payload as a raw
-    // Solana Pubkey, so calling the typed binding `SplCached.account(user)`
-    // is wrong — Solidity zero-pads the 20-byte address to 32 bytes
-    // and the precompile then looks up a non-existent account. Derive
-    // the ATA via the non-cached HelperProgram (pure read, no CPI flag
-    // engaged), then pass it as the raw 32-byte payload via staticcall.
-    function spl_account(address user) external view returns (bytes memory) {
+    // Read the SPL token-account state for `user`'s gas-mint ATA.
+    // Derive the ATA via the non-cached HelperProgram (pure read, no
+    // CPI flag engaged) then read the SPL Account struct via the
+    // cached precompile's typed CrossStateEthCall binding.
+    function spl_account(address user) external view returns (ISplCached.Account memory) {
         bytes32 mint = SystemProgram.mint_id();
         bytes32 ata = HelperProgram.ata(user, mint);
-        (bool success, bytes memory data) = address(SplCached).staticcall(
-            abi.encodePacked(bytes4(0x73b9aa91), ata)
-        );
-        require(success, "spl account read failed");
-        return data;
+        return SplCached.account(ata);
     }
 
     // ─── AssociatedSplCached (0xff..06) ──────────────────────────────
