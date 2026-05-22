@@ -50,12 +50,10 @@ interface ISystemCached {
     function create_pda(uint64 lamports) external;
     // 0x48e2bb86 — lamports, salt
     function create_pda(uint64 lamports, bytes32 salt) external;
-    // 0x284031af — (uint64,uint64,bytes32); Rust comment labels these
-    // (owner, len, salt). Note `owner` here is the uint64 — confirm with
-    // branch author whether the param order is `(owner_tag, len, salt)`
-    // or whether the Rust signature is actually meant to be
-    // (bytes32,uint64,bytes32) (keccak of that = 0xcc258bbf, doesn't
-    // match the dispatch byte).
+    // 0x284031af — owner_tag, len, salt. The Rust source comment labels
+    // these (owner, len, salt); the uint64 is a packed owner identifier
+    // (NOT a Solana owner pubkey, which would be bytes32 and produce
+    // selector 0xcc258bbf).
     function create_pda(uint64 owner_tag, uint64 len, bytes32 salt) external;
     // 0x93225c9f — len, salt
     function allocate(uint64 len, bytes32 salt) external;
@@ -65,30 +63,23 @@ interface ISystemCached {
     function transfer(address to, uint64 lamports) external;
     // 0xfd54d1ea — to_pda, lamports
     function transfer(bytes32 to, uint64 lamports) external;
-    // NOTE: SystemCached const TRANSFER_B32_SALT = 0x80d54556 has no
-    // matching keccak (probed (bytes32,uint64,bytes32) = 0x875abfc0;
-    // (bytes32,uint64) = 0xfd54d1ea — already taken). Flag for branch
-    // author before declaring here.
+    // 0x875abfc0 — to_pda, lamports, salt
+    function transfer(bytes32 to, uint64 lamports, bytes32 salt) external;
 }
 
 interface ISplCached {
     // 0xa9059cbb — IERC20.transfer
     function transfer(address to, uint256 amount) external;
+    // 0x6a467394 — to_pda, amount
+    function transfer(bytes32 to_pda, uint256 amount) external;
     // 0x57cfeeee — to, amount, mint
     function transfer(address to, uint256 amount, bytes32 mint) external;
-    // 0x7db527f9 — to_pda, amount, mint. Rust const TRANSFER_B32
-    // comment labels this as the 2-arg form `transfer(bytes32,uint256)`
-    // but keccak of the 2-arg = 0x6a467394; the 3-arg form matches
-    // dispatch bytes, so that's what's declared here.
+    // 0x7db527f9 — to_pda, amount, mint
     function transfer(bytes32 to_pda, uint256 amount, bytes32 mint) external;
     // 0x0b0ad508 — ata, mint, owner
     function init(bytes32 ata, bytes32 mint, bytes32 owner) external;
     // 0x73b9aa91 — cross-state eth_call
     function account(address user) external view returns (bytes memory);
-    // NOTE: SplCached const TRANSFER_MINT_B32 = 0x61ec1829 has no
-    // matching keccak under any standard signature probe (`(b32,uint256,bytes32)`,
-    // `(b32,b32,uint256)`, `(b32,b32,uint256,b32)`, …). Flag for branch
-    // author before declaring here.
 }
 
 interface IAssociatedSplCached {
