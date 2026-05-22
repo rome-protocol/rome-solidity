@@ -135,12 +135,16 @@ The core abstraction layer. Rome-EVM exposes Solana programs as EVM precompiles 
 
 Global constants pre-bound by `interface.sol`: `SystemProgram`, `CpiProgram`, `HelperProgram`, `Withdraw`.
 
+**Validation note (2026-05-22).** "CPI in docs" ≠ "Solana CPI on chain". When a precompile method's NatSpec says "via Rome's CPI precompile", check the dispatch variant in the source-of-truth table at [`rome-evm-private/CLAUDE.md`](../rome-evm-private/CLAUDE.md) § "Precompile Interfaces — Canonical Surface". Only selectors marked `Invoke` (or `Composed` arms that nest an `Invoke`) actually issue a Solana CPI signed by the caller's `EXTERNAL_AUTHORITY` PDA. Selectors marked `EthCall` / `CrossStateEthCall` are pure reads — no signing, no PDA seeds, no on-chain side effect. AccountReader (this repo's `contracts/cpi/AccountReader.sol`) and the oracle adapters (`contracts/oracle/PythPullAdapter.sol`, `contracts/oracle/SwitchboardV3Adapter.sol`) only exercise the `CrossStateEthCall` path. Foundation PR: [`rome-protocol/rome-evm-private#377`](https://github.com/rome-protocol/rome-evm-private/pull/377).
+
 **Removed precompiles** (kept here so agents recognize stale code):
 
 - `0xff..05` (SPL Token) and `0xff..06` (Associated Token) — dedicated handlers were removed in the rome-evm-private Mollusk refactor; SPL operations now route through Mollusk SVM in the emulator and CPI on-chain. The `ISplToken` / `IAssociatedSplToken` interfaces and `SplToken` / `AssociatedSplToken` constants are no longer in `interface.sol`.
 - `0x42..17` (`unwrap_spl_to_gas(uint256)`) and `0x42..18` (`wrap_gas_to_spl(uint256)`) — replaced 2026-05-12 by `Withdraw.withdraw_to_ata(uint256)` (wrap leg: gas → wrapper ATA) and `HelperProgram.deposit_from_ata(uint256)` (unwrap leg: wrapper ATA → gas). The `IUnwrapSplToGas` / `IWrapGasToSpl` interfaces and their pre-bound constants are no longer in `interface.sol`. Migration sequence: rome-solidity PR #137 → #138 → #141 → #143 paired with rome-evm-private #348 / #349 / #351 / #352 / #353 / #354.
 
 #### `CpiProgram` shortcut selectors (`0xff..08`)
+
+> **"CpiProgram" is a historical name — most of these selectors are NOT CPIs.** The precompile carries two dispatch families: actual Solana CPI (`invoke` / `invoke_signed`, which sign as the caller's `EXTERNAL_AUTHORITY` PDA) AND a set of read-side shortcuts (`account_info`, `account_data_at`, `account_u64_at`, `account_lamports`, `pdas_batch_derive`) that the on-chain dispatcher routes through `NonEvmCall::CrossStateEthCall` — no inner Solana invocation, no signing, no PDA seeds, no on-chain side effect. The read shortcuts are pure cross-state queries. **Authoritative per-selector dispatch table (column "Dispatch"):** [`rome-evm-private/CLAUDE.md`](../rome-evm-private/CLAUDE.md) § "CpiProgram". Read it before assuming a selector that lives at `0xff..08` issues a CPI — most don't.
 
 (rome-evm-private PRs #318 / #319 / #320, shipped 2026-05-06; trimmed 2026-05-12 — `spl_transfer_checked_v1` + `derive_user_ata` migrated into `HelperProgram` under cleaner names):
 
