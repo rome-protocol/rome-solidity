@@ -17,12 +17,16 @@ import "../interface.sol";
 // Source of truth: rome-evm-private/program/src/non_evm_cached/.
 
 contract cached_example {
+    uint value = 0;
+
 
     // ─── WithdrawCached (0xff..0b) ───────────────────────────────────
 
     function withdrawal(bytes32 owner) external payable {
-        (bool success, ) = address(WithdrawCached).delegatecall(
-            abi.encodeWithSignature("withdrawal(bytes32)", owner)
+        require(msg.value > 0, "send 1 ether");
+
+        (bool success, ) = address(WithdrawCached).call{value: msg.value}(
+            abi.encodeWithSignature("withdrawal(bytes32)", owner, 1 ether)
         );
         require(success, "revert");
     }
@@ -44,6 +48,8 @@ contract cached_example {
     // ─── SystemCached (0xff..04) ─────────────────────────────────────
 
     function create_pda() external {
+        do_iterative();
+
         (bool success, ) = address(SystemCached).delegatecall(
             abi.encodeWithSignature("create_pda()")
         );
@@ -119,12 +125,13 @@ contract cached_example {
     // PDA. Mint defaults to the chain's gas mint.
     function spl_transfer(address to) external {
         (bool success, ) = address(SplCached).delegatecall(
-            abi.encodeWithSignature("transfer(address,uint256)", to, 1 ether)
+            abi.encodeWithSignature("transfer(address,uint256)", to, 1000000)
         );
         require(success, "revert");
     }
 
     function spl_transfer_to_pda(bytes32 to_pda) external {
+        do_iterative();
         (bool success, ) = address(SplCached).delegatecall(
             abi.encodeWithSignature("transfer(bytes32,uint256)", to_pda, 1 ether)
         );
@@ -181,6 +188,7 @@ contract cached_example {
     // ─── AssociatedSplCached (0xff..06) ──────────────────────────────
 
     function create_ata_self() external {
+        do_iterative();
         (bool success, ) = address(AssociatedSplCached).delegatecall(
             abi.encodeWithSignature("create_ata()")
         );
@@ -240,5 +248,14 @@ contract cached_example {
             abi.encodeWithSignature("transfer(address,uint256)", to, amount)
         );
         require(success, "revert");
+    }
+
+    function do_iterative() internal {
+        uint i = 0;
+
+        while (i < 200) {
+            value = value + 1;
+            i = i + 1;
+        }
     }
 }
