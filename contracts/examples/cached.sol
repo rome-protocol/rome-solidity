@@ -158,12 +158,22 @@ contract cached_example {
         require(success, "revert");
     }
 
-    // Read the SPL token-account state for `user`'s gas-mint ATA.
-    // Derive the ATA via the non-cached HelperProgram (pure read, no
-    // CPI flag engaged) then read the SPL Account struct via the
-    // cached precompile's typed CrossStateEthCall binding.
+    // Read the SPL token-account state for `user`'s gas-mint ATA via
+    // the address-overload — the precompile derives
+    // ATA(external_auth(user), chain_mint) internally.
     function spl_account(address user) external view returns (ISplCached.Account memory) {
-        bytes32 mint = SystemProgram.mint_id();
+        return SplCached.account(user);
+    }
+
+    // Read the SPL token-account state for an arbitrary ATA via the
+    // bytes32-overload. The example derives the ATA manually through
+    // the non-cached HelperProgram (pure read, no CPI flag engaged) —
+    // equivalent to spl_account() above for the gas-mint case, but
+    // allows passing any mint or pre-derived ATA.
+    function spl_account_b32(address user, bytes32 mint)
+        external view
+        returns (ISplCached.Account memory)
+    {
         bytes32 ata = HelperProgram.ata(user, mint);
         return SplCached.account(ata);
     }

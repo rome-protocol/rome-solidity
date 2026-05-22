@@ -91,8 +91,10 @@ interface ISplCached {
     function transfer(bytes32 to_pda, uint256 amount, bytes32 mint) external;
     // 0x0b0ad508 — ata, mint, owner
     function init(bytes32 ata, bytes32 mint, bytes32 owner) external;
-    // 0x73b9aa91 — cross-state eth_call
-    function account(bytes32) external view returns(Account memory);
+    // 0x73b9aa91 — derives ATA(external_auth(user), chain_mint) internally
+    function account(address user) external view returns(Account memory);
+    // 0x882358ae — raw 32-byte ATA pubkey
+    function account(bytes32 ata) external view returns(Account memory);
 }
 
 interface IAssociatedSplCached {
