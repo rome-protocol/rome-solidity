@@ -10,8 +10,11 @@ import {AccountReader} from "../cpi/AccountReader.sol";
 
 /// @title PythPullAdapter
 /// @notice Per-feed adapter that reads PriceUpdateV2 from Pyth Solana Receiver
-///         via Rome's CPI precompile. Implements both IAggregatorV3Interface and
-///         IExtendedOracleAdapter. Deployed as EIP-1167 clone by OracleAdapterFactory.
+///         via Rome's `CpiProgram` precompile (read-shortcut path —
+///         `account_data_at` dispatches as `NonEvmCall::CrossStateEthCall`,
+///         not a Solana CPI; no signing, no PDA seeds involved). Implements
+///         both IAggregatorV3Interface and IExtendedOracleAdapter. Deployed
+///         as EIP-1167 clone by OracleAdapterFactory.
 contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
     bytes32 public pythAccount;
     string private _description;

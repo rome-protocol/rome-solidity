@@ -126,21 +126,53 @@ npx hardhat keystore set <CHAIN>_PRIVATE_KEY --dev
 
 The core abstraction layer. Rome-EVM exposes Solana programs as EVM precompiles at fixed addresses. **Authoritative inventory of upstream Rust dispatch + selector hex lives in [`rome-evm-private/CLAUDE.md`](../rome-evm-private/CLAUDE.md)** — when adding a method, treat the Rust side as canonical and mirror here.
 
-| Precompile | Address | Interface | Source of truth |
-|---|---|---|---|
-| System Program | `0xff..07` | `ISystemProgram` — PDA derivation, base58, mint/operator/program-id getters | `program/src/non_evm/system.rs` |
-| CPI | `0xff..08` | `ICrossProgramInvocation` — arbitrary Solana CPI + 4 CU-shortcut selectors | `program/src/non_evm/cpi.rs` |
-| Helper Program | `0xff..09` | `IHelperProgram` — 14 selectors for SPL / PDA / ATA / lamports / gas-token plumbing | `program/src/non_evm/helper.rs` |
-| Withdraw | `0x42..16` | `IWithdraw` — SOL `withdrawal` + the two gas-token bridge legs (`withdraw_to_pda` / `withdraw_to_ata`) | `program/src/non_evm/withdraw.rs` |
+| Precompile | Address | Interface | Track | Source of truth |
+|---|---|---|---|---|
+| **SystemCached** | `0xff..04` | `ISystemCached` — PDA create + system-program ops (allocate, assign, lamport transfer), revertable | **cached** | `program/src/non_evm_cached/system_cached.rs` |
+| **SplCached** | `0xff..05` | `ISplCached` — SPL Token / Token-2022 transfers + ATA init + cross-state account reads, revertable | **cached** | `program/src/non_evm_cached/spl_cached.rs` |
+| **AssociatedSplCached** | `0xff..06` | `IAssociatedSplCached` — idempotent ATA-create variants, revertable | **cached** | `program/src/non_evm_cached/aspl_cached.rs` |
+| System Program | `0xff..07` | `ISystemProgram` — PDA derivation, base58, mint/operator/program-id getters | legacy | `program/src/non_evm/system.rs` |
+| CPI | `0xff..08` | `ICrossProgramInvocation` — arbitrary Solana CPI + 4 CU-shortcut selectors | legacy | `program/src/non_evm/cpi.rs` |
+| Helper Program | `0xff..09` | `IHelperProgram` — 14 selectors for SPL / PDA / ATA / lamports / gas-token plumbing | legacy | `program/src/non_evm/helper.rs` |
+| Ed25519 | `0xff..0a` | `IEd25519` — Ed25519 sysvar-verify allowlist (Pyth Lazer support) | neutral (read-only) | `program/src/non_evm/ed25519.rs` |
+| **WithdrawCached** | `0xff..0b` | `IWithdrawCached` — gas-token withdrawal legs, revertable. Cached counterpart to `Withdraw @ 0x42..16` | **cached** | `program/src/non_evm_cached/withdraw_cached.rs` |
+| Withdraw | `0x42..16` | `IWithdraw` — SOL `withdrawal` + the two gas-token bridge legs (`withdraw_to_pda` / `withdraw_to_ata`) | legacy | `program/src/non_evm/withdraw.rs` |
 
-Global constants pre-bound by `interface.sol`: `SystemProgram`, `CpiProgram`, `HelperProgram`, `Withdraw`.
+Global constants pre-bound by `interface.sol`: `SystemProgram`, `CpiProgram`, `HelperProgram`, `Withdraw`, plus the new cached-track addresses `system_cached_address`, `spl_cached_address`, `associated_spl_cached_address`, `withdraw_cached_address`, `ed25519_program_address` (per rome-solidity #204, merged 2026-05-23).
+
+### Track selection — one track per contract (HARD RULE)
+
+**A Solidity contract picks one precompile track — cached or legacy — and commits to it.** Mixing cached-track and legacy-track precompile *mutating* calls within the same contract, or transitively across contracts in the same tx, is unsupported and runtime-blocked by `verify_call` in rome-evm-private. Track decision is **per-tx, sticky after revert** — once a track fires (even in a frame that later reverts), the tx is locked into it.
+
+Author statement (rome-evm-private PR #376, Valentin Konyakhin, 2026-05-22): *"Contract must use either a Cpi-based Solidity program or Cached-based Solidity program."*
+
+**What this means in practice:**
+- A contract that calls `ISplCached.transfer(...)` MUST NOT also call `IHelperProgram.transfer_spl(...)` in any reachable code path
+- A contract using `IAssociatedSplCached.create_ata(...)` cannot fall back to `IHelperProgram.create_ata(...)` in `try/catch` — gate fires regardless of revert
+- Migration from legacy → cached is a **contract-redeploy event**: deploy a new contract (e.g., `SPL_ERC20_cached`), point consumers at the new address, do not hybrid-modify an existing contract
+- CrossStateEthCall reads (`account_data_at`, `account_info`, `user_balance`, `lazer_price`, `ISplCached.account`, etc.) are track-neutral — pure reads, never lock a track
+
+**Why this rule:**
+- Auditability — one question per contract ("which track?"), not a code-path map
+- No subtle state-vs-overlay divergence at runtime
+- Static analysis can flag mixed-track contracts as policy violations
+
+**Authoritative dispatch + track-gate spec:** [`rome-evm-private/CLAUDE.md`](../rome-evm-private/CLAUDE.md) § "Track selection — one track per contract (HARD RULE)". Foundation PR: [`rome-protocol/rome-evm-private#382`](https://github.com/rome-protocol/rome-evm-private/pull/382).
+
+**Worked examples for cached-track contracts:** `contracts/examples/cached.sol` (canonical patterns) and `contracts/examples/mixed.sol` (intentional anti-pattern showing the gate firing) — shipped in rome-solidity #204.
+
+**Validation note (2026-05-22).** "CPI in docs" ≠ "Solana CPI on chain". When a precompile method's NatSpec says "via Rome's CPI precompile", check the dispatch variant in the source-of-truth table at [`rome-evm-private/CLAUDE.md`](../rome-evm-private/CLAUDE.md) § "Precompile Interfaces — Canonical Surface". Only selectors marked `Invoke` (or `Composed` arms that nest an `Invoke`) actually issue a Solana CPI signed by the caller's `EXTERNAL_AUTHORITY` PDA. Selectors marked `EthCall` / `CrossStateEthCall` are pure reads — no signing, no PDA seeds, no on-chain side effect. AccountReader (this repo's `contracts/cpi/AccountReader.sol`) and the oracle adapters (`contracts/oracle/PythPullAdapter.sol`, `contracts/oracle/SwitchboardV3Adapter.sol`) only exercise the `CrossStateEthCall` path. Foundation PRs: [`rome-protocol/rome-evm-private#382`](https://github.com/rome-protocol/rome-evm-private/pull/382) (disambiguation + one-track rule + cached family), [`rome-protocol/rome-evm-private#376`](https://github.com/rome-protocol/rome-evm-private/pull/376) (cached infrastructure — merged).
+
+**Known cached-track gaps** (tracked in [`rome-specs#122`](https://github.com/rome-protocol/rome-specs/pull/122)): SplCached missing `transferFrom` / `approve` / `mint` selectors; ASplCached missing raw-pubkey-owner `create_ata_for_key`; WithdrawCached missing unwrap leg (cached counterpart to `HelperProgram.deposit_from_ata`). Until these land, router-driven Romeswap / Compound supply-borrow / Cardo intent adapters / Wormhole outbound flows cannot fully migrate from legacy to cached track — they require the missing selectors.
 
 **Removed precompiles** (kept here so agents recognize stale code):
 
-- `0xff..05` (SPL Token) and `0xff..06` (Associated Token) — dedicated handlers were removed in the rome-evm-private Mollusk refactor; SPL operations now route through Mollusk SVM in the emulator and CPI on-chain. The `ISplToken` / `IAssociatedSplToken` interfaces and `SplToken` / `AssociatedSplToken` constants are no longer in `interface.sol`.
+- `0xff..05` (legacy SPL Token) and `0xff..06` (legacy Associated Token) — original dedicated handlers were removed in the rome-evm-private Mollusk refactor. **The slots have been REUSED post-#376 (2026-05-23) for cached precompiles**: `0xff..05` is now `SplCached` and `0xff..06` is now `AssociatedSplCached`. The old `ISplToken` / `IAssociatedSplToken` interface declarations are gone; the new `ISplCached` / `IAssociatedSplCached` interfaces live at these addresses with cached-track semantics.
 - `0x42..17` (`unwrap_spl_to_gas(uint256)`) and `0x42..18` (`wrap_gas_to_spl(uint256)`) — replaced 2026-05-12 by `Withdraw.withdraw_to_ata(uint256)` (wrap leg: gas → wrapper ATA) and `HelperProgram.deposit_from_ata(uint256)` (unwrap leg: wrapper ATA → gas). The `IUnwrapSplToGas` / `IWrapGasToSpl` interfaces and their pre-bound constants are no longer in `interface.sol`. Migration sequence: rome-solidity PR #137 → #138 → #141 → #143 paired with rome-evm-private #348 / #349 / #351 / #352 / #353 / #354.
 
 #### `CpiProgram` shortcut selectors (`0xff..08`)
+
+> **"CpiProgram" is a historical name — most of these selectors are NOT CPIs.** The precompile carries two dispatch families: actual Solana CPI (`invoke` / `invoke_signed`, which sign as the caller's `EXTERNAL_AUTHORITY` PDA) AND a set of read-side shortcuts (`account_info`, `account_data_at`, `account_u64_at`, `account_lamports`, `pdas_batch_derive`) that the on-chain dispatcher routes through `NonEvmCall::CrossStateEthCall` — no inner Solana invocation, no signing, no PDA seeds, no on-chain side effect. The read shortcuts are pure cross-state queries. **Authoritative per-selector dispatch table (column "Dispatch"):** [`rome-evm-private/CLAUDE.md`](../rome-evm-private/CLAUDE.md) § "CpiProgram". Read it before assuming a selector that lives at `0xff..08` issues a CPI — most don't.
 
 (rome-evm-private PRs #318 / #319 / #320, shipped 2026-05-06; trimmed 2026-05-12 — `spl_transfer_checked_v1` + `derive_user_ata` migrated into `HelperProgram` under cleaner names):
 

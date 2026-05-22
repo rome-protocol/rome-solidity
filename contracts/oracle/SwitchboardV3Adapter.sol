@@ -10,9 +10,12 @@ import {AccountReader} from "../cpi/AccountReader.sol";
 
 /// @title SwitchboardV3Adapter
 /// @notice Per-feed adapter that reads AggregatorAccountData from Switchboard V2
-///         (program SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f) via Rome's CPI
-///         precompile. Same interface as PythPullAdapter. Deployed as EIP-1167
-///         clone by OracleAdapterFactory.
+///         (program SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f) via Rome's
+///         `CpiProgram` precompile (read-shortcut path — `account_data_at`
+///         dispatches as `NonEvmCall::CrossStateEthCall`, not a Solana CPI;
+///         no signing, no PDA seeds involved). Same interface as
+///         PythPullAdapter. Deployed as EIP-1167 clone by
+///         OracleAdapterFactory.
 /// @dev The contract name keeps "V3" for backwards compatibility with the
 ///      deploy scripts and cached ABIs, but both the program ID passed by
 ///      the factory and the byte layout consumed by SwitchboardParser target
