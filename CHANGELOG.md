@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added — Phase A cached-track demonstrator methods on `cached.sol` + interface declarations
+
+Surfaces the four cached-track selectors that shipped in [`rome-evm-private#383`](https://github.com/rome-protocol/rome-evm-private/pull/383) (merged 2026-05-23):
+
+- `ISplCached.transferFrom(address,address,uint256,bytes32)` (`0x401e3367`) — delegate-source SPL transfer. SPL Token accepts the caller-PDA as the from-ATA's owner OR as a delegate with sufficient `delegated_amount`. Unblocks router-driven Romeswap / Compound supply-borrow / Cardo adapters on cached track.
+- `ISplCached.approve(address,uint256,bytes32)` (`0x8180f2fc`) — EVM-spender approve. Sets `external_auth(spender)` as the SPL delegate on owner-ATA via `approve_checked`.
+- `ISplCached.mint(address,uint256,bytes32)` (`0x1e458bee`) — caller-PDA signs as the mint authority via SPL `mint_to_checked`. SPL runtime enforces caller-PDA == on-chain mint authority.
+- `IWithdrawCached.withdraw_from_ata(uint256)` (`0x214ee485`) — inverse of `withdraw_to_ata`; burn SPL wrapper from caller's PDA-owned ATA, credit caller with `wei_` native gas. Single-state only. Cached counterpart of legacy `HelperProgram.deposit_from_ata`.
+
+Each is added to `contracts/interface.sol` (under `ISplCached` / `IWithdrawCached`) and demonstrated via the canonical `address(...).delegatecall(abi.encodeWithSignature(...))` pattern in `contracts/examples/cached.sol` (new methods: `spl_transferFrom` / `spl_approve` / `spl_mint` / `withdraw_from_ata`). Selector hex was pre-verified via `cast keccak` against the const in `rome-evm-private/program/src/non_evm_cached/{spl_cached,withdraw_cached}.rs` and locked at `cargo test` time by the rome-evm-private hex-lock tests.
+
+Two cached-track gaps remain after #383 — `ASplCached.create_ata_for_key` (operator-SOL drain risk) and `SplCached.approve_spl_raw_delegate` (Token-2022 opaque-error UX). Both stay reachable via the legacy `HelperProgram` while follow-up specs resolve the risks. See CLAUDE.md "Cached-track gaps" section for the current breakdown.
+
 ### Added — `EnsureAta` library + Meteora swap pre-flight (closes user-side ATA stalls)
 
 New library `contracts/cpi/EnsureAta.sol`: idempotently ensure a user's ATA for a given SPL mint exists, before an EVM contract dispatches a Solana CPI that requires it. Wraps `HelperProgram.create_ata(address, bytes32)` — selector `0x3de2251a` — which itself dispatches Solana's `create_associated_token_account_idempotent`, so the probe-and-skip dance at the EVM layer is collapsed into a single call. CU: ~50K (ATA exists, idempotent no-op CPI) to ~110K (creates).

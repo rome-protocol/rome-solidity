@@ -45,6 +45,17 @@ contract cached_example {
         require(success, "revert");
     }
 
+    // Inverse of withdraw_to_ata — burn SPL wrapper from caller's PDA-owned
+    // ATA and credit caller with `wei_` native gas. Single-state only.
+    // Cached counterpart of legacy HelperProgram.deposit_from_ata.
+    // Shipped via rome-evm-private#383.
+    function withdraw_from_ata() external {
+        (bool success, ) = address(WithdrawCached).delegatecall(
+            abi.encodeWithSignature("withdraw_from_ata(uint256)", 1 ether)
+        );
+        require(success, "revert");
+    }
+
     // ─── SystemCached (0xff..04) ─────────────────────────────────────
 
     function create_pda() external {
@@ -151,6 +162,47 @@ contract cached_example {
         (bool success, ) = address(SplCached).delegatecall(
             abi.encodeWithSignature(
                 "transfer(bytes32,uint256,bytes32)", to_pda, 1 ether, mint
+            )
+        );
+        require(success, "revert");
+    }
+
+    // Same selector as IERC20.transferFrom — a contract typed as
+    // `IERC20(spl_cached_address)` will dispatch a real SPL `transfer_checked`
+    // CPI here, signed by the caller's external_auth PDA. SPL Token accepts
+    // the caller-PDA as the from-ATA's owner OR as a delegate with
+    // `delegated_amount >= amount`. Shipped via rome-evm-private#383.
+    function spl_transferFrom(
+        address from, address to, uint256 amount, bytes32 mint
+    ) external {
+        (bool success, ) = address(SplCached).delegatecall(
+            abi.encodeWithSignature(
+                "transferFrom(address,address,uint256,bytes32)",
+                from, to, amount, mint
+            )
+        );
+        require(success, "revert");
+    }
+
+    // Same selector as IERC20.approve. Caller-PDA-as-owner sets
+    // external_auth(spender) as the SPL delegate on owner-ATA via
+    // approve_checked. Shipped via rome-evm-private#383.
+    function spl_approve(address spender, uint256 amount, bytes32 mint) external {
+        (bool success, ) = address(SplCached).delegatecall(
+            abi.encodeWithSignature(
+                "approve(address,uint256,bytes32)", spender, amount, mint
+            )
+        );
+        require(success, "revert");
+    }
+
+    // Caller-PDA signs as the mint authority via SPL `mint_to_checked`.
+    // SPL Token runtime enforces caller-PDA == on-chain mint authority.
+    // Shipped via rome-evm-private#383.
+    function spl_mint(address to, uint256 amount, bytes32 mint) external {
+        (bool success, ) = address(SplCached).delegatecall(
+            abi.encodeWithSignature(
+                "mint(address,uint256,bytes32)", to, amount, mint
             )
         );
         require(success, "revert");

@@ -163,7 +163,14 @@ Author statement (rome-evm-private PR #376, Valentin Konyakhin, 2026-05-22): *"C
 
 **Validation note (2026-05-22).** "CPI in docs" ≠ "Solana CPI on chain". When a precompile method's NatSpec says "via Rome's CPI precompile", check the dispatch variant in the source-of-truth table at [`rome-evm-private/CLAUDE.md`](../rome-evm-private/CLAUDE.md) § "Precompile Interfaces — Canonical Surface". Only selectors marked `Invoke` (or `Composed` arms that nest an `Invoke`) actually issue a Solana CPI signed by the caller's `EXTERNAL_AUTHORITY` PDA. Selectors marked `EthCall` / `CrossStateEthCall` are pure reads — no signing, no PDA seeds, no on-chain side effect. AccountReader (this repo's `contracts/cpi/AccountReader.sol`) and the oracle adapters (`contracts/oracle/PythPullAdapter.sol`, `contracts/oracle/SwitchboardV3Adapter.sol`) only exercise the `CrossStateEthCall` path. Foundation PRs: [`rome-protocol/rome-evm-private#382`](https://github.com/rome-protocol/rome-evm-private/pull/382) (disambiguation + one-track rule + cached family), [`rome-protocol/rome-evm-private#376`](https://github.com/rome-protocol/rome-evm-private/pull/376) (cached infrastructure — merged).
 
-**Known cached-track gaps** (tracked in [`rome-specs#122`](https://github.com/rome-protocol/rome-specs/pull/122)): SplCached missing `transferFrom` / `approve` / `mint` selectors; ASplCached missing raw-pubkey-owner `create_ata_for_key`; WithdrawCached missing unwrap leg (cached counterpart to `HelperProgram.deposit_from_ata`). Until these land, router-driven Romeswap / Compound supply-borrow / Cardo intent adapters / Wormhole outbound flows cannot fully migrate from legacy to cached track — they require the missing selectors.
+**Cached-track gaps — partially closed by [`rome-evm-private#383`](https://github.com/rome-protocol/rome-evm-private/pull/383) (merged 2026-05-23):**
+
+- ✅ **`ISplCached.transferFrom` / `approve` / `mint`** — landed in #383. Router-driven Romeswap / Compound supply-borrow / Cardo intent adapters can now migrate from legacy track. Demonstrator methods on `contracts/examples/cached.sol`.
+- ✅ **`IWithdrawCached.withdraw_from_ata`** — landed in #383. Cached unwrap leg (inverse of `withdraw_to_ata`). rome-ui `useWrapUnwrap` unwrap path can rebind to this selector.
+- ❌ **`IAssociatedSplCached.create_ata_for_key(bytes32,bytes32)`** — still gapped. Raw-pubkey-owner ATA-create needed by `SPL_ERC20.bridgeOutToSolana` / EIP-712 settle. Dropped from #383 during red-team review (operator-SOL drain risk on cached + iterative-VM amplification); follow-up spec pending.
+- ❌ **`ISplCached.approve_spl_raw_delegate(bytes32,bytes32,uint64,bytes32,uint8)`** — still gapped. Raw-pubkey delegate needed by `RomeBridgeWithdraw.approveBurnETH` (Wormhole outbound USDC). Dropped from #383 (Token-2022 opaque-error UX); follow-up spec pending.
+
+Both remaining gaps stay available on legacy `HelperProgram`; consumers don't lose functionality, they just stay on legacy track for those specific calls until the follow-up cached selectors ship.
 
 **Removed precompiles** (kept here so agents recognize stale code):
 
