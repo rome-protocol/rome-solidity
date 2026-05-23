@@ -99,9 +99,9 @@
     "deployedAt": 1779114924
   },
   "SPL_ERC20_cached": {
-    "address": "0xa6ee6ead4f4b6448c55e6b6b61b2e68b51e3e001",
-    "mint": "0x3b442cb3912157f13a933d0134282d032b5ffecd01a2dbf1b7790608df002ea7",
-    "name": "Rome USDC (cached)",
-    "symbol": "wUSDCc"
+    "address": "0x979cb140cd9593758496742f40ab37b41807284c",
+    "mint": "0xe129d398fb5bf9c7ffb56bfa0b855b101ea92c6d014be32283817301db843bed",
+    "name": "Cached Test Token",
+    "symbol": "wTESTc"
   }
 }
