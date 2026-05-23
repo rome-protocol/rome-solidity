@@ -163,14 +163,19 @@ Author statement (rome-evm-private PR #376, Valentin Konyakhin, 2026-05-22): *"C
 
 **Validation note (2026-05-22).** "CPI in docs" ≠ "Solana CPI on chain". When a precompile method's NatSpec says "via Rome's CPI precompile", check the dispatch variant in the source-of-truth table at [`rome-evm-private/CLAUDE.md`](../rome-evm-private/CLAUDE.md) § "Precompile Interfaces — Canonical Surface". Only selectors marked `Invoke` (or `Composed` arms that nest an `Invoke`) actually issue a Solana CPI signed by the caller's `EXTERNAL_AUTHORITY` PDA. Selectors marked `EthCall` / `CrossStateEthCall` are pure reads — no signing, no PDA seeds, no on-chain side effect. AccountReader (this repo's `contracts/cpi/AccountReader.sol`) and the oracle adapters (`contracts/oracle/PythPullAdapter.sol`, `contracts/oracle/SwitchboardV3Adapter.sol`) only exercise the `CrossStateEthCall` path. Foundation PRs: [`rome-protocol/rome-evm-private#382`](https://github.com/rome-protocol/rome-evm-private/pull/382) (disambiguation + one-track rule + cached family), [`rome-protocol/rome-evm-private#376`](https://github.com/rome-protocol/rome-evm-private/pull/376) (cached infrastructure — merged).
 
-**Cached-track gaps — partially closed by [`rome-evm-private#383`](https://github.com/rome-protocol/rome-evm-private/pull/383) (merged 2026-05-23):**
+**Cached-track surface — Phase A closed by [`rome-evm-private#383`](https://github.com/rome-protocol/rome-evm-private/pull/383) (merged 2026-05-23). No further cached selectors planned for the bridge surface; design is FINAL.**
+
+Shipped on cached track (PR #383):
 
 - ✅ **`ISplCached.transferFrom` / `approve` / `mint`** — landed in #383. Router-driven Romeswap / Compound supply-borrow / Cardo intent adapters can now migrate from legacy track. Demonstrator methods on `contracts/examples/cached.sol`.
 - ✅ **`IWithdrawCached.withdraw_from_ata`** — landed in #383. Cached unwrap leg (inverse of `withdraw_to_ata`). rome-ui `useWrapUnwrap` unwrap path can rebind to this selector.
-- ❌ **`IAssociatedSplCached.create_ata_for_key(bytes32,bytes32)`** — still gapped. Raw-pubkey-owner ATA-create needed by `SPL_ERC20.bridgeOutToSolana` / EIP-712 settle. Dropped from #383 during red-team review (operator-SOL drain risk on cached + iterative-VM amplification); follow-up spec pending.
-- ❌ **`ISplCached.approve_spl_raw_delegate(bytes32,bytes32,uint64,bytes32,uint8)`** — still gapped. Raw-pubkey delegate needed by `RomeBridgeWithdraw.approveBurnETH` (Wormhole outbound USDC). Dropped from #383 (Token-2022 opaque-error UX); follow-up spec pending.
 
-Both remaining gaps stay available on legacy `HelperProgram`; consumers don't lose functionality, they just stay on legacy track for those specific calls until the follow-up cached selectors ship.
+**Permanently scoped out** — the two originally-considered selectors below were rejected during red-team review and the decision is final. The bridge uses the legacy CPI direct path (`HelperProgram` at `0xff..09`) by design, because the legacy track's hard `CpiProhibitedInIterativeTx` gate IS the defense against the attack surface that a cached-track + iterative-VM variant would expose. These are NOT future-work items.
+
+- 🚫 **`IAssociatedSplCached.create_ata_for_key(bytes32,bytes32)`** — REJECTED. Reason: cached + iterative-VM compatibility amplifies the operator-SOL drain risk (rent paid by `cached.signer()`; a hostile contract loop in iterative VM can spam ATA creations). Legacy `HelperProgram.create_ata_for_key` (`0xff..09 / 0xd258a69d`) is hard-gated by `CpiProhibitedInIterativeTx` — the spam-loop attack is structurally impossible there. `SPL_ERC20.bridgeOutToSolana` / `ensureRecipientAta` / EIP-712 settle continue to call the legacy path; that IS the safe design.
+- 🚫 **`ISplCached.approve_spl_raw_delegate(bytes32,bytes32,uint64,bytes32,uint8)`** — REJECTED. Reason: cached-track Token-2022 opaque-error UX combined with iterative-VM amplification creates a hostile-input vector; the legacy `HelperProgram.approve_spl_raw_delegate` (`0xff..09 / 0x7881d453`) stays single-tx atomic and is the safe path for Wormhole outbound USDC. `RomeBridgeWithdraw.approveBurnETH` continues to call the legacy path.
+
+Don't pick these up as unfinished business. If a future requirement genuinely needs cached behavior here, it has to start by addressing the underlying iterative-VM attack vector — which is a different design space, not a Phase B continuation.
 
 **Removed precompiles** (kept here so agents recognize stale code):
 
