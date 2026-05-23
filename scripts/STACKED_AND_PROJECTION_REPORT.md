@@ -54,39 +54,74 @@ This is the per-step projection formula. For a real flow with K SPL operations o
 
 Add-liquidity-shape validation: K=5 → predicted Δ = 13 + 5×5 = 38 K. Measured Δ = 34.8 K. **Δ-prediction error 8% — model good.**
 
+## Heap projection model
+
+The bench also captured heap. Linear regression on the same N-stacked data:
+
+```
+cached_heap(N) ≈ 16,200 + 4,300 × N  bytes
+cpi_heap(N)    ≈ 16,400 + 3,000 × N  bytes
+```
+
+Cached overhead: ~1.3 KB per stacked SPL op (overlay's journal entry per ix). Both tracks fit comfortably within rome-evm's 256 KB heap ceiling for any realistic K. **The constraint that bites real flows is CU, not heap.**
+
 ## Projection for real consumer flows on Hadrian
 
-Applying the model to flows that already run on Hadrian's CPI-track stack (deployed contracts: `RomeswapMinimalRouter @ 0x0986CAfEC1214Ef4Cfc046A59743DAA7eAd0BFcb`, `UniswapV2Router02 @ 0x0EFEc612B7c3E3E1708a2d57BC39D97F8fa201a7`, pair @ `0x3595CCd9…`):
+Applying the model to flows that already run on Hadrian's CPI-track stack (deployed: `RomeswapMinimalRouter @ 0x0986CAfEC1214Ef4Cfc046A59743DAA7eAd0BFcb`, `UniswapV2Router02 @ 0x0EFEc612B7c3E3E1708a2d57BC39D97F8fa201a7`, pair @ `0x3595CCd9…`):
 
-| Flow | K (SPL ops) | Measured CPI CU | Projected cached CU | Δ CU | Δ % |
-|---|---:|---:|---:|---:|---:|
-| `pair.burn` (wUSDC × wETH) — helper-direct, post rome-uniswap-v2 PR #54 | 2 (transfer A out + transfer B out) | **859 K** (measured 2026-05-21) | ~882 K | +23 K | +2.7% |
-| `addLiquidity` (wUSDC × wETH) | 2 (transferFrom A + transferFrom B) | ~290 K (typical Romeswap add-liq path) | ~313 K | +23 K | +7.9% |
-| `swap` (single hop) | 2 (transferFrom in + transfer out) | ~265 K | ~288 K | +23 K | +8.7% |
-| `removeLiquidity` via router (`burnLPFor` previously busted 1.4M envelope on CPI; pair.burn helper-direct fix landed 2026-05-22) | 3 (burn LP + 2 transfers) | ~880 K | ~908 K | +28 K | +3.2% |
+| Flow | K (SPL ops) | Measured CPI CU | Projected cached CU | Δ CU | Δ % | Cached heap | CPI heap |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `pair.burn` (wUSDC × wETH) — helper-direct, post rome-uniswap-v2 PR #54 | 2 (transfer A out + transfer B out) | **859 K** (measured 2026-05-21) | ~882 K | +23 K | +2.7% | ~25 KB | ~22 KB |
+| `addLiquidity` (wUSDC × wETH) | 2 (transferFrom A + transferFrom B) | ~290 K (typical Romeswap add-liq) | ~313 K | +23 K | +7.9% | ~25 KB | ~22 KB |
+| `swap` (single hop) | 2 (transferFrom in + transfer out) | ~265 K | ~288 K | +23 K | +8.7% | ~25 KB | ~22 KB |
+| `removeLiquidity` via router (pair.burn helper-direct fix landed 2026-05-22) | 3 (burn LP + 2 transfers) | ~880 K | ~908 K | +28 K | +3.2% | ~29 KB | ~25 KB |
 
-**Range: +2.7% to +8.7% projected cached overhead on real flows.** Small in % terms — the per-flow overhead is fixed at ~13 K (intercept) + 5 K × K (per-op), so flows with larger CU base see smaller relative overhead.
+**Range: +2.7% to +8.7% projected cached overhead on Romeswap flows.** Small in % terms — the per-flow overhead is fixed at ~13K (intercept) + 5K × K (per-op), so flows with larger CU base see smaller relative overhead. Heap headroom is generous (40-50× margin under 256 KB).
 
-## Compound on Rome — projection (Compound is on devnet, not Hadrian)
+## Compound on Rome — corrected projection
 
-Compound on Rome's `liquidateBorrow(borrower, repayAmount, cTokenCollateral)` orchestrates a multi-asset settlement:
+Earlier draft of this report had **~600K CPI projection for liquidate-5 — that was wrong**. Real Compound-on-Rome measurements from rome-specs show per-Comet-action CU is **600-900K each**, not for the whole flow. Authoritative numbers ([`2026-05-17-compound-on-rome-vanilla-atomic-architecture.md`](../../rome-specs/active/technical/2026-05-17-compound-on-rome-vanilla-atomic-architecture.md), [`2026-05-18-compound-liquidation-jito-bench-results.md`](../../rome-specs/active/technical/2026-05-18-compound-liquidation-jito-bench-results.md), [`2026-05-04-compound-on-rome-unified-usdc.md`](../../rome-specs/active/technical/2026-05-04-compound-on-rome-unified-usdc.md), and quaestor Phase 0/2 measurement files):
 
-| Step | Operation | SPL ops |
-|---|---|---:|
-| 1 | Accrue interest on the borrow market | 0 (EVM only) |
-| 2 | Accrue interest on the collateral market | 0 (EVM only) |
-| 3 | Liquidator `transferFrom`s borrowAsset to the borrow cToken | 1 |
-| 4 | Borrow cToken burns the cToken-share from borrower (EVM-only) | 0 |
-| 5 | Collateral cToken transfers the seize amount to liquidator | 1 |
-| 6 | Collateral underlying SPL → liquidator (if redeem-on-liquidate enabled) | 1 |
-| **Total** | | **3** |
+### Per-action Compound CU (measured, CPI track)
 
-| Variant | K (SPL ops) | Projected CPI CU (from typical liquidate cost) | Projected cached CU |
-|---|---:|---:|---:|
-| Single-asset liquidate | 3 | ~400 K (estimate, no on-chain Hadrian measurement) | ~428 K |
-| 5-asset liquidate (Tower 1 "liquidate-5" target) | 15 | ~600 K | ~688 K |
+| Operation | CPI CU | Notes |
+|---|---:|---|
+| `cometProxy.borrow` (iter mode) | iter1 16K + iter2 **1.28M** = ~1.30M | 121K headroom under 1.4M iter ceiling |
+| `cometProxy.supply` via UnifiedToken | **busts 1.4M iter ceiling** (rejected pre-send by emulator) | Phase 2 blocker, requires orchestrator/MetaHook fix |
+| `Bulker.invoke([SUPPLY, WITHDRAW])` 2-action atomic | **1,299,725** | 101K margin under 1.4M atomic |
+| `Bulker.invoke([SUPPLY, BORROW, WITHDRAW])` 3-action atomic | **~1.95M** | **busts 1.4M atomic — structurally impossible** |
+| `LiquidationRouter.absorb + buyCollateral` composed (1-asset) | **~1.95M** | busts 1.4M atomic; needs Jito bundle split |
 
-**5-asset liquidate cached overhead: ~88 K (+15%)** — within the bench's measured ceiling (+15% at N=8). Cached unlocks the **revert atomicity** that makes 5-asset liquidation safe: if any of the 15 SPL ops fails mid-tx, the entire EVM frame reverts and the cached overlay discards all queued ixs. The CPI path can't offer this — once it has invoke_signed'd the first SPL transfer, the Solana state is committed even if a later EVM revert fires.
+### Compound bookkeeping cycle per action
+
+Each Comet action does a full cycle: `accrueInternal` (interest accrual + oracle read) + `doTransferIn`/`doTransferOut` (with pre/post `balanceOf` checks — TWO SPL `account_info` reads per CPI) + `userBasic` update + `totalsCollateral` update + `updateAssetsIn` bitmap + event emit. **600-900K CU per action** is the structural reality; you cannot stack more than ~2 atomic before busting the 1.4M ceiling.
+
+### Corrected projection table
+
+| Compound variant | Actions | SPL ops | Measured CPI CU | Cached projection (CPI + 13K + 5K × K) | Fits 1.4M atomic? |
+|---|---:|---:|---:|---:|---|
+| `borrow` (1-action) | 1 | ~2 (transferOut + balance check) | ~1.30M iter | ~**1.32M** iter | atomic NO (over 1.4M), iter YES |
+| `Bulker.invoke` (2-action atomic) | 2 | ~4 (2 transferFrom + 2 transfer) | **1.30M** (measured Hadrian) | ~**1.33M** | YES (~70K margin, vs 101K margin CPI) |
+| `Bulker.invoke` (3-action atomic) | 3 | ~6 | ~1.95M | ~**1.98M** | **NO either track — structural** |
+| `absorb + buyCollateral` (1-asset liquidate) | 2 | ~4 (repay + collateral seize + 2 balance checks) | ~1.95M | ~**1.98M** | **NO — Jito-bundle workaround required** |
+| `liquidate-5` (5-asset, Tower 1 target) | 10 (5 absorb + 5 buy) | ~20 (10 transfers + 10 balance checks) | **~6-9M total** | ~**6.1-9.1M** | **NO — must split across multiple Solana txs via Jito or sequential** |
+
+**Liquidate-5 reality:** it's NOT a single-tx flow on either track. CPI track requires `LiquidationRouter.absorbAndBuyMulti` to be split into N separate Solana txs (each ~1.95M, bundled atomically via Jito at the slot level on testnet/mainnet — see [`2026-05-18-compound-liquidation-jito-bench-results.md`](../../rome-specs/active/technical/2026-05-18-compound-liquidation-jito-bench-results.md) for the `R` parameter — max collats per single Solana tx via the multi-router). Cached track has the same structural ceiling (1.4M per Solana tx, immutable Solana runtime limit) — cached's value here is **revert atomicity within a single tx**, not "fits more in one tx."
+
+### Where cached actually helps Compound
+
+| Use case | Current CPI cost | Cached projection | Cached value |
+|---|---|---|---|
+| 1-action `supply` via UnifiedToken (currently blocked) | >1.4M iter (busts ceiling, rejected pre-send) | ~1.4M + ~15K = **still busts ceiling** | None — both blocked structurally; needs MetaHook/orchestrator architecture, not cached |
+| `Bulker.invoke` 2-action atomic | 1.30M atomic (101K margin) | ~1.33M atomic (~70K margin) | Marginal — slightly less margin, gains revert atomicity (already atomic, so revert atomicity is implicit) |
+| Single liquidation via `LiquidationRouter` | ~1.95M (Jito-split required) | ~1.98M (still Jito-split required) | **Minor structural overhead. Cached doesn't unlock liquidate-N — Solana's per-tx 1.4M ceiling is the real gate.** |
+| Multi-step intra-tx safety (hypothetical: combine `supply` + `transferFrom` + `swap` in one tx) | Not viable today — `CpiProhibitedInIterativeTx` hard-blocks mixing SPL CPIs with iterative VM EVM | Cached overlay queues all SPL ops, commits on EVM commit, discards on EVM revert | **Unlocks cross-protocol intent composition** in iterative VM — the genuine cached use case |
+
+### Honest verdict on Compound liquidate-5
+
+My earlier projection (+15% / ~88K cached overhead for liquidate-5) was **dimensionally correct for per-SPL-op overhead, but applied against a fabricated CPI baseline**. The real liquidate-5 baseline is 6-9M CU across multiple Solana txs (NOT a single-tx flow on either track). Cached's ~88K overhead is rounding error against that. **Cached does not unlock liquidate-5; Solana's per-tx 1.4M ceiling does, by requiring Jito bundle splits**, which both tracks need equally.
+
+Where cached genuinely matters for Compound: future cross-protocol composed intents where the value is intra-EVM-tx revert atomicity across queued SPL effects, not raw CU savings.
 
 ## When cached's overhead is worth it
 
