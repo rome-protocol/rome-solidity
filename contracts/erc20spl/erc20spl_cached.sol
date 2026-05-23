@@ -7,7 +7,8 @@ import {SplTokenLib} from "../spl_token/spl_token.sol";
 import {
     HelperProgram,
     SplCached,
-    AssociatedSplCached
+    AssociatedSplCached,
+    ISplCached
 } from "../interface.sol";
 import {AccountReader} from "../cpi/AccountReader.sol";
 import {Convert} from "../convert.sol";
@@ -84,24 +85,33 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return uint256(AccountReader.readU64At(mint_id, 36));
     }
 
-    /// @notice Single CrossStateEthCall via HelperProgram.user_balance —
-    ///         reads SPL TokenAccount.amount on the user's PDA-owned ATA
-    ///         for this wrapper's mint. Returns 0 if the ATA doesn't
-    ///         exist (fresh-chain probe). Collapses 3 v1 dispatches into 1.
+    /// @notice Cached-track read: derive ATA via HelperProgram.ata (pure
+    ///         EthCall, track-neutral) then SplCached.account (cached
+    ///         CrossStateEthCall at 0xff..05). Replaces the prior
+    ///         HelperProgram.user_balance (legacy 0xff..09) read so the
+    ///         wrapper exposes a fully cache-track read surface — enables
+    ///         canonical (unmodified) Uniswap V2 pair to compose with this
+    ///         wrapper without tripping the verify_call ordering gate on
+    ///         post-mutation balance reads.
     function balanceOf(address account) external view returns (uint256) {
-        return uint256(HelperProgram.user_balance(account, mint_id));
+        bytes32 ata = HelperProgram.ata(account, mint_id);
+        return uint256(SplCached.account(ata).amount);
     }
 
-    /// @notice Single CrossStateEthCall via HelperProgram.allowance_of —
-    ///         reads owner-ATA's delegated_amount IFF the on-chain
-    ///         delegate matches external_auth(spender). Returns 0
-    ///         otherwise (fresh user, unapproved spender, expired
-    ///         allowance). Saturates uint64::max → uint256::max so wallet
-    ///         consumers probing for the MaxUint256 "infinite approval"
-    ///         sentinel keep working.
+    /// @notice Cached-track read: SplCached.account exposes delegate +
+    ///         delegated_amount in a single cached read. Returns 0 unless
+    ///         the on-chain SPL delegate equals external_auth(spender)
+    ///         (matches HelperProgram.allowance_of's HARD-REQ semantics).
+    ///         Saturates uint64::max → uint256::max for wallet "infinite
+    ///         approval" sentinel compatibility.
     function allowance(address owner, address spender) external view returns (uint256) {
-        uint64 delegated = HelperProgram.allowance_of(owner, spender, mint_id);
-        return delegated == type(uint64).max ? type(uint256).max : uint256(delegated);
+        bytes32 ownerAta = HelperProgram.ata(owner, mint_id);
+        ISplCached.Account memory acc = SplCached.account(ownerAta);
+        bytes32 spenderPda = HelperProgram.pda(spender);
+        if (acc.delegate != spenderPda) return 0;
+        return acc.delegated_amount == type(uint64).max
+            ? type(uint256).max
+            : uint256(acc.delegated_amount);
     }
 
     /// @notice Pure EthCall derivation — `external_auth(user) + mint_id`
@@ -112,18 +122,17 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
 
     // ─── Mutating ERC-20 surface — all cache-based Invokes ────────────────
 
-    /// @notice Idempotent first-time ATA bootstrap. CPI reads (ata +
-    ///         lamports) happen BEFORE any cache mutation so the
-    ///         verify_call ordering rule holds. AssociatedSplCached
-    ///         create_ata is itself idempotent on the Solana side, so
-    ///         the read fast-path is a CU optimization, not a correctness
-    ///         requirement.
+    /// @notice Idempotent ATA bootstrap. Drops the prior CpiProgram
+    ///         account_lamports (legacy 0xff..08) probe that was used as
+    ///         a CU optimization — AssociatedSplCached.create_ata is
+    ///         idempotent on the Solana side, so calling it
+    ///         unconditionally is safe semantically. Removing the probe
+    ///         eliminates the last legacy-precompile READ from this
+    ///         wrapper's hot path, making the wrapper fully cache-track
+    ///         (so canonical UV2 pair can compose without verify_call
+    ///         ordering issues).
     function ensure_token_account(address user) public returns (bytes32) {
         bytes32 ata = HelperProgram.ata(user, mint_id);
-        uint64 lamports = AccountReader.lamportsOf(ata);
-        if (lamports != 0) {
-            return ata;
-        }
         (bool ok, bytes memory result) = address(AssociatedSplCached).delegatecall(
             abi.encodeWithSignature(
                 "create_ata(address,bytes32)",
