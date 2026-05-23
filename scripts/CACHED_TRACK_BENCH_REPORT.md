@@ -39,7 +39,7 @@ The "# Sol txs" column reveals which ops ran atomic (1 tx) vs iterative (2 txs).
 | `SplCached.transferFrom` [#383] | 157,483 | 142,536 | +14,947 | +10.5% | iterative (2 txs) | iterative (2 txs) | 21,432 | 19,776 | +1,656 |
 | **Cached iter vs CPI atomic — Δ includes holder-tx overhead** | | | | | | | | | |
 | `WithdrawCached.withdraw_to_ata` | 169,926 | 135,460 | +34,466 | +25.4% | iterative (2 txs) | atomic | 25,608 | 22,320 | +3,288 |
-| `WithdrawCached.withdraw_from_ata` [#383] | 177,301 | 123,295 | +54,006 | +43.8% | iterative (2 txs) | atomic | 24,944 | 20,104 | +4,840 |
+| `WithdrawCached.deposit` [#383 → renamed #386] | 177,301 | 123,295 | +54,006 | +43.8% | iterative (2 txs) | atomic | 24,944 | 20,104 | +4,840 |
 
 ## Reading the data
 
@@ -60,7 +60,7 @@ The "# Sol txs" column reveals which ops ran atomic (1 tx) vs iterative (2 txs).
 | Single SPL transfer / approve / mint in a one-shot tx | Pay ~5-10% to gain EVM-revert atomicity | Save ~5-10% if you don't need rollback |
 | Multi-step EVM tx that needs SPL effects to roll back together | **Cached only** (CPI is hard-gated by `CpiProhibitedInIterativeTx`) | Not an option |
 | Bridge outbound (one-shot, no overlay benefit needed) | Adds ~5% cost AND opens iterative-VM attack surface for ATA-create / Token-2022 raw-delegate | **CPI** — `CpiProhibitedInIterativeTx` IS the safety property |
-| Wrap/unwrap (`withdraw_to_ata` / `withdraw_from_ata`) | +25-44% (forces iterative) — only if revert atomicity is load-bearing | Default — atomic, cheaper |
+| Wrap/unwrap (`withdraw_to_ata` wrap / `deposit` unwrap) | +25-44% (forces iterative) — only if revert atomicity is load-bearing | Default — atomic, cheaper |
 | `transferFrom` (`SPL_ERC20_cached`) | Required for cached-track router (Romeswap / Compound) | Required for legacy-track router |
 | `mint` to authority-controlled SPL | +7% — both paths gate at SPL Token authority check identically | Same gate, same security |
 

@@ -255,9 +255,9 @@ async function main() {
     rows.push(await captureRow("WithdrawCached.withdraw_to_ata(uint256)", "cached", () => c.write.cached_withdraw_to_ata([1000000000000n])));
     rows.push(await captureRow("WithdrawCached.withdraw_to_ata(uint256)", "cpi", () => c.write.cpi_withdraw_to_ata([1000000000000n])));
 
-    // ── WithdrawCached PR #383 ─────────────────────────────────────
-    rows.push(await captureRow("WithdrawCached.withdraw_from_ata(uint256) [PR #383]", "cached", () => c.write.cached_withdraw_from_ata([1000000000000n])));
-    rows.push(await captureRow("WithdrawCached.withdraw_from_ata(uint256) [PR #383]", "cpi", () => c.write.cpi_deposit_from_ata([1000000000000n])));
+    // ── WithdrawCached PR #383 → renamed in #386 ────────────────────
+    rows.push(await captureRow("WithdrawCached.deposit(uint256) [PR #383 → renamed #386]", "cached", () => c.write.cached_deposit([1000000000000n])));
+    rows.push(await captureRow("WithdrawCached.deposit(uint256) [PR #383 → renamed #386]", "cpi", () => c.write.cpi_deposit_from_ata([1000000000000n])));
 
     // ── Markdown report ──────────────────────────────────────────
     let md = "";

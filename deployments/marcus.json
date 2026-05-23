@@ -1,0 +1,101 @@
+{
+  "ERC20SPLFactory": {
+    "address": "0xbd0a59183cd4178b8b000036c64c7aeef4619be1",
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
+  },
+  "RomeBridgePaymaster": {
+    "address": "0x701c4129394129f2b8244f6a68806ec43aec5ec1"
+  },
+  "ERC20Users": {
+    "address": "0xe33fea3df27d7bfe28c774b10e8891802ec7ab04"
+  },
+  "ERC20Users_WETH_only": {
+    "address": "0x4feceaddc901ac5b6276d232c88521583485b406",
+    "note": "Redundant duplicate from corrupted-file double-deploy; WETH wrapper references this one. WUSDC references 0xe33f… instead."
+  },
+  "SPL_ERC20_USDC": {
+    "address": "0x39844f1D605a11acD87f766494291BBD11b406F4",
+    "mintId": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+    "name": "Rome USDC",
+    "symbol": "wUSDC",
+    "deployedAt": 1778112767,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+  },
+  "SPL_ERC20_WETH": {
+    "address": "0x013f2064662989B5AA9cb3464E7Be7cd865F78D2",
+    "mintId": "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs",
+    "name": "Rome ETH",
+    "symbol": "wETH",
+    "deployedAt": 1778112771,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+  },
+  "RomeBridgeWithdraw": {
+    "address": "0x739cf06175a547570a1022db59488e02d26817cb"
+  },
+  "OracleGatewayV2": {
+    "deployedAt": "2026-05-07T00:09:34.438Z",
+    "defaultMaxStaleness": 60,
+    "pythReceiverProgramId": "0x0cb7fabb52f7a648bb5b317d9a018b9057cb024774fafe01e6c4df98cc385881",
+    "switchboardProgramId": "0x068851c68c6832f02fa581b1bf491b77ca41776ba2b988b5a6faba8ee3a2ec90",
+    "PythPullAdapterImpl": "0x80a971f2a8fe2c384d4bcb6088210a8207adcae6",
+    "SwitchboardV3AdapterImpl": "0x755f6779292e23576257589826df5df4837e958f",
+    "OracleAdapterFactory": "0x7155f98abf83d58da6d00ffdbe56764219680cca",
+    "BatchReader": "0x8430cd93135e1ba656fad86d134669e94a0e58ea",
+    "feeds": {
+      "pyth": [
+        {
+          "pair": "SOL/USD",
+          "adapter": "0xB9e9a64d953Dc62444D75ED60A1952B0ddB27bF2",
+          "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+          "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
+        },
+        {
+          "pair": "BTC/USD",
+          "adapter": "0x1d40D4A48daC736B34930b635e3b87E6D704CDbB",
+          "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
+          "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
+        },
+        {
+          "pair": "ETH/USD",
+          "adapter": "0xf8C6cdC5C37a82B4Be4702aBE47C63A9d6c37F64",
+          "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+          "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
+        },
+        {
+          "pair": "USDC/USD",
+          "adapter": "0xe4866459A09CFEF052E765e89D1339a6e1322749",
+          "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+          "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
+        },
+        {
+          "pair": "USDT/USD",
+          "adapter": "0x377Ad00A9b1EF5717CA3203F435A8f255a0c9b07",
+          "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
+          "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
+        }
+      ],
+      "switchboard": [
+        {
+          "pair": "SOL/USD",
+          "adapter": "0xaEc5aC17C83E0108C8573ebC142beB291a9B846F",
+          "pubkey": "GvDMxPzN1sCj7L26YDK2HnMRXEQmQ2aemov8YBtPS7vR",
+          "pubkeyBytes32": "0xec81105112a257d61df4cf5f13ee0a1b019197c8c5343b4f2a7ec8846ae22c1a"
+        }
+      ]
+    }
+  },
+  "MeteoraDAMMv1Factory": {
+    "address": "0xe7a332ea0aba1402c20c1e4d1c687aaac3b660a4"
+  },
+  "PdaActivator": {
+    "address": "0x043581b6966533b90fe8a4675b5c14d5ab59dead",
+    "activationCostWei": "2000000000000000",
+    "wsolWrapper": "0xc180a9133770d48f33cBDe630205a7B7DDA48fF6",
+    "usdcWrapper": "0x39844f1D605a11acD87f766494291BBD11b406F4",
+    "meteoraPoolWrapper": "0x069bcaf0f06af909eed8b6fef2cbc6c31a1b187a",
+    "redeployedAt": 1778195781,
+    "redeployedReason": "rome-solidity #117 — DAMMv1Lib trailing-prog meta fix",
+    "previousActivator": "0x03cabd272b9ae3e2a99114f12a5c0bdd8646cebb",
+    "previousMeteoraPoolWrapper": "0xcdc456891c1dce67194381a7d0d17d42224aa781"
+  }
+}

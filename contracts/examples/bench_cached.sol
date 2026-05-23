@@ -322,10 +322,13 @@ contract bench_cached {
     }
 
     // ── WithdrawCached PR #383 selector vs CPI HelperProgram ────
+    // Renamed in rome-evm-private#386 (merged 2026-05-23) from
+    // `withdraw_from_ata(uint256)` `0x214ee485` to `deposit(uint256)`
+    // `0xb6b55f25`. Bench method name kept as `cached_deposit` to track.
 
-    function cached_withdraw_from_ata(uint256 wei_) external {
+    function cached_deposit(uint256 wei_) external {
         (bool ok, ) = address(WithdrawCached).delegatecall(
-            abi.encodeWithSignature("withdraw_from_ata(uint256)", wei_)
+            abi.encodeWithSignature("deposit(uint256)", wei_)
         );
         require(ok, "revert");
     }

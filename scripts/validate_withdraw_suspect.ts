@@ -1,14 +1,15 @@
-// Validation script for the suspect WithdrawCached.withdraw_from_ata bench
-// rows (cached @ 11171 CU vs CPI @ ~124K CU). Hypothesis: the cached track
-// is short-circuiting because the EOA's wUSDC balance was consumed by an
-// earlier success-path call.
+// Validation script for the suspect WithdrawCached.deposit bench rows
+// (cached @ 11171 CU vs CPI @ ~124K CU). Originally `withdraw_from_ata`,
+// renamed in rome-evm-private#386 (selector `0x214ee485` → `0xb6b55f25`).
+// Hypothesis: the cached track was short-circuiting because the EOA's
+// wUSDC balance was consumed by an earlier success-path call.
 //
 // What this does:
 //   1. Reads caller-PDA + wUSDC ATA from on-chain
 //   2. If wUSDC balance is 0, tops up by calling withdraw_to_ata (wraps
 //      native gas → wUSDC SPL in caller's PDA-ATA) so balance is non-zero
-//   3. Re-fires cached_withdraw_from_ata + cpi_deposit_from_ata against
-//      the existing deployed bench_cached
+//   3. Re-fires cached_deposit + cpi_deposit_from_ata against the
+//      existing deployed bench_cached
 //   4. Pulls full Solana logs for both — exposes whether the cached
 //      track took the heavy path or short-circuited
 //   5. Reports apple-to-apple cost.
@@ -214,8 +215,8 @@ async function main() {
         }
     }
 
-    await runAndProbe("CACHED  withdraw_from_ata(1e18 wei)", () =>
-        bench.write.cached_withdraw_from_ata([WEI_PER_WUSDC]),
+    await runAndProbe("CACHED  deposit(1e18 wei)", () =>
+        bench.write.cached_deposit([WEI_PER_WUSDC]),
     );
     await runAndProbe("CPI     deposit_from_ata(1e18 wei)", () =>
         bench.write.cpi_deposit_from_ata([WEI_PER_WUSDC]),
