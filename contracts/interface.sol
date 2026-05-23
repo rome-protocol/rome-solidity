@@ -41,11 +41,14 @@ interface IWithdrawCached {
     function withdraw_to_pda(uint256 wei_) external;
     // 0x8059abc0
     function withdraw_to_ata(uint256 wei_) external;
-    // 0x214ee485 — inverse of withdraw_to_ata; burn SPL wrapper from caller's
-    // PDA-owned ATA, credit caller with `wei_` native gas. Single-state only.
-    // Cached counterpart of legacy HelperProgram.deposit_from_ata; shipped in
-    // rome-evm-private#383.
-    function withdraw_from_ata(uint256 wei_) external;
+    // 0xb6b55f25 — inverse of withdrawal; SPL transfer from caller's PDA-owned
+    // ATA to chain's sol_wallet ATA on Solana side, mint `wei_` native gas to
+    // caller on EVM side. Pure mint (no offsetting Withdraw::ADDRESS debit).
+    // Single-state only. Cached counterpart of legacy
+    // HelperProgram.deposit_from_ata; shipped in rome-evm-private#383, renamed
+    // from `withdraw_from_ata(uint256)` `0x214ee485` in rome-evm-private#386
+    // (post-ship accounting fix).
+    function deposit(uint256 wei_) external;
 }
 
 interface ISystemCached {

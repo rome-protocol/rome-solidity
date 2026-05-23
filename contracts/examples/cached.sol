@@ -45,13 +45,15 @@ contract cached_example {
         require(success, "revert");
     }
 
-    // Inverse of withdraw_to_ata — burn SPL wrapper from caller's PDA-owned
-    // ATA and credit caller with `wei_` native gas. Single-state only.
-    // Cached counterpart of legacy HelperProgram.deposit_from_ata.
-    // Shipped via rome-evm-private#383.
-    function withdraw_from_ata() external {
+    // Inverse of withdrawal — SPL transfer from caller's PDA-owned ATA to
+    // chain's sol_wallet ATA on Solana side; mint `wei_` native gas to caller
+    // on EVM side. Single-state only. Cached counterpart of legacy
+    // HelperProgram.deposit_from_ata. Shipped via rome-evm-private#383;
+    // renamed from `withdraw_from_ata(uint256)` `0x214ee485` in
+    // rome-evm-private#386 (post-ship accounting fix).
+    function deposit() external {
         (bool success, ) = address(WithdrawCached).delegatecall(
-            abi.encodeWithSignature("withdraw_from_ata(uint256)", 1 ether)
+            abi.encodeWithSignature("deposit(uint256)", 1 ether)
         );
         require(success, "revert");
     }
