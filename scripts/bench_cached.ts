@@ -41,6 +41,7 @@ interface RowMetric {
     status?: string;
     evmGas?: number;
     solTxSig?: string;
+    solNumTxs?: number;
     solCu?: number;
     heapBytes?: number;
     solErr?: string;
@@ -56,14 +57,25 @@ async function jsonRpc(url: string, method: string, params: unknown[]) {
     return (await res.json()) as { result?: any; error?: any };
 }
 
-async function resolveSolanaTx(evmHash: string): Promise<string | undefined> {
+async function resolveSolanaTxs(evmHash: string): Promise<string[]> {
+    // Iterative EVM txs span multiple Solana txs (Transmit + Execute-from-
+    // holder). Atomic EVM txs are single. Return ALL sigs so the caller can
+    // sum CU across the full execution.
+    let sigs: string[] = [];
     for (let i = 0; i < 15; i++) {
         const r = await jsonRpc(EVM_RPC, "rome_solanaTxForEvmTx", [evmHash]);
-        const sigs: string[] = r.result ?? [];
-        if (sigs.length > 0) return sigs[0]!;
+        sigs = r.result ?? [];
+        if (sigs.length > 0) break;
         await new Promise((s) => setTimeout(s, 1500));
     }
-    return undefined;
+    // Re-poll briefly — later iterative segments may register after the first.
+    for (let i = 0; i < 5; i++) {
+        await new Promise((s) => setTimeout(s, 1500));
+        const r = await jsonRpc(EVM_RPC, "rome_solanaTxForEvmTx", [evmHash]);
+        const more: string[] = r.result ?? [];
+        if (more.length > sigs.length) sigs = more;
+    }
+    return sigs;
 }
 
 async function resolveReceipt(
@@ -126,7 +138,27 @@ async function captureRow(
         row.status = rcpt.status === "0x1" ? "ok" : "fail";
         row.evmGas = rcpt.gasUsed;
     }
-    const solSig = await resolveSolanaTx(row.txHash!);
+    const sigs = await resolveSolanaTxs(row.txHash!);
+    if (sigs.length > 0) {
+        row.solTxSig = sigs.join(","); // joined sigs for the report
+        row.solNumTxs = sigs.length;
+        let totalCu = 0;
+        let maxHeap = 0;
+        let firstErr: string | undefined;
+        for (const sig of sigs) {
+            const m = await getSolanaMetrics(sig);
+            if (m.cu) totalCu += m.cu;
+            if (m.heapBytes && m.heapBytes > maxHeap) maxHeap = m.heapBytes;
+            if (m.solErr && !firstErr) firstErr = m.solErr;
+        }
+        row.solCu = totalCu || undefined;
+        row.heapBytes = maxHeap || undefined;
+        row.solErr = firstErr;
+        return row;
+    }
+    return row;
+    // (legacy single-sig block kept below — short-circuited above)
+    const solSig = sigs[0];
     if (solSig) {
         row.solTxSig = solSig;
         const m = await getSolanaMetrics(solSig);
@@ -232,8 +264,8 @@ async function main() {
     const w = (s: string) => { md += s + "\n"; console.log(s); };
 
     w("\n=== Bench rows ===\n");
-    w("| Op | Track | EVM gas | Status | Solana CU | Heap (B) | Solana err / pre-send revert |");
-    w("|---|---|---:|---|---:|---:|---|");
+    w("| Op | Track | EVM gas | Status | # Sol txs | Total Sol CU | Max heap (B) | Sol err / pre-send revert |");
+    w("|---|---|---:|---|---:|---:|---:|---|");
     for (const r of rows) {
         const note = r.solErr ? r.solErr.slice(0, 80) : r.revertReason ? r.revertReason.slice(0, 80) : "—";
         const stat = r.status ?? (r.revertReason ? "rejected-pre-send" : "—");
@@ -242,6 +274,7 @@ async function main() {
                 r.op, r.track,
                 r.evmGas?.toString() ?? "—",
                 stat,
+                r.solNumTxs?.toString() ?? "—",
                 r.solCu?.toString() ?? "—",
                 r.heapBytes?.toString() ?? "—",
                 note,

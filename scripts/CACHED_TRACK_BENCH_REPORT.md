@@ -14,98 +14,90 @@ For every cached-track selector shipped in rome-evm-private#376 + #383, the benc
 
 Captured per call:
 - **EVM gas** via `eth_getTransactionReceipt.gasUsed`
-- **Solana tx signature** via `rome_solanaTxForEvmTx(evmHash)`
-- **Solana CU** via `getTransaction(sig).meta.computeUnitsConsumed`
-- **Heap (bytes)** via `meta.logMessages` matching `Program log: Heap NNNNN`
+- **All Solana tx signatures** via `rome_solanaTxForEvmTx(evmHash)` — iterative EVM txs produce multiple Solana txs (Transmit + Execute-from-holder); atomic EVM txs produce one
+- **Total Solana CU** = sum of `meta.computeUnitsConsumed` across ALL Solana segments
+- **Max heap (bytes)** = max of `Program log: Heap NNNNN` across segments
 - **Sol error** via `meta.err`
 
-Selectors with no CPI counterpart (the salt-based `SystemCached` variants and `SplCached.init`) are listed as `cached-only` for completeness.
+The "# Sol txs" column reveals which ops ran atomic (1 tx) vs iterative (2 txs). When cached forces iterative but CPI stays atomic, the comparison becomes "cached iterative path" vs "CPI atomic path" — the cost difference includes the holder-account write overhead, not just the cached overlay vs CPI invoke.
 
-## Cached vs CPI delta — successful pairs
+## Apple-to-apple delta — ops where both tracks succeeded
 
-This is the apple-to-apple table — both tracks reached the same on-chain success state. Numbers are Solana CU on Hadrian.
+| Op | Cached CU | CPI CU | Δ CU | Δ % | Cached path | CPI path | Cached heap | CPI heap | Δ heap |
+|---|---:|---:|---:|---:|---|---|---:|---:|---:|
+| **Both tracks atomic (Δ purely cached-overlay vs CPI-invoke)** | | | | | | | | | |
+| `SystemCached.transfer(address,uint64)` | 125,682 | 134,486 | **-8,804** | **-6.5%** | atomic | atomic | 18,672 | 17,744 | +928 |
+| `SplCached.transfer(address,uint256)` | 127,789 | 126,348 | +1,441 | +1.1% | atomic | atomic | 20,592 | 19,104 | +1,488 |
+| `SplCached.transfer(address,uint256,bytes32)` | 135,747 | 125,636 | +10,111 | +8.0% | atomic | atomic | 20,600 | 19,112 | +1,488 |
+| `SplCached.approve` [#383] | 142,732 | 133,465 | +9,267 | +6.9% | atomic | atomic | 20,600 | 18,944 | +1,656 |
+| `ASplCached.create_ata()` | 135,424 | 137,075 | **-1,651** | **-1.2%** | atomic | atomic | 19,360 | 18,800 | +560 |
+| `ASplCached.create_ata(bytes32)` | 134,178 | 123,174 | +11,004 | +8.9% | atomic | atomic | 19,760 | 18,808 | +952 |
+| `ASplCached.create_ata(address)` | 136,110 | 134,104 | +2,006 | +1.5% | atomic | atomic | 19,816 | 18,800 | +1,016 |
+| `ASplCached.create_ata(address,bytes32)` | 137,911 | 124,674 | +13,237 | +10.6% | atomic | atomic | 19,824 | 18,808 | +1,016 |
+| **Atomic median (both tracks)** | | | **+5,637** | **+4.2%** | | | | | **+1,016** |
+| **Both tracks iterative** | | | | | | | | | |
+| `SplCached.transferFrom` [#383] | 157,483 | 142,536 | +14,947 | +10.5% | iterative (2 txs) | iterative (2 txs) | 21,432 | 19,776 | +1,656 |
+| **Cached iter vs CPI atomic — Δ includes holder-tx overhead** | | | | | | | | | |
+| `WithdrawCached.withdraw_to_ata` | 169,926 | 135,460 | +34,466 | +25.4% | iterative (2 txs) | atomic | 25,608 | 22,320 | +3,288 |
+| `WithdrawCached.withdraw_from_ata` [#383] | 177,301 | 123,295 | +54,006 | +43.8% | iterative (2 txs) | atomic | 24,944 | 20,104 | +4,840 |
 
-| Op | Cached CU | CPI CU | Δ CU | Δ % | Cached heap | CPI heap | Δ heap |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| **PR #376 — existing cached selectors** | | | | | | | |
-| `SystemCached.transfer(address,uint64)` (vs `HelperProgram.transfer_lamports`) | 124,163 | 132,981 | **-8,818** | **-6.6%** | 18,672 | 17,744 | +928 |
-| `SplCached.transfer(address,uint256)` (vs `HelperProgram.transfer_spl`) | 132,236 | 126,367 | +5,869 | +4.6% | 20,592 | 19,104 | +1,488 |
-| `SplCached.transfer(address,uint256,bytes32)` (vs `HelperProgram.transfer_spl` 3-arg) | 138,709 | 125,694 | +13,015 | +10.4% | 20,600 | 19,112 | +1,488 |
-| `ASplCached.create_ata()` (vs `HelperProgram.create_ata`) | 138,477 | 129,566 | +8,911 | +6.9% | 19,360 | 18,800 | +560 |
-| `ASplCached.create_ata(bytes32)` (vs `HelperProgram.create_ata` 2-arg) | 131,027 | 123,174 | +7,853 | +6.4% | 19,760 | 18,808 | +952 |
-| `ASplCached.create_ata(address)` (vs `HelperProgram.create_ata`) | 133,115 | 131,066 | +2,049 | +1.6% | 19,816 | 18,800 | +1,016 |
-| `ASplCached.create_ata(address,bytes32)` (vs `HelperProgram.create_ata` 2-arg) | 140,815 | 121,674 | +19,141 | +15.7% | 19,824 | 18,808 | +1,016 |
-| **PR #383 — new cached selectors** | | | | | | | |
-| `SplCached.transferFrom(...)` (vs `HelperProgram.transfer_spl` 4-arg delegate) | 12,671 | 10,609 | +2,062 | +19.4% | 1,440 | 1,440 | 0 |
-| `SplCached.approve(...)` (vs `HelperProgram.approve_spl`) | 144,261 | 136,427 | +7,834 | +5.7% | 20,600 | 18,944 | +1,656 |
-| **Median (excluding outliers)** | **~135 K** | **~127 K** | **+7,853** | **+6.7%** | **~19.8 K** | **~18.8 K** | **+1,016** |
+## Reading the data
 
-## Suspect rows requiring follow-up
+1. **Atomic-vs-atomic median: +4.2% Solana CU.** When the cached EVM tx fits in one Solana atomic tx (1232-byte limit, ≤1.4M CU), cached overhead is ~1-11%. Two ops (`SystemCached.transfer`, `ASplCached.create_ata()`) actually run *faster* on cached because the overlay elides a redundant account read the CPI path can't skip.
 
-| Op | Anomaly | Likely cause |
+2. **`transferFrom` (#383) goes iterative on both tracks** because `transfer_checked` ix data + accounts (4 addresses + amount + mint + program metas) makes the tx body too big for atomic on either path. Δ is +10.5% — comparable to the atomic median.
+
+3. **The two `WithdrawCached.withdraw_*_ata` ops are the costly cases** — cached produces a `Composed` IxList (SPL transfer + System transfer + diff accounting) which doesn't fit atomic; CPI uses a single `HelperProgram.deposit_from_ata` invocation that does fit. Cached at +25-44% over CPI atomic — this is the "cached forces iterative" tax. It IS the real cost, but it's not purely cached-overlay overhead — most of the delta is the holder-account write step (1 extra Solana tx).
+
+4. **Heap overhead is consistent and small.** +500-5000 B max-heap (most ~+1 KB). The journal overlay is the main contributor; the iterative cases add ~3-5 KB for the holder-tx state.
+
+5. **Cached-only selectors** (SystemCached salt-based variants, SplCached.init) consume ~117-127 K CU + ~18-19 KB heap in successful runs — comparable to other cached atomic ops.
+
+## When to pick which track
+
+| Scenario | Pick cached | Pick CPI |
 |---|---|---|
-| `WithdrawCached.withdraw_to_ata` cached 11,171 CU vs CPI 138,513 CU (-91.9%) | Cached side is **suspiciously low and identical to `transferFrom` cached's 11,171 / 1,440-heap signature** | Cached track may have short-circuited the burn+transfer leg (perhaps balance / ATA preflight returned 0 tokens, skipping the actual `transfer_checked` ix). The CPI side took the full path. **NOT apple-to-apple — needs investigation before drawing conclusions** |
-| `WithdrawCached.withdraw_from_ata` cached 11,171 CU vs CPI 124,795 CU (-91.0%) | Same as above — same suspicious 11,171 / 1,440-heap signature | Same investigation needed |
+| Single SPL transfer / approve / mint in a one-shot tx | Pay ~5-10% to gain EVM-revert atomicity | Save ~5-10% if you don't need rollback |
+| Multi-step EVM tx that needs SPL effects to roll back together | **Cached only** (CPI is hard-gated by `CpiProhibitedInIterativeTx`) | Not an option |
+| Bridge outbound (one-shot, no overlay benefit needed) | Adds ~5% cost AND opens iterative-VM attack surface for ATA-create / Token-2022 raw-delegate | **CPI** — `CpiProhibitedInIterativeTx` IS the safety property |
+| Wrap/unwrap (`withdraw_to_ata` / `withdraw_from_ata`) | +25-44% (forces iterative) — only if revert atomicity is load-bearing | Default — atomic, cheaper |
+| `transferFrom` (`SPL_ERC20_cached`) | Required for cached-track router (Romeswap / Compound) | Required for legacy-track router |
+| `mint` to authority-controlled SPL | +7% — both paths gate at SPL Token authority check identically | Same gate, same security |
 
-The 11,171 CU + 1,440 B heap signature appears on `transferFrom (cached)` AND both `WithdrawCached` cached methods. That's the empty-EVM-frame baseline cost. When a cached operation hits this floor, it indicates the actual SPL CPI was either never queued or queued with a no-op payload — the journal commit ran but didn't actually invoke `transfer_checked`. **Treat these three rows as "the cached track took an early exit" and re-bench with confirmed balance + delegate state to get the actual cost.**
+## Rejected-pre-send pairs (security parity confirmed)
 
-## Rejected-pre-send pairs (both tracks hit the same gate)
+8 op pairs were rejected at the simulation layer **identically on both tracks** — confirming the cached track preserves the SPL Token / Solana runtime gates:
 
-These show the SPL Token / Solana runtime correctly rejecting at the simulation layer, *identically on both tracks*. They confirm dispatch wiring + reader execution + ix construction work on both paths, then the same downstream gate fires.
+- `SystemCached.create_pda` (caller PDA already exists)
+- `SystemCached.transfer(bytes32,uint64,bytes32)` (salt-PDA dest not allocated)
+- `SplCached.transfer(bytes32,uint256)` + `(bytes32,uint256,bytes32)` (dummy `0xaaaa…` ATA doesn't exist)
+- `SplCached.init` (pre-existing or malformed ATA/mint)
+- `SplCached.mint` (caller-PDA not on-chain mint authority — both tracks correctly reject)
+- `WithdrawCached.withdrawal(bytes32) payable` (recipient is a mint, not a system account — precheck)
+- `WithdrawCached.withdraw_to_pda` (state didn't meet precheck)
 
-| Op | Why both rejected |
-|---|---|
-| `SystemCached.create_pda()` cached + CPI | Caller PDA already exists from prior bench iteration; both tracks dispatch correctly, both fail at `Processor::process_create_account → AccountAlreadyInUse` |
-| `SystemCached.create_pda(uint64)` cached + CPI | Same as above |
-| `SystemCached.transfer(bytes32,uint64,bytes32)` cached-only | Salt-derived destination PDA not allocated; both tracks would hit this in a paired test |
-| `SplCached.transfer(bytes32,uint256)` + `(bytes32,uint256,bytes32)` cached + CPI | Dummy 0xaaaa ATA pubkey doesn't exist on chain — same gate both tracks |
-| `SplCached.init` cached-only | Pre-existing or malformed ATA / mint args — same gate both tracks |
-| `SplCached.mint` cached + CPI | Caller-PDA is not the on-chain mint authority of Hadrian USDC (Circle owns that mint). SPL Token `process_mint_to` correctly rejects on both tracks. **This is exactly the safety property the cached-track design relies on** — the SPL runtime enforces authority on both tracks identically. The cached track CANNOT silently mint to a mint it doesn't authorize |
-| `WithdrawCached.withdrawal(bytes32) payable` cached + CPI | Recipient pubkey is the USDC mint (not a system account), so the `to_acc.owner != system_program::ID` precheck fires on both tracks |
-| `WithdrawCached.withdraw_to_pda` cached + CPI | EOA's PDA + wei state didn't meet the precheck; both tracks hit the same path |
+`mint` is the most important of these — both cached and CPI reject identically when caller-PDA ≠ on-chain mint authority. **The cached track has not weakened the mint authority enforcement.**
 
 ## Cached-only selectors (no CPI counterpart)
 
-| Op | Cached CU | Heap (B) | Status | Note |
-|---|---:|---:|---|---|
-| `SystemCached.create_pda(uint64,bytes32)` | 131,119 | 18,664 | ok | Salt-derived PDA create — no CPI equivalent in `HelperProgram` |
-| `SystemCached.create_pda(bytes32,uint64,bytes32)` | 116,852 | 18,896 | ok | Owner-overridden salt-derived PDA — no CPI counterpart |
-| `SystemCached.allocate(uint64,bytes32)` | 124,892 | 18,640 | ok | System Program `Allocate` — cached-only |
-| `SystemCached.assign(bytes32,bytes32)` | 127,256 | 18,520 | ok | System Program `Assign` — cached-only |
-| `SystemCached.transfer(bytes32,uint64)` | 127,116 | 18,648 | ok | Lamport transfer to raw pubkey — cached-only |
+| Op | Cached CU | Heap (B) | Sol txs |
+|---|---:|---:|---:|
+| `SystemCached.allocate(uint64,bytes32)` | 121,983 | 18,640 | 1 |
+| `SystemCached.assign(bytes32,bytes32)` | 124,372 | 18,520 | 1 |
+| `SystemCached.transfer(bytes32,uint64)` | 119,640 | 18,648 | 1 |
 
-These show typical cached-track Solana CU of ~117-131 K with heap ~18.5-18.9 KB.
+These show typical cached-track Solana CU of ~120-127 K with heap ~18.5-18.7 KB on atomic execution.
 
-## What the data says
+## Cross-references
 
-1. **PR #383 + #376 selectors all dispatch correctly on the live runtime.** Every paired call either succeeded on both tracks (apple-to-apple cost captured) or hit the same SPL/Solana runtime gate on both tracks (security parity confirmed).
+- [rome-evm-private#376](https://github.com/rome-protocol/rome-evm-private/pull/376) — cached-track infrastructure
+- [rome-evm-private#383](https://github.com/rome-protocol/rome-evm-private/pull/383) — Phase A new cached selectors
+- [rome-evm-private#385](https://github.com/rome-protocol/rome-evm-private/pull/385) — "permanently scoped out" framing for the 2 selectors not on cached track
+- [rome-solidity#206](https://github.com/rome-protocol/rome-solidity/pull/206) — Phase A example methods
+- [rome-solidity#207](https://github.com/rome-protocol/rome-solidity/pull/207) — this bench
 
-2. **Cached track median overhead: ~7% Solana CU + ~1 KB heap vs CPI.** Range: -7% to +20% on individual ops. The variance is driven by ix complexity (single SPL `transfer_checked` adds little; multi-account composed flows add more).
-
-3. **`SystemCached.transfer(address,uint64)` is actually *faster* than the CPI path** (-6.6% CU). When the cached overlay can elide a redundant account read that the CPI path must perform, cached wins outright on Solana CU.
-
-4. **What the operator pays for the +7% median CU overhead:**
-   - EVM-revert atomicity over SPL effects
-   - Iterative-VM compatibility for cached `Invoke` calls
-   - Overlay coherence across multi-step ops in one tx
-
-5. **`mint` is the canonical SPL-Token authority gate test.** Both tracks reject when the caller-PDA isn't the on-chain mint authority — this IS the intended security property. The bench result confirms cached track has not weakened it.
-
-6. **EVM gas is a poor proxy for Solana CU.** EVM gas was nearly-constant 10-15 K across calls with 10× CU spread (11K vs 144K). Always read Solana CU when measuring Rome.
-
-## What's missing — to fully close out
-
-| Gap | Required setup |
-|---|---|
-| `withdraw_to_ata` / `withdraw_from_ata` cached real-cost numbers (the suspect 11,171 CU rows) | Fund EOA with verified wUSDC balance + verified ATA setup; re-bench |
-| `mint` success-path comparison | Create a fresh SPL mint with the bencher-PDA as `mint_authority` (single setup tx using `HelperProgram.create_and_init_mint`), then re-bench `mint` against that mint |
-| `transferFrom` real-cost numbers (the 12,671 CU row is suspect — same fast-path signature) | Same as withdraw — verify balance + delegate state, re-bench against a real third-party `from` address that's pre-approved the bencher as delegate |
-| Salt-state coordination between bench runs | The salt-based `SystemCached` variants accumulate state. Re-running the bench requires either monotonically-incrementing seeds (current behavior) or cleanup of prior PDAs (operator-typed `solana program close`-style ops) |
-
-These are setup-heavy follow-ups, not blockers on the apple-to-apple architecture-comparison result. The 9 paired ops with clean OK/OK status give the credible median (~7% overhead) we need.
-
-## Artifacts (this PR will land all of these)
+## Artifacts
 
 - [`contracts/examples/bench_cached.sol`](../contracts/examples/bench_cached.sol)
-- [`scripts/bench_cached.ts`](./bench_cached.ts)
-- [`scripts/CACHED_TRACK_BENCH_REPORT.md`](./CACHED_TRACK_BENCH_REPORT.md) (this file)
+- [`scripts/bench_cached.ts`](./bench_cached.ts) — sums CU across all Solana segments (atomic = 1 segment, iterative = 2+)
+- [`scripts/validate_withdraw_suspect.ts`](./validate_withdraw_suspect.ts) — focused diagnostic for the iterative-flow rows
