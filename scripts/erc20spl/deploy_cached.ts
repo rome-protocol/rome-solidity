@@ -21,11 +21,14 @@ async function main() {
     const networkName = process.env.HARDHAT_NETWORK ?? "hadrian";
     const deployments = readDeployments(networkName);
 
-    const usersAddress = deployments.ERC20Users?.address;
+    const usersAddress =
+        process.env.ERC20_USERS_ADDRESS ??
+        deployments.SimpleActivator?.users ??
+        (deployments as any).ERC20Users?.address;
     if (!usersAddress || !isAddress(usersAddress)) {
         throw new Error(
-            `ERC20Users not deployed on ${networkName}. ` +
-            `Run \`npx hardhat run scripts/bridge/deploy.ts --network ${networkName}\` first.`,
+            `ERC20Users not found. Set ERC20_USERS_ADDRESS env var, or ` +
+            `ensure deployments/${networkName}.json has SimpleActivator.users.`,
         );
     }
 
