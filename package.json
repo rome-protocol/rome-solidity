@@ -11,7 +11,10 @@
   "type": "module",
   "devDependencies": {
     "@nomicfoundation/hardhat-ignition": "^3.1.6",
+    "@nomicfoundation/hardhat-ignition-viem": "^3.0.7",
     "@nomicfoundation/hardhat-toolbox-viem": "^5.0.6",
+    "@nomicfoundation/hardhat-verify": "^3.0.0",
+    "@nomicfoundation/ignition-core": "^3.0.7",
     "@types/chai": "^5.2.3",
     "@types/mocha": "^10.0.10",
     "@types/node": "^25.9.1",
