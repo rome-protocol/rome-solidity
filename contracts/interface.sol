@@ -41,6 +41,11 @@ interface IWithdrawCached {
     function withdraw_to_pda(uint256 wei_) external;
     // 0x8059abc0
     function withdraw_to_ata(uint256 wei_) external;
+    // 0x214ee485 — inverse of withdraw_to_ata; burn SPL wrapper from caller's
+    // PDA-owned ATA, credit caller with `wei_` native gas. Single-state only.
+    // Cached counterpart of legacy HelperProgram.deposit_from_ata; shipped in
+    // rome-evm-private#383.
+    function withdraw_from_ata(uint256 wei_) external;
 }
 
 interface ISystemCached {
@@ -89,6 +94,18 @@ interface ISplCached {
     function transfer(address to, uint256 amount, bytes32 mint) external;
     // 0x7db527f9 — to_pda, amount, mint
     function transfer(bytes32 to_pda, uint256 amount, bytes32 mint) external;
+    // 0x401e3367 — delegate variant; authority = external_auth(caller),
+    // accepted as the from-ATA's owner OR a sufficient-amount delegate.
+    // Consumed by SPL_ERC20_cached.transferFrom + router-driven flows.
+    // Shipped in rome-evm-private#383.
+    function transferFrom(address from, address to, uint256 amount, bytes32 mint) external;
+    // 0x8180f2fc — EVM-spender approve. owner = external_auth(caller),
+    // delegate = external_auth(spender). Shipped in rome-evm-private#383.
+    function approve(address spender, uint256 amount, bytes32 mint) external;
+    // 0x1e458bee — caller-PDA signs as the mint authority (SPL runtime
+    // enforces match). Consumed by SPL_ERC20_cached.mint_to + inbound bridge
+    // settle. Shipped in rome-evm-private#383.
+    function mint(address to, uint256 amount, bytes32 mint) external;
     // 0x0b0ad508 — ata, mint, owner
     function init(bytes32 ata, bytes32 mint, bytes32 owner) external;
     // 0x73b9aa91 — derives ATA(external_auth(user), chain_mint) internally
