@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Changed — Renamed `IWithdrawCached.withdraw_from_ata` → `deposit`; selector `0x214ee485` → `0xb6b55f25`
+
+Tracks the post-ship correction in [`rome-evm-private#386`](https://github.com/rome-protocol/rome-evm-private/pull/386). Two issues with the original ship:
+
+1. **Naming** — the operation does SPL transfer caller's ATA → chain's sol_wallet ATA on Solana side, which is a **deposit** of SPL into chain custody, not a withdrawal of anything from `WithdrawCached`. Renamed to `deposit(uint256)` to make the inverse-of-`withdrawal` relationship explicit.
+2. **Accounting** — the original impl deducted `wei_` from `Withdraw::ADDRESS` (`0x42…16`) alongside crediting the caller. But `Withdraw::ADDRESS` is NOT a real economic pool — balance only accumulates from `withdraw_to_*` wrap flows, while SPL tokens enter circulation from bridge-inbound + genesis + direct transfers too. First-time-user unwrap on a chain where bridge-in is the primary SPL source would have **reverted** with insufficient balance at the precompile address. The chain's SPL wallet (sol_wallet ATA) backs gas in circulation, not `Withdraw::ADDRESS`. The fix removes the bogus debit so the EVM-side credit is a pure mint, matching `HelperProgram.deposit_from_ata` semantics (which has always shipped with a single caller-credit entry).
+
+Selector hex re-derived via `cast keccak "deposit(uint256)" | head -c 10` = `0xb6b55f25`, locked at `cargo test` time by the rome-evm-private hex-lock test.
+
+Touched in this repo: `contracts/interface.sol` (rename function + comment), `contracts/examples/cached.sol` (rename demonstrator + comment), `CLAUDE.md` (rename in cached-track surface entry).
+
+Behavioral contract: callers of `address(WithdrawCached).delegatecall(abi.encodeWithSignature("withdraw_from_ata(uint256)", wei))` MUST update to `"deposit(uint256)"` before the redeployed program reaches their target chain. Old selector `0x214ee485` is no longer dispatched.
+
 ### Added — Phase A cached-track demonstrator methods on `cached.sol` + interface declarations
 
 Surfaces the four cached-track selectors that shipped in [`rome-evm-private#383`](https://github.com/rome-protocol/rome-evm-private/pull/383) (merged 2026-05-23):
@@ -13,9 +26,9 @@ Surfaces the four cached-track selectors that shipped in [`rome-evm-private#383`
 - `ISplCached.transferFrom(address,address,uint256,bytes32)` (`0x401e3367`) — delegate-source SPL transfer. SPL Token accepts the caller-PDA as the from-ATA's owner OR as a delegate with sufficient `delegated_amount`. Unblocks router-driven Romeswap / Compound supply-borrow / Cardo adapters on cached track.
 - `ISplCached.approve(address,uint256,bytes32)` (`0x8180f2fc`) — EVM-spender approve. Sets `external_auth(spender)` as the SPL delegate on owner-ATA via `approve_checked`.
 - `ISplCached.mint(address,uint256,bytes32)` (`0x1e458bee`) — caller-PDA signs as the mint authority via SPL `mint_to_checked`. SPL runtime enforces caller-PDA == on-chain mint authority.
-- `IWithdrawCached.withdraw_from_ata(uint256)` (`0x214ee485`) — inverse of `withdraw_to_ata`; burn SPL wrapper from caller's PDA-owned ATA, credit caller with `wei_` native gas. Single-state only. Cached counterpart of legacy `HelperProgram.deposit_from_ata`.
+- `IWithdrawCached.withdraw_from_ata(uint256)` (`0x214ee485`) — inverse of `withdraw_to_ata`; burn SPL wrapper from caller's PDA-owned ATA, credit caller with `wei_` native gas. Single-state only. Cached counterpart of legacy `HelperProgram.deposit_from_ata`. **Renamed to `deposit(uint256)` `0xb6b55f25` in the post-ship correction above (rome-evm-private#386).**
 
-Each is added to `contracts/interface.sol` (under `ISplCached` / `IWithdrawCached`) and demonstrated via the canonical `address(...).delegatecall(abi.encodeWithSignature(...))` pattern in `contracts/examples/cached.sol` (new methods: `spl_transferFrom` / `spl_approve` / `spl_mint` / `withdraw_from_ata`). Selector hex was pre-verified via `cast keccak` against the const in `rome-evm-private/program/src/non_evm_cached/{spl_cached,withdraw_cached}.rs` and locked at `cargo test` time by the rome-evm-private hex-lock tests.
+Each is added to `contracts/interface.sol` (under `ISplCached` / `IWithdrawCached`) and demonstrated via the canonical `address(...).delegatecall(abi.encodeWithSignature(...))` pattern in `contracts/examples/cached.sol` (new methods: `spl_transferFrom` / `spl_approve` / `spl_mint` / `withdraw_from_ata` — the last renamed to `deposit` per the entry above). Selector hex was pre-verified via `cast keccak` against the const in `rome-evm-private/program/src/non_evm_cached/{spl_cached,withdraw_cached}.rs` and locked at `cargo test` time by the rome-evm-private hex-lock tests.
 
 Two originally-considered selectors are **permanently scoped out** of Phase A and will NOT ship as cached variants — `ASplCached.create_ata_for_key` and `SplCached.approve_spl_raw_delegate`. The bridge uses the legacy CPI direct path (`HelperProgram`) by design, because the legacy track's hard `CpiProhibitedInIterativeTx` gate is the defense against the cached + iterative-VM attack surface (operator-SOL drain via spam-loop ATA creates; Token-2022 opaque-error UX under hostile input). The legacy `HelperProgram.create_ata_for_key` + `approve_spl_raw_delegate` continue to back `SPL_ERC20.bridgeOutToSolana` / `RomeBridgeWithdraw.approveBurnETH` and `ensureRecipientAta` / EIP-712 settle — that IS the safe design. See CLAUDE.md "Cached-track surface" section for the final breakdown.
 

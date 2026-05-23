@@ -168,7 +168,7 @@ Author statement (rome-evm-private PR #376, Valentin Konyakhin, 2026-05-22): *"C
 Shipped on cached track (PR #383):
 
 - ✅ **`ISplCached.transferFrom` / `approve` / `mint`** — landed in #383. Router-driven Romeswap / Compound supply-borrow / Cardo intent adapters can now migrate from legacy track. Demonstrator methods on `contracts/examples/cached.sol`.
-- ✅ **`IWithdrawCached.withdraw_from_ata`** — landed in #383. Cached unwrap leg (inverse of `withdraw_to_ata`). rome-ui `useWrapUnwrap` unwrap path can rebind to this selector.
+- ✅ **`IWithdrawCached.deposit`** — landed in #383 as `withdraw_from_ata(uint256)` `0x214ee485`; **renamed to `deposit(uint256)` `0xb6b55f25`** in rome-evm-private#386 with an accounting fix (dropped a bogus `Withdraw::ADDRESS` debit that would have reverted first-time unwrap on bridge-in-sourced chains). Inverse of `withdrawal` — SPL transfer from caller's PDA-owned ATA to chain's sol_wallet ATA on Solana side; pure mint of `wei_` native gas to caller on EVM side. Matches `HelperProgram.deposit_from_ata` semantics. rome-ui `useWrapUnwrap` unwrap path can rebind to this selector.
 
 **Permanently scoped out** — the two originally-considered selectors below were rejected during red-team review and the decision is final. The bridge uses the legacy CPI direct path (`HelperProgram` at `0xff..09`) by design, because the legacy track's hard `CpiProhibitedInIterativeTx` gate IS the defense against the attack surface that a cached-track + iterative-VM variant would expose. These are NOT future-work items.
 
