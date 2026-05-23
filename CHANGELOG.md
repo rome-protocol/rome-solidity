@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added — `SPL_ERC20_cached` cache-based wrapper + demonstrator contracts
+
+New contract at [`contracts/erc20spl/erc20spl_cached.sol`](contracts/erc20spl/erc20spl_cached.sol). Replaces the existing CPI-based `SPL_ERC20` on devnet (existing wrapper stays until consumer cutover per the migration spec).
+
+All mutations dispatch through the cache-based precompile family (`SplCached` `0xff..05`, `AssociatedSplCached` `0xff..06`). Reads use the CU-preference order from the spec — `EthCall` first (`HelperProgram.ata`), then `HelperProgram` `CrossStateEthCall` (`user_balance`, `allowance_of`), then `CpiProgram` `CrossStateEthCall` (`account_lamports`, `account_u64_at`).
+
+Surface: `name` / `symbol` / `decimals` / `totalSupply` / `balanceOf` / `allowance` / `get_token_account` / `transfer` / `transferFrom` / `approve` / `mint_to` / `ensure_token_account` / `create_token_account`. Bridge methods (`bridgeOutToSolana`, `ensureRecipientAta`) **NOT** included — they require the permanently-CPI-only `create_ata_for_key` and would violate the one-track-per-contract HARD RULE. Bridge relocation tracked in a follow-up spec.
+
+Also adds [`contracts/erc20spl/cached_revert_demo.sol`](contracts/erc20spl/cached_revert_demo.sol) with three demonstrator contracts that exercise the cache track's defining properties:
+
+- `CachedRevertDemo.transferThenRevert` — proves EVM revert atomicity discards the queued cache mutation.
+- `IterativeMultiTransferDemo.burnAndTransferN` — proves iterative-VM multi-step SPL flows succeed where CPI track would `CpiProhibitedInIterativeTx`.
+- `OrderingViolationDemo.cacheThenReadFromCpi` — documents the consumer-side ordering constraint (cache mutation followed by CPI `CrossStateEthCall` reverts via `verify_call`).
+
+Deploy via [`scripts/erc20spl/deploy_cached.ts`](scripts/erc20spl/deploy_cached.ts) with `WRAPPER_MINT_ID` env var. Writes deployment receipt under the `SPL_ERC20_cached` (and per-mint `SPL_ERC20_*_cached`) keys in `deployments/<network>.json`.
+
+Selector hex locks at [`tests/erc20spl/cached.selectors.test.ts`](tests/erc20spl/cached.selectors.test.ts) — 5/5 pass on hardhatMainnet, locks the four cache-based mutating selectors + `AssociatedSplCached.create_ata` against `cast keccak` derivation.
+
+Behavioral integration tests at [`tests/erc20spl/cached.integration.ts`](tests/erc20spl/cached.integration.ts) — exercise constructor + views + mutations + saturation sentinel against a deployed wrapper. **Runtime execution requires Hadrian** (`HADRIAN_PRIVATE_KEY` in keystore + `SPL_ERC20_CACHED_ADDRESS` env var pointing at the deployed wrapper). Demo test files for revert atomicity / iterative-VM / ordering negative — follow-up commits.
+
+Spec: [`rome-specs#128`](https://github.com/rome-protocol/rome-specs/pull/128).
+
 ### Changed — Renamed `IWithdrawCached.withdraw_from_ata` → `deposit`; selector `0x214ee485` → `0xb6b55f25`
 
 Tracks the post-ship correction in [`rome-evm-private#386`](https://github.com/rome-protocol/rome-evm-private/pull/386). Two issues with the original ship:

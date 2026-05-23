@@ -57,6 +57,14 @@ export type DeploymentsFile = {
     SPL_ERC20_USDC?: WrapperDeployment;
     SPL_ERC20_WETH?: WrapperDeployment;
     SPL_ERC20_WSOL?: WrapperDeployment;
+    // Cache-based wrapper deploys (rome-specs#128 — SPL_ERC20_cached).
+    // Per-mint variants follow the same pattern as the CPI-based wrappers
+    // above (SPL_ERC20_USDC_cached, etc.); the bare key is the first
+    // canonical cached wrapper on a chain.
+    SPL_ERC20_cached?: WrapperDeployment;
+    SPL_ERC20_USDC_cached?: WrapperDeployment;
+    SPL_ERC20_WETH_cached?: WrapperDeployment;
+    SPL_ERC20_WSOL_cached?: WrapperDeployment;
     // Legacy aliases kept for back-compat with hand-edited deployments
     // produced before the SPL_ERC20_* convention. Don't write new code
     // against these.
