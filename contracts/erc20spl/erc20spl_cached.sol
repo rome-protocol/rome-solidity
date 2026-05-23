@@ -1,0 +1,257 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {SplTokenLib} from "../spl_token/spl_token.sol";
+import {
+    HelperProgram,
+    SplCached,
+    AssociatedSplCached,
+    ISplCached
+} from "../interface.sol";
+import {AccountReader} from "../cpi/AccountReader.sol";
+import {Convert} from "../convert.sol";
+import {ERC20Users} from "./erc20spl.sol";
+
+/// @title  SPL_ERC20_cached
+/// @notice Cache-based ERC20 wrapper around an SPL mint. Replaces the
+///         CPI-based SPL_ERC20 on devnet. All mutations dispatch through
+///         the cache-based precompile family (SplCached at 0xff..05,
+///         AssociatedSplCached at 0xff..06). Reads use whichever
+///         precompile gives the cleanest answer per the CU preference
+///         order in the migration spec:
+///           1. EthCall                              — HelperProgram.ata
+///           2. HelperProgram CrossStateEthCall      — user_balance, allowance_of
+///           3. CpiProgram CrossStateEthCall         — account_lamports, account_u64_at
+///
+/// @dev    Per the rome-evm-private one-track-per-contract HARD RULE,
+///         this contract does NOT perform any CPI Invoke. Bridge methods
+///         (bridgeOutToSolana, ensureRecipientAta) which require the
+///         permanently-CPI-only create_ata_for_key are NOT exposed here
+///         — they relocate to a separate sibling contract per follow-up
+///         spec.
+contract SPL_ERC20_cached is IERC20, IERC20Metadata {
+    address public immutable cpi_program;
+    bytes32 public immutable mint_id;
+    uint8 public immutable decimals;
+
+    string private _name;
+    string private _symbol;
+    ERC20Users private _users;
+
+    error ERC20InvalidApprover(address approver);
+    error ERC20InvalidSpender(address spender);
+    error ERC20InsufficientAllowance(
+        address spender,
+        uint256 currentAllowance,
+        uint256 requiredAllowance
+    );
+
+    constructor(
+        bytes32 _mint_id,
+        address _cpi_program,
+        string memory name_,
+        string memory symbol_,
+        ERC20Users users_
+    ) {
+        SplTokenLib.SplMint memory mint = SplTokenLib.load_mint(_mint_id, _cpi_program);
+        cpi_program = _cpi_program;
+        mint_id = _mint_id;
+        decimals = mint.decimals;
+        _name = name_;
+        _symbol = symbol_;
+        _users = users_;
+    }
+
+    function name() external view returns (string memory) {
+        return _name;
+    }
+
+    function symbol() external view returns (string memory) {
+        return _symbol;
+    }
+
+    // ─── Read views — CPI CrossStateEthCall + EthCall ─────────────────────
+
+    /// @notice SPL Mint.supply (u64 LE at offset 36). Returns 0 when the
+    ///         mint account is uninitialized so consumers that probe the
+    ///         wrapper during chain bring-up don't revert (ERC-20 spec
+    ///         invariant: views never revert).
+    function totalSupply() external view returns (uint256) {
+        if (AccountReader.lamportsOf(mint_id) == 0) {
+            return 0;
+        }
+        return uint256(AccountReader.readU64At(mint_id, 36));
+    }
+
+    /// @notice Cached-track read: derive ATA via HelperProgram.ata (pure
+    ///         EthCall, track-neutral) then SplCached.account (cached
+    ///         CrossStateEthCall at 0xff..05). Replaces the prior
+    ///         HelperProgram.user_balance (legacy 0xff..09) read so the
+    ///         wrapper exposes a fully cache-track read surface — enables
+    ///         canonical (unmodified) Uniswap V2 pair to compose with this
+    ///         wrapper without tripping the verify_call ordering gate on
+    ///         post-mutation balance reads.
+    function balanceOf(address account) external view returns (uint256) {
+        bytes32 ata = HelperProgram.ata(account, mint_id);
+        return uint256(SplCached.account(ata).amount);
+    }
+
+    /// @notice Cached-track read: SplCached.account exposes delegate +
+    ///         delegated_amount in a single cached read. Returns 0 unless
+    ///         the on-chain SPL delegate equals external_auth(spender)
+    ///         (matches HelperProgram.allowance_of's HARD-REQ semantics).
+    ///         Saturates uint64::max → uint256::max for wallet "infinite
+    ///         approval" sentinel compatibility.
+    function allowance(address owner, address spender) external view returns (uint256) {
+        bytes32 ownerAta = HelperProgram.ata(owner, mint_id);
+        ISplCached.Account memory acc = SplCached.account(ownerAta);
+        bytes32 spenderPda = HelperProgram.pda(spender);
+        if (acc.delegate != spenderPda) return 0;
+        return acc.delegated_amount == type(uint64).max
+            ? type(uint256).max
+            : uint256(acc.delegated_amount);
+    }
+
+    /// @notice Pure EthCall derivation — `external_auth(user) + mint_id`
+    ///         ATA pubkey. Never a track-locking event; never reverts.
+    function get_token_account(address user) external view returns (bytes32) {
+        return HelperProgram.ata(user, mint_id);
+    }
+
+    // ─── Mutating ERC-20 surface — all cache-based Invokes ────────────────
+
+    /// @notice Idempotent ATA bootstrap. Drops the prior CpiProgram
+    ///         account_lamports (legacy 0xff..08) probe that was used as
+    ///         a CU optimization — AssociatedSplCached.create_ata is
+    ///         idempotent on the Solana side, so calling it
+    ///         unconditionally is safe semantically. Removing the probe
+    ///         eliminates the last legacy-precompile READ from this
+    ///         wrapper's hot path, making the wrapper fully cache-track
+    ///         (so canonical UV2 pair can compose without verify_call
+    ///         ordering issues).
+    function ensure_token_account(address user) public returns (bytes32) {
+        bytes32 ata = HelperProgram.ata(user, mint_id);
+        (bool ok, bytes memory result) = address(AssociatedSplCached).delegatecall(
+            abi.encodeWithSignature(
+                "create_ata(address,bytes32)",
+                user,
+                mint_id
+            )
+        );
+        require(ok, string(Convert.revert_msg(result)));
+        return ata;
+    }
+
+    /// @notice Public ATA-create entry. Cache invoke; idempotent on
+    ///         repeat. The ATA address returned via HelperProgram.ata
+    ///         after the create — EthCall (pure compute) is exempt from
+    ///         the verify_call gate, so it works even after the cache
+    ///         mutation has fired this tx.
+    function create_token_account(address user) external returns (bytes32) {
+        _users.ensure_user(user);
+        (bool ok, bytes memory result) = address(AssociatedSplCached).delegatecall(
+            abi.encodeWithSignature(
+                "create_ata(address,bytes32)",
+                user,
+                mint_id
+            )
+        );
+        require(ok, string(Convert.revert_msg(result)));
+        return HelperProgram.ata(user, mint_id);
+    }
+
+    function transfer(address to, uint256 value) external returns (bool) {
+        return _transfer(msg.sender, to, value);
+    }
+
+    function transferFrom(address from, address to, uint256 value) external returns (bool) {
+        return _transfer(from, to, value);
+    }
+
+    /// @notice Internal transfer dispatcher — selects sender path or
+    ///         delegate path based on `from == msg.sender`. Both paths
+    ///         go through SplCached, locking the tx to the cache track.
+    function _transfer(address from, address to, uint256 value) internal returns (bool) {
+        require(value <= type(uint64).max, "Transfer amount exceeds uint64");
+        _users.ensure_user(msg.sender);
+        ensure_token_account(to);
+
+        bool ok;
+        bytes memory result;
+        if (from == msg.sender) {
+            // Sender path — caller-PDA owns the source ATA. Cache
+            // SplCached.transfer(address,uint256,bytes32) at 0x57cfeeee.
+            (ok, result) = address(SplCached).delegatecall(
+                abi.encodeWithSignature(
+                    "transfer(address,uint256,bytes32)",
+                    to,
+                    value,
+                    mint_id
+                )
+            );
+        } else {
+            // Delegate path — caller-PDA is the SPL delegate set by a
+            // prior approve(). Cache SplCached.transferFrom at
+            // 0x401e3367. SPL Token accepts PDA as ATA owner OR
+            // delegated-amount delegate.
+            (ok, result) = address(SplCached).delegatecall(
+                abi.encodeWithSignature(
+                    "transferFrom(address,address,uint256,bytes32)",
+                    from,
+                    to,
+                    value,
+                    mint_id
+                )
+            );
+        }
+        require(ok, string(Convert.revert_msg(result)));
+        emit Transfer(from, to, value);
+        return true;
+    }
+
+    /// @notice Saturates uint64::max for SPL storage; emits uint256::max
+    ///         so wallet "infinite approval" sentinels (`if allowance ==
+    ///         MaxUint256`) keep working as a round-trip invariant.
+    function approve(address spender, uint256 value) external returns (bool) {
+        _users.ensure_user(msg.sender);
+        uint64 storedAmount = value > type(uint64).max
+            ? type(uint64).max
+            : uint64(value);
+        (bool ok, bytes memory result) = address(SplCached).delegatecall(
+            abi.encodeWithSignature(
+                "approve(address,uint256,bytes32)",
+                spender,
+                storedAmount,
+                mint_id
+            )
+        );
+        require(ok, string(Convert.revert_msg(result)));
+        uint256 emittedValue = storedAmount == type(uint64).max
+            ? type(uint256).max
+            : uint256(storedAmount);
+        emit Approval(msg.sender, spender, emittedValue);
+        return true;
+    }
+
+    /// @notice Caller-PDA signs as the on-chain mint authority. SPL
+    ///         Token runtime enforces caller-PDA == mint authority.
+    ///         Recipient ATA auto-created via ensure_token_account.
+    function mint_to(address to, uint256 value) external returns (bool) {
+        require(value <= type(uint64).max, "Mint amount exceeds uint64");
+        _users.ensure_user(msg.sender);
+        ensure_token_account(to);
+        (bool ok, bytes memory result) = address(SplCached).delegatecall(
+            abi.encodeWithSignature(
+                "mint(address,uint256,bytes32)",
+                to,
+                value,
+                mint_id
+            )
+        );
+        require(ok, string(Convert.revert_msg(result)));
+        emit Transfer(address(0), to, value);
+        return true;
+    }
+}

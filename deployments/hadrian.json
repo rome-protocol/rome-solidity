@@ -97,5 +97,11 @@
     "wsolWrapper": "0x28E7c064E734cB3edeA65A98927c1c20581c8934",
     "users": "0x46066102B8E848d67Cf5f96212B92C8A24b51d8b",
     "deployedAt": 1779114924
+  },
+  "SPL_ERC20_cached": {
+    "address": "0x979cb140cd9593758496742f40ab37b41807284c",
+    "mint": "0xe129d398fb5bf9c7ffb56bfa0b855b101ea92c6d014be32283817301db843bed",
+    "name": "Cached Test Token",
+    "symbol": "wTESTc"
   }
 }
