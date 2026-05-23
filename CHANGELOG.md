@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Changed — `ERC20SPLFactory` deploys `SPL_ERC20_cached` (was `SPL_ERC20`)
+
+[`contracts/erc20spl/erc20spl_factory.sol#_register_contract`](contracts/erc20spl/erc20spl_factory.sol) — both `add_spl_token_with_metadata` and `add_spl_token_no_metadata` now spin up `SPL_ERC20_cached` instances. Constructor signature is identical (`bytes32 mint, address cpi_program, string name, string symbol, ERC20Users users`), so the factory's external ABI + `TokenCreated` event surface stays unchanged.
+
+Migration model is **redeploy the factory at a new address** — the existing factory's state (`token_by_mint`, `mint_by_symbol_hash`, `creator_nonce`) is per-instance, so a fresh deploy gets a clean symbol namespace and starts emitting `TokenCreated` events that the rome-ui token indexer picks up. Registry update points `chain.contracts.erc20SplFactory` at the new factory; rome-ui's canonical-only token-sync (overwrites the Redis cache each cycle) auto-purges legacy-wrapper tokens on the next sync.
+
+The factory itself remains track-neutral by composition: `create_token_mint` + `init_token_mint` still call `HelperProgram` (legacy track) in their own user-tx; `_register_contract` only emits an event and `new`s the contract; the deployed `SPL_ERC20_cached` operates cache-track in subsequent user-txs. No code path mixes tracks within a single tx.
+
+User-visible effect on the new wrappers (vs the legacy `SPL_ERC20`):
+
+- Iterative-VM compatible — multi-step SPL flows compose (Compound `Bulker`, multi-hop swap, batched outbound bridge).
+- EVM-revert atomicity over the queued Solana-side SPL ops (committed at end-of-tx via the cache).
+- 2–10% CU reduction on most ops; +10K CU on `approve` (see rome-solidity #210 bench).
+- Bridge methods (`bridgeOutToSolana`, `ensureRecipientAta`) are NOT exposed on `SPL_ERC20_cached` — the cache track can't host the permanently-CPI-only `create_ata_for_key` per the one-track-per-contract HARD RULE. Bridge flows continue to use the legacy CPI wrapper for now; their relocation to a sibling contract is tracked in the migration spec follow-up.
+
 ### Added — `SPL_ERC20_cached` cache-based wrapper + demonstrator contracts
 
 New contract at [`contracts/erc20spl/erc20spl_cached.sol`](contracts/erc20spl/erc20spl_cached.sol). Replaces the existing CPI-based `SPL_ERC20` on devnet (existing wrapper stays until consumer cutover per the migration spec).

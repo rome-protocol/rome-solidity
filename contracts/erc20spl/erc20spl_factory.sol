@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./erc20spl.sol";
+import {ERC20Users} from "./erc20spl.sol";
+import {SPL_ERC20_cached} from "./erc20spl_cached.sol";
 import {MplTokenMetadataLib} from "../mpl_token_metadata/lib.sol";
 import {SplTokenLib} from "../spl_token/spl_token.sol";
 import {SystemProgramLib} from "../system_program/system_program.sol";
@@ -50,7 +51,21 @@ contract ERC20SPLFactory {
         bytes32 symbolHash = keccak256(bytes(symbol));
         _check_symbol_hash_exists(symbolHash);
 
-        SPL_ERC20 new_contract = new SPL_ERC20(mint, cpi_program, name, symbol, users);
+        // Deploy the cache-track wrapper. `SPL_ERC20_cached` exposes the
+        // identical IERC20 + IERC20Metadata surface as the prior
+        // `SPL_ERC20`, but dispatches every mutating SPL operation
+        // through `SplCached` / `AssociatedSplCached` (0xff..05 / 06).
+        // Net effects vs the legacy CPI-track wrapper:
+        //   - Iterative-VM compatible (cached SPL ops don't trip the
+        //     legacy CpiProhibitedInIterativeTx gate), so multi-step
+        //     flows like Compound's Bulker and multi-hop swaps compose.
+        //   - EVM-revert atomicity over the Solana-side SPL side
+        //     effects (committed only at end-of-tx via the cache).
+        //   - 2–10% CU reduction on most ops (see rome-solidity #210
+        //     bench).
+        // Constructor signature is identical, so the factory's
+        // ABI / event surface is unchanged.
+        SPL_ERC20_cached new_contract = new SPL_ERC20_cached(mint, cpi_program, name, symbol, users);
         token_by_mint[mint] = address(new_contract);
         mint_by_symbol_hash[symbolHash] = mint;
         token_by_symbol_hash[symbolHash] = address(new_contract);
