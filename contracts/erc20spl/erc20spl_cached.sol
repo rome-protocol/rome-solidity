@@ -85,27 +85,25 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return uint256(AccountReader.readU64At(mint_id, 36));
     }
 
-    /// @notice Cached-track read: derive ATA via HelperProgram.ata (pure
-    ///         EthCall, track-neutral) then SplCached.account (cached
-    ///         CrossStateEthCall at 0xff..05). Replaces the prior
-    ///         HelperProgram.user_balance (legacy 0xff..09) read so the
-    ///         wrapper exposes a fully cache-track read surface — enables
-    ///         canonical (unmodified) Uniswap V2 pair to compose with this
-    ///         wrapper without tripping the verify_call ordering gate on
-    ///         post-mutation balance reads.
+    /// @notice ERC-20: balanceOf returns 0 (not revert) for any address.
+    ///         SplCached.account reverts on an uninitialized ATA, so probe
+    ///         lamports first and short-circuit when the ATA is missing.
     function balanceOf(address account) external view returns (uint256) {
         bytes32 ata = HelperProgram.ata(account, mint_id);
+        if (AccountReader.lamportsOf(ata) == 0) {
+            return 0;
+        }
         return uint256(SplCached.account(ata).amount);
     }
 
-    /// @notice Cached-track read: SplCached.account exposes delegate +
-    ///         delegated_amount in a single cached read. Returns 0 unless
-    ///         the on-chain SPL delegate equals external_auth(spender)
-    ///         (matches HelperProgram.allowance_of's HARD-REQ semantics).
-    ///         Saturates uint64::max → uint256::max for wallet "infinite
-    ///         approval" sentinel compatibility.
+    /// @notice ERC-20: allowance returns 0 (not revert) for any (owner, spender).
+    ///         Probe owner ATA lamports before reading delegate fields.
+    ///         Saturates uint64::max → uint256::max for wallet "infinite approval".
     function allowance(address owner, address spender) external view returns (uint256) {
         bytes32 ownerAta = HelperProgram.ata(owner, mint_id);
+        if (AccountReader.lamportsOf(ownerAta) == 0) {
+            return 0;
+        }
         ISplCached.Account memory acc = SplCached.account(ownerAta);
         bytes32 spenderPda = HelperProgram.pda(spender);
         if (acc.delegate != spenderPda) return 0;
@@ -211,11 +209,17 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return true;
     }
 
-    /// @notice Saturates uint64::max for SPL storage; emits uint256::max
-    ///         so wallet "infinite approval" sentinels (`if allowance ==
-    ///         MaxUint256`) keep working as a round-trip invariant.
+    /// @notice ERC-20: approve succeeds for any caller regardless of balance.
+    ///         SPL approve_checked writes the delegate fields on the owner ATA,
+    ///         so the ATA must exist. Auto-create if missing; the lamports probe
+    ///         skips the cost when the owner already has tokens.
+    ///         Saturates uint64::max → uint256::max for wallet "infinite approval".
     function approve(address spender, uint256 value) external returns (bool) {
         _users.ensure_user(msg.sender);
+        bytes32 ownerAta = HelperProgram.ata(msg.sender, mint_id);
+        if (AccountReader.lamportsOf(ownerAta) == 0) {
+            ensure_token_account(msg.sender);
+        }
         uint64 storedAmount = value > type(uint64).max
             ? type(uint64).max
             : uint64(value);

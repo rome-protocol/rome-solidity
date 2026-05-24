@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Fixed — `SPL_ERC20_cached` views + approve no longer revert on uninitialized ATA
+
+[`contracts/erc20spl/erc20spl_cached.sol`](contracts/erc20spl/erc20spl_cached.sol) — three ERC-20-spec violations fixed:
+
+- `balanceOf` and `allowance`: return 0 (not revert) when the queried address has no ATA. Gated by `AccountReader.lamportsOf > 0`.
+- `approve`: auto-creates the owner ATA via `ensure_token_account(msg.sender)` when missing. Optimized probe skips the call when the ATA exists — adds ~20K CU in the common case. Restores spec compliance for pre-approval and reset-to-0 workflows.
+
+Retires the off-chain `ensure_token_account(<protocolContract>)` deploy-time warmup step from all five cached-wrapper protocol forks (rome-uniswap-v2/v3/v4, rome-aave-v3, compound-on-rome-comet) once consumers redeploy against a patched-factory build.
+
+Tests: `tests/erc20spl/view-defensive.test.ts` extended to 22 cases (+`tryReadBalanceOf`, +`ownerNeedsAta` predicates); full erc20spl suite 54/54 passing. Hadrian on-chain smoke at `scripts/fb2d-smoke.ts`; patched wrapper @ `0x5232951cf6f15fd1fa6749ebd9bb09a1782587f5`.
+
+Follow-up: bump `SimpleActivator` PDA-funding floor to ~5-10 ATAs of headroom.
+
 ### Changed — `ERC20SPLFactory` deploys `SPL_ERC20_cached` (was `SPL_ERC20`)
 
 [`contracts/erc20spl/erc20spl_factory.sol#_register_contract`](contracts/erc20spl/erc20spl_factory.sol) — both `add_spl_token_with_metadata` and `add_spl_token_no_metadata` now spin up `SPL_ERC20_cached` instances. Constructor signature is identical (`bytes32 mint, address cpi_program, string name, string symbol, ERC20Users users`), so the factory's external ABI + `TokenCreated` event surface stays unchanged.

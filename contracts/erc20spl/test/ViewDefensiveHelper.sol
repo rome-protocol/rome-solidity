@@ -82,4 +82,23 @@ contract ViewDefensiveHelper {
         }
         return uint256(onChainSupply);
     }
+
+    /// @notice Pure mirror of SPL_ERC20_cached.balanceOf's defensive guard.
+    /// Returns 0 when ATA missing; otherwise the on-chain balance.
+    function tryReadBalanceOf(uint64 ataLamports, uint64 onChainBalance)
+        external
+        pure
+        returns (uint256)
+    {
+        if (ataLamports == 0) {
+            return 0;
+        }
+        return uint256(onChainBalance);
+    }
+
+    /// @notice Predicate for whether approve() must auto-create the owner ATA
+    /// before SPL approve_checked. True iff the ATA has no lamports.
+    function ownerNeedsAta(uint64 ownerAtaLamports) external pure returns (bool) {
+        return ownerAtaLamports == 0;
+    }
 }

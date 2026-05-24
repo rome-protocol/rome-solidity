@@ -180,6 +180,78 @@ describe("SPL_ERC20 view-method defensive guards (FB-2)", function () {
         });
     });
 
+    // FB-2d — balanceOf returns 0 (not revert) on uninitialized ATA.
+
+    describe("FB-2d — tryReadBalanceOf with uninitialized ATA", function () {
+        it("returns 0 when ataLamports == 0 (fresh wallet / fresh pool probe)", async function () {
+            const result = await helper.read.tryReadBalanceOf([
+                /* ataLamports */ 0n,
+                /* onChainBalance */ 0n,
+            ]);
+            assert.equal(result, 0n);
+        });
+
+        it("returns 0 even when on-chain balance would be nonzero (ATA missing wins early-exit)", async function () {
+            // Pathological / unreachable in practice (ATA can't have a
+            // balance without existing) — but the early-exit MUST fire
+            // before reading the cached account, mirroring the pattern
+            // used by tryReadAllowance / tryReadTotalSupply.
+            const result = await helper.read.tryReadBalanceOf([
+                /* ataLamports */ 0n,
+                /* onChainBalance */ 1_234_567n,
+            ]);
+            assert.equal(result, 0n);
+        });
+
+        it("returns the on-chain balance when ATA exists", async function () {
+            const result = await helper.read.tryReadBalanceOf([
+                /* ataLamports */ 5_000_000n,
+                /* onChainBalance */ 1_234_567n,
+            ]);
+            assert.equal(result, 1_234_567n);
+        });
+
+        it("returns 0 when ATA exists but balance is 0 (empty wrapper holder)", async function () {
+            const result = await helper.read.tryReadBalanceOf([
+                /* ataLamports */ 5_000_000n,
+                /* onChainBalance */ 0n,
+            ]);
+            assert.equal(result, 0n);
+        });
+
+        it("returns u64.max balance faithfully (no sentinel — balanceOf is not allowance)", async function () {
+            const result = await helper.read.tryReadBalanceOf([
+                /* ataLamports */ 5_000_000n,
+                /* onChainBalance */ U64_MAX,
+            ]);
+            assert.equal(result, U64_MAX);
+        });
+    });
+
+    // FB-2e — approve auto-creates owner ATA when missing.
+
+    describe("FB-2e — approve auto-creates owner ATA when missing (ownerNeedsAta predicate)", function () {
+        it("returns true when ownerAtaLamports == 0 (ATA missing, must create before SPL approve)", async function () {
+            const result = await helper.read.ownerNeedsAta([0n]);
+            assert.equal(result, true);
+        });
+
+        it("returns false when ownerAtaLamports > 0 (ATA exists, skip the ensure call)", async function () {
+            const result = await helper.read.ownerNeedsAta([1n]);
+            assert.equal(result, false);
+        });
+
+        it("returns false for any positive lamports value (common case — user already has ATA)", async function () {
+            const result = await helper.read.ownerNeedsAta([2_039_280n]);  // rent-exempt floor
+            assert.equal(result, false);
+        });
+
+        it("returns false at u64.max lamports (no overflow / off-by-one)", async function () {
+            const result = await helper.read.ownerNeedsAta([U64_MAX]);
+            assert.equal(result, false);
+        });
+    });
+
     // ──────────────────────────────────────────────────────────────────
     // ERC-20 spec invariant: view methods never revert on missing pairs
     // ──────────────────────────────────────────────────────────────────
@@ -203,6 +275,14 @@ describe("SPL_ERC20 view-method defensive guards (FB-2)", function () {
             const result = await helper.read.tryReadTotalSupply([
                 /* mintLamports */ 0n,
                 /* onChainSupply */ 0n,
+            ]);
+            assert.equal(result, 0n);
+        });
+
+        it("balanceOf returns 0 on a fresh address (no ATA yet) — unblocks canonical Uniswap V3 pool.mint and the equivalent flow on V2/Aave/Compound/V4", async function () {
+            const result = await helper.read.tryReadBalanceOf([
+                /* ataLamports */ 0n,
+                /* onChainBalance */ 0n,
             ]);
             assert.equal(result, 0n);
         });
