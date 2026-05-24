@@ -363,7 +363,7 @@ Target: `0.8.28`. Production profile enables optimizer with 200 runs.
 | `RomeBridgeWithdraw.burnUSDC` / `burnETH` / `approveBurnETH` | **rome-ui** `src/features/bridge/hooks/useOutboundCctpSend.ts`, `useOutboundWhSend.ts`. Inline parseAbi, no JSON regen. |
 | `RomeBridgePaymaster` / `RomeBridgeInbound` | **Legacy** since 2026-04-26 inbound rewrite — superseded by `settle_inbound_bridge` on rome-evm-private. rome-ui keeps these in `chain.contracts` config for back-compat parsing only; no active call sites. |
 | Oracle adapter interfaces | Consuming contracts in this repo that use the adapters |
-| SPL token wrapper logic | `rome-uniswap-v2/` (uses SPL wrappers for trading pairs); `rome-ui/src/features/portfolio` (renders wrapper rows via `useRomeHoldings`) |
+| SPL token wrapper logic (`SPL_ERC20` / `SPL_ERC20_cached`) | Four canonical protocol forks validated end-to-end against `SPL_ERC20_cached` on Hadrian: `rome-uniswap-v2/` (canonical UV2, PR #59), `rome-uniswap-v3/` (canonical UV3, PR #1 — `METRICS.md` in `scripts/`), `rome-aave-v3/` (canonical Aave V3 slim-cut, PR #1 — METRICS.md), `compound-on-rome-comet/` (canonical Compound v3, PR #18 — [`scripts/hadrian-cached-test/METRICS.md`](https://github.com/rome-protocol/compound-on-rome-comet/blob/main/scripts/hadrian-cached-test/METRICS.md)). All four follow the same one-line operational gotcha: `wrapper.ensure_token_account(<protocolContract>)` once per (protocol, cached-wrapper) pair before first deposit/supply. Plus `rome-ui/src/features/portfolio` (renders wrapper rows via `useRomeHoldings`). |
 | Hardhat network config | `rome-solidity-sdk/` uses same network definitions |
 
 ## Cross-repo dependencies — rome-ui
