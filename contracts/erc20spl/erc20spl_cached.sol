@@ -86,30 +86,57 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     }
 
     /// @notice ERC-20: balanceOf returns 0 (not revert) for any address.
-    ///         SplCached.account reverts on an uninitialized ATA, so probe
-    ///         lamports first and short-circuit when the ATA is missing.
+    ///         Uses try/catch on `SplCached.account` instead of a legacy
+    ///         `AccountReader.lamportsOf` short-circuit.
+    ///
+    ///         Why the change: legacy CpiProgram CrossStateEthCall reads
+    ///         (e.g. `account_lamports`) hit on-chain state directly and
+    ///         are NOT overlay-aware. Cached-track writes (SplCached.
+    ///         transferFrom inside the same tx) update the `NonEvmState`
+    ///         overlay; `CachedState::account` consults overlay first.
+    ///         If `balanceOf` short-circuits on legacy lamports, the
+    ///         AFTER-callback balance read inside V3 Pool.mint sees
+    ///         stale 0 from on-chain, so the
+    ///         `require(balance0Before + amount0 <= balance0())` check
+    ///         reverts with 'M0' even though the cached transferFrom
+    ///         succeeded.
+    ///
+    ///         Try/catch on SplCached.account is the overlay-aware
+    ///         short-circuit: precompile reverts on missing ATA → catch
+    ///         returns 0; precompile succeeds → returns amount from
+    ///         whichever state (overlay if written, on-chain otherwise).
+    ///
+    ///         Discovered 2026-05-25 during Hadrian V3 create-pool
+    ///         smoke (rome-ui PR #402). Cross-ref:
+    ///         rome-uniswap-v3/contracts/UniswapV3Pool.sol:486-490.
     function balanceOf(address account) external view returns (uint256) {
         bytes32 ata = HelperProgram.ata(account, mint_id);
-        if (AccountReader.lamportsOf(ata) == 0) {
+        try SplCached.account(ata) returns (ISplCached.Account memory acc) {
+            return uint256(acc.amount);
+        } catch {
             return 0;
         }
-        return uint256(SplCached.account(ata).amount);
     }
 
     /// @notice ERC-20: allowance returns 0 (not revert) for any (owner, spender).
-    ///         Probe owner ATA lamports before reading delegate fields.
+    ///         Same overlay-aware pattern as `balanceOf` — try/catch on
+    ///         `SplCached.account` instead of a legacy lamports probe.
+    ///         Reason: a protocol that calls `approve` then reads
+    ///         `allowance` within the same tx would see stale (0) data
+    ///         from the legacy probe, since `SplCached.approve` writes
+    ///         to overlay but the legacy lamports read is on-chain-only.
     ///         Saturates uint64::max → uint256::max for wallet "infinite approval".
     function allowance(address owner, address spender) external view returns (uint256) {
         bytes32 ownerAta = HelperProgram.ata(owner, mint_id);
-        if (AccountReader.lamportsOf(ownerAta) == 0) {
+        try SplCached.account(ownerAta) returns (ISplCached.Account memory acc) {
+            bytes32 spenderPda = HelperProgram.pda(spender);
+            if (acc.delegate != spenderPda) return 0;
+            return acc.delegated_amount == type(uint64).max
+                ? type(uint256).max
+                : uint256(acc.delegated_amount);
+        } catch {
             return 0;
         }
-        ISplCached.Account memory acc = SplCached.account(ownerAta);
-        bytes32 spenderPda = HelperProgram.pda(spender);
-        if (acc.delegate != spenderPda) return 0;
-        return acc.delegated_amount == type(uint64).max
-            ? type(uint256).max
-            : uint256(acc.delegated_amount);
     }
 
     /// @notice Pure EthCall derivation — `external_auth(user) + mint_id`
@@ -211,13 +238,22 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
 
     /// @notice ERC-20: approve succeeds for any caller regardless of balance.
     ///         SPL approve_checked writes the delegate fields on the owner ATA,
-    ///         so the ATA must exist. Auto-create if missing; the lamports probe
-    ///         skips the cost when the owner already has tokens.
+    ///         so the ATA must exist. Auto-create if missing; the existence
+    ///         probe uses overlay-aware `SplCached.account` (try/catch) so
+    ///         repeated approves in the same tx skip the redundant
+    ///         ensure_token_account call. The previous legacy
+    ///         `AccountReader.lamportsOf` probe read on-chain only — it
+    ///         saw stale lamports for an ATA that was created earlier in
+    ///         the same tx (overlay), so it would fire the idempotent
+    ///         AssociatedSplCached.create_ata CPI every time → ~30K CU
+    ///         per redundant call.
     ///         Saturates uint64::max → uint256::max for wallet "infinite approval".
     function approve(address spender, uint256 value) external returns (bool) {
         _users.ensure_user(msg.sender);
         bytes32 ownerAta = HelperProgram.ata(msg.sender, mint_id);
-        if (AccountReader.lamportsOf(ownerAta) == 0) {
+        try SplCached.account(ownerAta) returns (ISplCached.Account memory) {
+            // ATA exists in cache (overlay or on-chain) — skip create.
+        } catch {
             ensure_token_account(msg.sender);
         }
         uint64 storedAmount = value > type(uint64).max
