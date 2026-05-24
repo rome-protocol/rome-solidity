@@ -86,14 +86,36 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     }
 
     /// @notice ERC-20: balanceOf returns 0 (not revert) for any address.
-    ///         SplCached.account reverts on an uninitialized ATA, so probe
-    ///         lamports first and short-circuit when the ATA is missing.
+    ///         Uses try/catch on `SplCached.account` instead of a legacy
+    ///         `AccountReader.lamportsOf` short-circuit.
+    ///
+    ///         Why the change: legacy CpiProgram CrossStateEthCall reads
+    ///         (e.g. `account_lamports`) hit on-chain state directly and
+    ///         are NOT overlay-aware. Cached-track writes (SplCached.
+    ///         transferFrom inside the same tx) update the `NonEvmState`
+    ///         overlay; `CachedState::account` consults overlay first.
+    ///         If `balanceOf` short-circuits on legacy lamports, the
+    ///         AFTER-callback balance read inside V3 Pool.mint sees
+    ///         stale 0 from on-chain, so the
+    ///         `require(balance0Before + amount0 <= balance0())` check
+    ///         reverts with 'M0' even though the cached transferFrom
+    ///         succeeded.
+    ///
+    ///         Try/catch on SplCached.account is the overlay-aware
+    ///         short-circuit: precompile reverts on missing ATA → catch
+    ///         returns 0; precompile succeeds → returns amount from
+    ///         whichever state (overlay if written, on-chain otherwise).
+    ///
+    ///         Discovered 2026-05-25 during Hadrian V3 create-pool
+    ///         smoke (rome-ui PR #402). Cross-ref:
+    ///         rome-uniswap-v3/contracts/UniswapV3Pool.sol:486-490.
     function balanceOf(address account) external view returns (uint256) {
         bytes32 ata = HelperProgram.ata(account, mint_id);
-        if (AccountReader.lamportsOf(ata) == 0) {
+        try SplCached.account(ata) returns (ISplCached.Account memory acc) {
+            return uint256(acc.amount);
+        } catch {
             return 0;
         }
-        return uint256(SplCached.account(ata).amount);
     }
 
     /// @notice ERC-20: allowance returns 0 (not revert) for any (owner, spender).
