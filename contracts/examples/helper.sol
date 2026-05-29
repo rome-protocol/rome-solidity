@@ -89,8 +89,9 @@ contract helper_example {
         require(success, "revert");
     }
     function transfer_spl_to_signer() external {
+        bytes32 mint = SystemProgram.mint_id();
         (bool success, ) = address(HelperProgram).delegatecall(
-            abi.encodeWithSignature("transfer_spl_to_signer(uint64)", 1000000)
+            abi.encodeWithSignature("transfer_spl_to_signer(uint64,bytes32)", 1000000, mint)
         );
         require(success, "revert");
     }

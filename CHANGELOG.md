@@ -6,11 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
-### Added — `IHelperProgram.transfer_spl_to_signer(uint64)` (selector `0x988977f5`)
+### Added — `IHelperProgram.transfer_spl_to_signer(uint64,bytes32)` (selector `0x46efa679`)
 
-Mirrors the new HelperProgram entry on rome-evm-private's `unsigned_tx` branch (`pub const TRANSFER_SPL_TO_SIGNER: &[u8] = &[0x98, 0x89, 0x77, 0xf5]`). Transfers `tokens` of the chain's gas mint from the caller's `external_auth(caller)`-PDA-owned ATA to the **Solana transaction signer's** ATA via SPL `transfer_checked`. Gas-mint chains only; single-state mode only (the Rust dispatch gates with `single_state_only`).
+Mirrors the new HelperProgram entry on rome-evm-private's `unsigned_tx` branch (`pub const TRANSFER_SPL_TO_SIGNER: &[u8] = &[0x46, 0xef, 0xa6, 0x79]`). Transfers `tokens` of `mint` from the caller's `external_auth(caller)`-PDA-owned ATA to the **Solana transaction signer's** ATA via SPL `transfer_checked`. Single-state mode only (the Rust dispatch gates with `single_state_only`).
 
-Pairs with the in-flight unsigned-tx instruction (EIP-1559 RLP without signature; EVM sender derived from `derive_sender(signer.key) = keccak256(signer_pubkey)[12..32]`) — the EVM body can settle the SPL leg back to the Solana payer without needing the payer's EVM address. Selector verified via `keccak256("transfer_spl_to_signer(uint64)")[0:4] == 0x988977f5`.
+Pairs with the in-flight unsigned-tx instruction (EIP-1559 RLP without signature; EVM sender derived from `derive_sender(signer.key) = keccak256(signer_pubkey)[12..32]`) — the EVM body can settle the SPL leg back to the Solana payer without needing the payer's EVM address. Selector verified via `keccak256("transfer_spl_to_signer(uint64,bytes32)")[0:4] == 0x46efa679`.
 
 This PR is the interface mirror only — no rome-ui consumer is wired yet; that comes alongside the unsigned-tx end-to-end bring-up.
 
