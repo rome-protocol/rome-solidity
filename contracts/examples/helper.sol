@@ -67,6 +67,17 @@ contract helper_example {
         );
         require(success, "revert");
     }
+    // Return SPL from the synthetic account's ATA to the outer Solana tx
+    // signer's own ATA (the user's wallet) — the return leg for Solana-native
+    // users. Works for any mint; here the chain gas mint.
+    function transfer_spl_to_signer() external {
+        bytes32 mint = SystemProgram.mint_id();
+
+        (bool success, ) = address(HelperProgram).delegatecall(
+            abi.encodeWithSignature("transfer_spl_to_signer(uint64,bytes32)", 1000000, mint)
+        );
+        require(success, "revert");
+    }
     function ata() external view returns(bytes32) {
         bytes32 mint = SystemProgram.mint_id();
         bytes32 ata_ = HelperProgram.ata(msg.sender, mint);
