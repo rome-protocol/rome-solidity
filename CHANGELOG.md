@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added — `IHelperProgram.transfer_spl_to_signer(uint64,bytes32)`
+
+[`contracts/interface.sol`](contracts/interface.sol) — declares the `transfer_spl_to_signer(uint64 amount, bytes32 mint)` helper (selector `0x46efa679`, mirrors rome-evm-private). Returns SPL from the caller's `external_auth` ATA to the outer Solana tx signer's own ATA — the return leg for Solana-native users (`do_tx_unsigned` / `activate_ata` flow). Worked call-site added to [`contracts/examples/helper.sol`](contracts/examples/helper.sol).
+
 ### Fixed — `SPL_ERC20_cached` views + approve no longer revert on uninitialized ATA
 
 [`contracts/erc20spl/erc20spl_cached.sol`](contracts/erc20spl/erc20spl_cached.sol) — three ERC-20-spec violations fixed:

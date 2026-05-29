@@ -206,6 +206,13 @@ interface IHelperProgram {
     // Distinct from the bytes32-ATA variant above (0x766b362a).
     // Replaces SPL_ERC20.transferFrom's delegate path.
     function transfer_spl(address from, address to, uint64 tokens, bytes32 mint) external;
+    // transfer_spl_to_signer — return SPL to the outer Solana tx signer's own
+    // ATA. Source = ata(external_auth(caller), mint); destination =
+    // ata(signer, mint), where signer is the Solana keypair that signed the
+    // Rome tx (the real user wallet, not a PDA). Signs as external_auth(caller).
+    // The return leg for Solana-native users (do_tx_unsigned / activate_ata
+    // flow): moves rome-evm_user_ata -> user_ata for any mint. Selector 0x46efa679.
+    function transfer_spl_to_signer(uint64 amount, bytes32 mint) external;
     // approve_spl — caller-PDA-as-owner sets delegate_pda(spender) on the
     // owner-ATA via SPL approve_checked. Replaces v1 SPL_ERC20.approve's
     // SplTokenLib.approve + raw invoke_signed marshaling path. Signs as
