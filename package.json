@@ -22,7 +22,7 @@
     "forge-std": "github:foundry-rs/forge-std#v1.16.1",
     "mocha": "^11.7.6",
     "typescript": "~6.0.3",
-    "viem": "^2.50.4",
+    "viem": "^2.51.3",
     "vitest": "^4.1.7"
   },
   "overrides": {
