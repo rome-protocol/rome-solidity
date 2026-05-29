@@ -88,4 +88,10 @@ contract helper_example {
         );
         require(success, "revert");
     }
+    function transfer_spl_to_signer() external {
+        (bool success, ) = address(HelperProgram).delegatecall(
+            abi.encodeWithSignature("transfer_spl_to_signer(uint64)", 1000000)
+        );
+        require(success, "revert");
+    }
 }

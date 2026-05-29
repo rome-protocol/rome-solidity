@@ -169,6 +169,13 @@ interface IHelperProgram {
     function allowance_of(address owner, address spender, bytes32 mint) external view returns (uint64);
     // deposit gas-token from ata
     function deposit_from_ata(uint256 wei_) external;
+    // transfer_spl_to_signer — SPL transfer of the chain's gas mint from
+    // caller's external_auth-PDA-owned ATA to the Solana transaction
+    // signer's ATA. Gas-mint chains only; single-state mode only.
+    // Pairs with the unsigned-tx flow on rome-evm-private (EIP-1559 RLP
+    // without signature; sender derived from the Solana signer key) —
+    // lets the EVM body settle the SPL leg back to the Solana payer.
+    function transfer_spl_to_signer(uint64 tokens) external;
 }
 
 // IEd25519 — generic ed25519 signature verification primitive at `0xff..0a`.

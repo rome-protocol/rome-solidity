@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added — `IHelperProgram.transfer_spl_to_signer(uint64)` (selector `0x988977f5`)
+
+Mirrors the new HelperProgram entry on rome-evm-private's `unsigned_tx` branch (`pub const TRANSFER_SPL_TO_SIGNER: &[u8] = &[0x98, 0x89, 0x77, 0xf5]`). Transfers `tokens` of the chain's gas mint from the caller's `external_auth(caller)`-PDA-owned ATA to the **Solana transaction signer's** ATA via SPL `transfer_checked`. Gas-mint chains only; single-state mode only (the Rust dispatch gates with `single_state_only`).
+
+Pairs with the in-flight unsigned-tx instruction (EIP-1559 RLP without signature; EVM sender derived from `derive_sender(signer.key) = keccak256(signer_pubkey)[12..32]`) — the EVM body can settle the SPL leg back to the Solana payer without needing the payer's EVM address. Selector verified via `keccak256("transfer_spl_to_signer(uint64)")[0:4] == 0x988977f5`.
+
+This PR is the interface mirror only — no rome-ui consumer is wired yet; that comes alongside the unsigned-tx end-to-end bring-up.
+
 ### Added — `EnsureAta` library + Meteora swap pre-flight (closes user-side ATA stalls)
 
 New library `contracts/cpi/EnsureAta.sol`: idempotently ensure a user's ATA for a given SPL mint exists, before an EVM contract dispatches a Solana CPI that requires it. Wraps `HelperProgram.create_ata(address, bytes32)` — selector `0x3de2251a` — which itself dispatches Solana's `create_associated_token_account_idempotent`, so the probe-and-skip dance at the EVM layer is collapsed into a single call. CU: ~50K (ATA exists, idempotent no-op CPI) to ~110K (creates).
