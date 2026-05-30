@@ -27,11 +27,15 @@ export interface DeploymentsFile {
     switchboardProgramId: string;
     PythPullAdapterImpl: `0x${string}`;
     SwitchboardV3AdapterImpl: `0x${string}`;
+    CachedPythAdapterImpl?: `0x${string}`;
+    CachedFeedAdapterImpl?: `0x${string}`;
     OracleAdapterFactory: `0x${string}`;
     BatchReader: `0x${string}`;
     feeds: {
       pyth: DeploymentsFeed[];
       switchboard: DeploymentsFeed[];
+      cachedPyth?: DeploymentsFeed[];
+      cachedFeed?: DeploymentsFeed[];
     };
   };
 }
@@ -42,7 +46,7 @@ export interface RegistryOracleFile {
     string,
     {
       address: string;
-      source: "pyth" | "switchboard";
+      source: "pyth" | "switchboard" | "cached-pyth" | "cached-feed";
       underlyingAccount?: string;
     }
   >;
@@ -94,6 +98,9 @@ const MANAGED_CONTRACTS: ReadonlyArray<{
   { name: "OracleAdapterFactory", field: "OracleAdapterFactory" },
   { name: "PythPullAdapterImpl", field: "PythPullAdapterImpl" },
   { name: "SwitchboardV3AdapterImpl", field: "SwitchboardV3AdapterImpl" },
+  // Optional — only tracked on deployments that include the cached impls.
+  { name: "CachedPythAdapterImpl", field: "CachedPythAdapterImpl" },
+  { name: "CachedFeedAdapterImpl", field: "CachedFeedAdapterImpl" },
 ];
 
 export function emitRegistryUpdate(input: EmitInput): EmitOutput {
@@ -124,6 +131,23 @@ function buildOracle({ deployments }: EmitInput): RegistryOracleFile {
       underlyingAccount: f.pubkey,
     };
   }
+  // Cached adapters. Pyth-specific (CachedPythAdapter) keyed "-CACHEDPYTH";
+  // generic (CachedFeedAdapter, wraps any AggregatorV3) keyed "-CACHED".
+  // Distinct suffixes so cached + raw entries for the same symbol don't collide.
+  for (const f of og.feeds.cachedPyth ?? []) {
+    feeds[`${f.pair}-CACHEDPYTH`] = {
+      address: f.adapter,
+      source: "cached-pyth",
+      underlyingAccount: f.pubkey,
+    };
+  }
+  for (const f of og.feeds.cachedFeed ?? []) {
+    feeds[`${f.pair}-CACHED`] = {
+      address: f.adapter,
+      source: "cached-feed",
+      underlyingAccount: f.pubkey,
+    };
+  }
 
   return {
     factory: og.OracleAdapterFactory,
@@ -146,6 +170,12 @@ function buildContracts({
     }
     const newAddress = deployments.OracleGatewayV2[cfg.field] as string;
     const priorEntry = prior.find((e) => e.name === name);
+
+    if (newAddress === undefined) {
+      // Managed contract absent from this deployment (e.g. cached impls on a
+      // chain that doesn't deploy them) — pass the prior entry through untouched.
+      return priorEntry!;
+    }
 
     if (!priorEntry) {
       return {
@@ -208,8 +238,8 @@ function buildContracts({
     out.push(updateForName(entry.name));
     seenNames.add(entry.name);
   }
-  for (const { name } of MANAGED_CONTRACTS) {
-    if (!seenNames.has(name)) {
+  for (const { name, field } of MANAGED_CONTRACTS) {
+    if (!seenNames.has(name) && deployments.OracleGatewayV2[field] !== undefined) {
       out.push(updateForName(name));
     }
   }

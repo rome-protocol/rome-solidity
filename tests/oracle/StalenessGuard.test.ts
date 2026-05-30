@@ -36,12 +36,16 @@ describe("StalenessGuard", function () {
     async function deployFactory(defaultStaleness: bigint) {
         const pyth = await viem.deployContract("PythPullAdapter", []);
         const sb = await viem.deployContract("SwitchboardV3Adapter", []);
+        const cached = await viem.deployContract("CachedPythAdapter", []);
+        const cachedFeed = await viem.deployContract("CachedFeedAdapter", []);
         return await viem.deployContract("OracleAdapterFactory", [
             pyth.address,
             sb.address,
             ("0x" + "00".repeat(32)) as `0x${string}`,
             ("0x" + "01".repeat(32)) as `0x${string}`,
             defaultStaleness,
+            cached.address,
+            cachedFeed.address,
         ]);
     }
 

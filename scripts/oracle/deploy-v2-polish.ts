@@ -115,6 +115,15 @@ async function main() {
     const sbImpl = await viem.deployContract("SwitchboardV3Adapter", []);
     console.log("   SwitchboardV3Adapter impl: ", sbImpl.address);
 
+    // Cached adapter implementations (cached-pyth re-parses Pyth directly;
+    // generic cached-feed wraps any AggregatorV3). See contracts/oracle/CACHED_FEEDS.md.
+    console.log("Deploying CachedPythAdapter implementation...");
+    const cachedPythImpl = await viem.deployContract("CachedPythAdapter", []);
+    console.log("   CachedPythAdapter impl:    ", cachedPythImpl.address);
+    console.log("Deploying CachedFeedAdapter implementation...");
+    const cachedFeedImpl = await viem.deployContract("CachedFeedAdapter", []);
+    console.log("   CachedFeedAdapter impl:    ", cachedFeedImpl.address);
+
     // 3. Deploy OracleAdapterFactory wired to the new implementations
     console.log("3/4 Deploying OracleAdapterFactory...");
     const factory = await viem.deployContract("OracleAdapterFactory", [
@@ -123,6 +132,8 @@ async function main() {
         pythProgramId as `0x${string}`,
         switchboardProgramId as `0x${string}`,
         BigInt(defaultMaxStaleness),
+        cachedPythImpl.address,
+        cachedFeedImpl.address,
     ]);
     console.log("   OracleAdapterFactory:      ", factory.address);
 
@@ -141,9 +152,11 @@ async function main() {
         switchboardProgramId,
         PythPullAdapterImpl: pythImpl.address,
         SwitchboardV3AdapterImpl: sbImpl.address,
+        CachedPythAdapterImpl: cachedPythImpl.address,
+        CachedFeedAdapterImpl: cachedFeedImpl.address,
         OracleAdapterFactory: factory.address,
         BatchReader: batchReader.address,
-        feeds: { pyth: [], switchboard: [] },
+        feeds: { pyth: [], switchboard: [], cachedPyth: [], cachedFeed: [] },
     };
 
     fs.writeFileSync(filePath, JSON.stringify(content, null, 2) + "\n", "utf8");
