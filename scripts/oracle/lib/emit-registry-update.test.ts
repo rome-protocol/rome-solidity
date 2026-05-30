@@ -442,3 +442,86 @@ describe("emitRegistryUpdate — preserves non-managed contracts.json entries", 
     expect(factory.versions.find((v) => v.version === "1.0.0")!.status).toBe("retired");
   });
 });
+
+describe("emitRegistryUpdate — cached feeds", () => {
+  const ETH_PYTH =
+    "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb" as `0x${string}`;
+  const withCached: DeploymentsFile = {
+    OracleGatewayV2: {
+      ...HADRIAN_DEPLOYMENTS.OracleGatewayV2,
+      CachedPythAdapterImpl: "0xaaaa000000000000000000000000000000000001",
+      CachedFeedAdapterImpl: "0xbbbb000000000000000000000000000000000002",
+      feeds: {
+        ...HADRIAN_DEPLOYMENTS.OracleGatewayV2.feeds,
+        cachedPyth: [
+          {
+            pair: "ETH/USD",
+            adapter: "0xccc0000000000000000000000000000000000003",
+            pubkey: "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+            pubkeyBytes32: ETH_PYTH,
+          },
+        ],
+        cachedFeed: [
+          {
+            pair: "ETH/USD",
+            adapter: "0xddd0000000000000000000000000000000000004",
+            pubkey: "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+            pubkeyBytes32: ETH_PYTH,
+          },
+        ],
+      },
+    },
+  };
+
+  it("emits Pyth-specific cached feeds keyed <PAIR>-CACHEDPYTH", () => {
+    const { oracle } = emitRegistryUpdate({
+      deployments: withCached,
+      oracle: EMPTY_ORACLE,
+      contracts: EMPTY_CONTRACTS,
+      options: META,
+    });
+    expect(oracle.feeds["ETH/USD-CACHEDPYTH"]).toEqual({
+      address: "0xccc0000000000000000000000000000000000003",
+      source: "cached-pyth",
+      underlyingAccount: "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+    });
+  });
+
+  it("emits generic cached feeds keyed <PAIR>-CACHED", () => {
+    const { oracle } = emitRegistryUpdate({
+      deployments: withCached,
+      oracle: EMPTY_ORACLE,
+      contracts: EMPTY_CONTRACTS,
+      options: META,
+    });
+    expect(oracle.feeds["ETH/USD-CACHED"]).toEqual({
+      address: "0xddd0000000000000000000000000000000000004",
+      source: "cached-feed",
+      underlyingAccount: "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+    });
+  });
+
+  it("tracks CachedPythAdapterImpl + CachedFeedAdapterImpl in contracts.json when present", () => {
+    const { contracts } = emitRegistryUpdate({
+      deployments: withCached,
+      oracle: EMPTY_ORACLE,
+      contracts: EMPTY_CONTRACTS,
+      options: META,
+    });
+    const names = contracts.map((c) => c.name);
+    expect(names).toContain("CachedPythAdapterImpl");
+    expect(names).toContain("CachedFeedAdapterImpl");
+  });
+
+  it("does NOT add cached impls for a deployment that lacks them (backward-compat)", () => {
+    const { contracts } = emitRegistryUpdate({
+      deployments: HADRIAN_DEPLOYMENTS,
+      oracle: EMPTY_ORACLE,
+      contracts: EMPTY_CONTRACTS,
+      options: META,
+    });
+    const names = contracts.map((c) => c.name);
+    expect(names).not.toContain("CachedPythAdapterImpl");
+    expect(names).not.toContain("CachedFeedAdapterImpl");
+  });
+});
