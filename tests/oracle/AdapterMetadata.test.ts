@@ -26,12 +26,16 @@ describe("AdapterMetadata", function () {
         // the live paused lookup (which calls IAdapterFactory(factory).isPaused).
         // Impl / programId placeholders are fine — the factory's isPaused()
         // just reads a mapping and returns false for any unpaused adapter.
+        const cachedImpl = await viem.deployContract("CachedPythAdapter", []);
+        const cachedFeedImpl = await viem.deployContract("CachedFeedAdapter", []);
         const factory = await viem.deployContract("OracleAdapterFactory", [
             pythImplAddr,
             sbImplAddr,
             ("0x" + "00".repeat(31) + "03") as `0x${string}`,              // pythReceiverProgramId placeholder
             ("0x" + "00".repeat(31) + "04") as `0x${string}`,              // switchboardProgramId placeholder
             60n,                                                            // defaultMaxStaleness
+            cachedImpl.address,                                             // cachedPythImplementation
+            cachedFeedImpl.address,                                         // cachedFeedImplementation
         ]);
         factoryAddress = factory.address;
     });
