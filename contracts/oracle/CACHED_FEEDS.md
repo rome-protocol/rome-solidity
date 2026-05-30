@@ -74,3 +74,47 @@ Unchanged from the underlying source: a cached read returns the price the keeper
 snapshotted from the **verified** on-chain Pyth/Switchboard account (staleness +
 confidence checks run in `refresh()`), not a keeper-supplied number. The keeper
 controls only *freshness*, not the value — a stalled keeper fails loud.
+
+## Deploy runbook (parameterized — no hardcoded addresses)
+
+Everything is env / config-driven; changing a param and re-running re-provisions.
+
+**New chain (cached is standard):**
+```bash
+# 1. OG-V2 stack incl. both cached impls + the 7-arg factory
+ETH_PK=<deployer> npx hardhat run scripts/oracle/deploy-v2-polish.ts --network <chain>
+# 2. Seed feeds — pyth/switchboard + cached (cached auto-seeded when the
+#    deployment has the cached impls; Switchboard skippable per chain)
+ETH_PK=<deployer> npx hardhat run scripts/oracle/deploy-seed-feeds.ts --network <chain>
+# 3. emit-registry-update (run by the contract-deploys oracle-deploy workflow)
+#    writes oracle.json (cached feeds keyed "<PAIR>-CACHEDPYTH" / "<PAIR>-CACHED")
+#    + contracts.json, and auto-PRs them to the registry. Don't hand-edit oracle.json.
+```
+
+**Existing chain (additive — keep the live Pyth/Switchboard feeds):** deploy a new
+cached-capable `OracleAdapterFactory` reusing the chain's existing pyth/switchboard
+impls (constructor args), then per feed call `createCachedPythFeed(pythAccount, desc,
+staleness)` and/or `createCachedFeed(underlyingAdapter, desc, staleness)`. Both are
+permissionless. The existing factory + adapters are untouched.
+
+**Comet (config-driven, in `compound-on-rome-comet`):**
+```bash
+CHAIN_ID=<id> REGISTRY_ROOT=<registry-checkout> ETH_PK=<deployer> \
+  npx hardhat run scripts/registry-driven-deploy/deploy.ts --network <chain>
+```
+The comet's feeds come from `apps/compound/<chainId>-<slug>.json` — set each
+`priceFeed` to the cached adapter address with `priceFeedKind: "cached-pyth"` (or
+`"cached-feed"`). One canonical comet serves both lanes.
+
+## Keeper (required — `scripts/oracle/refresh-cached-feeds.ts`)
+
+Refresh the cached adapters on a cron at an interval **< `maxStaleness`** (default
+3600s). Without it, `latestRoundData()` reverts `StalePriceFeed` and consumer
+reads/borrows revert.
+```bash
+# adapters sourced from deployments/<network>.json feeds.cachedPyth + .cachedFeed:
+npx hardhat run scripts/oracle/refresh-cached-feeds.ts --network <chain>
+# or an explicit list (ad-hoc / cast-deployed feeds not yet in the deployments file):
+CACHED_FEEDS=0x..,0x.. npx hardhat run scripts/oracle/refresh-cached-feeds.ts --network <chain>
+```
+Wire this into rome-ops (the EVM-side analog of the Pyth-Pull `oracle-keeper`).
