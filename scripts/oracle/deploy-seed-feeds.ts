@@ -246,6 +246,42 @@ async function main() {
         };
     }
 
+    async function deployCachedPythSeed(seed: SeedFeed): Promise<DeployResult> {
+        const pubkeyBytes32 = b58ToBytes32(seed.pubkeyBase58);
+        const staleness = BigInt(seed.staleness ?? 0);
+        const existing = await factory.read.cachedPythAdapters([pubkeyBytes32]);
+        if (existing !== ZERO_ADDRESS) {
+            console.log(`  cached-pyth ${seed.pair} already at ${existing} — skipping`);
+            return { pair: seed.pair, adapter: existing, pubkey: seed.pubkeyBase58, pubkeyBytes32, skipped: true };
+        }
+        console.log(`Deploying cached-pyth ${seed.pair} (${seed.pubkeyBase58})...`);
+        const txHash = await factory.write.createCachedPythFeed([pubkeyBytes32, seed.description, staleness]);
+        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+        if (receipt.status !== "success") throw new Error(`tx ${txHash} reverted (status=${receipt.status})`);
+        const adapter = await factory.read.cachedPythAdapters([pubkeyBytes32]);
+        if (adapter === ZERO_ADDRESS) throw new Error(`registry empty after cached-pyth ${seed.pair} — tx ${txHash}`);
+        console.log(`  -> ${adapter} (tx ${txHash})`);
+        return { pair: seed.pair, adapter, pubkey: seed.pubkeyBase58, pubkeyBytes32, skipped: false };
+    }
+
+    // Generic cache wraps an already-deployed AggregatorV3 adapter (here, the
+    // PythPullAdapter just seeded). Keyed in the factory by the underlying address.
+    async function deployCachedFeedSeed(underlying: DeployResult): Promise<DeployResult> {
+        const existing = await factory.read.cachedFeedAdapters([underlying.adapter]);
+        if (existing !== ZERO_ADDRESS) {
+            console.log(`  cached-feed ${underlying.pair} already at ${existing} — skipping`);
+            return { pair: underlying.pair, adapter: existing, pubkey: underlying.pubkey, pubkeyBytes32: underlying.pubkeyBytes32, skipped: true };
+        }
+        console.log(`Deploying cached-feed ${underlying.pair} (wraps ${underlying.adapter})...`);
+        const txHash = await factory.write.createCachedFeed([underlying.adapter, `${underlying.pair} (cached)`, 0n]);
+        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+        if (receipt.status !== "success") throw new Error(`tx ${txHash} reverted (status=${receipt.status})`);
+        const adapter = await factory.read.cachedFeedAdapters([underlying.adapter]);
+        if (adapter === ZERO_ADDRESS) throw new Error(`registry empty after cached-feed ${underlying.pair} — tx ${txHash}`);
+        console.log(`  -> ${adapter} (tx ${txHash})`);
+        return { pair: underlying.pair, adapter, pubkey: underlying.pubkey, pubkeyBytes32: underlying.pubkeyBytes32, skipped: false };
+    }
+
     // ─── Pyth ───
     console.log("=== Deploying Pyth seed feeds ===");
     const pythResults: DeployResult[] = [];
@@ -272,22 +308,37 @@ async function main() {
         }
     }
 
+    // ─── Cached (only when the factory supports it — new-style OG-V2 deploy) ───
+    const cachedPythResults: DeployResult[] = [];
+    const cachedFeedResults: DeployResult[] = [];
+    if (v2.CachedPythAdapterImpl || v2.CachedFeedAdapterImpl) {
+        console.log("\n=== Deploying cached-pyth seed feeds ===");
+        for (const seed of PYTH_SEEDS) {
+            try {
+                cachedPythResults.push(await deployCachedPythSeed(seed));
+            } catch (e: any) {
+                console.error(`  FAILED cached-pyth ${seed.pair}: ${e?.cause?.reason ?? e?.message ?? e}`);
+            }
+        }
+        console.log("\n=== Deploying cached-feed (generic) seed feeds ===");
+        for (const r of pythResults.filter((x) => !x.skipped || x.adapter !== ZERO_ADDRESS)) {
+            try {
+                cachedFeedResults.push(await deployCachedFeedSeed(r));
+            } catch (e: any) {
+                console.error(`  FAILED cached-feed ${r.pair}: ${e?.cause?.reason ?? e?.message ?? e}`);
+            }
+        }
+    } else {
+        console.log("\n(skipping cached feeds — deployment has no CachedPythAdapterImpl/CachedFeedAdapterImpl)");
+    }
+
     // ─── Persist ───
+    const mapFeed = ({ pair, adapter, pubkey, pubkeyBytes32 }: DeployResult) => ({ pair, adapter, pubkey, pubkeyBytes32 });
     v2.feeds = {
-        pyth: pythResults.map(({ pair, adapter, pubkey, pubkeyBytes32 }) => ({
-            pair,
-            adapter,
-            pubkey,
-            pubkeyBytes32,
-        })),
-        switchboard: sbResults.map(
-            ({ pair, adapter, pubkey, pubkeyBytes32 }) => ({
-                pair,
-                adapter,
-                pubkey,
-                pubkeyBytes32,
-            }),
-        ),
+        pyth: pythResults.map(mapFeed),
+        switchboard: sbResults.map(mapFeed),
+        cachedPyth: cachedPythResults.map(mapFeed),
+        cachedFeed: cachedFeedResults.map(mapFeed),
     };
     fs.writeFileSync(
         deployPath,
