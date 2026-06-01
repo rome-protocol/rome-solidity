@@ -22,6 +22,14 @@ export default defineConfig({
     },
   },
   networks: {
+    trajan: {
+      type: "http",
+      chainType: "l1",
+      chainId: 121302,
+      url: "https://trajan.devnet.romeprotocol.xyz/",
+      accounts: [configVariable("TRAJAN_PRIVATE_KEY")],
+    },
+
     hadrian: {
       type: "http",
       chainType: "l1",

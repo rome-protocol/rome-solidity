@@ -180,4 +180,42 @@ describe("RomeBridgeWithdraw — error paths", () => {
     assert.strictEqual(usdcMint.toLowerCase(), MOCK_MINT.toLowerCase());
     assert.strictEqual(wethMint.toLowerCase(), MOCK_MINT.toLowerCase());
   });
+
+  // ── Solana SPL egress (flow B: EVM/MetaMask → arbitrary Solana recipient) ──
+  // These guards fire BEFORE any CPI, so they're testable on the simulated L1.
+  // The CPI happy-path (transfer_spl / create_ata_for_key) needs a live Rome
+  // chain → integration suite. See contracts/bridge/SOLANA_EGRESS_DESIGN.md.
+
+  const SOLANA_RECIPIENT =
+    "0x8ac6e737b6ca3b669d33f229e761f325ad88528d9cbdfdc5e0ac32d7ce0245b0" as const;
+
+  it("bridgeOutToSolana reverts AmountExceedsUint64 when amount > uint64 max", async () => {
+    const tooLarge = 2n ** 64n;
+    await assert.rejects(
+      () => withdraw.write.bridgeOutToSolana([SOLANA_RECIPIENT, tooLarge, MOCK_MINT]),
+      (err: any) => ((err?.message ?? "") as string).includes("AmountExceedsUint64")
+    );
+  });
+
+  it("bridgeOutToSolana reverts ZeroRecipient when recipient is bytes32(0)", async () => {
+    await assert.rejects(
+      () => withdraw.write.bridgeOutToSolana([ZERO_BYTES32, 1000n, MOCK_MINT]),
+      (err: any) => ((err?.message ?? "") as string).includes("ZeroRecipient")
+    );
+  });
+
+  it("ensureRecipientAta reverts ZeroRecipient when recipient is bytes32(0)", async () => {
+    await assert.rejects(
+      () => withdraw.write.ensureRecipientAta([ZERO_BYTES32, MOCK_MINT]),
+      (err: any) => ((err?.message ?? "") as string).includes("ZeroRecipient")
+    );
+  });
+
+  it("exposes ZeroRecipient custom error in the contract ABI", async () => {
+    const abi: any[] = withdraw.abi;
+    const errorDef = abi.find(
+      (entry: any) => entry.type === "error" && entry.name === "ZeroRecipient"
+    );
+    assert.ok(errorDef, "ZeroRecipient not found in ABI");
+  });
 });

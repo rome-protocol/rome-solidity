@@ -96,6 +96,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     error AmountExceedsUint64(uint256 amount);
     error InsufficientBalance(address user, uint256 requested, uint256 available);
     error CpiFailed(bytes reason);
+    error ZeroRecipient();
 
     // -------------------------------------------------------------------------
     // Constructor params structs (avoids stack-too-deep with many constructor args)
@@ -446,6 +447,76 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         if (!ok) revert CpiFailed(result);
 
         emit Withdrawn(user, wethMint, amount, ethereumRecipient, 1);
+    }
+
+    // -------------------------------------------------------------------------
+    // Rome → Solana SPL egress (any wrapper mint)
+    //
+    // Two atomic single-CPI txs — `ensureRecipientAta` (only when the recipient
+    // lacks the ATA) then transfer-only `bridgeOutToSolana` — keep each Rome
+    // DoTx within the 1.4M-CU budget AND avoid the iterative-VM
+    // `CpiProhibitedInIterativeTx` gate that the old combined 2-CPI
+    // bridge-out tripped. Legacy track (HelperProgram), consistent with
+    // burnUSDC/burnETH. See contracts/bridge/SOLANA_EGRESS_DESIGN.md.
+    // -------------------------------------------------------------------------
+
+    /// @notice Transfer-only Rome → Solana egress of any held SPL wrapper to a
+    ///         raw Solana recipient. Source = caller's PDA-owned ATA for `mint`;
+    ///         destination = `ata(solanaRecipient, mint)`, which MUST already
+    ///         exist (call `ensureRecipientAta` first when uncertain — SPL
+    ///         transfer_checked does not create the destination).
+    /// @param solanaRecipient Recipient Solana wallet pubkey (bytes32, non-zero).
+    /// @param amount          Token amount in the wrapper's SPL decimals (uint64-bounded).
+    /// @param mint            The wrapper's underlying SPL mint.
+    function bridgeOutToSolana(
+        bytes32 solanaRecipient,
+        uint256 amount,
+        bytes32 mint
+    ) external {
+        if (amount > type(uint64).max) {
+            revert AmountExceedsUint64(amount);
+        }
+        if (solanaRecipient == bytes32(0)) {
+            revert ZeroRecipient();
+        }
+        address user = _msgSender();
+
+        // Recipient ATA = getATA(recipientWallet, mint) — derived read (EthCall,
+        // track-neutral, never locks the tx track).
+        bytes32 toAta = UserPda.ataForKey(solanaRecipient, mint);
+
+        // Single legacy CPI: SPL transfer_checked from caller's PDA-owned ATA
+        // to the recipient ATA, signed as external_auth(caller).
+        (bool ok, bytes memory result) = address(HelperProgram).delegatecall(
+            abi.encodeWithSignature(
+                "transfer_spl(bytes32,uint64,bytes32)",
+                toAta,
+                uint64(amount),
+                mint
+            )
+        );
+        if (!ok) revert CpiFailed(result);
+
+        emit BridgedOutToSolana(user, mint, amount, solanaRecipient);
+    }
+
+    /// @notice Idempotently create the recipient's ATA for `mint` on Solana so a
+    ///         subsequent transfer-only `bridgeOutToSolana` lands. Separate tx
+    ///         by design: one CPI, atomic — never trips the iterative-VM gate.
+    /// @param solanaRecipient Recipient Solana wallet pubkey (bytes32, non-zero).
+    /// @param mint            The wrapper's underlying SPL mint.
+    function ensureRecipientAta(bytes32 solanaRecipient, bytes32 mint) external {
+        if (solanaRecipient == bytes32(0)) {
+            revert ZeroRecipient();
+        }
+        (bool ok, bytes memory result) = address(HelperProgram).delegatecall(
+            abi.encodeWithSignature(
+                "create_ata_for_key(bytes32,bytes32)",
+                solanaRecipient,
+                mint
+            )
+        );
+        if (!ok) revert CpiFailed(result);
     }
 
     // -------------------------------------------------------------------------

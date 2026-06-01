@@ -353,7 +353,7 @@ describe("emitRegistryUpdate — preserves non-managed contracts.json entries", 
         ],
       },
       {
-        name: "RomeBridgePaymaster",
+        name: "RomeBridgeWithdraw",
         versions: [
           {
             address: "0xe5b515d69590044a994d88c8bb8a87b36cd7b6d2",
@@ -375,10 +375,10 @@ describe("emitRegistryUpdate — preserves non-managed contracts.json entries", 
     // The 3 non-managed entries should pass through unchanged
     const erc20 = contracts.find((c) => c.name === "ERC20SPLFactory")!;
     const multicall = contracts.find((c) => c.name === "Multicall3")!;
-    const paymaster = contracts.find((c) => c.name === "RomeBridgePaymaster")!;
+    const bridgeWithdraw = contracts.find((c) => c.name === "RomeBridgeWithdraw")!;
     expect(erc20).toEqual(realisticPrior[0]);
     expect(multicall).toEqual(realisticPrior[1]);
-    expect(paymaster).toEqual(realisticPrior[2]);
+    expect(bridgeWithdraw).toEqual(realisticPrior[2]);
     // The 4 managed entries should be appended (since they weren't in prior)
     const managedNames = contracts
       .filter((c) =>
@@ -396,7 +396,7 @@ describe("emitRegistryUpdate — preserves non-managed contracts.json entries", 
     // Non-managed entries appear FIRST (in input order); managed entries appended.
     expect(contracts[0].name).toBe("ERC20SPLFactory");
     expect(contracts[1].name).toBe("Multicall3");
-    expect(contracts[2].name).toBe("RomeBridgePaymaster");
+    expect(contracts[2].name).toBe("RomeBridgeWithdraw");
   });
 
   it("preserves non-managed entries even on a redeploy that retires managed ones", () => {

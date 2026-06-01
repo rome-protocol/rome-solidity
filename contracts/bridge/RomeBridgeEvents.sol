@@ -18,6 +18,21 @@ interface RomeBridgeEvents {
         uint8 path
     );
 
+    /// @notice Emitted on a Rome → Solana SPL egress of a wrapper token to a
+    ///         raw Solana recipient. Distinct from `Withdrawn` (EVM-chain
+    ///         egress via CCTP/Wormhole, address recipient) — here the
+    ///         recipient is a Solana wallet pubkey (bytes32).
+    /// @param user            EVM address of the bridging user.
+    /// @param mint            SPL mint (bytes32 pubkey) of the wrapper token.
+    /// @param amount          Token amount (in SPL decimals).
+    /// @param solanaRecipient Destination Solana wallet pubkey (bytes32).
+    event BridgedOutToSolana(
+        address indexed user,
+        bytes32 indexed mint,
+        uint256 amount,
+        bytes32 solanaRecipient
+    );
+
     /// @notice Emitted when the paymaster sponsors a user transaction.
     /// @param user            EVM address of the sponsored user.
     /// @param remainingBudget Remaining sponsorship budget after this transaction.

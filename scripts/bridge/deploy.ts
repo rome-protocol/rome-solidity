@@ -1,10 +1,13 @@
 // scripts/bridge/deploy.ts
 //
 // Per-chain deploy script for the Rome Bridge stack:
-//   - RomeBridgePaymaster
 //   - ERC20Users (idempotent — reused if already deployed)
 //   - SPL_ERC20 wrappers for USDC (WUSDC) and wETH (WETH), one per env-var-supplied mint
 //   - RomeBridgeWithdraw (only if both wrappers were deployed — otherwise skipped)
+//
+// The legacy RomeBridgePaymaster / RomeBridgeInbound were removed — the active
+// flow is user-paid (burnUSDC / burnETH / bridgeOutToSolana signed directly from
+// the user's wallet) and inbound is settle_inbound_bridge on rome-evm-private.
 //
 // Mint configuration is per-chain via env vars; constants no longer hard-code
 // Rome's mints. Operators always pass the mints explicitly:
@@ -17,7 +20,7 @@
 // skipped. RomeBridgeWithdraw deploys only when BOTH USDC + WETH wrappers are
 // present, since its constructor takes both and per-mint Wormhole / CCTP PDAs
 // must be derived from real mints. A chain with no Ethereum-origin bridge
-// target therefore gets paymaster + ERC20Users only — no broken withdraw artefact.
+// target therefore gets ERC20Users + wrappers only — no broken withdraw artefact.
 //
 // Universal Solana constants (program IDs, sysvars) are base58-decoded here.
 //
@@ -41,6 +44,7 @@ const CPI_PROGRAM_ADDRESS = "0xFF00000000000000000000000000000000000008" as cons
 // new chain — adding it here keeps the deploy + sub-PDA derivations consistent.
 const SOLANA_DEVNET_NETWORKS = new Set([
   "marcus", "cassius", "subura", "esquiline", "aventine", "maximus", "local",
+  "trajan",
 ]);
 
 function programIdsFor(networkName: string) {
@@ -114,16 +118,6 @@ function loadSolanaPdas(usdcMintBase58: string, wethMintBase58: string, networkN
 // Deployment functions (exported for use in setup-local.ts)
 // -------------------------------------------------------------------------
 
-export async function deployPaymaster(admin: `0x${string}`) {
-  const { viem, networkName } = await hardhat.network.connect();
-  const paymaster = await viem.deployContract("RomeBridgePaymaster", [admin]);
-  console.log(`[${networkName}] RomeBridgePaymaster → ${paymaster.address}`);
-  const d = readDeployments(networkName) as Record<string, any>;
-  d["RomeBridgePaymaster"] = { address: paymaster.address, deployedAt: Math.floor(Date.now() / 1000) };
-  writeDeployments(networkName, d as any);
-  return paymaster;
-}
-
 export async function ensureErc20Users(): Promise<`0x${string}`> {
   const { viem, networkName } = await hardhat.network.connect();
   const d = readDeployments(networkName) as Record<string, any>;
@@ -165,7 +159,6 @@ function requireExistingWrapper(
 }
 
 export async function deployWithdraw(
-  paymasterAddress: `0x${string}`,
   usdcWrapper: `0x${string}`,
   wethWrapper: `0x${string}`,
   usdcMintBase58: string,
@@ -213,11 +206,15 @@ export async function deployWithdraw(
     // the registry). The earlier `"<chain>"` placeholder was a leftover from
     // PR #97's marcus-sweep — it never matched any real network and silently
     // routed Marcus's outbound Wormhole to Ethereum mainnet.
-    targetChain:        networkName === "marcus" || networkName === "local" ? 10002 : 2,
+    targetChain:        ["marcus", "local", "trajan"].includes(networkName) ? 10002 : 2,
   };
 
+  // forwarder = address(0): the meta-tx paymaster was removed. ERC2771Context
+  // with a zero forwarder resolves _msgSender() to msg.sender directly — the
+  // user-paid flow rome-ui actually uses (burnUSDC / burnETH / bridgeOutToSolana
+  // are signed straight from the user's wallet, never sponsored).
   const withdraw = await viem.deployContract("RomeBridgeWithdraw", [
-    paymasterAddress,
+    "0x0000000000000000000000000000000000000000",
     usdcWrapper,
     wethWrapper,
     cctpParams,
@@ -228,17 +225,6 @@ export async function deployWithdraw(
   const d = readDeployments(networkName) as Record<string, any>;
   d["RomeBridgeWithdraw"] = { address: withdraw.address, deployedAt: Math.floor(Date.now() / 1000) };
   writeDeployments(networkName, d as any);
-
-  // Register burn selectors on paymaster allowlist.
-  // Selector = first 4 bytes of keccak256(function signature).
-  const { keccak256, toUtf8Bytes } = await import("ethers");
-  const burnUsdcSelector = ("0x" + keccak256(toUtf8Bytes("burnUSDC(uint256,address)")).slice(2, 10)) as `0x${string}`;
-  const burnEthSelector  = ("0x" + keccak256(toUtf8Bytes("burnETH(uint256,address)")).slice(2, 10))  as `0x${string}`;
-
-  const paymasterC = await viem.getContractAt("RomeBridgePaymaster", paymasterAddress);
-  await paymasterC.write.setAllowlistEntry([withdraw.address, burnUsdcSelector, true]);
-  await paymasterC.write.setAllowlistEntry([withdraw.address, burnEthSelector, true]);
-  console.log(`[${networkName}] Allowlisted burnUSDC + burnETH on paymaster`);
 
   return withdraw;
 }
@@ -260,8 +246,7 @@ function readMintEnv(): { usdcMint: string | null; wethMint: string | null } {
 }
 
 async function main() {
-  const { viem, networkName } = await hardhat.network.connect();
-  const [admin] = await viem.getWalletClients();
+  const { networkName } = await hardhat.network.connect();
 
   const { usdcMint, wethMint } = readMintEnv();
   console.log(
@@ -269,17 +254,15 @@ async function main() {
     `WETH_MINT=${wethMint ?? "(unset — WETH wrapper skipped)"}`,
   );
 
-  const paymaster = await deployPaymaster(admin.account!.address);
-
   const usdc = usdcMint ? requireExistingWrapper(networkName, "SPL_ERC20_USDC", "wUSDC") : null;
   const weth = wethMint ? requireExistingWrapper(networkName, "SPL_ERC20_WETH", "wETH") : null;
 
   if (usdc && weth && usdcMint && wethMint) {
-    await deployWithdraw(paymaster.address, usdc.address, weth.address, usdcMint, wethMint);
+    await deployWithdraw(usdc.address, weth.address, usdcMint, wethMint);
   } else {
     console.log(
       `[${networkName}] Skipping RomeBridgeWithdraw — both USDC_MINT and WETH_MINT must be set ` +
-      `to derive Wormhole/CCTP PDAs and wire the constructor. Deploy paymaster + wrappers only.`,
+      `to derive Wormhole/CCTP PDAs and wire the constructor. Deploy ERC20Users + wrappers only.`,
     );
   }
 }
