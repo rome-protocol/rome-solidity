@@ -1,0 +1,14 @@
+{
+  "SPL_ERC20_USDC": {
+    "address": "0x134c2eedf7da3bf025f52c38b9a072c13357eb45",
+    "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+  },
+  "SPL_ERC20_WETH": {
+    "address": "0x104736adc00404bfdc4a835f9addd0889d88ff4d",
+    "mint": "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs"
+  },
+  "RomeBridgeWithdraw": {
+    "address": "0x063881aec7b3234b0a30e853aed5873f88a54e00",
+    "deployedAt": 1780309190
+  }
+}
