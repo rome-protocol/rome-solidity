@@ -3,7 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { getAddress, isAddress } from "viem";
 import {
-    deployPaymaster,
     deploySplErc20,
     deployWithdraw,
 } from "./bridge/deploy.js";
@@ -263,9 +262,6 @@ async function main() {
     // CPI precompile address — defined in contracts/interface.sol as 0xff..08.
     const cpiProgramAddress = "0xFF00000000000000000000000000000000000008" as `0x${string}`;
 
-    const paymaster = await deployPaymaster(deployer.account.address);
-    deployments.RomeBridgePaymaster = { address: paymaster.address };
-
     // Local stack uses devnet mint set (rome-setup seeds Wormhole/CCTP devnet
     // programs alongside these mints).
     const usdcMint = SPL_MINTS_DEVNET.USDC_NATIVE;
@@ -291,7 +287,6 @@ async function main() {
 
     try {
         await deployWithdraw(
-            paymaster.address,
             usdcWrapper.address,
             wethWrapper.address,
             usdcMint,
@@ -322,7 +317,7 @@ async function main() {
     console.log(`Meteora: factory + 1 pool`);
     console.log(`Pyth feeds: ${successFeeds.length}/${feeds.length} created`);
     console.log(`Switchboard feeds: ${successSbFeeds.length}/${sbFeeds.length} created`);
-    console.log(`Bridge: paymaster + WUSDC wrapper + WETH wrapper`);
+    console.log(`Bridge: WUSDC wrapper + WETH wrapper + RomeBridgeWithdraw`);
     const allFailed = [...failedFeeds, ...failedSbFeeds];
     if (allFailed.length > 0) {
         console.log(`Failed feeds: ${allFailed.map((f: any) => f.pair).join(", ")}`);

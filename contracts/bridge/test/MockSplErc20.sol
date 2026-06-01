@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 /// @title MockSplErc20
 /// @notice Minimal mock that satisfies the subset of the SPL_ERC20 interface
-///         consumed by RomeBridgeWithdraw + RomeBridgeInbound: balanceOf,
+///         consumed by RomeBridgeWithdraw: balanceOf,
 ///         mint_id, getAta, allowance, decimals, transferFrom.
 ///         Does NOT inherit from SPL_ERC20 to avoid the CPI precompile call in
 ///         SPL_ERC20's constructor (which is unavailable on hardhatMainnet).
