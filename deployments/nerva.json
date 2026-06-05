@@ -1,0 +1,101 @@
+{
+  "ERC20SPLFactory": {
+    "address": "0x76743b1b9703c541e85753c1bc568a46564bc758",
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
+  },
+  "RomeBridgePaymaster": {
+    "address": "0xc2ece9ebab9287b3cfc18df22daf4a3f5eb90318",
+    "deployedAt": 1780022471
+  },
+  "SPL_ERC20_USDC": {
+    "address": "0xf35dFf4B3C297257a5feA475725fBFE71165c48c",
+    "mintId": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+    "name": "Rome USDC",
+    "symbol": "wUSDC",
+    "deployedAt": 1780022445,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+  },
+  "SPL_ERC20_WETH": {
+    "address": "0xE955752de836E625113925BbDa0A684da2D65c76",
+    "mintId": "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs",
+    "name": "Rome ETH",
+    "symbol": "wETH",
+    "deployedAt": 1780022451,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+  },
+  "SPL_ERC20_WSOL": {
+    "address": "0x4f0489619DAd8D82823eD0b7b01d6F6dC74Ec352",
+    "mintId": "So11111111111111111111111111111111111111112",
+    "name": "Rome SOL",
+    "symbol": "wSOL",
+    "deployedAt": 1780022457,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+  },
+  "RomeBridgeWithdraw": {
+    "address": "0xf0abf2cd0bbdc3bcc060f7459e30911b0641d9b5",
+    "deployedAt": 1780022479
+  },
+  "OracleGatewayV2": {
+    "deployedAt": "2026-05-29T02:41:49.734Z",
+    "defaultMaxStaleness": 60,
+    "pythReceiverProgramId": "0x0cb7fabb52f7a648bb5b317d9a018b9057cb024774fafe01e6c4df98cc385881",
+    "switchboardProgramId": "0x068851c68c6832f02fa581b1bf491b77ca41776ba2b988b5a6faba8ee3a2ec90",
+    "PythPullAdapterImpl": "0x6f60b4b8889b9037a53d50bffd86619026f134bd",
+    "SwitchboardV3AdapterImpl": "0xb8ac1de9bd4e25010fc6345b91f779323ba3f1a6",
+    "OracleAdapterFactory": "0x9983c635d84b433800f60cac01a9a60c73690b19",
+    "BatchReader": "0x3df3a3a909d7d3297d20a5ff5cd745688be1fac8",
+    "feeds": {
+      "pyth": [
+        {
+          "pair": "SOL/USD",
+          "adapter": "0x7a614259f69209aAb73537c269d55193220b6aba",
+          "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+          "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
+        },
+        {
+          "pair": "BTC/USD",
+          "adapter": "0xe6D0942A510D9377b87c80FBb572A4856A960076",
+          "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
+          "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
+        },
+        {
+          "pair": "ETH/USD",
+          "adapter": "0xC15bB6e3AC6852D31bC913a417192eFfd81B58F8",
+          "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+          "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
+        },
+        {
+          "pair": "USDC/USD",
+          "adapter": "0x4be961eBbCc0B38b632A7C8AF1979b8Dcde45b88",
+          "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+          "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
+        },
+        {
+          "pair": "USDT/USD",
+          "adapter": "0xC4d18ed03028d0e6445C3DF3680B3aACDca1cCA2",
+          "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
+          "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
+        }
+      ],
+      "switchboard": [
+        {
+          "pair": "SOL/USD",
+          "adapter": "0x2F23F430838E5523DA16c1111060E933369792fd",
+          "pubkey": "GvDMxPzN1sCj7L26YDK2HnMRXEQmQ2aemov8YBtPS7vR",
+          "pubkeyBytes32": "0xec81105112a257d61df4cf5f13ee0a1b019197c8c5343b4f2a7ec8846ae22c1a"
+        }
+      ]
+    }
+  },
+  "MeteoraDAMMv1Factory": {
+    "address": "0x313580b2a8e589b649d3a56466048ecd83f72f6d"
+  },
+  "SimpleActivator": {
+    "address": "0xc46a0ec1be93103368ce0ba42cb0d6b482431d7d",
+    "activationCostWei": "2000000000000000000",
+    "usdcWrapper": "0xf35dFf4B3C297257a5feA475725fBFE71165c48c",
+    "wsolWrapper": "0x4f0489619DAd8D82823eD0b7b01d6F6dC74Ec352",
+    "users": "0x88453540805829ECEB7d8BDD535585CB149E1112",
+    "deployedAt": 1780022612
+  }
+}
