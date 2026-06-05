@@ -22,8 +22,8 @@
     "forge-std": "github:foundry-rs/forge-std#v1.16.1",
     "mocha": "^11.7.6",
     "typescript": "~6.0.3",
-    "viem": "^2.51.3",
-    "vitest": "^4.1.7"
+    "viem": "^2.52.2",
+    "vitest": "^4.1.8"
   },
   "overrides": {
     "utf-8-validate": "^6.0.2",
