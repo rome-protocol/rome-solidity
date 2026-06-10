@@ -32,3 +32,4 @@ deployments/local.json
 /contracts/.deps
 /contracts/.states
 /contracts/remix.config.json
+.worktrees/
