@@ -115,6 +115,9 @@ interface ISplCached {
     function account(address user) external view returns(Account memory);
     // 0x882358ae — raw 32-byte ATA pubkey
     function account(bytes32 ata) external view returns(Account memory);
+    // 0xf9827227 — derives ATA(external_auth(owner), mint) internally for an
+    // arbitrary mint; mirror of account(address) with an explicit mint.
+    function account(address owner, bytes32 mint) external view returns(Account memory);
 }
 
 interface IAssociatedSplCached {
