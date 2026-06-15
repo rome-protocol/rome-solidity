@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 [`contracts/erc20spl/erc20spl_cached.sol`](contracts/erc20spl/erc20spl_cached.sol) — `balanceOf`, `allowance`, `approve`, and `_transfer` previously derived the target ATA with a legacy `HelperProgram.ata(x, mint_id)` call (`0xff..09`) then read it with `SplCached.account(ata)`. Both now collapse into a single `SplCached.account(x, mint_id)` (selector `0xf9827227`) — the precompile derives `ATA(external_auth(x), mint)` internally, dropping one EVM→precompile round-trip per gate. Behaviour is unchanged: same overlay-aware existence check, same auto-create on the catch branch.
 
-[`contracts/interface.sol`](contracts/interface.sol) — adds `ISplCached.account(address owner, bytes32 mint)` (mirrors `account(address)` with an explicit mint). Worked example: [`contracts/examples/cached.sol#spl_account_mint`](contracts/examples/cached.sol). Requires the paired upstream Rome EVM `SplCached` read selector.
+[`contracts/interface.sol`](contracts/interface.sol) — adds `ISplCached.account(address user, bytes32 mint)` (mirrors `account(address)` with an explicit mint). Worked example: [`contracts/examples/cached.sol#spl_account_mint`](contracts/examples/cached.sol). Requires the paired upstream Rome EVM `SplCached` read selector.
 
 Estimated saving ~23K CU per gated op (one round-trip ≈ 23,088 CU measured, Hadrian 2026-06-15) across the near-universal wrapper. **Per-op A/B + derivation-parity (`account(address,mint)` == `HelperProgram.ata`) pending Phase-0 on a rebuilt wrapper before merge.**
 
