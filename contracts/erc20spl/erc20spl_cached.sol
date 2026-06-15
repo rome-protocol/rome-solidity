@@ -201,7 +201,16 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     function _transfer(address from, address to, uint256 value) internal returns (bool) {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
         _users.ensure_user(msg.sender);
-        ensure_token_account(to);
+        // Gate recipient ATA-create on existence (mirror approve #216): on the
+        // common transfer-to-existing-holder path, skip the idempotent
+        // AssociatedSplCached.create_ata round-trip. Overlay-aware via
+        // try SplCached.account so an ATA created earlier this tx counts.
+        bytes32 toAta = HelperProgram.ata(to, mint_id);
+        try SplCached.account(toAta) returns (ISplCached.Account memory) {
+            // recipient ATA exists (overlay or on-chain) — skip create
+        } catch {
+            ensure_token_account(to);
+        }
 
         bool ok;
         bytes memory result;

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Changed — `SPL_ERC20_cached._transfer` skips the redundant recipient-ATA create when it already exists
+
+[`contracts/erc20spl/erc20spl_cached.sol#_transfer`](contracts/erc20spl/erc20spl_cached.sol) — gates `ensure_token_account(to)` behind an overlay-aware `try SplCached.account` existence check, mirroring the `approve` pattern from #216/#217. On the common transfer-to-existing-holder path the redundant idempotent `AssociatedSplCached.create_ata` round-trip is skipped; transfer to a fresh recipient still auto-creates the ATA via the catch branch (the #63 auto-create behaviour is preserved). Scoped to `_transfer` only — `mint_to` has the same redundancy but is left for a follow-up.
+
+Measured saving: **17,387 CU** per transfer-to-existing recipient (~6% of a ~290K wrapper transfer) — isolated A/B on Hadrian (`ungated` 212,458 → `gated` 195,071).
+
+Composition safety: the gate uses the overlay-aware `try SplCached.account` read — NOT the legacy on-chain `lamportsOf` probe whose staleness broke V3 `Pool.mint` (M0) in the #216→#217 arc — and the gate is byte-identical for the `transfer` (sender) and `transferFrom` (delegate) paths. The M0 balance-delta pattern was reproduced via `eth_call` wrapping the gated logic and passed 4/4 (gated/ungated × existing/fresh ATA). **Pre-merge gate:** real V3 `mint`+`swap` smoke on the deployed gated wrapper, run during the factory/wrapper redeploy (the #217→#218 rollout pattern).
+
 ### Added — `IHelperProgram.transfer_spl_to_signer(uint64,bytes32)`
 
 [`contracts/interface.sol`](contracts/interface.sol) — declares the `transfer_spl_to_signer(uint64 amount, bytes32 mint)` helper (selector `0x46efa679`, mirrors rome-evm-private). Returns SPL from the caller's `external_auth` ATA to the outer Solana tx signer's own ATA — the return leg for Solana-native users (`do_tx_unsigned` / `activate_ata` flow). Worked call-site added to [`contracts/examples/helper.sol`](contracts/examples/helper.sol).
