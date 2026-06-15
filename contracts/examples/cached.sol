@@ -239,6 +239,17 @@ contract cached_example {
         return SplCached.account(ata);
     }
 
+    // Read the SPL token-account state for `user`'s ATA of an arbitrary
+    // `mint` via the (address,bytes32) overload — the precompile derives
+    // ATA(external_auth(user), mint) internally, collapsing the manual
+    // HelperProgram.ata + account(bytes32) pair above into one in-silo read.
+    function spl_account_mint(address user, bytes32 mint)
+        external view
+        returns (ISplCached.Account memory)
+    {
+        return SplCached.account(user, mint);
+    }
+
     // ─── AssociatedSplCached (0xff..06) ──────────────────────────────
 
     function create_ata_self() external {

@@ -110,8 +110,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     ///         smoke (rome-ui PR #402). Cross-ref:
     ///         rome-uniswap-v3/contracts/UniswapV3Pool.sol:486-490.
     function balanceOf(address account) external view returns (uint256) {
-        bytes32 ata = HelperProgram.ata(account, mint_id);
-        try SplCached.account(ata) returns (ISplCached.Account memory acc) {
+        try SplCached.account(account, mint_id) returns (ISplCached.Account memory acc) {
             return uint256(acc.amount);
         } catch {
             return 0;
@@ -127,8 +126,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     ///         to overlay but the legacy lamports read is on-chain-only.
     ///         Saturates uint64::max → uint256::max for wallet "infinite approval".
     function allowance(address owner, address spender) external view returns (uint256) {
-        bytes32 ownerAta = HelperProgram.ata(owner, mint_id);
-        try SplCached.account(ownerAta) returns (ISplCached.Account memory acc) {
+        try SplCached.account(owner, mint_id) returns (ISplCached.Account memory acc) {
             bytes32 spenderPda = HelperProgram.pda(spender);
             if (acc.delegate != spenderPda) return 0;
             return acc.delegated_amount == type(uint64).max
@@ -205,8 +203,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         // common transfer-to-existing-holder path, skip the idempotent
         // AssociatedSplCached.create_ata round-trip. Overlay-aware via
         // try SplCached.account so an ATA created earlier this tx counts.
-        bytes32 toAta = HelperProgram.ata(to, mint_id);
-        try SplCached.account(toAta) returns (ISplCached.Account memory) {
+        try SplCached.account(to, mint_id) returns (ISplCached.Account memory) {
             // recipient ATA exists (overlay or on-chain) — skip create
         } catch {
             ensure_token_account(to);
@@ -259,8 +256,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     ///         Saturates uint64::max → uint256::max for wallet "infinite approval".
     function approve(address spender, uint256 value) external returns (bool) {
         _users.ensure_user(msg.sender);
-        bytes32 ownerAta = HelperProgram.ata(msg.sender, mint_id);
-        try SplCached.account(ownerAta) returns (ISplCached.Account memory) {
+        try SplCached.account(msg.sender, mint_id) returns (ISplCached.Account memory) {
             // ATA exists in cache (overlay or on-chain) — skip create.
         } catch {
             ensure_token_account(msg.sender);
