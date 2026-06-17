@@ -1,7 +1,9 @@
 # Cold-Ledger Mainnet Deploy — rome-solidity (Hardhat 3 + viem)
 
 Scaffold for moving mainnet (`rubicon`, chain **7531**) Solidity deploys off the hot-key to a cold Ledger.
-Branch: `mainnet-cold-ledger-deploy-solidity`. **Runbook; approach devnet-verified via `cast` (2026-06-16 — see Signer mechanism).** The in-repo TS adapter is a follow-up — needs gated `npm install` + a physical Ledger.
+Branch: `mainnet-cold-ledger-deploy-solidity`. **IMPLEMENTED + devnet-validated (2026-06-16):** viem Ledger adapter `scripts/lib/ledger.ts` + unified `getDeployer` `scripts/lib/deployer.ts` (Ledger or hot key, reads artifacts from FS) + entrypoint `scripts/deploy-ledger.ts`. ERC20SPLFactory was deployed via the Ledger on trajan (chain 121302) at `0x7659efa8898928b042ff6bbde2adb45c3a0c27cd`.
+
+**Run:** `npx hardhat compile && DEPLOY_VIA_LEDGER=1 ROME_RPC_URL=<rpc> ROME_CHAIN_ID=<id> npx tsx scripts/deploy-ledger.ts`. The Ledger path MUST run under **`tsx`**, not `hardhat run` (Hardhat's CJS script runner hits an ESM require-cycle in `@ledgerhq`). `scripts/deploy-ledger.ts` currently deploys ERC20SPLFactory; remaining Phase-6 contracts extend it with the same `deployer.deploy(<name>, [args])` pattern (library-linked contracts need link handling added to `getDeployer`).
 
 ## Current mechanism (verified)
 - Stack: Hardhat 3 (`hardhat ^3.9.0`) + viem (`@nomicfoundation/hardhat-toolbox-viem ^5.0.7`) — `hardhat.config.ts:1,5`.
