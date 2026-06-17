@@ -1,7 +1,7 @@
 # Cold-Ledger Mainnet Deploy — rome-solidity (Hardhat 3 + viem)
 
 Scaffold for moving mainnet (`rubicon`, chain **7531**) Solidity deploys off the hot-key to a cold Ledger.
-Branch: `mainnet-cold-ledger-deploy-solidity`. **Not yet implemented** — needs gated `npm install` + a physical Ledger.
+Branch: `mainnet-cold-ledger-deploy-solidity`. **Runbook; approach devnet-verified via `cast` (2026-06-16 — see Signer mechanism).** The in-repo TS adapter is a follow-up — needs gated `npm install` + a physical Ledger.
 
 ## Current mechanism (verified)
 - Stack: Hardhat 3 (`hardhat ^3.9.0`) + viem (`@nomicfoundation/hardhat-toolbox-viem ^5.0.7`) — `hardhat.config.ts:1,5`.
@@ -46,3 +46,9 @@ Point `DEPLOY_VIA_LEDGER=1` at a devnet chain (trajan, 121302): deploy `deploy_e
 - ⚠️ `@nomicfoundation/hardhat-ledger` HH3+viem support uncertain (built for HH2/ethers). In-script viem approach avoids depending on it.
 - ⚠️ Physical Ledger required to implement + test.
 - Derivation path + device — operator to confirm (distinct Ethereum-app key vs the Solana program-authority key).
+
+## Signer mechanism — decision (2026-06-16; approach devnet-verified)
+The three Ledger-signing options are not interchangeable for the full stack deploy:
+- **viem in-script Ledger account (this repo) = PRIMARY.** Deploy keeps running through the existing tested TS scripts; only the signer changes. Match the repo's native stack (viem here; ethers in rome-uniswap-v2) — do not rewrite to unify (all paths emit the identical signed EIP-1559 tx the proxy accepts).
+- **`cast send --ledger` = VALIDATED FALLBACK.** Devnet-verified end-to-end 2026-06-16: a Ledger signed an EIP-1559 contract-creation on trajan (121302); the proxy accepted it (contract `0x35c6878c82C03f6773bf8c3eF0C3bBaF73D56a1B`, status success). Zero-install. Use for one-off redeploys / emergencies, or if hardhat-ledger HH3 support proves painful. Do not drive all of Phase 6 through cast (reimplements orchestration + diverges mainnet from the devnet-tested scripts).
+- **Pre-flight (learned in the rehearsal): enable Blind signing on the Ledger Ethereum app** — an unknown chain id otherwise returns APDU `6a80 INVALID_DATA` on every deploy tap.
