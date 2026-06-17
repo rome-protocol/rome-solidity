@@ -3,7 +3,32 @@
 Scaffold for moving mainnet (`rubicon`, chain **7531**) Solidity deploys off the hot-key to a cold Ledger.
 Branch: `mainnet-cold-ledger-deploy-solidity`. **IMPLEMENTED + devnet-validated (2026-06-16):** viem Ledger adapter `scripts/lib/ledger.ts` + unified `getDeployer` `scripts/lib/deployer.ts` (Ledger or hot key, reads artifacts from FS) + entrypoint `scripts/deploy-ledger.ts`. ERC20SPLFactory was deployed via the Ledger on trajan (chain 121302) at `0x7659efa8898928b042ff6bbde2adb45c3a0c27cd`.
 
-**Run:** `npx hardhat compile && DEPLOY_VIA_LEDGER=1 ROME_RPC_URL=<rpc> ROME_CHAIN_ID=<id> npx tsx scripts/deploy-ledger.ts`. The Ledger path MUST run under **`tsx`**, not `hardhat run` (Hardhat's CJS script runner hits an ESM require-cycle in `@ledgerhq`). `scripts/deploy-ledger.ts` currently deploys ERC20SPLFactory; remaining Phase-6 contracts extend it with the same `deployer.deploy(<name>, [args])` pattern (library-linked contracts need link handling added to `getDeployer`).
+**Run:** `npx hardhat compile && DEPLOY_VIA_LEDGER=1 ROME_RPC_URL=<rpc> ROME_CHAIN_ID=<id> npx tsx scripts/deploy-ledger.ts`. The Ledger path MUST run under **`tsx`**, not `hardhat run` (Hardhat's CJS script runner hits an ESM require-cycle in `@ledgerhq`). `scripts/deploy-ledger.ts` is the **Ledger-as-deployer** path (the Ledger signs each `CREATE`). For the full stack, prefer the **hot-deploy + handover** flow below — far fewer device taps.
+
+## Recommended flow: hot-deploy + cold-Ledger admin handover (validated 2026-06-16)
+
+The Phase-6 stack has **only two transferable admin roles**; every other contract is permissionless or fully immutable (no owner to secure):
+
+| Contract | Role | Transfer (single-step) |
+|---|---|---|
+| `OracleAdapterFactory` | `owner` (ctor `msg.sender`) | `transferOwnership(address)` |
+| `UniswapV2Factory` (Romeswap) | `feeToSetter` (ctor param) | `setFeeToSetter(address)` |
+| *all others (ERC20SPLFactory, SPL_ERC20 wrappers, RomeBridgeWithdraw/Paymaster, SimpleActivator, MeteoraDAMMv1Factory, Router, WETH9, Multicall, ERC20Factory)* | **none** | — |
+
+So the cold-ledger mainnet deploy is:
+1. **Hot-deploy** the whole stack with a throwaway hot key (the existing `deploy-solidity.sh` / `scripts/*` flow) — fast, **tap-free**. Fund the hot key via `rome-apps cli deposit` (SOL→Rome gas).
+2. **Verify** the deployed bytecode matches the audited contracts.
+3. **Hand the two roles to the cold Ledger** with `scripts/transfer-admin-to-ledger.ts` — signed by the current (hot) owner, single-step → **also tap-free**; the Ledger only signs when it *later* exercises a role:
+   ```
+   DEPLOY_PRIVATE_KEY=0x<hot> LEDGER_ADDRESS=0x<cold> \
+   ORACLE_FACTORY=0x... ROMESWAP_FACTORY=0x... \
+   ROME_RPC_URL=<rpc> ROME_CHAIN_ID=<id> npx tsx scripts/transfer-admin-to-ledger.ts
+   ```
+4. **Discard the hot key.** The Ledger now controls the only two admin-bearing contracts; the rest have no admin at all.
+
+**Validated on devnet (trajan 121302):** hot deployer `0x8ec2…` deployed `OracleAdapterFactory` → `transferOwnership` → `owner() == Ledger 0x3D60…` (tap-free, `scripts/test-handover.ts`). Romeswap `feeToSetter` uses the identical single-step path. The risk window (hot key is the momentary owner) is closed by verify-then-handover before any value flows — the standard deploy-to-cold-wallet pattern.
+
+Because the bulk deploy is hot and the handover is two viem calls, **rome-uniswap-v2 needs no separate ethers Ledger adapter** — Romeswap deploys hot and its `feeToSetter` is handed over by this same script.
 
 ## Current mechanism (verified)
 - Stack: Hardhat 3 (`hardhat ^3.9.0`) + viem (`@nomicfoundation/hardhat-toolbox-viem ^5.0.7`) — `hardhat.config.ts:1,5`.
