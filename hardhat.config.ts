@@ -22,6 +22,22 @@ export default defineConfig({
     },
   },
   networks: {
+    martius: {
+      type: "http",
+      chainType: "l1",
+      chainId: 121214,
+      url: "https://martius.testnet.romeprotocol.xyz/",
+      accounts: [configVariable("MARTIUS_PRIVATE_KEY")],
+    },
+
+    subura: {
+      type: "http",
+      chainType: "l1",
+      chainId: 121213,
+      url: "https://subura.devnet.romeprotocol.xyz/",
+      accounts: [configVariable("SUBURA_PRIVATE_KEY")],
+    },
+
     trajan: {
       type: "http",
       chainType: "l1",
