@@ -1,0 +1,163 @@
+{
+  "ERC20SPLFactory": {
+    "address": "0x1d5572125a6e7ecfb13a138076f22f69ae32a32b",
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
+  },
+  "SPL_ERC20_USDC": {
+    "address": "0x8dDAA68aD28646A604584d75398c2EEd939B6E64",
+    "mintId": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+    "name": "Rome USDC",
+    "symbol": "wUSDC",
+    "deployedAt": 1781986738,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+  },
+  "SPL_ERC20_WETH": {
+    "address": "0x4C44Bc1854B645b00130261f945e3850f8B40CFE",
+    "mintId": "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs",
+    "name": "Rome ETH",
+    "symbol": "wETH",
+    "deployedAt": 1781986743,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+  },
+  "SPL_ERC20_WSOL": {
+    "address": "0x367A5eC03050a1834689128683e4713d0eAb4d8a",
+    "mintId": "So11111111111111111111111111111111111111112",
+    "name": "Rome SOL",
+    "symbol": "wSOL",
+    "deployedAt": 1781986747,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+  },
+  "RomeBridgeWithdraw": {
+    "address": "0x9f65cfabd791bb5f87a1e659007836b517f027ff",
+    "deployedAt": 1781986758
+  },
+  "OracleGatewayV2": {
+    "deployedAt": "2026-06-20T20:19:57.027Z",
+    "defaultMaxStaleness": 60,
+    "pythReceiverProgramId": "0x0cb7fabb52f7a648bb5b317d9a018b9057cb024774fafe01e6c4df98cc385881",
+    "switchboardProgramId": "0x068851c68c6832f02fa581b1bf491b77ca41776ba2b988b5a6faba8ee3a2ec90",
+    "PythPullAdapterImpl": "0x147cffca32d340adf338aaff2194633e20c7925f",
+    "SwitchboardV3AdapterImpl": "0x40e6e8f1aa0c6b752d65c934a5dbf7fbae958067",
+    "CachedPythAdapterImpl": "0xa90b0412e161d474b8d1ecc6ad6d96c96febb9c1",
+    "CachedFeedAdapterImpl": "0x2485d38d13fbbe6437c963c1f5733e6ac7495c49",
+    "OracleAdapterFactory": "0x64e9619b237843f04d6d51067aa896fec09873a4",
+    "BatchReader": "0x736fe375a2d201b72d47a12d0cc0f003702dd7b1",
+    "feeds": {
+      "pyth": [
+        {
+          "pair": "SOL/USD",
+          "adapter": "0x0Fbb9527344f54C5038e83ac9C6e89D69dc3640b",
+          "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+          "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
+        },
+        {
+          "pair": "BTC/USD",
+          "adapter": "0x909fB56eeAe10CCD3A0C18e521E3bf9A9Db52Fa8",
+          "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
+          "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
+        },
+        {
+          "pair": "ETH/USD",
+          "adapter": "0xF2e9555319b0a1486D69e97B53f715784Ca02FCC",
+          "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+          "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
+        },
+        {
+          "pair": "USDC/USD",
+          "adapter": "0xDd2d922fE6A3CE99d9c2bcd18fD0228c47F86412",
+          "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+          "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
+        },
+        {
+          "pair": "USDT/USD",
+          "adapter": "0x4c4626477e95bdb081abAEfacbDF7F58236F2895",
+          "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
+          "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
+        }
+      ],
+      "switchboard": [
+        {
+          "pair": "SOL/USD",
+          "adapter": "0x1ae8557F6F7Aea4e569253b39730B9E550eC3C58",
+          "pubkey": "GvDMxPzN1sCj7L26YDK2HnMRXEQmQ2aemov8YBtPS7vR",
+          "pubkeyBytes32": "0xec81105112a257d61df4cf5f13ee0a1b019197c8c5343b4f2a7ec8846ae22c1a"
+        }
+      ],
+      "cachedPyth": [
+        {
+          "pair": "SOL/USD",
+          "adapter": "0x4FA946EB15Ab6B791E0023728E722bf360dCe05E",
+          "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+          "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
+        },
+        {
+          "pair": "BTC/USD",
+          "adapter": "0x3e2090a52E7477cfcc3bac974331CA4838B11F6d",
+          "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
+          "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
+        },
+        {
+          "pair": "ETH/USD",
+          "adapter": "0x70B3331650cd9f31bD64cEF6740DB4a7bad779e3",
+          "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+          "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
+        },
+        {
+          "pair": "USDC/USD",
+          "adapter": "0x781c63d26022e18c08613296aE53D2A70B593AC2",
+          "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+          "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
+        },
+        {
+          "pair": "USDT/USD",
+          "adapter": "0xd2cDe57d45274eeDc318fD457ba2d8b6d4624C22",
+          "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
+          "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
+        }
+      ],
+      "cachedFeed": [
+        {
+          "pair": "SOL/USD",
+          "adapter": "0xb35c4C1171C81DDcC2e0e2BeA65e7Bbe2DdDF32D",
+          "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+          "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
+        },
+        {
+          "pair": "BTC/USD",
+          "adapter": "0xFE028745DA04d540488F641F7F3927BceA364A76",
+          "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
+          "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
+        },
+        {
+          "pair": "ETH/USD",
+          "adapter": "0x0B645bD0fC9D87E40676aF6538Ff509ddf5319d9",
+          "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+          "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
+        },
+        {
+          "pair": "USDC/USD",
+          "adapter": "0xFefC369a2d3B0c7E52F193D2d4832BC6189C500a",
+          "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+          "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
+        },
+        {
+          "pair": "USDT/USD",
+          "adapter": "0x14E834e4aF2c2e2d6D28C07c63beEc12EA56BE5E",
+          "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
+          "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
+        }
+      ]
+    }
+  },
+  "MeteoraDAMMv1Factory": {
+    "address": "0x9f6917dbb00b1b16079587b2205a2446cc553edd"
+  },
+  "SimpleActivator": {
+    "address": "0x7cdfbe22ca40539205e9db9d5f259d3d9379b927",
+    "activationCostWei": "2000000000000000000",
+    "usdcWrapper": "0x8dDAA68aD28646A604584d75398c2EEd939B6E64",
+    "wsolWrapper": "0x367A5eC03050a1834689128683e4713d0eAb4d8a",
+    "users": "0x6Ae259b45B972Da4c3586ddfA07ea779eeD09449",
+    "deployedAt": 1781986939
+  }
+}
