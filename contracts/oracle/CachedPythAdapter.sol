@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./IAggregatorV3Interface.sol";
 import "./IAdapterFactory.sol";
+import "./IAdapterMetadata.sol";
 import "./PythPullParser.sol";
 import "../interface.sol";
 import {AccountReader} from "../cpi/AccountReader.sol";
@@ -27,7 +28,7 @@ import {AccountReader} from "../cpi/AccountReader.sol";
 ///
 ///         AggregatorV3 drop-in. Deployed as EIP-1167 clone (storage from the
 ///         clone's init path; the implementation is constructor-locked).
-contract CachedPythAdapter is IAggregatorV3Interface {
+contract CachedPythAdapter is IAggregatorV3Interface, IAdapterMetadata {
     bytes32 public pythAccount;
     string private _description;
     uint256 public maxStaleness;
@@ -85,6 +86,20 @@ contract CachedPythAdapter is IAggregatorV3Interface {
 
     function version() external pure override returns (uint256) {
         return 2;
+    }
+
+    /// @notice Single-struct description so the portal / BatchReader can read
+    ///         this cached adapter the same way it reads the raw adapters.
+    function metadata() external view override returns (AdapterMetadata memory) {
+        return AdapterMetadata({
+            description: _description,
+            sourceType: OracleSource.Pyth,
+            solanaAccount: pythAccount,
+            maxStaleness: maxStaleness,
+            createdAt: createdAt,
+            factory: factory,
+            paused: factory != address(0) && IAdapterFactory(factory).isPaused(address(this))
+        });
     }
 
     /// @notice Keeper-driven snapshot: read + parse the Solana Pyth account and
