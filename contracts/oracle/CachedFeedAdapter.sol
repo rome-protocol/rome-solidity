@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./IAggregatorV3Interface.sol";
 import "./IAdapterFactory.sol";
+import "./IAdapterMetadata.sol";
 
 /// @title CachedFeedAdapter
 /// @notice A source-agnostic caching decorator over ANY AggregatorV3 price feed
@@ -25,7 +26,7 @@ import "./IAdapterFactory.sol";
 ///
 ///         AggregatorV3 drop-in. Deployed as an EIP-1167 clone (the
 ///         implementation is constructor-locked).
-contract CachedFeedAdapter is IAggregatorV3Interface {
+contract CachedFeedAdapter is IAggregatorV3Interface, IAdapterMetadata {
     address public underlying;
     string private _description;
     uint256 public maxStaleness;
@@ -83,6 +84,25 @@ contract CachedFeedAdapter is IAggregatorV3Interface {
 
     function version() external pure override returns (uint256) {
         return 2;
+    }
+
+    /// @notice Single-struct description so the portal / BatchReader can read
+    ///         this cached adapter the same way it reads the raw adapters.
+    ///         Source identity (type + Solana account) belongs to the wrapped
+    ///         feed, so delegate it when the underlying exposes metadata().
+    function metadata() external view override returns (AdapterMetadata memory m) {
+        m.description = _description;
+        m.maxStaleness = maxStaleness;
+        m.createdAt = createdAt;
+        m.factory = factory;
+        m.paused = factory != address(0) && IAdapterFactory(factory).isPaused(address(this));
+        try IAdapterMetadata(underlying).metadata() returns (AdapterMetadata memory u) {
+            m.sourceType = u.sourceType;
+            m.solanaAccount = u.solanaAccount;
+        } catch {
+            m.sourceType = OracleSource.Pyth;
+            m.solanaAccount = bytes32(0);
+        }
     }
 
     /// @notice Keeper-driven snapshot: read the underlying feed and store the

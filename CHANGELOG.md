@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added — `metadata()` on `CachedPythAdapter` / `CachedFeedAdapter`
+
+[`contracts/oracle/CachedPythAdapter.sol`](contracts/oracle/CachedPythAdapter.sol) and [`contracts/oracle/CachedFeedAdapter.sol`](contracts/oracle/CachedFeedAdapter.sol) now implement `IAdapterMetadata`, reaching parity with the raw `PythPullAdapter` / `SwitchboardV3Adapter`. `CachedPythAdapter` reports `Pyth` + its `pythAccount`; `CachedFeedAdapter` delegates `sourceType` / `solanaAccount` to its underlying via try/catch (fallback `Pyth` / `0x0`).
+
+Without it, `BatchReader.getFeedHealth` — which calls `metadata()` first and marks a feed unhealthy (skipping the price read) when that reverts — reported every cached adapter as unavailable in batch health reads, even when `latestRoundData()` returned a fresh price. Tests: [`tests/oracle/AdapterMetadata.test.ts`](tests/oracle/AdapterMetadata.test.ts) adds cases for both.
+
 ### Changed — `SPL_ERC20_cached` ATA-existence gate collapses two precompile round-trips into one
 
 [`contracts/erc20spl/erc20spl_cached.sol`](contracts/erc20spl/erc20spl_cached.sol) — `balanceOf`, `allowance`, `approve`, and `_transfer` previously derived the target ATA with a legacy `HelperProgram.ata(x, mint_id)` call (`0xff..09`) then read it with `SplCached.account(ata)`. Both now collapse into a single `SplCached.account(x, mint_id)` (selector `0xf9827227`) — the precompile derives `ATA(external_auth(x), mint)` internally, dropping one EVM→precompile round-trip per gate. Behaviour is unchanged: same overlay-aware existence check, same auto-create on the catch branch.

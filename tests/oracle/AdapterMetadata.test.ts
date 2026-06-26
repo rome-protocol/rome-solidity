@@ -10,6 +10,8 @@ describe("AdapterMetadata", function () {
     let cloneHelper: any;
     let pythImplAddr: `0x${string}`;
     let sbImplAddr: `0x${string}`;
+    let cachedPythImplAddr: `0x${string}`;
+    let cachedFeedImplAddr: `0x${string}`;
     let factoryAddress: `0x${string}`;
 
     before(async function () {
@@ -28,6 +30,8 @@ describe("AdapterMetadata", function () {
         // just reads a mapping and returns false for any unpaused adapter.
         const cachedImpl = await viem.deployContract("CachedPythAdapter", []);
         const cachedFeedImpl = await viem.deployContract("CachedFeedAdapter", []);
+        cachedPythImplAddr = cachedImpl.address;
+        cachedFeedImplAddr = cachedFeedImpl.address;
         const factory = await viem.deployContract("OracleAdapterFactory", [
             pythImplAddr,
             sbImplAddr,
@@ -103,6 +107,58 @@ describe("AdapterMetadata", function () {
             assert.equal((m.factory as string).toLowerCase(), factoryAddress.toLowerCase());
             assert.equal(m.paused, false);
             assert.ok(m.createdAt > 0n);
+        });
+    });
+
+    describe("CachedPythAdapter.metadata()", function () {
+        it("returns the values passed at initialize", async function () {
+            const adapter = await cloneOf(cachedPythImplAddr, "CachedPythAdapter");
+
+            const account = ("0x" + "a1".repeat(32)) as `0x${string}`;
+            const description = "SOL / USD";
+            const maxStaleness = 3600n;
+
+            await adapter.write.initialize([account, description, maxStaleness, factoryAddress]);
+
+            const m: any = await adapter.read.metadata();
+            assert.equal(m.description, description);
+            assert.equal(Number(m.sourceType), SRC_PYTH);
+            assert.equal((m.solanaAccount as string).toLowerCase(), account.toLowerCase());
+            assert.equal(m.maxStaleness, maxStaleness);
+            assert.equal((m.factory as string).toLowerCase(), factoryAddress.toLowerCase());
+            assert.equal(m.paused, false);
+            assert.ok(m.createdAt > 0n);
+        });
+    });
+
+    describe("CachedFeedAdapter.metadata()", function () {
+        it("returns its own config and delegates source identity to the underlying", async function () {
+            // Underlying: an initialized PythPullAdapter clone, so the cached
+            // feed can delegate sourceType/solanaAccount to it.
+            const underlying = await cloneOf(pythImplAddr, "PythPullAdapter");
+            const pythAccount = ("0x" + "b2".repeat(32)) as `0x${string}`;
+            await underlying.write.initialize([
+                pythAccount,
+                "SOL / USD",
+                60n,
+                factoryAddress,
+                ("0x" + "77".repeat(32)) as `0x${string}`,
+            ]);
+
+            const adapter = await cloneOf(cachedFeedImplAddr, "CachedFeedAdapter");
+            const description = "SOL/USD (cached)";
+            const maxStaleness = 3600n;
+            await adapter.write.initialize([underlying.address, description, maxStaleness, factoryAddress]);
+
+            const m: any = await adapter.read.metadata();
+            assert.equal(m.description, description);
+            assert.equal(m.maxStaleness, maxStaleness);
+            assert.equal((m.factory as string).toLowerCase(), factoryAddress.toLowerCase());
+            assert.equal(m.paused, false);
+            assert.ok(m.createdAt > 0n);
+            // Source identity delegated from the wrapped Pyth adapter.
+            assert.equal(Number(m.sourceType), SRC_PYTH);
+            assert.equal((m.solanaAccount as string).toLowerCase(), pythAccount.toLowerCase());
         });
     });
 });
