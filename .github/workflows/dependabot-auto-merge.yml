@@ -27,6 +27,29 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Lockfile guard for npm bumps. Dependabot sometimes drops still-required
+      # nested package-lock.json entries, leaving it out of sync with
+      # package.json; a strict `npm ci` then fails. Reproduce that install here
+      # so a drifted lockfile fails the job and the auto-merge step below — whose
+      # `if` has no status function, so it implies success() — is skipped. Gated
+      # on a root package-lock.json existing (the hashFiles check needs the
+      # checkout, hence checkout runs first).
+      - name: Checkout
+        if: steps.meta.outputs.package-ecosystem == 'npm_and_yarn'
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        if: steps.meta.outputs.package-ecosystem == 'npm_and_yarn' && hashFiles('package-lock.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Verify lockfile is in sync (npm ci)
+        if: steps.meta.outputs.package-ecosystem == 'npm_and_yarn' && hashFiles('package-lock.json') != ''
+        run: npm ci --no-audit --no-fund
+
       - name: Enable auto-merge for low-risk updates
         if: |
           (steps.meta.outputs.package-ecosystem == 'github_actions' ||
