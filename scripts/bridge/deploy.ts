@@ -44,7 +44,7 @@ const CPI_PROGRAM_ADDRESS = "0xFF00000000000000000000000000000000000008" as cons
 // new chain — adding it here keeps the deploy + sub-PDA derivations consistent.
 const SOLANA_DEVNET_NETWORKS = new Set([
   "marcus", "cassius", "subura", "esquiline", "aventine", "maximus", "local",
-  "trajan",
+  "trajan", "hadrian",
 ]);
 
 function programIdsFor(networkName: string) {
@@ -206,7 +206,7 @@ export async function deployWithdraw(
     // the registry). The earlier `"<chain>"` placeholder was a leftover from
     // PR #97's marcus-sweep — it never matched any real network and silently
     // routed Marcus's outbound Wormhole to Ethereum mainnet.
-    targetChain:        ["marcus", "local", "trajan"].includes(networkName) ? 10002 : 2,
+    targetChain:        ["marcus", "local", "trajan", "hadrian"].includes(networkName) ? 10002 : 2,
   };
 
   // forwarder = address(0): the meta-tx paymaster was removed. ERC2771Context
