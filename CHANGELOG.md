@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added — Compound-collateral wrapper set (`WRAPPER_SET=collateral`) + JitoSOL/mSOL/BONK oracle seeds
+
+[`scripts/bridge/bootstrap-bridged-wrappers.ts`](scripts/bridge/bootstrap-bridged-wrappers.ts) gains a second wrapper set: `WRAPPER_SET=collateral` registers the 6 exotic collaterals of Hadrian's canonical 9-asset Comet (wBTC, wJitoSOL, wmSOL, wJUP, wJTO, wBONK — mints in [`scripts/bridge/constants.ts`](scripts/bridge/constants.ts) `COMPOUND_COLLATERAL_MINTS_DEVNET`) on any devnet-substrate chain, so per-chain Comets can carry the full asset suite. Devnet-only (the test mints have no mainnet counterpart); mainnet-resolving networks throw. `martius` and `nerva` added to `DEVNET_NETWORKS` (Rome-testnet chains on the Solana devnet substrate — previously they silently resolved to mainnet mints unless `BRIDGED_SET=devnet` was passed).
+
+[`scripts/oracle/deploy-seed-feeds.ts`](scripts/oracle/deploy-seed-feeds.ts) — adds JITOSOL/MSOL/BONK PYTH_SEEDS and fixes JUP/JTO to the receiver PDAs the oracle-keeper actually refreshes (the previous JUP account doesn't exist on devnet; both were unusable). Accounts mirror Hadrian's live adapters, owner-verified on devnet.
+
 ### Added — `metadata()` on `CachedPythAdapter` / `CachedFeedAdapter`
 
 [`contracts/oracle/CachedPythAdapter.sol`](contracts/oracle/CachedPythAdapter.sol) and [`contracts/oracle/CachedFeedAdapter.sol`](contracts/oracle/CachedFeedAdapter.sol) now implement `IAdapterMetadata`, reaching parity with the raw `PythPullAdapter` / `SwitchboardV3Adapter`. `CachedPythAdapter` reports `Pyth` + its `pythAccount`; `CachedFeedAdapter` delegates `sourceType` / `solanaAccount` to its underlying via try/catch (fallback `Pyth` / `0x0`).

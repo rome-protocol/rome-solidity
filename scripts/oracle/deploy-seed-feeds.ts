@@ -55,15 +55,37 @@ const PYTH_SEEDS: SeedFeed[] = [
         pubkeyBase58: "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
         description: "USDT / USD",
     },
+    // JUP/JTO corrected 2026-07-01: the previous entries (2F9M59…, D8UUgr…)
+    // don't exist on devnet (JUP) / aren't the accounts the oracle-keeper
+    // refreshes. These are the receiver PDAs Hadrian's live adapters read and
+    // the keeper keeps fresh (rome-ops testnet-oracle-portal keeper config).
     {
         pair: "JUP/USD",
-        pubkeyBase58: "2F9M59yYX6F4eHxWNCbvSGiZxRw6CcmpNqf9HsN7jC5o",
+        pubkeyBase58: "7dbob1psH1iZBS7qPsm3Kwbf5DzSXK8Jyg31CTgTnxH5",
         description: "JUP / USD",
     },
     {
         pair: "JTO/USD",
-        pubkeyBase58: "D8UUgr8a3aR3yUeHLu7v8FWK7E1FADA92Hmj8CeuSrvs",
+        pubkeyBase58: "7ajR2zA4MGMMTqRAVjghTKqPPn4kbrj3pYkAVRVwTGzP",
         description: "JTO / USD",
+    },
+    // Solana-ecosystem collaterals for the canonical 9-asset cache-fed Comet
+    // (mirrors Hadrian; keeper-refreshed PDAs, verified owner rec5EKM… on
+    // devnet 2026-07-01).
+    {
+        pair: "JITOSOL/USD",
+        pubkeyBase58: "AxaxyeDT8JnWERSaTKvFXvPKkEdxnamKSqpWbsSjYg1g",
+        description: "JitoSOL / USD",
+    },
+    {
+        pair: "MSOL/USD",
+        pubkeyBase58: "5CKzb9j4ChgLUt8Gfm5CNGLN6khXKiqMbnGAW4cgXgxK",
+        description: "mSOL / USD",
+    },
+    {
+        pair: "BONK/USD",
+        pubkeyBase58: "DBE3N8uNjhKPRHfANdwGvCZghWXyLPdqdSbEW2XFwBiX",
+        description: "BONK / USD",
     },
 ];
 

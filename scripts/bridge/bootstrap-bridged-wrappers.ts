@@ -16,7 +16,7 @@ import fs from "node:fs";
 import hardhat from "hardhat";
 import { resolveERC20SPLFactoryAddress } from "../lib/deployments.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
-import { SPL_MINTS_DEVNET, SPL_MINTS_MAINNET } from "./constants.js";
+import { SPL_MINTS_DEVNET, SPL_MINTS_MAINNET, COMPOUND_COLLATERAL_MINTS_DEVNET } from "./constants.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -44,14 +44,42 @@ const MAINNET_SET: WrapperSpec[] = [
   { key: "SPL_ERC20_WSOL", mintBase58: SPL_MINTS_MAINNET.WSOL_NATIVE,   name: "Rome SOL",  symbol: "wSOL"  },
 ];
 
+// Compound-collateral wrapper set (devnet-substrate chains only). Mirrors the
+// 6 exotic collaterals of Hadrian's canonical 9-asset Comet — same underlying
+// devnet mints, same on-chain names/symbols — so a Comet deployed on any
+// devnet-substrate chain can carry the full asset suite. Select with
+// `WRAPPER_SET=collateral`; the default run keeps the canonical bridged set.
+const COLLATERAL_SET_DEVNET: WrapperSpec[] = [
+  { key: "SPL_ERC20_WBTC",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BTC_TEST,     name: "Rome Wrapped BTC",     symbol: "wBTC"     },
+  { key: "SPL_ERC20_WJITOSOL", mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.JITOSOL_TEST, name: "Rome Wrapped JitoSOL", symbol: "wJitoSOL" },
+  { key: "SPL_ERC20_WMSOL",    mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.MSOL_TEST,    name: "Rome Wrapped mSOL",    symbol: "wmSOL"    },
+  { key: "SPL_ERC20_WJUP",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.JUP_TEST,     name: "Rome Wrapped JUP",     symbol: "wJUP"     },
+  { key: "SPL_ERC20_WJTO",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.JTO_TEST,     name: "Rome Wrapped JTO",     symbol: "wJTO"     },
+  { key: "SPL_ERC20_WBONK",    mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BONK_TEST,    name: "Rome Wrapped BONK",    symbol: "wBONK"    },
+];
+
 // Networks targeting Solana DEVNET use SPL_MINTS_DEVNET; mainnet networks use
 // SPL_MINTS_MAINNET. Update this list whenever a new chain is brought up.
 // Override via `BRIDGED_SET=devnet|mainnet` env var for one-off cases.
+// NOTE: Rome-testnet chains (martius, nerva) also run on the Solana DEVNET
+// substrate — Rome network tier ≠ Solana cluster.
 const DEVNET_NETWORKS = new Set([
   "marcus", "cassius", "subura", "esquiline", "aventine", "maximus", "augustus", "hadrian", "local",
+  "martius", "nerva",
 ]);
 
 function resolveSet(networkName: string): WrapperSpec[] {
+  const wrapperSet = process.env.WRAPPER_SET?.toLowerCase();
+  if (wrapperSet === "collateral") {
+    // Collateral test mints exist only on Solana devnet — refuse a mainnet run.
+    const override = process.env.BRIDGED_SET?.toLowerCase();
+    if (override === "mainnet" || (override !== "devnet" && !DEVNET_NETWORKS.has(networkName))) {
+      throw new Error(
+        `WRAPPER_SET=collateral is devnet-substrate-only (network '${networkName}' resolves to mainnet mints)`,
+      );
+    }
+    return COLLATERAL_SET_DEVNET;
+  }
   const override = process.env.BRIDGED_SET?.toLowerCase();
   if (override === "devnet")  return DEVNET_SET;
   if (override === "mainnet") return MAINNET_SET;
@@ -80,7 +108,8 @@ async function main() {
 
   console.log(`[${networkName}] deployer: ${deployer.account.address}`);
   console.log(`[${networkName}] factory:  ${factoryAddress}`);
-  console.log(`[${networkName}] mint set: ${set === DEVNET_SET ? "devnet" : "mainnet"} (${set.length} entries)\n`);
+  const setLabel = set === COLLATERAL_SET_DEVNET ? "collateral (devnet)" : set === DEVNET_SET ? "devnet" : "mainnet";
+  console.log(`[${networkName}] mint set: ${setLabel} (${set.length} entries)\n`);
 
   const deploymentsPath = `deployments/${networkName}.json`;
   const deployments = loadJson(deploymentsPath);
