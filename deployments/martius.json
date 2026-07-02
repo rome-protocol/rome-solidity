@@ -73,6 +73,36 @@
           "adapter": "0x9a95d834B067B4b52423a1635E567B211246F72d",
           "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
           "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
+        },
+        {
+          "pair": "JUP/USD",
+          "adapter": "0xAeB5EC137d0721CF6A1F80cE5D513F8db410C301",
+          "pubkey": "7dbob1psH1iZBS7qPsm3Kwbf5DzSXK8Jyg31CTgTnxH5",
+          "pubkeyBytes32": "0x628661ff844a6d513411aa02952b8bf902e3b2fe282639f9c96d399e52d86468"
+        },
+        {
+          "pair": "JTO/USD",
+          "adapter": "0xf54A700F09c3E24E46118c134441C2a4c2270644",
+          "pubkey": "7ajR2zA4MGMMTqRAVjghTKqPPn4kbrj3pYkAVRVwTGzP",
+          "pubkeyBytes32": "0x61ca3f110915af36104573608c75b56a0758cbef2cb34551cf02cad9a63ed00c"
+        },
+        {
+          "pair": "JITOSOL/USD",
+          "adapter": "0xDBCb1E24a690CC3E2CB21fa4923C7C41e3480696",
+          "pubkey": "AxaxyeDT8JnWERSaTKvFXvPKkEdxnamKSqpWbsSjYg1g",
+          "pubkeyBytes32": "0x93f6880418b35aad10f98e24e374d087058430512df03245e0ada7647385b53b"
+        },
+        {
+          "pair": "MSOL/USD",
+          "adapter": "0xA2Cd26dFe82727033442E74E2491c4c34A4269A2",
+          "pubkey": "5CKzb9j4ChgLUt8Gfm5CNGLN6khXKiqMbnGAW4cgXgxK",
+          "pubkeyBytes32": "0x3e559ca93e1bf119b0e7c20adf557067caca210c2e1778cef652a1dd4dc84644"
+        },
+        {
+          "pair": "BONK/USD",
+          "adapter": "0x79b2aCC9AFC4B6207Faa53536bED2DfD92b483a0",
+          "pubkey": "DBE3N8uNjhKPRHfANdwGvCZghWXyLPdqdSbEW2XFwBiX",
+          "pubkeyBytes32": "0xb4eacbe402ae9165c2ab7dfcdbe5044d27f284106f88a90bfddefa5fbff60ca0"
         }
       ],
       "switchboard": [
@@ -113,6 +143,36 @@
           "adapter": "0xD5315AB7488D0d5da402c70Ca808b68c23b8243F",
           "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
           "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
+        },
+        {
+          "pair": "JUP/USD",
+          "adapter": "0x2F9A54aC49218a6771A329D18a5F3699ef228f5d",
+          "pubkey": "7dbob1psH1iZBS7qPsm3Kwbf5DzSXK8Jyg31CTgTnxH5",
+          "pubkeyBytes32": "0x628661ff844a6d513411aa02952b8bf902e3b2fe282639f9c96d399e52d86468"
+        },
+        {
+          "pair": "JTO/USD",
+          "adapter": "0x11e4B2688140C29dd45354c841c355Babd4Cd2C5",
+          "pubkey": "7ajR2zA4MGMMTqRAVjghTKqPPn4kbrj3pYkAVRVwTGzP",
+          "pubkeyBytes32": "0x61ca3f110915af36104573608c75b56a0758cbef2cb34551cf02cad9a63ed00c"
+        },
+        {
+          "pair": "JITOSOL/USD",
+          "adapter": "0xF1C001d3bc2b981f563fd847c92aF0695D547771",
+          "pubkey": "AxaxyeDT8JnWERSaTKvFXvPKkEdxnamKSqpWbsSjYg1g",
+          "pubkeyBytes32": "0x93f6880418b35aad10f98e24e374d087058430512df03245e0ada7647385b53b"
+        },
+        {
+          "pair": "MSOL/USD",
+          "adapter": "0x41Dbb3b23CE2596744b07576332891064509CD57",
+          "pubkey": "5CKzb9j4ChgLUt8Gfm5CNGLN6khXKiqMbnGAW4cgXgxK",
+          "pubkeyBytes32": "0x3e559ca93e1bf119b0e7c20adf557067caca210c2e1778cef652a1dd4dc84644"
+        },
+        {
+          "pair": "BONK/USD",
+          "adapter": "0xad6456Bc42F456ECbAd542fab37D59f5e0eC25a7",
+          "pubkey": "DBE3N8uNjhKPRHfANdwGvCZghWXyLPdqdSbEW2XFwBiX",
+          "pubkeyBytes32": "0xb4eacbe402ae9165c2ab7dfcdbe5044d27f284106f88a90bfddefa5fbff60ca0"
         }
       ],
       "cachedFeed": [
@@ -145,6 +205,36 @@
           "adapter": "0xbe7Ba706a3Ce74BaaB913000f0b77D0063A2A95B",
           "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
           "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
+        },
+        {
+          "pair": "JUP/USD",
+          "adapter": "0xd33F53163d076146A051a641329Bb75E567ec40E",
+          "pubkey": "7dbob1psH1iZBS7qPsm3Kwbf5DzSXK8Jyg31CTgTnxH5",
+          "pubkeyBytes32": "0x628661ff844a6d513411aa02952b8bf902e3b2fe282639f9c96d399e52d86468"
+        },
+        {
+          "pair": "JTO/USD",
+          "adapter": "0xFA17DcD2e14D293F3EFC239F5e1Ccd904C917C6F",
+          "pubkey": "7ajR2zA4MGMMTqRAVjghTKqPPn4kbrj3pYkAVRVwTGzP",
+          "pubkeyBytes32": "0x61ca3f110915af36104573608c75b56a0758cbef2cb34551cf02cad9a63ed00c"
+        },
+        {
+          "pair": "JITOSOL/USD",
+          "adapter": "0x1824927C559707f5d9570b2a57a149d20c0f19A1",
+          "pubkey": "AxaxyeDT8JnWERSaTKvFXvPKkEdxnamKSqpWbsSjYg1g",
+          "pubkeyBytes32": "0x93f6880418b35aad10f98e24e374d087058430512df03245e0ada7647385b53b"
+        },
+        {
+          "pair": "MSOL/USD",
+          "adapter": "0xDA5BB8eB07D4294361c25e1F03163bDd481f805d",
+          "pubkey": "5CKzb9j4ChgLUt8Gfm5CNGLN6khXKiqMbnGAW4cgXgxK",
+          "pubkeyBytes32": "0x3e559ca93e1bf119b0e7c20adf557067caca210c2e1778cef652a1dd4dc84644"
+        },
+        {
+          "pair": "BONK/USD",
+          "adapter": "0x6b554C435Bae33dc18907Ab760b0E2e417b6429e",
+          "pubkey": "DBE3N8uNjhKPRHfANdwGvCZghWXyLPdqdSbEW2XFwBiX",
+          "pubkeyBytes32": "0xb4eacbe402ae9165c2ab7dfcdbe5044d27f284106f88a90bfddefa5fbff60ca0"
         }
       ]
     }
@@ -159,5 +249,41 @@
     "wsolWrapper": "0xa4DbEcDcC812B9c933967a15fE5D9Af420084b2B",
     "users": "0xC9c4D11C53B8158dd0f6Cd85476957dA9c7AD34C",
     "deployedAt": 1782428918
+  },
+  "SPL_ERC20_WBTC": {
+    "address": "0x34AE37cFA1f41F5E69d8F042F7455A63a4F048B8",
+    "mintId": "2gsErzRCTA7T6hGnYo44EnpP7hP79CHQerDhtmggkZZF",
+    "name": "Rome Wrapped BTC",
+    "symbol": "wBTC"
+  },
+  "SPL_ERC20_WJITOSOL": {
+    "address": "0x8a27E495CEAd6EcBBe25B537DBF666FD6bfE01E3",
+    "mintId": "8Eou1ZHTULFvoaELa9Dnw29puHdckcsj7buQKNqfaZHH",
+    "name": "Rome Wrapped JitoSOL",
+    "symbol": "wJitoSOL"
+  },
+  "SPL_ERC20_WMSOL": {
+    "address": "0xe6fD55A93cAecF0F9cF60FBC4D2CbE0d71b54491",
+    "mintId": "jc65vCfDLKm9sW7auJMkNJZuE6jnsqfW9bHHvYp9oYE",
+    "name": "Rome Wrapped mSOL",
+    "symbol": "wmSOL"
+  },
+  "SPL_ERC20_WJUP": {
+    "address": "0x71dC1C088E17cCD67058c626A358E02F6EbAAc69",
+    "mintId": "Aa58JCN8MCDPSAPe6qZiL1ZWtqxVDRdSjH6EGjku5vFe",
+    "name": "Rome Wrapped JUP",
+    "symbol": "wJUP"
+  },
+  "SPL_ERC20_WJTO": {
+    "address": "0xCb1e4CD61704C9fcc196Ce98619E85A241383Fd8",
+    "mintId": "F2Vr2fWpi4quVQSc8SGk2XyVaxmDMLRTvoeDGEMbvUZq",
+    "name": "Rome Wrapped JTO",
+    "symbol": "wJTO"
+  },
+  "SPL_ERC20_WBONK": {
+    "address": "0x2c71373725C59B3F1D47a0D425B7050D02e014b4",
+    "mintId": "HWeLrJqWKK3yDfqkGucGq9RpgfU75W1UE5iVL23BSw4Y",
+    "name": "Rome Wrapped BONK",
+    "symbol": "wBONK"
   }
 }

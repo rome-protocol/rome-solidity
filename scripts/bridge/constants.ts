@@ -53,6 +53,21 @@ export const SPL_MINTS_DEVNET = {
   WSOL_NATIVE: "So11111111111111111111111111111111111111112",
 } as const;
 
+// Compound-collateral test mints (Solana devnet only — Rome-minted test
+// assets, no mainnet counterpart). These are the underlying mints of the
+// 6 exotic collaterals on Hadrian's canonical 9-asset Comet; wrapping the
+// SAME mints on any devnet-substrate chain keeps the asset set identical
+// across chains. Extracted from the live Hadrian wrappers' mint_id()
+// (2026-07-01); mint authority 3E7gp1p8CfZ8kXMUagqKQWYZijQm7hxkrE67eQZPLdfv.
+export const COMPOUND_COLLATERAL_MINTS_DEVNET = {
+  BTC_TEST: "2gsErzRCTA7T6hGnYo44EnpP7hP79CHQerDhtmggkZZF",
+  JITOSOL_TEST: "8Eou1ZHTULFvoaELa9Dnw29puHdckcsj7buQKNqfaZHH",
+  MSOL_TEST: "jc65vCfDLKm9sW7auJMkNJZuE6jnsqfW9bHHvYp9oYE",
+  JUP_TEST: "Aa58JCN8MCDPSAPe6qZiL1ZWtqxVDRdSjH6EGjku5vFe",
+  JTO_TEST: "F2Vr2fWpi4quVQSc8SGk2XyVaxmDMLRTvoeDGEMbvUZq",
+  BONK_TEST: "HWeLrJqWKK3yDfqkGucGq9RpgfU75W1UE5iVL23BSw4Y",
+} as const;
+
 // Default export — points at devnet for now since active deploys target
 // rome/rome. Switch to SPL_MINTS_MAINNET for mainnet.
 export const SPL_MINTS = SPL_MINTS_DEVNET;
