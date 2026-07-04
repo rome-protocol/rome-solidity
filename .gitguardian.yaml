@@ -20,12 +20,12 @@ secret:
     # that false positive without disabling the Generic High Entropy
     # detector for the rest of the repo.
     - tests/cpi/SolanaConstants.test.ts
-    # v6 CCTP-v2 bridge tests + PDA-derivation script: assert against the
+    # v6 CCTP-v2 bridge tests + PDA-derivation script assert against the
     # account list + instruction bytes of a LANDED public devnet CCTP v2
     # deposit_for_burn. Every bs58 string is a public Solana pubkey (program
-    # id, config PDA, ATA, or the canonical devnet USDC mint) read straight
+    # id / config PDA / ATA / canonical devnet USDC mint) read straight
     # off-chain — public identifiers, not secrets. Same false-positive class
-    # as SolanaConstants.test.ts (GitGuardian "Generic High Entropy Secret").
+    # as SolanaConstants.test.ts ("Generic High Entropy Secret").
     - tests/bridge/cctp_v2_lib.test.ts
     - tests/bridge/rome_bridge_withdraw_v6.test.ts
     - tests/bridge/derive.test.ts
@@ -40,3 +40,19 @@ secret:
       match: ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL
     - name: Token-2022 program ID (public)
       match: TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
+    # CCTP v2 public program IDs — deterministic, globally-published (same on
+    # devnet + mainnet). Recur across v6 bridge contract, constants, tests.
+    - name: CCTP v2 TokenMessengerMinter program ID (public)
+      match: CCTPV2vPZJS2u2BBsUoscuikbYjnpFmbFsvVuJdgUMQe
+    - name: CCTP v2 MessageTransmitter program ID (public)
+      match: CCTPV2Sm4AdWt5296sk4P66VBZ7bEhcARwFaaS9YPbeC
+    # Public CCTP v2 config PDAs on Solana devnet (token_messenger,
+    # token_minter, local_token for the canonical devnet USDC mint). Derived
+    # deterministically from the public program IDs; asserted in derive.test.ts
+    # as ground truth against a landed public deposit_for_burn. Not secrets.
+    - name: CCTP v2 token_messenger config PDA (devnet, public)
+      match: AawthJCGRmggpfv9MMWV6Jmo9cue4gL9wUZgRBShg58W
+    - name: CCTP v2 token_minter PDA (devnet, public)
+      match: E1bQJ8eMMn3zmeSewW3HQ8zmJr7KR75JonbwAtWx2bux
+    - name: CCTP v2 local_token USDC PDA (devnet, public)
+      match: 7MwmWTK2R9Na6rnoSAEt5gytFmSZj9WLVdazvxvru9AU
