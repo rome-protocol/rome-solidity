@@ -67,7 +67,11 @@ describe("RomeBridgeWithdraw — error paths", () => {
         systemProgram: ZERO_BYTES32,
         messageTransmitterConfig: ZERO_BYTES32,
         tokenMessengerConfig: ZERO_BYTES32,
-        remoteTokenMessenger: ZERO_BYTES32,
+        // v6: per-destination allowlist replaces the single remote. Domain 0
+        // listed so the legacy 2-arg burnUSDC path (routes to domain 0)
+        // reaches the amount/balance guards these tests exercise.
+        domains: [0],
+        remoteTokenMessengers: ["0x" + "aa".repeat(32)],
         tokenMinter: ZERO_BYTES32,
         localTokenUsdc: ZERO_BYTES32,
         senderAuthorityPda: ZERO_BYTES32,

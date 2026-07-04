@@ -3,7 +3,9 @@ pragma solidity ^0.8.28;
 
 import {ERC2771Context} from "@openzeppelin/contracts/metatx/ERC2771Context.sol";
 import {SPL_ERC20} from "../erc20spl/erc20spl.sol";
-import {CCTPLib} from "./ICCTP.sol";
+import {CCTPV2Lib} from "./ICCTPV2.sol";
+import {PdaDeriver} from "../cpi/PdaDeriver.sol";
+import {ISystemProgram} from "../interface.sol";
 import {WormholeTokenBridgeLib} from "./IWormholeTokenBridge.sol";
 import {ICrossProgramInvocation, CpiProgram, HelperProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
@@ -16,7 +18,10 @@ import {UserPda} from "../cpi/UserPda.sol";
 /// @title RomeBridgeWithdraw
 /// @notice Accepts rToken input on Rome EVM, emits outbound CCTP or Wormhole
 ///         message via CPI signed as the user's Rome-derived PDA.
-/// @dev CCTP path:     burnUSDC → depositForBurn CPI (path=0)
+/// @dev CCTP path:     burnUSDC → CCTP **v2** deposit_for_burn CPI (path=0),
+///                     per-call destination domain (v6). v2 is required for
+///                     v2-only destinations (Monad = 15) and is the
+///                     go-forward protocol for every destination.
 ///      Wormhole path: burnETH  → transfer_tokens CPI  (path=1)
 ///
 ///      All Solana program IDs, sysvars, and PDAs are supplied at construction
@@ -43,7 +48,6 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     bytes32 public immutable cctpSystemProgram;
     bytes32 public immutable cctpMessageTransmitterConfig;
     bytes32 public immutable cctpTokenMessengerConfig;
-    bytes32 public immutable cctpRemoteTokenMessenger;
     bytes32 public immutable cctpTokenMinter;
     bytes32 public immutable cctpLocalTokenUsdc;
     bytes32 public immutable cctpSenderAuthorityPda;
@@ -79,6 +83,14 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     // Per-user nonce for transient message PDAs
     // -------------------------------------------------------------------------
 
+    /// @notice CCTP destination allowlist: Circle domain → remote_token_messenger
+    ///         PDA (["remote_token_messenger", dec(domain)] under the v2 TMM).
+    ///         Populated once at construction from registry-fed deploy config —
+    ///         doubling as the per-destination account CCTP requires AND the
+    ///         fat-finger guard (unlisted domain burns revert instead of
+    ///         producing an unredeemable message).
+    mapping(uint32 => bytes32) public cctpRemoteTokenMessengers;
+
     /// @notice Per-user burn counter used to derive unique message PDAs per tx.
     /// @dev We can't use block.number in the salt — on Rome EVM, block.number
     ///      returns the Solana slot (rome-evm-private/program/src/state/handler.rs
@@ -96,6 +108,8 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     error AmountExceedsUint64(uint256 amount);
     error InsufficientBalance(address user, uint256 requested, uint256 available);
     error CpiFailed(bytes reason);
+    error UnsupportedDestinationDomain(uint32 domain);
+    error DomainConfigLengthMismatch();
     error ZeroRecipient();
 
     // -------------------------------------------------------------------------
@@ -105,11 +119,11 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     /// @notice CCTP-path Solana accounts. Includes all program IDs and PDAs needed
     ///         for the deposit_for_burn CPI. All fields come from the deploy script.
     struct CctpParams {
-        /// @dev CCTP Token Messenger Minter Solana program ID
-        ///      (CCTPiPYPc6AsJuwueEnWgSgucamXDZwBd53dQ11YiKX3)
+        /// @dev CCTP **v2** Token Messenger Minter Solana program ID
+        ///      (CCTPV2vPZJS2u2BBsUoscuikbYjnpFmbFsvVuJdgUMQe)
         bytes32 tokenMessengerProgram;
-        /// @dev CCTP Message Transmitter Solana program ID
-        ///      (CCTPmbSD7gX1bxKPAmg77w8oFzNFpaQiQUWD43TKaecd)
+        /// @dev CCTP **v2** Message Transmitter Solana program ID
+        ///      (CCTPV2Sm4AdWt5296sk4P66VBZ7bEhcARwFaaS9YPbeC)
         bytes32 messageTransmitterProgram;
         /// @dev SPL Token program ID (TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA)
         bytes32 splTokenProgram;
@@ -118,9 +132,13 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         // PDAs — derived per-deployment in Phase 1.5
         bytes32 messageTransmitterConfig;
         bytes32 tokenMessengerConfig;
-        bytes32 remoteTokenMessenger;
         bytes32 tokenMinter;
         bytes32 localTokenUsdc;
+        /// @dev Destination allowlist, parallel arrays: Circle domain ids and
+        ///      their ["remote_token_messenger", dec(domain)] PDAs under the
+        ///      v2 TMM. Derived by the deploy script per network.
+        uint32[] domains;
+        bytes32[] remoteTokenMessengers;
         /// @dev ["sender_authority"] PDA under Token Messenger Minter program
         bytes32 senderAuthorityPda;
         /// @dev TMM's __event_authority — for outer event_cpi
@@ -181,8 +199,13 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         cctpSystemProgram             = cctp.systemProgram;
         cctpMessageTransmitterConfig  = cctp.messageTransmitterConfig;
         cctpTokenMessengerConfig      = cctp.tokenMessengerConfig;
-        cctpRemoteTokenMessenger      = cctp.remoteTokenMessenger;
         cctpTokenMinter               = cctp.tokenMinter;
+        if (cctp.domains.length != cctp.remoteTokenMessengers.length) {
+            revert DomainConfigLengthMismatch();
+        }
+        for (uint256 i = 0; i < cctp.domains.length; i++) {
+            cctpRemoteTokenMessengers[cctp.domains[i]] = cctp.remoteTokenMessengers[i];
+        }
         cctpLocalTokenUsdc            = cctp.localTokenUsdc;
         cctpSenderAuthorityPda        = cctp.senderAuthorityPda;
         cctpEventAuthority            = cctp.eventAuthority;
@@ -210,11 +233,35 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     // CCTP path — path=0
     // -------------------------------------------------------------------------
 
-    /// @notice Burns wUSDC on the Rome EVM and initiates a CCTP deposit_for_burn
-    ///         CPI on Solana, bridging funds to `ethereumRecipient` on Ethereum.
-    /// @param amount           Token amount in SPL decimals (must fit uint64).
-    /// @param ethereumRecipient Destination address on Ethereum.
+    /// @notice Back-compat overload: burns to the Ethereum-family domain (0).
+    ///         Same ABI rome-ui's live hook calls today; routes through the
+    ///         v2 path like every other destination.
     function burnUSDC(uint256 amount, address ethereumRecipient) external {
+        _burnUSDC(amount, ethereumRecipient, 0);
+    }
+
+    /// @notice Burns wUSDC on the Rome EVM and initiates a CCTP **v2**
+    ///         deposit_for_burn CPI on Solana, bridging to `recipient` on the
+    ///         EVM chain identified by `destinationDomain` (Circle domain id:
+    ///         Ethereum/Sepolia 0, Avalanche 1, Arbitrum 3, Base 6, Polygon 7,
+    ///         Monad 15). The domain must be in the constructor allowlist.
+    /// @param amount            Token amount in SPL decimals (must fit uint64).
+    /// @param recipient         Destination address on the target EVM chain.
+    /// @param destinationDomain Circle CCTP domain of the destination chain.
+    function burnUSDC(uint256 amount, address recipient, uint32 destinationDomain) external {
+        _burnUSDC(amount, recipient, destinationDomain);
+    }
+
+    function _burnUSDC(uint256 amount, address ethereumRecipient, uint32 destinationDomain) internal {
+        // Ordered before any balance/precompile touch so both guards are
+        // exact-revert-testable on a simulated EVM (no Rome precompiles).
+        bytes32 remoteTokenMessenger = cctpRemoteTokenMessengers[destinationDomain];
+        if (remoteTokenMessenger == bytes32(0)) {
+            revert UnsupportedDestinationDomain(destinationDomain);
+        }
+        if (ethereumRecipient == address(0)) {
+            revert ZeroRecipient();
+        }
         if (amount > type(uint64).max) {
             revert AmountExceedsUint64(amount);
         }
@@ -255,22 +302,41 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 cctpSalt = keccak256(abi.encodePacked("CCTP_MSG", address(this), nonce));
         bytes32 messageSentEventData = RomeEVMAccount.pda_with_salt(user, cctpSalt);
 
-        bytes memory ixData = CCTPLib.encodeDepositForBurn(CCTPLib.DepositForBurnParams({
-            amount:            uint64(amount),
-            destinationDomain: CCTPLib.DOMAIN_ETHEREUM,
-            mintRecipient:     bytes32(uint256(uint160(ethereumRecipient)))
+        bytes memory ixData = CCTPV2Lib.encodeDepositForBurn(CCTPV2Lib.DepositForBurnParams({
+            amount:              uint64(amount),
+            destinationDomain:   destinationDomain,
+            mintRecipient:       bytes32(uint256(uint160(ethereumRecipient))),
+            // bytes32(0) = permissionless delivery — anyone (incl. the user
+            // via Circle's portal) can submit the destination mint; matches
+            // the inbound leg's choice and keeps stuck-transfer rescue open.
+            destinationCaller:   bytes32(0),
+            // Standard finality is free per Circle's fee schedule; the fast
+            // tier (1000) costs bps. maxFee=0 makes any fee-charging path
+            // revert rather than silently shave the user's amount.
+            maxFee:              0,
+            minFinalityThreshold: CCTPV2Lib.MIN_FINALITY_STANDARD
         }));
 
+        // v2-only account: per-owner denylist PDA
+        // (["denylist_account", owner] under the v2 TMM). Derived at runtime
+        // — one find_program_address round-trip (~115K CU); can't be a
+        // constructor param because it's per-user.
+        ISystemProgram.Seed[] memory denylistSeeds = new ISystemProgram.Seed[](2);
+        denylistSeeds[0] = ISystemProgram.Seed(bytes("denylist_account"));
+        denylistSeeds[1] = ISystemProgram.Seed(abi.encodePacked(userPda));
+        (bytes32 denylistAccount, ) = PdaDeriver.derive(cctpTokenMessengerProgram, denylistSeeds);
+
         ICrossProgramInvocation.AccountMeta[] memory metas =
-            CCTPLib.buildDepositForBurnAccounts(
-                CCTPLib.DepositForBurnAccounts({
+            CCTPV2Lib.buildDepositForBurnAccounts(
+                CCTPV2Lib.DepositForBurnAccounts({
                     owner:                       userPda,
                     eventRentPayer:              userPda,  // unified PDA — replaces PAYER_PDA
                     senderAuthorityPda:          cctpSenderAuthorityPda,
                     burnTokenAccount:            userAta,
+                    denylistAccount:             denylistAccount,
                     messageTransmitter:          cctpMessageTransmitterConfig,
                     tokenMessenger:              cctpTokenMessengerConfig,
-                    remoteTokenMessenger:        cctpRemoteTokenMessenger,
+                    remoteTokenMessenger:        remoteTokenMessenger,
                     tokenMinter:                 cctpTokenMinter,
                     localToken:                  cctpLocalTokenUsdc,
                     burnTokenMint:               usdcMint,
@@ -306,7 +372,10 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         );
         if (!ok) revert CpiFailed(result);
 
+        // Legacy event kept byte-compatible for existing indexers; the
+        // domain-carrying variant is the multi-destination source of truth.
         emit Withdrawn(user, usdcMint, amount, ethereumRecipient, 0);
+        emit WithdrawnToDomain(user, usdcMint, amount, ethereumRecipient, 0, destinationDomain);
     }
 
     // -------------------------------------------------------------------------

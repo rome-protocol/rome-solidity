@@ -33,6 +33,7 @@ import { readDeployments, writeDeployments } from "../lib/deployments.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
 import { SOLANA_PROGRAM_IDS, SOLANA_PROGRAM_IDS_DEVNET } from "./constants.js";
 import { deriveCctpAccounts } from "./derive/cctp-accounts.js";
+import { CCTP_V2_DOMAINS_DEVNET, CCTP_V2_DOMAINS_MAINNET } from "./constants.js";
 import { deriveWormholeAccounts } from "./derive/wormhole-accounts.js";
 
 // CPI precompile at 0xff..08 as defined in contracts/interface.sol.
@@ -106,7 +107,10 @@ function loadSolanaPdas(usdcMintBase58: string, wethMintBase58: string, networkN
   const wethMint = new PublicKey(wethMintBase58);
   const ids = programIdsFor(networkName);
   return {
-    ...deriveCctpAccounts(usdcMint),
+    ...deriveCctpAccounts(
+      usdcMint,
+      SOLANA_DEVNET_NETWORKS.has(networkName) ? CCTP_V2_DOMAINS_DEVNET : CCTP_V2_DOMAINS_MAINNET,
+    ),
     ...deriveWormholeAccounts(wethMint, {
       tokenBridgeProgramId: ids.WORMHOLE_TOKEN_BRIDGE,
       coreProgramId:        ids.WORMHOLE_CORE,
@@ -175,9 +179,10 @@ export async function deployWithdraw(
     systemProgram:             UNIVERSAL.systemProgram,
     messageTransmitterConfig:  pdas.cctpMessageTransmitterConfig,
     tokenMessengerConfig:      pdas.cctpTokenMessengerConfig,
-    remoteTokenMessenger:      pdas.cctpRemoteTokenMessenger,
     tokenMinter:               pdas.cctpTokenMinter,
     localTokenUsdc:            pdas.cctpLocalTokenUsdc,
+    domains:                   pdas.cctpDomains,
+    remoteTokenMessengers:     pdas.cctpRemoteTokenMessengers,
     senderAuthorityPda:        pdas.cctpSenderAuthorityPda,
     eventAuthority:            pdas.cctpEventAuthority,
     messageTransmitterEventAuthority: pdas.cctpMessageTransmitterEventAuthority,
