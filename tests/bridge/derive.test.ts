@@ -92,3 +92,22 @@ describe("Bridge PDA derivations", () => {
     assert.strictEqual(unique.size, values.length, "Wormhole PDAs must all be distinct");
   });
 });
+
+describe("deploy wiring — CPI target must be the v2 programs (audit C1)", () => {
+  it("universalFor returns the CCTP v2 program ids for the constructor fields", async () => {
+    const { universalFor } = await import("../../scripts/bridge/deploy.js");
+    const { SOLANA_PROGRAM_IDS } = await import("../../scripts/bridge/constants.js");
+    for (const net of ["hadrian", "nerva"]) {
+      const u = universalFor(net);
+      assert.strictEqual(
+        u.cctpTokenMessengerProgram,
+        base58ToBytes32(SOLANA_PROGRAM_IDS.CCTP_V2_TOKEN_MESSENGER),
+        `${net}: constructor must target the v2 TMM (v1 target = every burn reverts)`,
+      );
+      assert.strictEqual(
+        u.cctpMessageTransmitterProgram,
+        base58ToBytes32(SOLANA_PROGRAM_IDS.CCTP_V2_MESSAGE_TRANSMITTER),
+      );
+    }
+  });
+});
