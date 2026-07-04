@@ -20,6 +20,16 @@ secret:
     # that false positive without disabling the Generic High Entropy
     # detector for the rest of the repo.
     - tests/cpi/SolanaConstants.test.ts
+    # v6 CCTP-v2 bridge tests + PDA-derivation script: assert against the
+    # account list + instruction bytes of a LANDED public devnet CCTP v2
+    # deposit_for_burn. Every bs58 string is a public Solana pubkey (program
+    # id, config PDA, ATA, or the canonical devnet USDC mint) read straight
+    # off-chain — public identifiers, not secrets. Same false-positive class
+    # as SolanaConstants.test.ts (GitGuardian "Generic High Entropy Secret").
+    - tests/bridge/cctp_v2_lib.test.ts
+    - tests/bridge/rome_bridge_withdraw_v6.test.ts
+    - tests/bridge/derive.test.ts
+    - scripts/bridge/derive/cctp-accounts.ts
   ignored_matches:
     # Canonical public Solana program IDs. These are NOT secrets — they are
     # the globally-published program IDs every Solana client must recognize.
