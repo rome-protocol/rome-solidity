@@ -18,6 +18,20 @@ interface RomeBridgeEvents {
         uint8 path
     );
 
+    /// @notice Multi-destination variant of `Withdrawn` (v6): carries the
+    ///         Circle CCTP destination domain (or, for future Wormhole
+    ///         multi-destination, the Wormhole chain id) so indexers can
+    ///         attribute the egress chain without heuristics. Emitted
+    ///         ALONGSIDE the legacy `Withdrawn` for back-compat.
+    event WithdrawnToDomain(
+        address indexed user,
+        bytes32 indexed mint,
+        uint256 amount,
+        address recipient,
+        uint8 path,
+        uint32 destinationDomain
+    );
+
     /// @notice Emitted on a Rome → Solana SPL egress of a wrapper token to a
     ///         raw Solana recipient. Distinct from `Withdrawn` (EVM-chain
     ///         egress via CCTP/Wormhole, address recipient) — here the

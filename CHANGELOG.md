@@ -1,3 +1,25 @@
+## 2026-07-04 — RomeBridgeWithdraw v6: CCTP v2 + per-call destination domain
+
+- `burnUSDC(uint256, address, uint32 destinationDomain)` — outbound USDC to any
+  allowlisted Circle domain (Ethereum-family 0, Avalanche 1, Arbitrum 3, Base 6,
+  Polygon 7, Monad 15). The 2-arg overload remains ABI-compatible and routes to
+  domain 0. Burns now CPI Circle's CCTP **v2** Solana programs (required for
+  v2-only destinations like Monad; go-forward protocol everywhere).
+- `CctpParams` swaps the single `remoteTokenMessenger` for parallel
+  `domains[]`/`remoteTokenMessengers[]` arrays → constructor-populated
+  allowlist mapping (unlisted domains revert `UnsupportedDestinationDomain`).
+- New `CCTPV2Lib` (`contracts/bridge/ICCTPV2.sol`): v2 encode (destination_caller,
+  max_fee, min_finality_threshold) + 19-meta account build (adds the per-owner
+  `denylist_account` PDA, keeps the Mollusk trailing-meta workaround). Byte-for-byte
+  test-pinned against a landed devnet v2 burn.
+- New event `WithdrawnToDomain(user, mint, amount, recipient, path, destinationDomain)`
+  emitted alongside the legacy `Withdrawn`.
+- `deploy.ts`/`derive/cctp-accounts.ts` derive v2 config PDAs + per-domain remotes;
+  devnet domain list `[0,1,3,6,7,15]` in `constants.ts`.
+- Downstream: rome-ui gains a destination-network picker on outbound (follow-up);
+  existing 2-arg callers unaffected. `scripts/bridge/tests/portal-cctp-test.ts`
+  remains v1-era (do not use against v6).
+
 # Changelog
 
 All notable changes to this project will be documented in this file.

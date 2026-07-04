@@ -23,8 +23,11 @@ import { PublicKey } from "@solana/web3.js";
 import { base58ToBytes32 } from "../../lib/pubkey.js";
 import { SOLANA_PROGRAM_IDS } from "../constants.js";
 
-const CCTP_TOKEN_MESSENGER_ID = new PublicKey(SOLANA_PROGRAM_IDS.CCTP_TOKEN_MESSENGER);
-const CCTP_MESSAGE_TRANSMITTER_ID = new PublicKey(SOLANA_PROGRAM_IDS.CCTP_MESSAGE_TRANSMITTER);
+// v6: CCTP **v2** programs. Seeds are IDENTICAL to v1 (validated 20/20
+// against a landed v2 receive by rome-ui's probe template-check); only the
+// program ids differ. v2 is required for v2-only destinations (Monad = 15).
+const CCTP_TOKEN_MESSENGER_ID = new PublicKey(SOLANA_PROGRAM_IDS.CCTP_V2_TOKEN_MESSENGER);
+const CCTP_MESSAGE_TRANSMITTER_ID = new PublicKey(SOLANA_PROGRAM_IDS.CCTP_V2_MESSAGE_TRANSMITTER);
 
 function pda(seeds: (Buffer | Uint8Array)[], programId: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(seeds, programId)[0];
@@ -39,7 +42,9 @@ function u32Le(n: number): Buffer {
 export interface CctpPdas {
   cctpMessageTransmitterConfig: `0x${string}`;
   cctpTokenMessengerConfig: `0x${string}`;
-  cctpRemoteTokenMessenger: `0x${string}`;
+  /** Destination allowlist, parallel arrays (v6 multi-destination). */
+  cctpDomains: number[];
+  cctpRemoteTokenMessengers: `0x${string}`[];
   cctpTokenMinter: `0x${string}`;
   cctpLocalTokenUsdc: `0x${string}`;
   cctpSenderAuthorityPda: `0x${string}`;
@@ -47,7 +52,7 @@ export interface CctpPdas {
   cctpMessageTransmitterEventAuthority: `0x${string}`;
 }
 
-export function deriveCctpAccounts(usdcMint: PublicKey): CctpPdas {
+export function deriveCctpAccounts(usdcMint: PublicKey, domains: number[]): CctpPdas {
   const messageTransmitterConfig = pda(
     [Buffer.from("message_transmitter")],
     CCTP_MESSAGE_TRANSMITTER_ID
@@ -57,12 +62,14 @@ export function deriveCctpAccounts(usdcMint: PublicKey): CctpPdas {
     CCTP_TOKEN_MESSENGER_ID
   );
   // NB: Circle CCTP seed encoding — domain is the ASCII STRING form of the
-  // destination domain number, not a LE u32. "0" for Ethereum. Verified against
-  // the circlefin/solana-cctp-contracts source:
+  // destination domain number, not a LE u32 ("0", "15", …). Verified against
+  // the circlefin/solana-cctp-contracts source AND a landed v2 burn:
   //   seeds = [b"remote_token_messenger", destination_domain.to_string().as_bytes()]
-  const remoteTokenMessenger = pda(
-    [Buffer.from("remote_token_messenger"), Buffer.from("0")],
-    CCTP_TOKEN_MESSENGER_ID
+  const remoteTokenMessengers = domains.map((d) =>
+    pda(
+      [Buffer.from("remote_token_messenger"), Buffer.from(String(d))],
+      CCTP_TOKEN_MESSENGER_ID
+    )
   );
   const tokenMinter = pda([Buffer.from("token_minter")], CCTP_TOKEN_MESSENGER_ID);
   const localTokenUsdc = pda(
@@ -88,7 +95,8 @@ export function deriveCctpAccounts(usdcMint: PublicKey): CctpPdas {
   return {
     cctpMessageTransmitterConfig: base58ToBytes32(messageTransmitterConfig.toBase58()),
     cctpTokenMessengerConfig: base58ToBytes32(tokenMessengerConfig.toBase58()),
-    cctpRemoteTokenMessenger: base58ToBytes32(remoteTokenMessenger.toBase58()),
+    cctpDomains: domains,
+    cctpRemoteTokenMessengers: remoteTokenMessengers.map((r) => base58ToBytes32(r.toBase58())),
     cctpTokenMinter: base58ToBytes32(tokenMinter.toBase58()),
     cctpLocalTokenUsdc: base58ToBytes32(localTokenUsdc.toBase58()),
     cctpSenderAuthorityPda: base58ToBytes32(senderAuthorityPda.toBase58()),

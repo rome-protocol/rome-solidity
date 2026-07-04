@@ -33,6 +33,7 @@ import { readDeployments, writeDeployments } from "../lib/deployments.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
 import { SOLANA_PROGRAM_IDS, SOLANA_PROGRAM_IDS_DEVNET } from "./constants.js";
 import { deriveCctpAccounts } from "./derive/cctp-accounts.js";
+import { CCTP_V2_DOMAINS_DEVNET, CCTP_V2_DOMAINS_MAINNET } from "./constants.js";
 import { deriveWormholeAccounts } from "./derive/wormhole-accounts.js";
 
 // CPI precompile at 0xff..08 as defined in contracts/interface.sol.
@@ -56,14 +57,19 @@ function programIdsFor(networkName: string) {
 // Cluster-aware UNIVERSAL block. Wormhole Token Bridge / Core program IDs
 // vary per cluster; CCTP and SPL Token / System Program are identical
 // across clusters.
-function universalFor(networkName: string) {
+export function universalFor(networkName: string) {
   const ids = programIdsFor(networkName);
   return {
     splTokenProgram:             base58ToBytes32(ids.SPL_TOKEN),
     systemProgram:               base58ToBytes32(ids.SYSTEM_PROGRAM),
     wormholeTokenBridgeProgram:  base58ToBytes32(ids.WORMHOLE_TOKEN_BRIDGE),
-    cctpTokenMessengerProgram:   base58ToBytes32(ids.CCTP_TOKEN_MESSENGER),
-    cctpMessageTransmitterProgram: base58ToBytes32(ids.CCTP_MESSAGE_TRANSMITTER),
+    // v6: the CPI target MUST be the CCTP v2 programs — the constructor's
+    // config PDAs, the instruction data, and the account list are all v2
+    // (derive/cctp-accounts.ts). Wiring the v1 ids here (the pre-v6 default)
+    // makes every burnUSDC revert at the v2 program's owner/seed validation
+    // — fund-safe but 100% non-functional (audit C1, rome-solidity #264).
+    cctpTokenMessengerProgram:     base58ToBytes32(ids.CCTP_V2_TOKEN_MESSENGER),
+    cctpMessageTransmitterProgram: base58ToBytes32(ids.CCTP_V2_MESSAGE_TRANSMITTER),
     wormholeCoreProgram:         base58ToBytes32(ids.WORMHOLE_CORE),
     clockSysvar: base58ToBytes32("SysvarC1ock11111111111111111111111111111111"),
     rentSysvar:  base58ToBytes32("SysvarRent111111111111111111111111111111111"),
@@ -78,9 +84,12 @@ interface SolanaPdaAccounts {
   // CCTP PDAs
   cctpMessageTransmitterConfig: `0x${string}`;
   cctpTokenMessengerConfig:     `0x${string}`;
-  cctpRemoteTokenMessenger:     `0x${string}`;
   cctpTokenMinter:              `0x${string}`;
   cctpLocalTokenUsdc:           `0x${string}`;
+  // v6 multi-destination allowlist (parallel arrays) — replaces the singular
+  // v1 cctpRemoteTokenMessenger.
+  cctpDomains:                  number[];
+  cctpRemoteTokenMessengers:    `0x${string}`[];
   cctpSenderAuthorityPda:       `0x${string}`;
   cctpEventAuthority:           `0x${string}`;
   cctpMessageTransmitterEventAuthority: `0x${string}`;
@@ -106,7 +115,10 @@ function loadSolanaPdas(usdcMintBase58: string, wethMintBase58: string, networkN
   const wethMint = new PublicKey(wethMintBase58);
   const ids = programIdsFor(networkName);
   return {
-    ...deriveCctpAccounts(usdcMint),
+    ...deriveCctpAccounts(
+      usdcMint,
+      SOLANA_DEVNET_NETWORKS.has(networkName) ? CCTP_V2_DOMAINS_DEVNET : CCTP_V2_DOMAINS_MAINNET,
+    ),
     ...deriveWormholeAccounts(wethMint, {
       tokenBridgeProgramId: ids.WORMHOLE_TOKEN_BRIDGE,
       coreProgramId:        ids.WORMHOLE_CORE,
@@ -175,9 +187,10 @@ export async function deployWithdraw(
     systemProgram:             UNIVERSAL.systemProgram,
     messageTransmitterConfig:  pdas.cctpMessageTransmitterConfig,
     tokenMessengerConfig:      pdas.cctpTokenMessengerConfig,
-    remoteTokenMessenger:      pdas.cctpRemoteTokenMessenger,
     tokenMinter:               pdas.cctpTokenMinter,
     localTokenUsdc:            pdas.cctpLocalTokenUsdc,
+    domains:                   pdas.cctpDomains,
+    remoteTokenMessengers:     pdas.cctpRemoteTokenMessengers,
     senderAuthorityPda:        pdas.cctpSenderAuthorityPda,
     eventAuthority:            pdas.cctpEventAuthority,
     messageTransmitterEventAuthority: pdas.cctpMessageTransmitterEventAuthority,
