@@ -14,6 +14,7 @@ import hardhat from "hardhat";
  */
 
 const ZERO = "0x" + "00".repeat(32);
+const ZERO_ADDR = "0x" + "00".repeat(20); // 20-byte zero (address), for transferOwnership guard
 const PK = (n: number) => ("0x" + n.toString(16).padStart(2, "0").repeat(32)) as `0x${string}`;
 const RECIPIENT = PK(0x99); // 32-byte recipient (Solana pubkey raw / EVM addr left-padded)
 
@@ -45,17 +46,23 @@ describe("RomeBridgeWithdraw — generic Wormhole burn", function () {
   let viem: any;
   let bridge: any;
   let weth: any, jitosol: any, unregistered: any;
+  let ownerAddr: `0x${string}`, otherAddr: `0x${string}`;
 
   before(async function () {
     ({ viem } = await hardhat.network.connect());
+    const wallets = await viem.getWalletClients();
+    ownerAddr = wallets[0].account.address;   // deployer = admin (see WHG.admin)
+    otherAddr = wallets[1].account.address;    // non-owner, used for access-control tests
     const usdc = await viem.deployContract("MockSplErc20", [PK(40)]);
     weth = await viem.deployContract("MockSplErc20", [PK(41)]);
     jitosol = await viem.deployContract("MockSplErc20", [PK(42)]);
     unregistered = await viem.deployContract("MockSplErc20", [PK(43)]);
     // New generic-Wormhole config: per-call target-chain allowlist + registered
     // asset wrappers. Sepolia (10002) + Ethereum (2) allowed; weth + jitosol
-    // registered — proving the path is multi-asset, not ETH-only.
+    // registered — proving the path is multi-asset, not ETH-only. `admin` owns
+    // the post-deploy setters so new assets/chains are enabled WITHOUT a redeploy.
     const WHG = {
+      admin: ownerAddr,
       targetChains: [10002, 2],
       assetWrappers: [weth.address, jitosol.address],
     };
@@ -115,7 +122,7 @@ describe("RomeBridgeWithdraw — generic Wormhole burn", function () {
     const usdc = await viem.deployContract("MockSplErc20", [PK(40)]);
     // Duplicate/empty allowlists must not silently succeed — keep parity with
     // CCTP's DomainConfigLengthMismatch guard family (asserts the ctor validates).
-    const emptyWhg = { targetChains: [] as number[], assetWrappers: [] as `0x${string}`[] };
+    const emptyWhg = { admin: ownerAddr, targetChains: [] as number[], assetWrappers: [] as `0x${string}`[] };
     const b = await viem.deployContract("RomeBridgeWithdraw", [
       FORWARDER, usdc.address, weth.address, CCTP, WH, emptyWhg,
     ]);
@@ -124,5 +131,61 @@ describe("RomeBridgeWithdraw — generic Wormhole burn", function () {
       b.write.burnToWormhole([weth.address, 1000n, RECIPIENT, 10002]),
       /UnsupportedTargetChain|UnsupportedAssetWrapper/,
     );
+  });
+
+  // ── Post-deploy admin: enable new assets/chains WITHOUT a redeploy ──────────
+  // The whole point of v8: the ctor allowlist is a seed, not a cage. An owner can
+  // list wmSOL/arb/avax + Arbitrum/Avalanche on the LIVE contract via setters.
+
+  it("constructor records the configured admin as owner", async function () {
+    assert.equal((await bridge.read.owner()).toLowerCase(), ownerAddr.toLowerCase());
+  });
+
+  it("owner enables a previously-unregistered asset via setWormholeAssetAllowed", async function () {
+    assert.equal(await bridge.read.wormholeAssetAllowed([unregistered.address]), false);
+    await bridge.write.setWormholeAssetAllowed([unregistered.address, true]);
+    assert.equal(await bridge.read.wormholeAssetAllowed([unregistered.address]), true);
+    // ...and can revoke it again (setter is a real toggle, not one-way).
+    await bridge.write.setWormholeAssetAllowed([unregistered.address, false]);
+    assert.equal(await bridge.read.wormholeAssetAllowed([unregistered.address]), false);
+  });
+
+  it("owner enables a new target chain via setWormholeTargetChainAllowed (e.g. Arbitrum 23)", async function () {
+    assert.equal(await bridge.read.wormholeTargetChainAllowed([23]), false);
+    await bridge.write.setWormholeTargetChainAllowed([23, true]);
+    assert.equal(await bridge.read.wormholeTargetChainAllowed([23]), true);
+  });
+
+  it("non-owner cannot toggle the asset allowlist (reverts NotOwner)", async function () {
+    await assert.rejects(
+      bridge.write.setWormholeAssetAllowed([unregistered.address, true], { account: otherAddr }),
+      /NotOwner/,
+    );
+  });
+
+  it("non-owner cannot toggle the target-chain allowlist (reverts NotOwner)", async function () {
+    await assert.rejects(
+      bridge.write.setWormholeTargetChainAllowed([6, true], { account: otherAddr }),
+      /NotOwner/,
+    );
+  });
+
+  it("transferOwnership hands admin to a new owner; old owner loses rights", async function () {
+    // Fresh instance so the transfer doesn't bleed into the shared `bridge`.
+    const usdc = await viem.deployContract("MockSplErc20", [PK(40)]);
+    const b = await viem.deployContract("RomeBridgeWithdraw", [
+      FORWARDER, usdc.address, weth.address, CCTP, WH,
+      { admin: ownerAddr, targetChains: [10002], assetWrappers: [weth.address] },
+    ]);
+    await b.write.transferOwnership([otherAddr]);
+    assert.equal((await b.read.owner()).toLowerCase(), otherAddr.toLowerCase());
+    // Old owner is now powerless; new owner can administer.
+    await assert.rejects(b.write.setWormholeTargetChainAllowed([23, true]), /NotOwner/);
+    await b.write.setWormholeTargetChainAllowed([23, true], { account: otherAddr });
+    assert.equal(await b.read.wormholeTargetChainAllowed([23]), true);
+  });
+
+  it("transferOwnership to the zero address reverts (no accidental burn of admin)", async function () {
+    await assert.rejects(bridge.write.transferOwnership([ZERO_ADDR]), /ZeroOwner|NotOwner/);
   });
 });

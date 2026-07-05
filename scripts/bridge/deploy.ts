@@ -231,10 +231,17 @@ export async function deployWithdraw(
   // works for wETH too — additive to the legacy burnETH path (which keeps its
   // own immutables). Expand assetWrappers/targetChains as LST wrappers + more
   // destination chains land (that closes inbound⇒outbound symmetry per asset).
+  // Allowlist admin: the account that can enable further assets/chains on the
+  // LIVE contract post-deploy (no redeploy per addition). Defaults to the
+  // deployer; override via WORMHOLE_ADMIN for a cold-ledger / multisig owner.
+  const [deployerWallet] = await viem.getWalletClients();
+  const wormholeAdmin = (process.env.WORMHOLE_ADMIN ?? deployerWallet.account.address) as `0x${string}`;
   const wormholeGeneric = {
+    admin: wormholeAdmin,
     targetChains: [wormholeParams.targetChain],
     assetWrappers: wethWrapper ? [wethWrapper] : [],
   };
+  console.log(`[${networkName}] Wormhole allowlist admin → ${wormholeAdmin}`);
 
   const withdraw = await viem.deployContract("RomeBridgeWithdraw", [
     "0x0000000000000000000000000000000000000000",

@@ -112,6 +112,21 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ///         address → allowed. Only registered wrappers can burn to Wormhole.
     mapping(address => bool) public wormholeAssetAllowed;
 
+    /// @notice Admin of the Wormhole allowlist setters. Seeded at construction
+    ///         from `WormholeGenericConfig.admin`; transferable (cold-ledger
+    ///         handover, matching this repo's mainnet admin pattern). The ctor
+    ///         allowlist is a SEED — the owner enables further assets/chains on
+    ///         the live contract (no redeploy per addition). Only gates the two
+    ///         allowlist setters + ownership transfer; every value path
+    ///         (burnUSDC/burnETH/burnToWormhole/bridgeOutToSolana) is
+    ///         permissionless and unaffected.
+    address public owner;
+
+    modifier onlyOwner() {
+        if (_msgSender() != owner) revert NotOwner(_msgSender());
+        _;
+    }
+
     // -------------------------------------------------------------------------
     // Errors
     // -------------------------------------------------------------------------
@@ -123,6 +138,15 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     error ZeroRecipient();
     error UnsupportedTargetChain(uint16 targetChain);
     error UnsupportedAssetWrapper(address assetWrapper);
+    error NotOwner(address caller);
+    error ZeroOwner();
+
+    // -------------------------------------------------------------------------
+    // Admin events
+    // -------------------------------------------------------------------------
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event WormholeAssetAllowedSet(address indexed assetWrapper, bool allowed);
+    event WormholeTargetChainAllowedSet(uint16 indexed targetChain, bool allowed);
 
     // -------------------------------------------------------------------------
     // Constructor params structs (avoids stack-too-deep with many constructor args)
@@ -196,6 +220,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ///         Independent of the legacy ETH-only `burnETH` path (which keeps
     ///         its own immutables); nothing is allowed unless listed here.
     struct WormholeGenericConfig {
+        address admin;            // owner of the post-deploy allowlist setters (see `owner`)
         uint16[] targetChains;    // Wormhole chain ids allowed as burnToWormhole destinations
         address[] assetWrappers;  // SPL_ERC20 wrappers allowed as burnToWormhole assets
     }
@@ -252,13 +277,44 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         wormholeWrappedMeta        = wh.wrappedMeta;
         wormholeTargetChain        = wh.targetChain;
         // Generic-Wormhole allowlists (asset-agnostic + multi-destination egress).
-        // Fail-closed: only chains/wrappers listed here can burnToWormhole.
+        // Fail-closed SEED: only chains/wrappers listed here can burnToWormhole
+        // until `owner` lists more via the setters below.
+        if (whg.admin == address(0)) revert ZeroOwner();
+        owner = whg.admin;
+        emit OwnershipTransferred(address(0), whg.admin);
         for (uint256 i = 0; i < whg.targetChains.length; i++) {
             wormholeTargetChainAllowed[whg.targetChains[i]] = true;
         }
         for (uint256 i = 0; i < whg.assetWrappers.length; i++) {
             wormholeAssetAllowed[whg.assetWrappers[i]] = true;
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Admin: post-deploy Wormhole allowlist management
+    // -------------------------------------------------------------------------
+
+    /// @notice Enable/disable an SPL_ERC20 wrapper as a `burnToWormhole` asset.
+    ///         Lets the owner add wmSOL / arb / avax (etc.) on the LIVE contract
+    ///         — the reason v8 exists (v7's allowlist was constructor-frozen).
+    function setWormholeAssetAllowed(address assetWrapper, bool allowed) external onlyOwner {
+        wormholeAssetAllowed[assetWrapper] = allowed;
+        emit WormholeAssetAllowedSet(assetWrapper, allowed);
+    }
+
+    /// @notice Enable/disable a Wormhole target chain for `burnToWormhole`
+    ///         (e.g. Arbitrum 23, Avalanche/Fuji 6) without a redeploy.
+    function setWormholeTargetChainAllowed(uint16 targetChain, bool allowed) external onlyOwner {
+        wormholeTargetChainAllowed[targetChain] = allowed;
+        emit WormholeTargetChainAllowedSet(targetChain, allowed);
+    }
+
+    /// @notice Transfer allowlist-admin ownership (cold-ledger handover). Reverts
+    ///         on the zero address so admin can't be accidentally burned.
+    function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert ZeroOwner();
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
     }
 
     // -------------------------------------------------------------------------
