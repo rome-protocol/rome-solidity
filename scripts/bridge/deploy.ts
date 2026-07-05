@@ -226,12 +226,23 @@ export async function deployWithdraw(
   // with a zero forwarder resolves _msgSender() to msg.sender directly — the
   // user-paid flow rome-ui actually uses (burnUSDC / burnETH / bridgeOutToSolana
   // are signed straight from the user's wallet, never sponsored).
+  // Generic-Wormhole allowlist (asset-agnostic + multi-destination egress).
+  // Register the wETH wrapper + this chain's Wormhole target so burnToWormhole
+  // works for wETH too — additive to the legacy burnETH path (which keeps its
+  // own immutables). Expand assetWrappers/targetChains as LST wrappers + more
+  // destination chains land (that closes inbound⇒outbound symmetry per asset).
+  const wormholeGeneric = {
+    targetChains: [wormholeParams.targetChain],
+    assetWrappers: wethWrapper ? [wethWrapper] : [],
+  };
+
   const withdraw = await viem.deployContract("RomeBridgeWithdraw", [
     "0x0000000000000000000000000000000000000000",
     usdcWrapper,
     wethWrapper,
     cctpParams,
     wormholeParams,
+    wormholeGeneric,
   ]);
 
   console.log(`[${networkName}] RomeBridgeWithdraw → ${withdraw.address}`);

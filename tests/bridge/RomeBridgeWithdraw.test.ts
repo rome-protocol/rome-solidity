@@ -97,6 +97,7 @@ describe("RomeBridgeWithdraw — error paths", () => {
         wrappedMeta: ZERO_BYTES32,
         targetChain: 2,
       },
+      { targetChains: [], assetWrappers: [] }, // generic-Wormhole config (unused by these guard tests)
     ]);
   });
 

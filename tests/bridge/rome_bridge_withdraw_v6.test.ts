@@ -46,6 +46,7 @@ describe("RomeBridgeWithdraw v6 — domain allowlist", function () {
     const weth = await viem.deployContract("MockSplErc20", [PK(41)]);
     bridge = await viem.deployContract("RomeBridgeWithdraw", [
       FORWARDER, usdc.address, weth.address, CCTP, WH,
+      { targetChains: [], assetWrappers: [] }, // generic-Wormhole config (unused by these CCTP guard tests)
     ]);
   });
 
@@ -73,7 +74,7 @@ describe("RomeBridgeWithdraw v6 — domain allowlist", function () {
     const usdc = await viem.deployContract("MockSplErc20", [PK(40)]);
     const badCctp = { ...CCTP, domains: [0], remoteTokenMessengers: [PK(8), PK(9)] };
     await assert.rejects(
-      viem.deployContract("RomeBridgeWithdraw", [FORWARDER, usdc.address, usdc.address, badCctp, WH]),
+      viem.deployContract("RomeBridgeWithdraw", [FORWARDER, usdc.address, usdc.address, badCctp, WH, { targetChains: [], assetWrappers: [] }]),
       /DomainConfigLengthMismatch/,
     );
   });
