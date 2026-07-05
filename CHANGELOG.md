@@ -1,3 +1,22 @@
+## 2026-07-06 — RomeBridgeWithdraw: egress fail-closed guard parity (burnETH + burnUSDC)
+
+Uniform input-validation across all egress legs — two guards were missing, both
+now fail closed before any precompile touch. No happy-path behavior change.
+
+- `burnETH` now reverts `ZeroRecipient` when `ethereumRecipient == address(0)`,
+  before the amount/balance checks. It was the only egress leg missing this guard
+  (`_burnUSDC`, `burnToWormhole`, `bridgeOutToSolana`, `ensureRecipientAta` all
+  had it). A zero destination produced an unredeemable Wormhole VAA
+  (`targetAddress = 0`) → permanent loss of the burned wETH.
+- `_burnUSDC` now reverts `UnsupportedDestinationDomain` for the Solana domain
+  (`CCTPV2Lib.DOMAIN_SOLANA == 5`), even if a deployment maps it. The address-typed
+  `burnUSDC` API left-pads an EVM address into `mintRecipient`, which is not a valid
+  Solana token account — a domain-5 burn would carry an unredeemable recipient.
+  (A Solana CCTP recipient needs a `bytes32`-recipient entry point, out of scope.)
+- Test-pinned: `tests/bridge/RomeBridgeWithdraw.test.ts` — "burnETH reverts
+  ZeroRecipient when recipient is address(0)" + "burnUSDC reverts
+  UnsupportedDestinationDomain for Solana domain 5 even when it is allowlisted".
+
 ## 2026-07-05 — RomeBridgeWithdraw: generic Wormhole burn (asset-agnostic + per-call target chain)
 
 - `burnToWormhole(address assetWrapper, uint256 amount, bytes32 recipient, uint16 targetChain)`
