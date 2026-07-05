@@ -102,6 +102,31 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ///      within the same tx and unique across txs.
     mapping(address => uint64) public burnNonce;
 
+    /// @notice Generic-Wormhole target-chain allowlist: Wormhole chain id →
+    ///         allowed. Fail-closed — `burnToWormhole` to an unlisted chain
+    ///         reverts. Populated once at construction from deploy config;
+    ///         mirrors `cctpRemoteTokenMessengers`' dual role (config + guard).
+    mapping(uint16 => bool) public wormholeTargetChainAllowed;
+
+    /// @notice Generic-Wormhole asset allowlist: registered SPL_ERC20 wrapper
+    ///         address → allowed. Only registered wrappers can burn to Wormhole.
+    mapping(address => bool) public wormholeAssetAllowed;
+
+    /// @notice Admin of the Wormhole allowlist setters. Seeded at construction
+    ///         from `WormholeGenericConfig.admin`; transferable (cold-ledger
+    ///         handover, matching this repo's mainnet admin pattern). The ctor
+    ///         allowlist is a SEED — the owner enables further assets/chains on
+    ///         the live contract (no redeploy per addition). Only gates the two
+    ///         allowlist setters + ownership transfer; every value path
+    ///         (burnUSDC/burnETH/burnToWormhole/bridgeOutToSolana) is
+    ///         permissionless and unaffected.
+    address public owner;
+
+    modifier onlyOwner() {
+        if (_msgSender() != owner) revert NotOwner(_msgSender());
+        _;
+    }
+
     // -------------------------------------------------------------------------
     // Errors
     // -------------------------------------------------------------------------
@@ -111,6 +136,17 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     error UnsupportedDestinationDomain(uint32 domain);
     error DomainConfigLengthMismatch();
     error ZeroRecipient();
+    error UnsupportedTargetChain(uint16 targetChain);
+    error UnsupportedAssetWrapper(address assetWrapper);
+    error NotOwner(address caller);
+    error ZeroOwner();
+
+    // -------------------------------------------------------------------------
+    // Admin events
+    // -------------------------------------------------------------------------
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event WormholeAssetAllowedSet(address indexed assetWrapper, bool allowed);
+    event WormholeTargetChainAllowedSet(uint16 indexed targetChain, bool allowed);
 
     // -------------------------------------------------------------------------
     // Constructor params structs (avoids stack-too-deep with many constructor args)
@@ -177,6 +213,18 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         uint16 targetChain;       // Wormhole destination chain id: 2 mainnet ETH, 10002 Sepolia
     }
 
+    /// @notice Generic-Wormhole config: per-call target-chain allowlist +
+    ///         registered asset wrappers. Enables asset-agnostic +
+    ///         multi-destination Wormhole egress (`burnToWormhole`), closing
+    ///         the inbound⇒outbound symmetry for non-ETH assets (LSTs etc.).
+    ///         Independent of the legacy ETH-only `burnETH` path (which keeps
+    ///         its own immutables); nothing is allowed unless listed here.
+    struct WormholeGenericConfig {
+        address admin;            // owner of the post-deploy allowlist setters (see `owner`)
+        uint16[] targetChains;    // Wormhole chain ids allowed as burnToWormhole destinations
+        address[] assetWrappers;  // SPL_ERC20 wrappers allowed as burnToWormhole assets
+    }
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -185,7 +233,8 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         SPL_ERC20 _usdc,
         SPL_ERC20 _weth,
         CctpParams memory cctp,
-        WormholeParams memory wh
+        WormholeParams memory wh,
+        WormholeGenericConfig memory whg
     ) ERC2771Context(forwarder) {
         usdcWrapper = _usdc;
         wethWrapper = _weth;
@@ -227,6 +276,45 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         wormholeSequence           = wh.sequence;
         wormholeWrappedMeta        = wh.wrappedMeta;
         wormholeTargetChain        = wh.targetChain;
+        // Generic-Wormhole allowlists (asset-agnostic + multi-destination egress).
+        // Fail-closed SEED: only chains/wrappers listed here can burnToWormhole
+        // until `owner` lists more via the setters below.
+        if (whg.admin == address(0)) revert ZeroOwner();
+        owner = whg.admin;
+        emit OwnershipTransferred(address(0), whg.admin);
+        for (uint256 i = 0; i < whg.targetChains.length; i++) {
+            wormholeTargetChainAllowed[whg.targetChains[i]] = true;
+        }
+        for (uint256 i = 0; i < whg.assetWrappers.length; i++) {
+            wormholeAssetAllowed[whg.assetWrappers[i]] = true;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Admin: post-deploy Wormhole allowlist management
+    // -------------------------------------------------------------------------
+
+    /// @notice Enable/disable an SPL_ERC20 wrapper as a `burnToWormhole` asset.
+    ///         Lets the owner add wmSOL / arb / avax (etc.) on the LIVE contract
+    ///         — the reason v8 exists (v7's allowlist was constructor-frozen).
+    function setWormholeAssetAllowed(address assetWrapper, bool allowed) external onlyOwner {
+        wormholeAssetAllowed[assetWrapper] = allowed;
+        emit WormholeAssetAllowedSet(assetWrapper, allowed);
+    }
+
+    /// @notice Enable/disable a Wormhole target chain for `burnToWormhole`
+    ///         (e.g. Arbitrum 23, Avalanche/Fuji 6) without a redeploy.
+    function setWormholeTargetChainAllowed(uint16 targetChain, bool allowed) external onlyOwner {
+        wormholeTargetChainAllowed[targetChain] = allowed;
+        emit WormholeTargetChainAllowedSet(targetChain, allowed);
+    }
+
+    /// @notice Transfer allowlist-admin ownership (cold-ledger handover). Reverts
+    ///         on the zero address so admin can't be accidentally burned.
+    function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert ZeroOwner();
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
     }
 
     // -------------------------------------------------------------------------
@@ -516,6 +604,154 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         if (!ok) revert CpiFailed(result);
 
         emit Withdrawn(user, wethMint, amount, ethereumRecipient, 1);
+    }
+
+    /// @notice Generic (asset-agnostic) counterpart of `approveBurnETH`.
+    ///         Delegates the Wormhole authority_signer PDA as burn delegate on
+    ///         the caller's ATA for `assetWrapper`'s mint. Must precede
+    ///         `burnToWormhole` in a SEPARATE tx (the ~1.4M-CU split, same as
+    ///         approveBurnETH → burnETH).
+    /// @param assetWrapper Registered SPL_ERC20 wrapper for the asset.
+    /// @param amount       Burn allowance to delegate (base units; uint64-bounded).
+    function approveWormholeBurn(address assetWrapper, uint256 amount) external {
+        if (!wormholeAssetAllowed[assetWrapper]) {
+            revert UnsupportedAssetWrapper(assetWrapper);
+        }
+        if (amount > type(uint64).max) {
+            revert AmountExceedsUint64(amount);
+        }
+        SPL_ERC20 wrapper = SPL_ERC20(assetWrapper);
+        bytes32 mint = wrapper.mint_id();
+        uint8 decimals = wrapper.decimals();
+        address user = _msgSender();
+        bytes32 userAta = HelperProgram.ata(user, mint);
+
+        // SPL approve_checked via HelperProgram, delegate = wormholeAuthoritySigner
+        // (raw Solana PDA owned by the Wormhole Token Bridge). Mirrors
+        // approveBurnETH but with the mint/decimals derived from the wrapper
+        // instead of the wethMint/wethDecimals immutables.
+        (bool ok, bytes memory result) = address(HelperProgram).delegatecall(
+            abi.encodeWithSignature(
+                "approve_spl_raw_delegate(bytes32,bytes32,uint64,bytes32,uint8)",
+                userAta,
+                wormholeAuthoritySigner,
+                uint64(amount),
+                mint,
+                decimals
+            )
+        );
+        if (!ok) revert CpiFailed(result);
+    }
+
+    /// @notice Generic (asset-agnostic, multi-destination) Wormhole burn —
+    ///         the per-asset + per-call-target counterpart of `burnETH`.
+    ///         Burns `amount` of the asset behind `assetWrapper` and initiates
+    ///         a Wormhole `transfer_wrapped` CPI to (`targetChain`, `recipient`).
+    ///         The mint + `wrapped_meta` are derived from the wrapper at runtime
+    ///         (replacing the wethMint/wormholeWrappedMeta/wormholeTargetChain
+    ///         immutables). Must be preceded by
+    ///         `approveWormholeBurn(assetWrapper, amount)` in a separate tx.
+    ///         Destination claim is Wormhole-native (user redeems the VAA).
+    /// @param assetWrapper Registered SPL_ERC20 wrapper for the asset.
+    /// @param amount       Token amount in the wrapper's SPL decimals (uint64-bounded).
+    /// @param recipient    32-byte recipient on target chain (EVM addr left-padded; Solana pubkey raw).
+    /// @param targetChain  Wormhole chain id, PER-CALL (must be allowlisted).
+    function burnToWormhole(
+        address assetWrapper,
+        uint256 amount,
+        bytes32 recipient,
+        uint16 targetChain
+    ) external {
+        // Guards ordered BEFORE any Rome precompile touch, so their exact
+        // reverts are assertable on a simulated EVM (parity with _burnUSDC).
+        if (!wormholeAssetAllowed[assetWrapper]) {
+            revert UnsupportedAssetWrapper(assetWrapper);
+        }
+        if (!wormholeTargetChainAllowed[targetChain]) {
+            revert UnsupportedTargetChain(targetChain);
+        }
+        if (recipient == bytes32(0)) {
+            revert ZeroRecipient();
+        }
+        if (amount > type(uint64).max) {
+            revert AmountExceedsUint64(amount);
+        }
+
+        SPL_ERC20 wrapper = SPL_ERC20(assetWrapper);
+        bytes32 mint = wrapper.mint_id();
+        address user = _msgSender();
+        uint256 balance = wrapper.balanceOf(user);
+        if (balance < amount) {
+            revert InsufficientBalance(user, amount, balance);
+        }
+
+        bytes32 userPda = RomeEVMAccount.pda(user);
+        bytes32 userAta = HelperProgram.ata(user, mint);
+
+        // wrapped_meta = ["meta", mint] PDA under the Token Bridge — derived
+        // per-asset at runtime (was the wethMint-specific immutable). Same
+        // runtime-derivation pattern as _burnUSDC's denylist PDA.
+        ISystemProgram.Seed[] memory metaSeeds = new ISystemProgram.Seed[](2);
+        metaSeeds[0] = ISystemProgram.Seed(bytes("meta"));
+        metaSeeds[1] = ISystemProgram.Seed(abi.encodePacked(mint));
+        (bytes32 wrappedMeta, ) = PdaDeriver.derive(wormholeTokenBridgeProgram, metaSeeds);
+
+        // Per-tx Wormhole message account: salted PDA under the user (nonce, not
+        // block.number — unstable across emulation/execution on Rome).
+        uint64 nonce = burnNonce[user];
+        burnNonce[user] = nonce + 1;
+        bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", address(this), nonce));
+        bytes32 messageAccount = RomeEVMAccount.pda_with_salt(user, whSalt);
+
+        bytes memory ixData = WormholeTokenBridgeLib.encodeTransferTokens(
+            WormholeTokenBridgeLib.TransferParams({
+                amount:        uint64(amount),
+                fee:           0,
+                targetAddress: recipient,
+                targetChain:   targetChain,
+                nonce:         uint32(block.timestamp)
+            })
+        );
+
+        ICrossProgramInvocation.AccountMeta[] memory metas =
+            WormholeTokenBridgeLib.buildTransferWrappedAccounts(
+                WormholeTokenBridgeLib.TransferWrappedAccounts({
+                    payer:            userPda,
+                    config:           wormholeConfig,
+                    from:             userAta,
+                    from_owner:       userPda,
+                    mint:             mint,
+                    wrapped_meta:     wrappedMeta,
+                    authority_signer: wormholeAuthoritySigner,
+                    bridge_config:    wormholeBridgeConfig,
+                    message:          messageAccount,
+                    emitter:          wormholeEmitter,
+                    sequence:         wormholeSequence,
+                    fee_collector:    wormholeFeeCollector,
+                    clock:            whClockSysvar,
+                    rent:             whRentSysvar,
+                    system:           whSystemProgram,
+                    wormhole_core:    wormholeCoreProgram,
+                    token:            whSplTokenProgram,
+                    token_bridge_program: wormholeTokenBridgeProgram
+                })
+            );
+
+        bytes32[] memory salts = new bytes32[](1);
+        salts[0] = whSalt;
+
+        (bool ok, bytes memory result) = address(CpiProgram).delegatecall(
+            abi.encodeWithSignature(
+                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
+                wormholeTokenBridgeProgram,
+                metas,
+                ixData,
+                salts
+            )
+        );
+        if (!ok) revert CpiFailed(result);
+
+        emit WormholeBurn(user, assetWrapper, mint, amount, recipient, targetChain);
     }
 
     // -------------------------------------------------------------------------

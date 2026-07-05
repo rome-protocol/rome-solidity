@@ -1,3 +1,25 @@
+## 2026-07-05 — RomeBridgeWithdraw: generic Wormhole burn (asset-agnostic + per-call target chain)
+
+- `burnToWormhole(address assetWrapper, uint256 amount, bytes32 recipient, uint16 targetChain)`
+  + `approveWormholeBurn(address assetWrapper, uint256 amount)` — generalize the
+  Wormhole outbound burn from ETH-only/Sepolia-only to per-call asset + per-call
+  target chain. Mint + `wrapped_meta` are derived from the wrapper at runtime
+  (replaces the `wethMint`/`wormholeWrappedMeta` immutables); `targetChain`
+  replaces the immutable `wormholeTargetChain`. Added ALONGSIDE the unchanged
+  `burnETH`/`approveBurnETH` — no regression.
+- New `WormholeGenericConfig` constructor param (`{uint16[] targetChains; address[] assetWrappers}`)
+  → fail-closed `wormholeTargetChainAllowed` + `wormholeAssetAllowed` mappings.
+  Unlisted target reverts `UnsupportedTargetChain`; unregistered wrapper reverts
+  `UnsupportedAssetWrapper`. Mirrors `burnUSDC`'s per-domain allowlist model.
+- New event `WormholeBurn(user, assetWrapper, mint, amount, recipient, targetChain)`.
+- Closes inbound⇒outbound symmetry for non-USDC Wormhole assets (LSTs etc.):
+  anything bridged in via Wormhole can now be sent back out.
+- Guard suite test-pinned (`tests/bridge/rome_bridge_withdraw_wormhole_generic.test.ts`,
+  8 tests); the happy-path `transfer_wrapped` CPI is validated on-chain (needs a
+  live Rome node, like the other bridge integration tests).
+- Downstream: bridge-api gains a `token-wormhole-outbound` builder targeting this
+  ABI (follow-up); existing `burnETH`/`burnUSDC` callers unaffected.
+
 ## 2026-07-04 — RomeBridgeWithdraw v6: CCTP v2 + per-call destination domain
 
 - `burnUSDC(uint256, address, uint32 destinationDomain)` — outbound USDC to any

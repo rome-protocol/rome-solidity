@@ -47,6 +47,28 @@ interface RomeBridgeEvents {
         bytes32 solanaRecipient
     );
 
+    /// @notice Emitted on a generic (asset-agnostic, multi-destination)
+    ///         Wormhole outbound burn via `burnToWormhole`. The claim on the
+    ///         target chain is Wormhole-native (the user redeems the VAA), so
+    ///         this event is the bridge-api's outbound anchor. Distinct from
+    ///         the ETH-only `Withdrawn(path=1)`: the recipient is a 32-byte
+    ///         value (EVM addr left-padded / Solana pubkey raw) and the
+    ///         destination is a per-call Wormhole chain id.
+    /// @param user         EVM address of the burning user.
+    /// @param assetWrapper Registered SPL_ERC20 wrapper burned.
+    /// @param mint         SPL mint (bytes32 pubkey) of the wrapper.
+    /// @param amount       Token amount (in SPL decimals).
+    /// @param recipient    32-byte recipient on the target chain.
+    /// @param targetChain  Wormhole chain id of the destination.
+    event WormholeBurn(
+        address indexed user,
+        address indexed assetWrapper,
+        bytes32 mint,
+        uint256 amount,
+        bytes32 recipient,
+        uint16 targetChain
+    );
+
     /// @notice Emitted when the paymaster sponsors a user transaction.
     /// @param user            EVM address of the sponsored user.
     /// @param remainingBudget Remaining sponsorship budget after this transaction.
