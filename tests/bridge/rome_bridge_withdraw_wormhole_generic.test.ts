@@ -83,6 +83,23 @@ describe("RomeBridgeWithdraw — generic Wormhole burn", function () {
     assert.equal(await bridge.read.wormholeAssetAllowed([unregistered.address]), false);
   });
 
+  it("allowlist is mint-keyed: any wrapper over an allowed mint is accepted", async function () {
+    // `weth` (mint PK(41)) is ctor-seeded. Deploy a SECOND, distinct wrapper
+    // CONTRACT over the SAME mint. Wrapper-instance-keyed (old) would reject it
+    // (different address); mint-keyed (new) accepts it, because all wrappers over
+    // one mint are fungible views of the same on-chain ATA. This is exactly the
+    // registry/deployments/v8 wrapper drift (3 wrappers, 1 mint) made harmless.
+    const wethAlt = await viem.deployContract("MockSplErc20", [PK(41)]);
+    assert.notEqual(wethAlt.address.toLowerCase(), weth.address.toLowerCase());
+    assert.equal(await bridge.read.wormholeAssetAllowed([wethAlt.address]), true);
+    // And it must clear the burnToWormhole asset guard — reverting on a LATER
+    // guard (ZeroRecipient), not UnsupportedAssetWrapper.
+    await assert.rejects(
+      bridge.write.burnToWormhole([wethAlt.address, 1000n, ZERO, 10002]),
+      /ZeroRecipient/,
+    );
+  });
+
   it("burnToWormhole to an unlisted target chain reverts UnsupportedTargetChain", async function () {
     await assert.rejects(
       bridge.write.burnToWormhole([weth.address, 1000n, RECIPIENT, 5]),
