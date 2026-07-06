@@ -1,3 +1,21 @@
+## 2026-07-06 — RomeBridgeWithdraw: mint-keyed Wormhole allowlist (held for next redeploy / v10)
+
+The generic Wormhole allowlist is now keyed on the SPL **mint** (`wrapper.mint_id()`)
+instead of the wrapper-instance address. Any ERC20-SPL wrapper over an allowed mint is
+accepted — all wrappers over one mint are fungible views of the same on-chain ATA — which
+removes the multi-wrapper drift class (registry / deployments / v8 each holding a distinct
+wrapper over the same mint) with **no security change** (the mint is the real asset identity).
+
+- **Caller-transparent:** `burnToWormhole` / `approveWormholeBurn` / `setWormholeAssetAllowed`
+  keep the `address assetWrapper` parameter, and `wormholeAssetAllowed(address)` stays a
+  view (now mint-derived) — bridge-api / rome-ui need no changes. New storage getter
+  `wormholeMintAllowed(bytes32)`; constructor seed + setter + both burn-path guards derive
+  the mint internally.
+- **Contract change → requires a RomeBridgeWithdraw redeploy (v10).** Merging is source-ready;
+  the deployed v9 (`0xa5a010bc…`) is unaffected until the next redeploy picks this up.
+- Test-pinned: `tests/bridge/rome_bridge_withdraw_wormhole_generic.test.ts` — "allowlist is
+  mint-keyed: any wrapper over an allowed mint is accepted".
+
 ## 2026-07-06 — RomeBridgeWithdraw: egress fail-closed guard parity (burnETH + burnUSDC)
 
 Uniform input-validation across all egress legs — two guards were missing, both

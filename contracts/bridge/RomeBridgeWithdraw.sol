@@ -108,9 +108,13 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ///         mirrors `cctpRemoteTokenMessengers`' dual role (config + guard).
     mapping(uint16 => bool) public wormholeTargetChainAllowed;
 
-    /// @notice Generic-Wormhole asset allowlist: registered SPL_ERC20 wrapper
-    ///         address → allowed. Only registered wrappers can burn to Wormhole.
-    mapping(address => bool) public wormholeAssetAllowed;
+    /// @notice Generic-Wormhole asset allowlist, keyed on the SPL MINT (not the
+    ///         wrapper instance). All ERC20-SPL wrappers over one mint are fungible
+    ///         views of the same on-chain ATA, so keying on the mint accepts any
+    ///         wrapper over an allowed asset and kills the multi-wrapper drift
+    ///         class. The public API stays wrapper-typed via the
+    ///         `wormholeAssetAllowed(address)` view below — callers are unchanged.
+    mapping(bytes32 => bool) public wormholeMintAllowed;
 
     /// @notice Admin of the Wormhole allowlist setters. Seeded at construction
     ///         from `WormholeGenericConfig.admin`; transferable (cold-ledger
@@ -286,7 +290,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
             wormholeTargetChainAllowed[whg.targetChains[i]] = true;
         }
         for (uint256 i = 0; i < whg.assetWrappers.length; i++) {
-            wormholeAssetAllowed[whg.assetWrappers[i]] = true;
+            wormholeMintAllowed[SPL_ERC20(whg.assetWrappers[i]).mint_id()] = true;
         }
     }
 
@@ -298,8 +302,14 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ///         Lets the owner add wmSOL / arb / avax (etc.) on the LIVE contract
     ///         — the reason v8 exists (v7's allowlist was constructor-frozen).
     function setWormholeAssetAllowed(address assetWrapper, bool allowed) external onlyOwner {
-        wormholeAssetAllowed[assetWrapper] = allowed;
+        wormholeMintAllowed[SPL_ERC20(assetWrapper).mint_id()] = allowed;
         emit WormholeAssetAllowedSet(assetWrapper, allowed);
+    }
+
+    /// @notice Back-compat wrapper-typed view: is the mint behind `assetWrapper`
+    ///         allowed for burnToWormhole? True for ANY wrapper over an allowed mint.
+    function wormholeAssetAllowed(address assetWrapper) external view returns (bool) {
+        return wormholeMintAllowed[SPL_ERC20(assetWrapper).mint_id()];
     }
 
     /// @notice Enable/disable a Wormhole target chain for `burnToWormhole`
@@ -627,7 +637,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     /// @param assetWrapper Registered SPL_ERC20 wrapper for the asset.
     /// @param amount       Burn allowance to delegate (base units; uint64-bounded).
     function approveWormholeBurn(address assetWrapper, uint256 amount) external {
-        if (!wormholeAssetAllowed[assetWrapper]) {
+        if (!wormholeMintAllowed[SPL_ERC20(assetWrapper).mint_id()]) {
             revert UnsupportedAssetWrapper(assetWrapper);
         }
         if (amount > type(uint64).max) {
@@ -677,7 +687,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ) external {
         // Guards ordered BEFORE any Rome precompile touch, so their exact
         // reverts are assertable on a simulated EVM (parity with _burnUSDC).
-        if (!wormholeAssetAllowed[assetWrapper]) {
+        if (!wormholeMintAllowed[SPL_ERC20(assetWrapper).mint_id()]) {
             revert UnsupportedAssetWrapper(assetWrapper);
         }
         if (!wormholeTargetChainAllowed[targetChain]) {
