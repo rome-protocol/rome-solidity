@@ -69,6 +69,27 @@ interface RomeBridgeEvents {
         uint16 targetChain
     );
 
+    /// @notice Emitted on a Wormhole transfer_native egress via
+    ///         `transferNativeToWormhole` — the Solana-native-mint counterpart of
+    ///         `WormholeBurn`. transfer_native LOCKS the tokens in the Token
+    ///         Bridge's per-mint custody (it does NOT burn); the recipient
+    ///         redeems the VAA on the target chain. A distinct event lets indexers
+    ///         tell native-lock egress from wrapped-burn egress.
+    /// @param user         EVM address of the transferring user.
+    /// @param assetWrapper Registered SPL_ERC20 wrapper (over a Solana-native mint).
+    /// @param mint         SPL mint (bytes32 pubkey) of the native asset.
+    /// @param amount       Token amount (in SPL decimals).
+    /// @param recipient    32-byte recipient on the target chain.
+    /// @param targetChain  Wormhole chain id of the destination.
+    event WormholeNativeTransfer(
+        address indexed user,
+        address indexed assetWrapper,
+        bytes32 mint,
+        uint256 amount,
+        bytes32 recipient,
+        uint16 targetChain
+    );
+
     /// @notice Emitted when the paymaster sponsors a user transaction.
     /// @param user            EVM address of the sponsored user.
     /// @param remainingBudget Remaining sponsorship budget after this transaction.

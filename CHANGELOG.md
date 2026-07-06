@@ -1,3 +1,36 @@
+## 2026-07-06 — RomeBridgeWithdraw: Wormhole transfer_native egress (v11, Solana-native mints)
+
+`transferNativeToWormhole(address assetWrapper, uint256 amount, bytes32 recipient, uint16 targetChain)`
+— the Solana-native-mint counterpart of `burnToWormhole`. Where `burnToWormhole` uses
+Wormhole `transfer_wrapped` (Wormhole-origin assets like wETH), this uses `transfer_native`
+(solitaire tag 5) so a **Solana-native mint** (wSOL, mSOL, LSTs) egresses via Wormhole:
+tokens move into the Token Bridge's per-mint custody and a transfer VAA is posted for the
+recipient to redeem on the target chain.
+
+- **Per-mint custody (fund-critical):** the custody account is derived at runtime as
+  `find_program_address([mint], tokenBridge)` — matching
+  `@wormhole-foundation/sdk-solana-tokenbridge` `deriveCustodyKey`. v10's single stored
+  `wormholeCustody` serves ONE mint only; native egress across mints requires the per-mint
+  derivation. `custody_signer` is global (the stored deploy value is reused).
+- **Reuses `approveWormholeBurn`** for the separate-tx delegate approval — approving
+  `authority_signer` on the caller's ATA is asset-neutral and identical for the
+  from → custody move (no redundant approve function added).
+- **New event `WormholeNativeTransfer`** — native LOCKS in custody (does not burn), so a
+  distinct event lets indexers tell native-lock egress from wrapped-burn (`WormholeBurn`).
+- **Lib:** `WormholeTokenBridgeLib.encodeTransferNative` (tag 0x05; payload identical to
+  transfer_wrapped) + `buildTransferNativeAccounts` (canonical 17-account IDL layout — NO
+  `from_owner`; `custody`+`custody_signer` replace `wrapped_meta`; `tokenProgram` before
+  `wormholeProgram` — plus the #266 emulator trailing `token_bridge_program`). The dead,
+  never-wired `TransferAccounts`/`buildAccounts` scaffold (wrong account order) was removed.
+- **Contract change → requires a RomeBridgeWithdraw redeploy (v11).** Source-ready; deployed
+  v10 (`0xd2161cd5…`) is unaffected until the next redeploy. Deploy seeds the wSOL + mSOL
+  mints into the Wormhole allowlist (constructor or `set-wormhole-allowlist.ts`); the
+  `custody_signer` deploy param is already derived.
+- Test-pinned: `tests/bridge/wormhole_native_lib.test.ts` (tag-0x05 byte layout + 18-meta
+  native account order/flags, asserted against the Wormhole SDK IDL) +
+  `tests/bridge/wormhole_native_egress.test.ts` (asset / target-chain / zero-recipient /
+  amount-bound guards + mint-keyed allowlist on the native entry point).
+
 ## 2026-07-06 — RomeBridgeWithdraw: mint-keyed Wormhole allowlist (held for next redeploy / v10)
 
 The generic Wormhole allowlist is now keyed on the SPL **mint** (`wrapper.mint_id()`)

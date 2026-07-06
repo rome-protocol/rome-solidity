@@ -16,6 +16,12 @@ library WormholeTokenBridgeLib {
     ///      Coincides numerically with TRANSFER_TOKENS_TAG; kept separate for clarity.
     uint8 internal constant TRANSFER_WRAPPED_TAG = 0x04;
 
+    /// @notice TransferNative instruction tag (solitaire enum index 5) — the
+    ///         Solana-native-mint egress (wSOL, mSOL, LSTs). Same payload as
+    ///         transfer_wrapped; distinct account layout (custody + custody_signer,
+    ///         no from_owner). See buildTransferNativeAccounts.
+    uint8 internal constant TRANSFER_NATIVE_TAG = 0x05;
+
     /// @notice Parameters for the transfer_tokens instruction.
     /// @dev amount and fee are u64 — Wormhole Token Bridge native format.
     ///      Callers accepting uint256 from the ERC-20 boundary must range-check
@@ -28,27 +34,24 @@ library WormholeTokenBridgeLib {
         uint32 nonce;
     }
 
-    /// @notice Aggregated account references for the transfer_tokens instruction.
-    /// @dev Passed as a single struct to avoid stack-too-deep in buildAccounts.
-    struct TransferAccounts {
-        bytes32 payer;
-        bytes32 config;
-        bytes32 from_owner;
-        bytes32 from;
-        bytes32 mint;
-        bytes32 custody;
-        bytes32 authority_signer;
-        bytes32 custody_signer;
-        bytes32 bridge_config;
-        bytes32 message;
-        bytes32 emitter;
-        bytes32 sequence;
-        bytes32 fee_collector;
-        bytes32 clock;
-        bytes32 rent;
-        bytes32 system;
-        bytes32 token;
-        bytes32 wormhole_core;
+    /// @notice Encodes a transfer_native instruction payload (solitaire tag 5).
+    /// @dev Byte-identical to encodeTransferTokens except the leading tag. The
+    ///      shared TransferParams struct (amount/fee u64, target 32B, chain u16,
+    ///      nonce u32) is reused.
+    ///      Layout: [tag:1=0x05][nonce:4 LE][amount:8 LE][fee:8 LE][target:32][chain:2 LE]
+    function encodeTransferNative(TransferParams memory p)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        return abi.encodePacked(
+            TRANSFER_NATIVE_TAG,
+            _u32le(p.nonce),
+            _u64le(p.amount),
+            _u64le(p.fee),
+            p.targetAddress,
+            _u16le(p.targetChain)
+        );
     }
 
     /// @notice Encodes a transfer_tokens instruction payload.
@@ -68,33 +71,82 @@ library WormholeTokenBridgeLib {
         );
     }
 
-    /// @notice Builds the ordered account list for the transfer_tokens instruction.
-    /// @dev Accepts a TransferAccounts struct to avoid stack-too-deep with 18 accounts.
-    function buildAccounts(TransferAccounts memory a)
+    // -------------------------------------------------------------------------
+    // TransferNative — account layout for Solana-native mints (wSOL, mSOL, LSTs)
+    // -------------------------------------------------------------------------
+
+    /// @notice Aggregated account references for the transfer_native instruction.
+    /// @dev Per the Wormhole SDK IDL (@wormhole-foundation/sdk-solana-tokenbridge
+    ///      tokenBridgeType.transferNative) — 17 accounts, NO `from_owner`
+    ///      (native is delegate-authorized via authority_signer). Order + flags:
+    ///      0  payer             signer, writable
+    ///      1  config            readonly (token bridge config)
+    ///      2  from              writable (user ATA)
+    ///      3  mint              writable (the native SPL mint)
+    ///      4  custody           writable  — PER-MINT: find_program_address([mint], tokenBridge)
+    ///      5  authority_signer  readonly
+    ///      6  custody_signer    readonly  — global
+    ///      7  bridge_config     writable (Core bridge config)
+    ///      8  message           signer, writable
+    ///      9  emitter           readonly
+    ///      10 sequence          writable
+    ///      11 fee_collector     writable
+    ///      12 clock             readonly
+    ///      13 rent              readonly
+    ///      14 system            readonly
+    ///      15 token             readonly (SPL Token program)  — native IDL puts token BEFORE core
+    ///      16 wormhole_core     readonly (Core program)       — (the REVERSE of the wrapped tail)
+    struct TransferNativeAccounts {
+        bytes32 payer;
+        bytes32 config;
+        bytes32 from;
+        bytes32 mint;
+        bytes32 custody;
+        bytes32 authority_signer;
+        bytes32 custody_signer;
+        bytes32 bridge_config;
+        bytes32 message;
+        bytes32 emitter;
+        bytes32 sequence;
+        bytes32 fee_collector;
+        bytes32 clock;
+        bytes32 rent;
+        bytes32 system;
+        bytes32 token;
+        bytes32 wormhole_core;
+        // POST-#266 EMULATOR WORKAROUND: the Wormhole Token Bridge program
+        // itself. Not in the 17-account IDL layout; solitaire ignores trailing
+        // accounts, but Rome's Mollusk emulator (ix_store filter) only loads
+        // accounts present in OUTER metas, so the inner CPI needs it here.
+        // Mirrors buildTransferWrappedAccounts.
+        bytes32 token_bridge_program;
+    }
+
+    function buildTransferNativeAccounts(TransferNativeAccounts memory a)
         internal
         pure
         returns (ICrossProgramInvocation.AccountMeta[] memory metas)
     {
         metas = new ICrossProgramInvocation.AccountMeta[](18);
-
         metas[0]  = ICrossProgramInvocation.AccountMeta(a.payer,            true,  true);   // payer
         metas[1]  = ICrossProgramInvocation.AccountMeta(a.config,           false, false);  // config
-        metas[2]  = ICrossProgramInvocation.AccountMeta(a.from_owner,       true,  false);  // from_owner
-        metas[3]  = ICrossProgramInvocation.AccountMeta(a.from,             false, true);   // from
-        metas[4]  = ICrossProgramInvocation.AccountMeta(a.mint,             false, true);   // mint
-        metas[5]  = ICrossProgramInvocation.AccountMeta(a.custody,          false, true);   // custody
-        metas[6]  = ICrossProgramInvocation.AccountMeta(a.authority_signer, false, false);  // authority_signer
-        metas[7]  = ICrossProgramInvocation.AccountMeta(a.custody_signer,   false, false);  // custody_signer
-        metas[8]  = ICrossProgramInvocation.AccountMeta(a.bridge_config,    false, true);   // bridge_config
-        metas[9]  = ICrossProgramInvocation.AccountMeta(a.message,          true,  true);   // message
-        metas[10] = ICrossProgramInvocation.AccountMeta(a.emitter,          false, false);  // emitter
-        metas[11] = ICrossProgramInvocation.AccountMeta(a.sequence,         false, true);   // sequence
-        metas[12] = ICrossProgramInvocation.AccountMeta(a.fee_collector,    false, true);   // fee_collector
-        metas[13] = ICrossProgramInvocation.AccountMeta(a.clock,            false, false);  // clock
-        metas[14] = ICrossProgramInvocation.AccountMeta(a.rent,             false, false);  // rent
-        metas[15] = ICrossProgramInvocation.AccountMeta(a.system,           false, false);  // system
-        metas[16] = ICrossProgramInvocation.AccountMeta(a.token,            false, false);  // token
-        metas[17] = ICrossProgramInvocation.AccountMeta(a.wormhole_core,    false, false);  // wormhole_core
+        metas[2]  = ICrossProgramInvocation.AccountMeta(a.from,             false, true);   // from
+        metas[3]  = ICrossProgramInvocation.AccountMeta(a.mint,             false, true);   // mint
+        metas[4]  = ICrossProgramInvocation.AccountMeta(a.custody,          false, true);   // custody (per-mint)
+        metas[5]  = ICrossProgramInvocation.AccountMeta(a.authority_signer, false, false);  // authority_signer
+        metas[6]  = ICrossProgramInvocation.AccountMeta(a.custody_signer,   false, false);  // custody_signer (global)
+        metas[7]  = ICrossProgramInvocation.AccountMeta(a.bridge_config,    false, true);   // wormhole core config
+        metas[8]  = ICrossProgramInvocation.AccountMeta(a.message,          true,  true);   // message
+        metas[9]  = ICrossProgramInvocation.AccountMeta(a.emitter,          false, false);  // emitter
+        metas[10] = ICrossProgramInvocation.AccountMeta(a.sequence,         false, true);   // sequence
+        metas[11] = ICrossProgramInvocation.AccountMeta(a.fee_collector,    false, true);   // fee_collector
+        metas[12] = ICrossProgramInvocation.AccountMeta(a.clock,            false, false);  // clock
+        metas[13] = ICrossProgramInvocation.AccountMeta(a.rent,             false, false);  // rent
+        metas[14] = ICrossProgramInvocation.AccountMeta(a.system,           false, false);  // system
+        metas[15] = ICrossProgramInvocation.AccountMeta(a.token,            false, false);  // SPL Token program
+        metas[16] = ICrossProgramInvocation.AccountMeta(a.wormhole_core,    false, false);  // Core program
+        // POST-#266 EMULATOR WORKAROUND — see struct comment above.
+        metas[17] = ICrossProgramInvocation.AccountMeta(a.token_bridge_program, false, false);
     }
 
     // -------------------------------------------------------------------------
