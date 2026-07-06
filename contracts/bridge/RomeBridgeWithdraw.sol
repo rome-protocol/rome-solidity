@@ -778,6 +778,127 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     }
 
     // -------------------------------------------------------------------------
+    // Wormhole transfer_native — Solana-native mint egress (wSOL, mSOL, LSTs)
+    // -------------------------------------------------------------------------
+
+    /// @notice Solana-native counterpart of `burnToWormhole`. Where
+    ///         `burnToWormhole` uses transfer_wrapped (for Wormhole-origin assets
+    ///         like wETH), this uses **transfer_native** (solitaire tag 5) so a
+    ///         Solana-native mint (wSOL, mSOL, LSTs) egresses via Wormhole: the
+    ///         tokens move into the Token Bridge's per-mint custody and a transfer
+    ///         VAA is posted; the recipient redeems on the target chain.
+    /// @dev Must be preceded by `approveWormholeBurn(assetWrapper, amount)` in a
+    ///      SEPARATE tx (the same ~1.4M-CU split as burnToWormhole). That approval
+    ///      delegates `authority_signer` on the caller's ATA — the identical
+    ///      delegation transfer_native needs to move `from` → custody. The approve
+    ///      is asset-neutral (it is not specific to "burn"); it is reused as-is.
+    /// @param assetWrapper Registered SPL_ERC20 wrapper for a Solana-native mint.
+    /// @param amount       Token amount in the wrapper's SPL decimals (uint64-bounded).
+    /// @param recipient    32-byte recipient on the target chain (non-zero).
+    /// @param targetChain  Wormhole chain id, PER-CALL (must be allowlisted).
+    function transferNativeToWormhole(
+        address assetWrapper,
+        uint256 amount,
+        bytes32 recipient,
+        uint16 targetChain
+    ) external {
+        // Guards ordered BEFORE any Rome precompile touch (parity with burnToWormhole).
+        if (!wormholeMintAllowed[SPL_ERC20(assetWrapper).mint_id()]) {
+            revert UnsupportedAssetWrapper(assetWrapper);
+        }
+        if (!wormholeTargetChainAllowed[targetChain]) {
+            revert UnsupportedTargetChain(targetChain);
+        }
+        if (recipient == bytes32(0)) {
+            revert ZeroRecipient();
+        }
+        if (amount > type(uint64).max) {
+            revert AmountExceedsUint64(amount);
+        }
+
+        SPL_ERC20 wrapper = SPL_ERC20(assetWrapper);
+        bytes32 mint = wrapper.mint_id();
+        address user = _msgSender();
+        uint256 balance = wrapper.balanceOf(user);
+        if (balance < amount) {
+            revert InsufficientBalance(user, amount, balance);
+        }
+
+        bytes32 userPda = RomeEVMAccount.pda(user);
+        bytes32 userAta = HelperProgram.ata(user, mint);
+
+        // custody = ["<mint>"] PDA under the Token Bridge — PER-MINT, derived at
+        // runtime. THE crux: v10's single stored `wormholeCustody` serves ONE mint
+        // only; native egress of multiple mints requires per-mint custody. Matches
+        // @wormhole-foundation/sdk-solana-tokenbridge deriveCustodyKey =
+        // deriveAddress([mint], tokenBridge). custody_signer is global (stored).
+        ISystemProgram.Seed[] memory custodySeeds = new ISystemProgram.Seed[](1);
+        custodySeeds[0] = ISystemProgram.Seed(abi.encodePacked(mint));
+        (bytes32 custody, ) = PdaDeriver.derive(wormholeTokenBridgeProgram, custodySeeds);
+
+        // Per-tx Wormhole message account: salted PDA under the user (nonce, not
+        // block.number — unstable across emulation/execution on Rome).
+        uint64 nonce = burnNonce[user];
+        burnNonce[user] = nonce + 1;
+        bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", address(this), nonce));
+        bytes32 messageAccount = RomeEVMAccount.pda_with_salt(user, whSalt);
+
+        bytes memory ixData = WormholeTokenBridgeLib.encodeTransferNative(
+            WormholeTokenBridgeLib.TransferParams({
+                amount:        uint64(amount),
+                fee:           0,
+                targetAddress: recipient,
+                targetChain:   targetChain,
+                nonce:         uint32(block.timestamp)
+            })
+        );
+
+        ICrossProgramInvocation.AccountMeta[] memory metas =
+            WormholeTokenBridgeLib.buildTransferNativeAccounts(
+                WormholeTokenBridgeLib.TransferNativeAccounts({
+                    payer:            userPda,
+                    config:           wormholeConfig,
+                    from:             userAta,
+                    mint:             mint,
+                    custody:          custody,
+                    authority_signer: wormholeAuthoritySigner,
+                    custody_signer:   wormholeCustodySigner,
+                    bridge_config:    wormholeBridgeConfig,
+                    message:          messageAccount,
+                    emitter:          wormholeEmitter,
+                    sequence:         wormholeSequence,
+                    fee_collector:    wormholeFeeCollector,
+                    clock:            whClockSysvar,
+                    rent:             whRentSysvar,
+                    system:           whSystemProgram,
+                    token:            whSplTokenProgram,
+                    wormhole_core:    wormholeCoreProgram,
+                    token_bridge_program: wormholeTokenBridgeProgram
+                })
+            );
+
+        // Only the per-tx message PDA needs an explicit signing salt; the unified
+        // user PDA at `payer` (metas[0]) is auto-signed by the precompile from the
+        // tx-caller's EVM address. Native has no from_owner — the from→custody move
+        // is authorized by the authority_signer delegation from approveWormholeBurn.
+        bytes32[] memory salts = new bytes32[](1);
+        salts[0] = whSalt;
+
+        (bool ok, bytes memory result) = address(CpiProgram).delegatecall(
+            abi.encodeWithSignature(
+                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
+                wormholeTokenBridgeProgram,
+                metas,
+                ixData,
+                salts
+            )
+        );
+        if (!ok) revert CpiFailed(result);
+
+        emit WormholeNativeTransfer(user, assetWrapper, mint, amount, recipient, targetChain);
+    }
+
+    // -------------------------------------------------------------------------
     // Rome → Solana SPL egress (any wrapper mint)
     //
     // Two atomic single-CPI txs — `ensureRecipientAta` (only when the recipient
