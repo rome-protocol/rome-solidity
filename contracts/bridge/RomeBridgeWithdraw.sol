@@ -347,6 +347,13 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         if (remoteTokenMessenger == bytes32(0)) {
             revert UnsupportedDestinationDomain(destinationDomain);
         }
+        // Domain 5 (Solana) is structurally unsupported by this address-typed
+        // API: mintRecipient is a left-padded EVM address, not a valid Solana
+        // token account, so a burn to domain 5 would be unredeemable. Fail
+        // closed even if a deployment mistakenly maps domain 5.
+        if (destinationDomain == CCTPV2Lib.DOMAIN_SOLANA) {
+            revert UnsupportedDestinationDomain(destinationDomain);
+        }
         if (ethereumRecipient == address(0)) {
             revert ZeroRecipient();
         }
@@ -523,6 +530,12 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ///      (2) then invokes `burnETH` which does only the transfer_wrapped
     ///          CPI (requires the delegation from step 1 to be in place).
     function burnETH(uint256 amount, address ethereumRecipient) external {
+        // Fail closed on a zero destination, before amount/balance — a
+        // bytes32(0) targetAddress produces an unredeemable Wormhole VAA
+        // (permanent loss). Mirrors _burnUSDC / burnToWormhole / bridgeOutToSolana.
+        if (ethereumRecipient == address(0)) {
+            revert ZeroRecipient();
+        }
         if (amount > type(uint64).max) {
             revert AmountExceedsUint64(amount);
         }

@@ -209,6 +209,71 @@ describe("RomeBridgeWithdraw — error paths", () => {
     );
   });
 
+  it("burnETH reverts ZeroRecipient when recipient is address(0)", async () => {
+    // The guard must fire BEFORE the amount/balance checks (mirrors _burnUSDC /
+    // burnToWormhole), otherwise InsufficientBalance masks a zero-address burn
+    // whose Wormhole VAA (targetAddress = 0) would be permanently unredeemable.
+    await assert.rejects(
+      () => withdraw.write.burnETH([1n, "0x0000000000000000000000000000000000000000"]),
+      (err: any) => ((err?.message ?? "") as string).includes("ZeroRecipient")
+    );
+  });
+
+  it("burnUSDC reverts UnsupportedDestinationDomain for Solana domain 5 even when it is allowlisted", async () => {
+    // Domain 5 = Solana. burnUSDC's address-typed API left-pads an EVM address
+    // into mintRecipient, which is not a valid Solana token account — a burn to
+    // domain 5 would carry an unredeemable mintRecipient. Even a deployment that
+    // mistakenly maps domain 5 must fail closed. The default fixture maps only
+    // domain 0, so deploy a dedicated instance with domain 5 mapped to
+    // discriminate the new guard from the pre-existing unmapped-domain revert.
+    const mockUsdc = await viem.deployContract("MockSplErc20", [MOCK_MINT]);
+    const mockWeth = await viem.deployContract("MockSplErc20", [MOCK_MINT]);
+    const w: any = await viem.deployContract("RomeBridgeWithdraw", [
+      "0x0000000000000000000000000000000000000000",
+      mockUsdc.address,
+      mockWeth.address,
+      {
+        tokenMessengerProgram: DUMMY_PROGRAM,
+        messageTransmitterProgram: DUMMY_PROGRAM,
+        splTokenProgram: DUMMY_PROGRAM,
+        systemProgram: ZERO_BYTES32,
+        messageTransmitterConfig: ZERO_BYTES32,
+        tokenMessengerConfig: ZERO_BYTES32,
+        // Domain 5 (Solana) mapped ON PURPOSE — the guard must still reject it.
+        domains: [0, 5],
+        remoteTokenMessengers: ["0x" + "aa".repeat(32), "0x" + "bb".repeat(32)],
+        tokenMinter: ZERO_BYTES32,
+        localTokenUsdc: ZERO_BYTES32,
+        senderAuthorityPda: ZERO_BYTES32,
+        eventAuthority: ZERO_BYTES32,
+        messageTransmitterEventAuthority: ZERO_BYTES32,
+      },
+      {
+        tokenBridgeProgram: DUMMY_PROGRAM,
+        coreProgram: DUMMY_PROGRAM,
+        splTokenProgram: DUMMY_PROGRAM,
+        systemProgram: ZERO_BYTES32,
+        clockSysvar: DUMMY_PROGRAM,
+        rentSysvar: DUMMY_PROGRAM,
+        config: ZERO_BYTES32,
+        custody: ZERO_BYTES32,
+        authoritySigner: ZERO_BYTES32,
+        custodySigner: ZERO_BYTES32,
+        bridgeConfig: ZERO_BYTES32,
+        feeCollector: ZERO_BYTES32,
+        emitter: ZERO_BYTES32,
+        sequence: ZERO_BYTES32,
+        wrappedMeta: ZERO_BYTES32,
+        targetChain: 2,
+      },
+      { admin: "0x00000000000000000000000000000000000000a1", targetChains: [], assetWrappers: [] },
+    ]);
+    await assert.rejects(
+      () => w.write.burnUSDC([1n, user, 5]),
+      (err: any) => ((err?.message ?? "") as string).includes("UnsupportedDestinationDomain")
+    );
+  });
+
   it("ensureRecipientAta reverts ZeroRecipient when recipient is bytes32(0)", async () => {
     await assert.rejects(
       () => withdraw.write.ensureRecipientAta([ZERO_BYTES32, MOCK_MINT]),
