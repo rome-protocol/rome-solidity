@@ -28,8 +28,8 @@
     "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   },
   "RomeBridgeWithdraw": {
-    "address": "0xa79ec05a0ea7b3efeec6d802ee3dca423cbe122a",
-    "deployedAt": 1782428747
+    "address": "0x60e2b02c454be429b0047a237a57d21a68afb560",
+    "deployedAt": 1783560484
   },
   "OracleGatewayV2": {
     "deployedAt": "2026-06-26T18:17:48.917Z",
