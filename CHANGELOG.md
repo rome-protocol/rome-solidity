@@ -1,3 +1,22 @@
+## 2026-07-09 — WrappedGasFacade: WETH9-shaped wrap/unwrap with canonical events
+
+`contracts/wrap/WrappedGasFacade.sol` — `deposit()` payable (+ `receive()`) wraps native
+gas into the chain's gas-mint wrapper; `withdraw(uint256)` unwraps back (requires prior
+ERC-20 `approve`). Emits canonical WETH9 `Deposit`/`Withdrawal` events, closing the
+explorer/indexer blindness of the raw precompile legs (`Withdraw.withdraw_to_ata` /
+`HelperProgram.deposit_from_ata`), which carry no logs and no value. Cached track only
+(`WithdrawCached` 0xff..0b + the cached wrapper's ERC-20 surface); custody pools under
+the facade's authority exactly as WETH9 pools ETH; sub-token dust refunds on deposit;
+`Granularity` guard on both legs.
+
+- **Deploy runbook:** constructor takes the gas-mint wrapper address; call the idempotent
+  `ensureAta()` once post-deploy. The wrap precompile's internal auto-create-ATA branch is
+  NOT relied on — it fails in emulation ("instruction is not supported by ASplProgram");
+  flagged upstream separately.
+- Integration test `tests/wrapped_gas_facade.integration.ts` (Hadrian, funded): wrap with
+  dust refund, `receive()` wrap, unwrap with exact native/wrapper balance deltas, zero
+  facade residue, granularity revert. 4/4 passing on Hadrian 2026-07-09.
+
 ## 2026-07-06 — RomeBridgeWithdraw: Wormhole transfer_native egress (v11, Solana-native mints)
 
 `transferNativeToWormhole(address assetWrapper, uint256 amount, bytes32 recipient, uint16 targetChain)`
