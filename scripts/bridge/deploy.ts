@@ -44,8 +44,7 @@ const CPI_PROGRAM_ADDRESS = "0xFF00000000000000000000000000000000000008" as cons
 // per cluster; CCTP's are the same on both. Update this set when bringing up a
 // new chain — adding it here keeps the deploy + sub-PDA derivations consistent.
 const SOLANA_DEVNET_NETWORKS = new Set([
-  "marcus", "cassius", "subura", "esquiline", "aventine", "maximus", "local",
-  "trajan", "hadrian",
+  "local", "subura", "esquiline", "hadrian", "martius", "nerva",
 ]);
 
 function programIdsFor(networkName: string) {
