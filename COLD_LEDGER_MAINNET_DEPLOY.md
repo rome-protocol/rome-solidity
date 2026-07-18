@@ -54,7 +54,7 @@ HH3+viem has no first-class Ledger plugin (`@nomicfoundation/hardhat-ledger` is 
 4. **hardhat.config.ts** — add rubicon: `rubicon: { type: "http", chainId: 7531, url: "https://rubicon.romeprotocol.xyz/", accounts: [] }` (empty — signing is in-script).
 5. **Device** — Ethereum app, enable **blind signing** (chain 7531 is unknown to the device, so contract deploys require it). One physical tap per tx.
 
-## Deploy set (tap-count driver) — order per `rome-ops/scripts/deploy-solidity.sh` Phase 6
+## Deploy set (tap-count driver) — deploy order (Phase 6)
 1. `scripts/deploy_erc20spl_factory.ts`
 2. `scripts/bridge/bootstrap-bridged-wrappers.ts`
 3. `scripts/bridge/deploy.ts` (paymaster + SPL_ERC20 wrappers + withdraw)

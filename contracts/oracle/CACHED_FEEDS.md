@@ -46,7 +46,7 @@ than serving a frozen price.
 | Emit → registry | `rome-solidity/scripts/oracle/lib/emit-registry-update.ts` — emit cached feeds as `source: "cached-pyth"` / `"cached-feed"`, keyed `"<PAIR>-CACHED"` | ⏳ to wire |
 | Registry feed entries | `registry/chains/<id>-<slug>/oracle.json` (auto-PR'd from `deployments/<chain>.json`; never hand-edited) | ⏳ via deploy |
 | Consumer wiring (Compound) | `registry/apps/compound/<id>-<slug>.json` — `baseTokenPriceFeed` + `collateralAssets[].priceFeed` → cached adapter addresses | ⏳ via deploy |
-| **Keeper (refresh)** | **`rome-ops`** — periodic `refresh()` per cached adapter (EVM-side analog of the existing Pyth-Pull `oracle-keeper`) | ⏳ **required, ops infra** |
+| **Keeper (refresh)** | **off-chain keeper** — periodic `refresh()` per cached adapter (EVM-side analog of the existing Pyth-Pull `oracle-keeper`) | ⏳ **required, ops infra** |
 | Consumers | Compound comet (EVM + Solana-native lanes), any `AggregatorV3` reader | — |
 
 ## Setup steps (to make it work end-to-end)
@@ -59,7 +59,7 @@ than serving a frozen price.
    `createCachedFeed(underlyingAdapter,…)` per feed (`deploy-seed-feeds.ts`).
 3. **Refresh once.** Each new clone reverts `UninitializedPriceFeed` until its
    first `refresh()`.
-4. **Run the keeper.** Periodic `refresh()` (rome-ops). **Required** — without it,
+4. **Run the keeper.** Periodic `refresh()` (off-chain keeper). **Required** — without it,
    cached prices age past `maxStaleness` and `latestRoundData()` reverts
    `StalePriceFeed`, so consumer reads/borrows revert. Refresh interval must be
    < `maxStaleness`.
@@ -117,4 +117,4 @@ npx hardhat run scripts/oracle/refresh-cached-feeds.ts --network <chain>
 # or an explicit list (ad-hoc / cast-deployed feeds not yet in the deployments file):
 CACHED_FEEDS=0x..,0x.. npx hardhat run scripts/oracle/refresh-cached-feeds.ts --network <chain>
 ```
-Wire this into rome-ops (the EVM-side analog of the Pyth-Pull `oracle-keeper`).
+Wire this into your keeper service (the EVM-side analog of the Pyth-Pull `oracle-keeper`).

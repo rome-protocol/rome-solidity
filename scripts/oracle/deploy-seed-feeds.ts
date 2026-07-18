@@ -58,7 +58,7 @@ const PYTH_SEEDS: SeedFeed[] = [
     // JUP/JTO corrected 2026-07-01: the previous entries (2F9M59…, D8UUgr…)
     // don't exist on devnet (JUP) / aren't the accounts the oracle-keeper
     // refreshes. These are the receiver PDAs Hadrian's live adapters read and
-    // the keeper keeps fresh (rome-ops testnet-oracle-portal keeper config).
+    // the keeper keeps fresh (the oracle-keeper's configured accounts).
     {
         pair: "JUP/USD",
         pubkeyBase58: "7dbob1psH1iZBS7qPsm3Kwbf5DzSXK8Jyg31CTgTnxH5",

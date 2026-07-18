@@ -22,7 +22,7 @@ const HADRIAN_GAS_MINT: `0x${string}` =
     "0x3b442cb3912157f13a933d0134282d032b5ffecd01a2dbf1b7790608df002ea7";
 const EVM_RPC = "https://hadrian.testnet.romeprotocol.xyz";
 const SOLANA_RPC =
-    "https://node1.devnet-eu-sol-api.devnet.romeprotocol.xyz";
+    (process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com");
 const HELPER = "0xff00000000000000000000000000000000000009";
 const WITHDRAW_LEGACY = "0x4200000000000000000000000000000000000016";
 

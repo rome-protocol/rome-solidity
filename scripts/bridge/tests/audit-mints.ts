@@ -49,7 +49,7 @@ async function main() {
   console.log(`  chain=2 (mainnet ETH), addr=eef12a83…d9c → ${mainnetMainnet.toBase58()}  ${mainnetMainnet.equals(STORED_WETH_MINT) ? "✓ MATCHES STORED" : ""}`);
 
   console.log("\n=== On-chain ownership of stored wethMint ===");
-  const conn = new Connection("https://node1.devnet-eu-sol-api.devnet.romeprotocol.xyz", "confirmed");
+  const conn = new Connection((process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com"), "confirmed");
   const info = await conn.getAccountInfo(STORED_WETH_MINT);
   console.log(`  exists: ${!!info}`);
   console.log(`  owner: ${info?.owner.toBase58() ?? "n/a"} (should be SPL Token program: TokenkegQ…)`);

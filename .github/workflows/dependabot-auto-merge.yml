@@ -1,4 +1,4 @@
-# Sourced from: rome-protocol/rome-ops/templates/dependabot/dependabot-auto-merge.yml
+# Dependabot auto-merge workflow.
 #
 # Phase 2: auto-merge patch + minor for github_actions, cargo, npm, pip, gomod.
 # Docker stays manual indefinitely (nginx:1.30-alpine-slim curl regression precedent).
