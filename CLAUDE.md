@@ -149,7 +149,7 @@ Full runbook (rationale, devnet rehearsal steps, fallback via `cast send --ledge
 
 ### Rome-EVM Precompile Interfaces (`contracts/interface.sol`)
 
-The core abstraction layer. Rome-EVM exposes Solana programs as EVM precompiles at fixed addresses. **Authoritative inventory of upstream Rust dispatch + selector hex lives in [`rome-evm-private/CLAUDE.md`](../rome-evm-private/CLAUDE.md)** — when adding a method, treat the Rust side as canonical and mirror here.
+The core abstraction layer. Rome-EVM exposes Solana programs as EVM precompiles at fixed addresses. **Authoritative inventory of upstream Rust dispatch + selector hex lives in [`rome-evm/CLAUDE.md`](../rome-evm/CLAUDE.md)** — when adding a method, treat the Rust side as canonical and mirror here.
 
 | Precompile | Address | Interface | Track | Source of truth |
 |---|---|---|---|---|
@@ -164,13 +164,13 @@ The core abstraction layer. Rome-EVM exposes Solana programs as EVM precompiles 
 
 Global constants pre-bound by `interface.sol`: `SystemProgram`, `CpiProgram`, `HelperProgram`, `Withdraw`, plus the cached-track addresses `system_cached_address`, `spl_cached_address`, `associated_spl_cached_address`, `withdraw_cached_address` (per rome-solidity #204, merged 2026-05-23).
 
-**Removed surface — IEd25519 (`0xff..0a`)** dropped in #236 (paired with rome-evm-private `remove_lazer`). The `IEd25519` interface and `ed25519_program_address` constant are no longer declared. Pyth Lazer cache + adapter machinery (`PythLazerCache`, `PythLazerFeedAdapter`) was removed in #196 ahead of #236.
+**Removed surface — IEd25519 (`0xff..0a`)** dropped in #236 (paired with rome-evm `remove_lazer`). The `IEd25519` interface and `ed25519_program_address` constant are no longer declared. Pyth Lazer cache + adapter machinery (`PythLazerCache`, `PythLazerFeedAdapter`) was removed in #196 ahead of #236.
 
 ### Track selection — one track per contract (HARD RULE)
 
-**A Solidity contract picks one precompile track — cached or legacy — and commits to it.** Mixing cached-track and legacy-track precompile *mutating* calls within the same contract, or transitively across contracts in the same tx, is unsupported and runtime-blocked by `verify_call` in rome-evm-private. Track decision is **per-tx, sticky after revert** — once a track fires (even in a frame that later reverts), the tx is locked into it.
+**A Solidity contract picks one precompile track — cached or legacy — and commits to it.** Mixing cached-track and legacy-track precompile *mutating* calls within the same contract, or transitively across contracts in the same tx, is unsupported and runtime-blocked by `verify_call` in rome-evm. Track decision is **per-tx, sticky after revert** — once a track fires (even in a frame that later reverts), the tx is locked into it.
 
-Author statement (rome-evm-private PR #376, Valentin Konyakhin, 2026-05-22): *"Contract must use either a Cpi-based Solidity program or Cached-based Solidity program."*
+Author statement (rome-evm PR #376, 2026-05-22): *"Contract must use either a Cpi-based Solidity program or Cached-based Solidity program."*
 
 **What this means in practice:**
 - A contract that calls `ISplCached.transfer(...)` MUST NOT also call `IHelperProgram.transfer_spl(...)` in any reachable code path
@@ -183,18 +183,18 @@ Author statement (rome-evm-private PR #376, Valentin Konyakhin, 2026-05-22): *"C
 - No subtle state-vs-overlay divergence at runtime
 - Static analysis can flag mixed-track contracts as policy violations
 
-**Authoritative dispatch + track-gate spec:** [`rome-evm-private/CLAUDE.md`](../rome-evm-private/CLAUDE.md) § "Track selection — one track per contract (HARD RULE)". Foundation PR: [`rome-protocol/rome-evm-private#382`](https://github.com/rome-protocol/rome-evm-private/pull/382).
+**Authoritative dispatch + track-gate spec:** [`rome-evm/CLAUDE.md`](../rome-evm/CLAUDE.md) § "Track selection — one track per contract (HARD RULE)". Foundation PR: [`rome-protocol/rome-evm#382`](https://github.com/rome-protocol/rome-evm/pull/382).
 
 **Worked examples for cached-track contracts:** `contracts/examples/cached.sol` (canonical patterns) and `contracts/examples/mixed.sol` (intentional anti-pattern showing the gate firing) — shipped in rome-solidity #204.
 
-**Validation note (2026-05-22).** "CPI in docs" ≠ "Solana CPI on chain". When a precompile method's NatSpec says "via Rome's CPI precompile", check the dispatch variant in the source-of-truth table at [`rome-evm-private/CLAUDE.md`](../rome-evm-private/CLAUDE.md) § "Precompile Interfaces — Canonical Surface". Only selectors marked `Invoke` (or `Composed` arms that nest an `Invoke`) actually issue a Solana CPI signed by the caller's `EXTERNAL_AUTHORITY` PDA. Selectors marked `EthCall` / `CrossStateEthCall` are pure reads — no signing, no PDA seeds, no on-chain side effect. AccountReader (this repo's `contracts/cpi/AccountReader.sol`) and the oracle adapters (`contracts/oracle/PythPullAdapter.sol`, `contracts/oracle/SwitchboardV3Adapter.sol`) only exercise the `CrossStateEthCall` path. Foundation PRs: [`rome-protocol/rome-evm-private#382`](https://github.com/rome-protocol/rome-evm-private/pull/382) (disambiguation + one-track rule + cached family), [`rome-protocol/rome-evm-private#376`](https://github.com/rome-protocol/rome-evm-private/pull/376) (cached infrastructure — merged).
+**Validation note (2026-05-22).** "CPI in docs" ≠ "Solana CPI on chain". When a precompile method's NatSpec says "via Rome's CPI precompile", check the dispatch variant in the source-of-truth table at [`rome-evm/CLAUDE.md`](../rome-evm/CLAUDE.md) § "Precompile Interfaces — Canonical Surface". Only selectors marked `Invoke` (or `Composed` arms that nest an `Invoke`) actually issue a Solana CPI signed by the caller's `EXTERNAL_AUTHORITY` PDA. Selectors marked `EthCall` / `CrossStateEthCall` are pure reads — no signing, no PDA seeds, no on-chain side effect. AccountReader (this repo's `contracts/cpi/AccountReader.sol`) and the oracle adapters (`contracts/oracle/PythPullAdapter.sol`, `contracts/oracle/SwitchboardV3Adapter.sol`) only exercise the `CrossStateEthCall` path. Foundation PRs: [`rome-protocol/rome-evm#382`](https://github.com/rome-protocol/rome-evm/pull/382) (disambiguation + one-track rule + cached family), [`rome-protocol/rome-evm#376`](https://github.com/rome-protocol/rome-evm/pull/376) (cached infrastructure — merged).
 
-**Cached-track surface — Phase A closed by [`rome-evm-private#383`](https://github.com/rome-protocol/rome-evm-private/pull/383) (merged 2026-05-23). No further cached selectors planned for the bridge surface; design is FINAL.**
+**Cached-track surface — Phase A closed by [`rome-evm#383`](https://github.com/rome-protocol/rome-evm/pull/383) (merged 2026-05-23). No further cached selectors planned for the bridge surface; design is FINAL.**
 
 Shipped on cached track (PR #383):
 
 - ✅ **`ISplCached.transferFrom` / `approve` / `mint`** — landed in #383. Router-driven Romeswap / Compound supply-borrow / Cardo intent adapters can now migrate from legacy track. Demonstrator methods on `contracts/examples/cached.sol`.
-- ✅ **`IWithdrawCached.deposit`** — landed in #383 as `withdraw_from_ata(uint256)` `0x214ee485`; **renamed to `deposit(uint256)` `0xb6b55f25`** in rome-evm-private#386 with an accounting fix (dropped a bogus `Withdraw::ADDRESS` debit that would have reverted first-time unwrap on bridge-in-sourced chains). Inverse of `withdrawal` — SPL transfer from caller's PDA-owned ATA to chain's sol_wallet ATA on Solana side; pure mint of `wei_` native gas to caller on EVM side. Matches `HelperProgram.deposit_from_ata` semantics. rome-ui `useWrapUnwrap` unwrap path can rebind to this selector.
+- ✅ **`IWithdrawCached.deposit`** — landed in #383 as `withdraw_from_ata(uint256)` `0x214ee485`; **renamed to `deposit(uint256)` `0xb6b55f25`** in rome-evm#386 with an accounting fix (dropped a bogus `Withdraw::ADDRESS` debit that would have reverted first-time unwrap on bridge-in-sourced chains). Inverse of `withdrawal` — SPL transfer from caller's PDA-owned ATA to chain's sol_wallet ATA on Solana side; pure mint of `wei_` native gas to caller on EVM side. Matches `HelperProgram.deposit_from_ata` semantics. rome-ui `useWrapUnwrap` unwrap path can rebind to this selector.
 
 **Permanently scoped out** — the two originally-considered selectors below were rejected during red-team review and the decision is final. The bridge uses the legacy CPI direct path (`HelperProgram` at `0xff..09`) by design, because the legacy track's hard `CpiProhibitedInIterativeTx` gate IS the defense against the attack surface that a cached-track + iterative-VM variant would expose. These are NOT future-work items.
 
@@ -205,14 +205,14 @@ Don't pick these up as unfinished business. If a future requirement genuinely ne
 
 **Removed precompiles** (kept here so agents recognize stale code):
 
-- `0xff..05` (legacy SPL Token) and `0xff..06` (legacy Associated Token) — original dedicated handlers were removed in the rome-evm-private Mollusk refactor. **The slots have been REUSED post-#376 (2026-05-23) for cached precompiles**: `0xff..05` is now `SplCached` and `0xff..06` is now `AssociatedSplCached`. The old `ISplToken` / `IAssociatedSplToken` interface declarations are gone; the new `ISplCached` / `IAssociatedSplCached` interfaces live at these addresses with cached-track semantics.
-- `0x42..17` (`unwrap_spl_to_gas(uint256)`) and `0x42..18` (`wrap_gas_to_spl(uint256)`) — replaced 2026-05-12 by `Withdraw.withdraw_to_ata(uint256)` (wrap leg: gas → wrapper ATA) and `HelperProgram.deposit_from_ata(uint256)` (unwrap leg: wrapper ATA → gas). The `IUnwrapSplToGas` / `IWrapGasToSpl` interfaces and their pre-bound constants are no longer in `interface.sol`. Migration sequence: rome-solidity PR #137 → #138 → #141 → #143 paired with rome-evm-private #348 / #349 / #351 / #352 / #353 / #354.
+- `0xff..05` (legacy SPL Token) and `0xff..06` (legacy Associated Token) — original dedicated handlers were removed in the rome-evm Mollusk refactor. **The slots have been REUSED post-#376 (2026-05-23) for cached precompiles**: `0xff..05` is now `SplCached` and `0xff..06` is now `AssociatedSplCached`. The old `ISplToken` / `IAssociatedSplToken` interface declarations are gone; the new `ISplCached` / `IAssociatedSplCached` interfaces live at these addresses with cached-track semantics.
+- `0x42..17` (`unwrap_spl_to_gas(uint256)`) and `0x42..18` (`wrap_gas_to_spl(uint256)`) — replaced 2026-05-12 by `Withdraw.withdraw_to_ata(uint256)` (wrap leg: gas → wrapper ATA) and `HelperProgram.deposit_from_ata(uint256)` (unwrap leg: wrapper ATA → gas). The `IUnwrapSplToGas` / `IWrapGasToSpl` interfaces and their pre-bound constants are no longer in `interface.sol`. Migration sequence: rome-solidity PR #137 → #138 → #141 → #143 paired with rome-evm #348 / #349 / #351 / #352 / #353 / #354.
 
 #### `CpiProgram` shortcut selectors (`0xff..08`)
 
-> **"CpiProgram" is a historical name — most of these selectors are NOT CPIs.** The precompile carries two dispatch families: actual Solana CPI (`invoke` / `invoke_signed`, which sign as the caller's `EXTERNAL_AUTHORITY` PDA) AND a set of read-side shortcuts (`account_info`, `account_data_at`, `account_u64_at`, `account_lamports`, `pdas_batch_derive`) that the on-chain dispatcher routes through `NonEvmCall::CrossStateEthCall` — no inner Solana invocation, no signing, no PDA seeds, no on-chain side effect. The read shortcuts are pure cross-state queries. **Authoritative per-selector dispatch table (column "Dispatch"):** [`rome-evm-private/CLAUDE.md`](../rome-evm-private/CLAUDE.md) § "CpiProgram". Read it before assuming a selector that lives at `0xff..08` issues a CPI — most don't.
+> **"CpiProgram" is a historical name — most of these selectors are NOT CPIs.** The precompile carries two dispatch families: actual Solana CPI (`invoke` / `invoke_signed`, which sign as the caller's `EXTERNAL_AUTHORITY` PDA) AND a set of read-side shortcuts (`account_info`, `account_data_at`, `account_u64_at`, `account_lamports`, `pdas_batch_derive`) that the on-chain dispatcher routes through `NonEvmCall::CrossStateEthCall` — no inner Solana invocation, no signing, no PDA seeds, no on-chain side effect. The read shortcuts are pure cross-state queries. **Authoritative per-selector dispatch table (column "Dispatch"):** [`rome-evm/CLAUDE.md`](../rome-evm/CLAUDE.md) § "CpiProgram". Read it before assuming a selector that lives at `0xff..08` issues a CPI — most don't.
 
-(rome-evm-private PRs #318 / #319 / #320, shipped 2026-05-06; trimmed 2026-05-12 — `spl_transfer_checked_v1` + `derive_user_ata` migrated into `HelperProgram` under cleaner names):
+(rome-evm PRs #318 / #319 / #320, shipped 2026-05-06; trimmed 2026-05-12 — `spl_transfer_checked_v1` + `derive_user_ata` migrated into `HelperProgram` under cleaner names):
 
 | Selector | Signature | Purpose |
 |---|---|---|
@@ -226,13 +226,13 @@ Don't pick these up as unfinished business. If a future requirement genuinely ne
 
 #### `HelperProgram` surface (`0xff..09`)
 
-The post-consolidation home for Rome-specific Solana plumbing that EVM contracts repeatedly need. Every method below was verified via `cast keccak <sig>` against the const in `rome-evm-private/program/src/non_evm/helper.rs` on 2026-05-13.
+The post-consolidation home for Rome-specific Solana plumbing that EVM contracts repeatedly need. Every method below was verified via `cast keccak <sig>` against the const in `rome-evm/program/src/non_evm/helper.rs` on 2026-05-13.
 
 | Selector | Signature | Purpose |
 |---|---|---|
 | `0x5a7c3259` | `create_ata(address user)` | Create user's ATA for the chain's gas mint. Gas-token chains only. |
 | `0x3de2251a` | `create_ata(address user, bytes32 mint)` | Create user's ATA for an arbitrary SPL mint. |
-| `0xd258a69d` | `create_ata_for_key(bytes32 wallet, bytes32 mint)` | Idempotent ATA-create for a raw Solana pubkey owner (NOT derived from an EVM address). Operator pays rent. Consumed by `SPL_ERC20.bridgeOutToSolana` / `ensureRecipientAta` / `create_token_account`'s raw-pubkey paths. Shipped in rome-evm-private PR #364. |
+| `0xd258a69d` | `create_ata_for_key(bytes32 wallet, bytes32 mint)` | Idempotent ATA-create for a raw Solana pubkey owner (NOT derived from an EVM address). Operator pays rent. Consumed by `SPL_ERC20.bridgeOutToSolana` / `ensureRecipientAta` / `create_token_account`'s raw-pubkey paths. Shipped in rome-evm PR #364. |
 | `0xff3556ca` | `create_pda(address user)` | Create user's `external_auth` PDA (no lamports). |
 | `0x58e88298` | `create_pda(address user, uint64 lamports)` | Create user's `external_auth` PDA with seed lamports. |
 | `0x6e3f24e0` | `swap_gas_to_lamports(uint64 lamports)` | Swap gas-token for SOL lamports against the operator. |
@@ -243,17 +243,17 @@ The post-consolidation home for Rome-specific Solana plumbing that EVM contracts
 | `0xb6977879` | `transfer_spl(bytes32 to_ata, uint64 tokens, bytes32 mint)` | Arbitrary-mint variant of the raw-ATA overload — used by `SPL_ERC20.bridgeOutToSolana`. |
 | `0x766b362a` | `transfer_spl(bytes32 src_ata, bytes32 to_ata, uint64 tokens, bytes32 mint)` | **Delegate variant.** Caller-supplied `src_ata` instead of derived. Signs as `external_auth(caller)`; SPL Token accepts the PDA as ATA owner OR delegate (delegated_amount ≥ tokens). Required by `SPL_ERC20._transfer` when `from != msg.sender` (PR #143). |
 | `0x8854a299` | `pda(address user) view → bytes32` | Returns `external_auth(user)` — replaces the prior `RomeEVMAccount.pda` helper for new code. |
-| `0x5c6d04b3` | `pda_with_salt(address user, bytes32 salt) view → bytes32` | Salt-derived `EXTERNAL_AUTHORITY` PDA in one dispatch. Collapses the prior Solidity-side 2-call composition (`rome_evm_program_id() + find_program_address(seeds)`). Consumed by `RomeEVMAccount.pda_with_salt` → `RomeBridgeWithdraw.{burnUSDC, burnETH}` (CCTP `messageSentEventData` + Wormhole `messageAccount` PDA derivations). Shipped in rome-evm-private PR #364. |
+| `0x5c6d04b3` | `pda_with_salt(address user, bytes32 salt) view → bytes32` | Salt-derived `EXTERNAL_AUTHORITY` PDA in one dispatch. Collapses the prior Solidity-side 2-call composition (`rome_evm_program_id() + find_program_address(seeds)`). Consumed by `RomeEVMAccount.pda_with_salt` → `RomeBridgeWithdraw.{burnUSDC, burnETH}` (CCTP `messageSentEventData` + Wormhole `messageAccount` PDA derivations). Shipped in rome-evm PR #364. |
 | `0x31db4f82` | `ata(address user) view → bytes32` | User's gas-mint ATA. Gas-mint chains only. |
 | `0xfeb1c647` | `ata(address user, bytes32 mint) view → bytes32` | User's ATA for an arbitrary mint. Replaces the old `CpiProgram.derive_user_ata(0xc654e119)` shortcut; `UserPda.ata(user, mint)` now delegates here. |
 | `0xabf6f675` | `approve_spl(address spender, uint64 amount, bytes32 mint)` | Caller-PDA-as-owner sets `delegate_pda(spender)` on owner-ATA via SPL `approve_checked`. Replaces v1 `SPL_ERC20.approve`'s Solidity-side `SplTokenLib.approve` + raw `invoke_signed` marshaling. Saves ~150-200K CU per call. |
-| `0x7881d453` | `approve_spl_raw_delegate(bytes32 src_ata, bytes32 delegate, uint64 amount, bytes32 mint, uint8 decimals)` | SPL `approve_checked` with raw-pubkey delegate (e.g. Wormhole `authority_signer` PDA). Caller passes `decimals` to skip on-chain mint read (~30-50K CU saving). `spl_program` hardcoded to SPL Token. Consumed by `RomeBridgeWithdraw.approveBurnETH`. Shipped in rome-evm-private PR #364. |
+| `0x7881d453` | `approve_spl_raw_delegate(bytes32 src_ata, bytes32 delegate, uint64 amount, bytes32 mint, uint8 decimals)` | SPL `approve_checked` with raw-pubkey delegate (e.g. Wormhole `authority_signer` PDA). Caller passes `decimals` to skip on-chain mint read (~30-50K CU saving). `spl_program` hardcoded to SPL Token. Consumed by `RomeBridgeWithdraw.approveBurnETH`. Shipped in rome-evm PR #364. |
 | `0xd795522b` | `mint_spl(address to, uint64 amount, bytes32 mint)` | Caller-PDA-as-mint-authority mints to dest user's ATA via SPL `mint_to_checked`. SPL Token runtime enforces caller-PDA == on-chain mint authority. Replaces v1 `SPL_ERC20.mint_to`'s Solidity-side `SplTokenLib.mint_to_checked` + `invoke` marshaling. |
-| `0xe97d3291` | `create_mint_account(bytes32 salt)` | System CreateAccount for a salt-derived PDA with space=82 (SPL_MINT_LEN), owner=SPL Token, lamports=rent-floor. Two PDA signers (funder external_auth + new mint external_auth_with_salt). Consumed by `ERC20SPLFactory.create_token_mint`. Shipped in rome-evm-private PR #364. |
-| `0x4f75e987` | `init_spl_mint(bytes32 mint, uint8 decimals, bytes32 mint_authority, bool has_freeze_authority, bytes32 freeze_authority)` | SPL Token InitializeMint2 against pre-allocated mint. No PDA signer (mint_authority + freeze_authority stored as account data). Consumed by `ERC20SPLFactory.init_token_mint`. Shipped in rome-evm-private PR #364. |
-| `0x20972d0f` | `create_and_init_mint(uint8 decimals, bytes32 mint_authority, bool has_freeze_authority, bytes32 freeze_authority, bytes32 salt)` | Composed: System CreateAccount + SPL InitializeMint2 in one dispatch. Saves one Rome DoTx envelope vs separate `create_mint_account` + `init_spl_mint`. Optional one-call mint creation for new callers; factory keeps the 2-step flow for back-compat. Shipped in rome-evm-private PR #364. |
+| `0xe97d3291` | `create_mint_account(bytes32 salt)` | System CreateAccount for a salt-derived PDA with space=82 (SPL_MINT_LEN), owner=SPL Token, lamports=rent-floor. Two PDA signers (funder external_auth + new mint external_auth_with_salt). Consumed by `ERC20SPLFactory.create_token_mint`. Shipped in rome-evm PR #364. |
+| `0x4f75e987` | `init_spl_mint(bytes32 mint, uint8 decimals, bytes32 mint_authority, bool has_freeze_authority, bytes32 freeze_authority)` | SPL Token InitializeMint2 against pre-allocated mint. No PDA signer (mint_authority + freeze_authority stored as account data). Consumed by `ERC20SPLFactory.init_token_mint`. Shipped in rome-evm PR #364. |
+| `0x20972d0f` | `create_and_init_mint(uint8 decimals, bytes32 mint_authority, bool has_freeze_authority, bytes32 freeze_authority, bytes32 salt)` | Composed: System CreateAccount + SPL InitializeMint2 in one dispatch. Saves one Rome DoTx envelope vs separate `create_mint_account` + `init_spl_mint`. Optional one-call mint creation for new callers; factory keeps the 2-step flow for back-compat. Shipped in rome-evm PR #364. |
 | `0xe479df56` | `transfer_spl(address from, address to, uint64 amount, bytes32 mint)` | **Addr-keyed delegate variant.** Derives both ATAs from EVM addresses internally; signs as `external_auth(caller)`. SPL Token accepts PDA as owner OR delegate. Replaces `SPL_ERC20.transferFrom`'s prior bytes32-ATA delegate variant (`0x766b362a`). |
-| `0x46efa679` | `transfer_spl_to_signer(uint64 amount, bytes32 mint)` | **Solana-native return leg** (#223, paired with rome-evm-private `do_tx_unsigned` / `activate_ata`). Source = `ata(external_auth(caller), mint)`; destination = `ata(outer_solana_signer, mint)` — the real wallet, not a PDA. Signs as `external_auth(caller)`. Not used for MetaMask users (their outer signer is the proxy payer); reserved for Solana-native flows. |
+| `0x46efa679` | `transfer_spl_to_signer(uint64 amount, bytes32 mint)` | **Solana-native return leg** (#223, paired with rome-evm `do_tx_unsigned` / `activate_ata`). Source = `ata(external_auth(caller), mint)`; destination = `ata(outer_solana_signer, mint)` — the real wallet, not a PDA. Signs as `external_auth(caller)`. Not used for MetaMask users (their outer signer is the proxy payer); reserved for Solana-native flows. |
 | `0xdd0119c8` | `user_balance(address account, bytes32 mint) view → uint64` | Read SPL TokenAccount.amount (u64 LE at offset 64) on user's PDA-owned ATA. Returns 0 if ATA doesn't exist (fresh-chain probe). Collapses 3 v1 dispatches (`ata` + `lamports` + `readU64At`) into one CrossStateEthCall. Backs `SPL_ERC20.balanceOf`. |
 | `0xed72dbc8` | `allowance_of(address owner, address spender, bytes32 mint) view → uint64` | Read owner-ATA's `delegated_amount` IFF on-chain delegate matches `external_auth(spender)` (HARD REQ in Rust to enforce ERC-20 semantics; otherwise routers probe non-zero allowance when actual delegate is someone else). Collapses 5 v1 dispatches into one. Backs `SPL_ERC20.allowance`. |
 | `0x4479b709` | `deposit_from_ata(uint256 wei_)` | Move wrapper SPL balance from caller's ATA into gas-token credit. Unwrap leg of the gas-wrapper bridge. |
@@ -309,7 +309,7 @@ When writing new wrappers or adapters, prefer the `HelperProgram` selectors (sin
 - **`contracts/wsystem_program.sol`** — Wrapper around the System Program precompile for `program_id()`, `rome_evm_program_id()`, `pda()`, `allocate()`, and `assign()`.
 - **`contracts/wcross_program_invocation.sol`** — Example: calling an arbitrary Solana program from EVM via CPI.
 - **`contracts/examples/orra.sol`** — Integration example for the Orra program demonstrating CPI with signed invocations, PDA derivation with seeds, and sub-account management.
-- **`contracts/examples/helper.sol`** — `helper_example` (Valentin's reference) demonstrates every `IHelperProgram` selector + the new `IWithdraw.withdraw_to_ata` leg via the canonical `address(HelperProgram).delegatecall(abi.encodeWithSignature(...))` pattern. Read this first when you need to invoke a HelperProgram method from a new contract.
+- **`contracts/examples/helper.sol`** — `helper_example` (the reference implementation) demonstrates every `IHelperProgram` selector + the new `IWithdraw.withdraw_to_ata` leg via the canonical `address(HelperProgram).delegatecall(abi.encodeWithSignature(...))` pattern. Read this first when you need to invoke a HelperProgram method from a new contract.
 
 ### Cross-repo navigation — downstream agents
 
@@ -321,7 +321,7 @@ If you're working on...
 | Per-helper example code | `contracts/examples/helper.sol` — demonstrates every `IHelperProgram` + `IWithdraw` method via the delegatecall pattern |
 | Cardo CPI Foundation | `contracts/cpi/` — `CpiAdapterBase`, `UserPda`, `PdaDeriver`, `PdasBatch`, `AnchorInstruction`, `AccountMetaBuilder`, cost-view trio |
 | Multi-PDA derivation (2+ PDAs against the same Solana program) | `contracts/cpi/PdasBatch.sol` — wraps the `pdas_batch_derive` selector (`0xFF…08` / `0x944336f8`). Worked example: `contracts/examples/pdas_batch.sol`. Use this over N×`PdaDeriver.derive` whenever you derive ≥2 PDAs back-to-back against the same program. |
-| Upstream precompile primitives (canonical) | [`rome-evm-private/CLAUDE.md`](../rome-evm-private/CLAUDE.md) — Rust dispatch + selector hex; treat as source of truth when adding methods |
+| Upstream precompile primitives (canonical) | [`rome-evm/CLAUDE.md`](../rome-evm/CLAUDE.md) — Rust dispatch + selector hex; treat as source of truth when adding methods |
 | Bridge contracts | `contracts/bridge/RomeBridgeWithdraw.sol` + `contracts/bridge/README.md` (Paymaster + Inbound deleted in #227) |
 | Activator | `contracts/activation/SimpleActivator.sol` (single-tx user-paid bootstrap since #162) |
 | ABI JSON for non-Solidity consumers | `npx hardhat compile` → `artifacts/contracts/interface.sol/*.json` |
@@ -333,7 +333,7 @@ If you're working on...
 When extending `IHelperProgram` / `ICrossProgramInvocation` / `IWithdraw` / `ISystemProgram`:
 
 1. **Mirror the upstream signature.** Declare the function in the appropriate Solidity interface using the canonical ABI signature.
-2. **Verify the selector via `cast keccak`.** Compute `keccak256(signature)[0:4]` and confirm it matches the `pub const FOO_SELECTOR: &[u8] = &[…];` constant in `rome-evm-private/program/src/non_evm/<helper|cpi|withdraw>.rs`. Don't trust inline comments — re-derive.
+2. **Verify the selector via `cast keccak`.** Compute `keccak256(signature)[0:4]` and confirm it matches the `pub const FOO_SELECTOR: &[u8] = &[…];` constant in `rome-evm/program/src/non_evm/<helper|cpi|withdraw>.rs`. Don't trust inline comments — re-derive.
 3. **Add a worked example to `contracts/examples/helper.sol`.** Use the `address(HelperProgram).delegatecall(abi.encodeWithSignature(...))` pattern; show how arguments are encoded and how reverts are surfaced.
 4. **Update the "Cross-repo dependencies — rome-ui" table** below with the new method and its downstream consumers (if any are wired in yet — leave a `TBD` if not).
 5. **Run `npx hardhat compile`** to confirm consumers (`erc20spl`, `bridge/*`, `cpi/UserPda`, activator, oracle, meteora) still type-check against the updated interface.
@@ -387,7 +387,7 @@ Target: `0.8.28`. Production profile enables optimizer with 200 runs.
 - Test against devnet: `npx hardhat test --network <chain>`.
 - Oracle Gateway V2 contracts depend on live Pyth/Switchboard feeds — test against a live Rome devnet chain for oracle-related changes.
 - Never deploy contracts without running the full Hardhat test suite.
-- ERC-20 SPL wrappers interact with Solana precompiles at fixed addresses — verify precompile addresses match rome-evm-private if changed. Note: SPL Token (0xFF...05) and Associated Token (0xFF...06) dedicated handlers were removed in the Mollusk refactor; these now route through Mollusk SVM/CPI.
+- ERC-20 SPL wrappers interact with Solana precompiles at fixed addresses — verify precompile addresses match rome-evm if changed. Note: SPL Token (0xFF...05) and Associated Token (0xFF...06) dedicated handlers were removed in the Mollusk refactor; these now route through Mollusk SVM/CPI.
 - Bridge deploy scripts (`scripts/bridge/deploy.ts`) require `USDC_MINT` and `WETH_MINT` env vars — no longer hardcoded to Rome's mints (#86). Wrapper deploys are skipped when the corresponding mint env var is unset; chains without an Ethereum-origin bridge target get paymaster + ERC20Users only.
 - After deploying `ERC20SPLFactory` on a new chain, run `scripts/bridge/bootstrap-bridged-wrappers.ts` to register canonical wrappers via `add_spl_token_no_metadata` so the rome-ui backend's `TokenCreated` indexer can discover them.
 - Update `CHANGELOG.md` when a PR lands user-visible behaviour changes or changes the deployed contract ABIs.
@@ -396,7 +396,7 @@ Target: `0.8.28`. Production profile enables optimizer with 200 runs.
 
 | If you change... | Also check/update... |
 |-----------------|---------------------|
-| Precompile interface addresses or selectors | `contracts/interface.sol` MUST match `rome-evm-private/program/src/non_evm/*.rs` dispatch tables; re-verify any new selector via `cast keccak`. Mirror in `rome-solidity-sdk/` interfaces. |
+| Precompile interface addresses or selectors | `contracts/interface.sol` MUST match `rome-evm/program/src/non_evm/*.rs` dispatch tables; re-verify any new selector via `cast keccak`. Mirror in `rome-solidity-sdk/` interfaces. |
 | `IHelperProgram` surface (`0xff..09`) | `contracts/erc20spl/erc20spl.sol` (4 ATA reads + `_transfer` + `ensure_token_account`), `contracts/cpi/UserPda.sol` (`.ata` delegates), `contracts/bridge/RomeBridgeWithdraw.sol` (3 ATA reads), `contracts/activation/SimpleActivator.sol`, `contracts/examples/helper.sol` (worked examples). |
 | `IWithdraw.withdraw_to_pda` / `withdraw_to_ata` | rome-ui `src/features/portfolio/hooks/useWrapUnwrap.ts` (wrap leg). |
 | Contract ABIs | `rome-ui/src/abis/*.json` + parseAbi() call sites, `tests/` Solidity test contracts, `CHANGELOG.md` |
@@ -404,7 +404,7 @@ Target: `0.8.28`. Production profile enables optimizer with 200 runs.
 | `ERC20SPLFactory.add_spl_token_no_metadata` / `TokenCreated` event | **rome-ui** backend's token-discovery indexer (watches `TokenCreated` to populate Redis token cache served at `/api/tokens`); `src/features/portfolio/hooks/useChainTokenBalances.ts` consumes the cache. `src/abis/ERC20SPLFactory.json` mirror only if the indexer's ABI parser uses it. |
 | `SimpleActivator.activate` / `topUpUserPda` / `isActivated` / `activationCost` | **rome-ui** `src/features/portfolio/components/ActivateAccountButton.tsx` (primary CTA replacement on Swap/Bridge/Liquidity until activated; fires the single `activate{value: activationCost}()` tx on click), `src/features/portfolio/hooks/useIsPdaActivated.ts` (visibility gate). Inline parseAbi; `chain.contracts.simpleActivator` field wires the address. |
 | `RomeBridgeWithdraw.burnUSDC` / `burnETH` / `approveBurnETH` | **rome-ui** `src/features/bridge/hooks/useOutboundCctpSend.ts`, `useOutboundWhSend.ts`. Inline parseAbi, no JSON regen. |
-| `RomeBridgePaymaster` / `RomeBridgeInbound` | **Deleted in #227** (2026-06). Were already legacy since 2026-04-26 — superseded by `settle_inbound_bridge` on rome-evm-private. rome-ui's `chain.contracts` config still parses optional addresses for back-compat; no active call sites. |
+| `RomeBridgePaymaster` / `RomeBridgeInbound` | **Deleted in #227** (2026-06). Were already legacy since 2026-04-26 — superseded by `settle_inbound_bridge` on rome-evm. rome-ui's `chain.contracts` config still parses optional addresses for back-compat; no active call sites. |
 | Oracle adapter interfaces | Consuming contracts in this repo that use the adapters |
 | SPL token wrapper logic (`SPL_ERC20` / `SPL_ERC20_cached`) | **Five canonical protocol forks** validated end-to-end against `SPL_ERC20_cached` on Hadrian: `rome-uniswap-v2/` (PR #59), `rome-uniswap-v3/` (PR #1 — `scripts/METRICS.md`), `rome-aave-v3/` (PR #1 — METRICS.md), `compound-on-rome-comet/` (PR #18 — [`scripts/hadrian-cached-test/METRICS.md`](https://github.com/rome-protocol/compound-on-rome-comet/blob/main/scripts/hadrian-cached-test/METRICS.md)), and `rome-uniswap-v4/` (PR #1, full canonical surface PoolManager + PositionManager + Permit2 + StateView + V4Quoter + UR — [`scripts/hadrian-cached-test/METRICS.md`](https://github.com/rome-protocol/rome-uniswap-v4/blob/main/scripts/hadrian-cached-test/METRICS.md)). The off-chain `wrapper.ensure_token_account(<protocolContract>)` deploy-time warmup is RETIRED as of #216 (2026-05-24) — `approve` auto-creates the owner ATA in the common case. #217 (2026-05-25) made `balanceOf` / `allowance` / `approve` overlay-aware via `try { SplCached.account(ata) }`, enabling composition with V3 `Pool.mint`/`Pool.swap` balance-delta checks. Existing Hadrian wrappers (wUSDC `0x7632…`, wETH `0xDaA3…`, wSOL `0x101a…`) need redeploy after #217; factory redeploy landed in #218. Plus `rome-ui/src/features/portfolio` (renders wrapper rows via `useRomeHoldings`). **Known overlay-blind site:** `totalSupply` still reads the SPL Mint via legacy `AccountReader`; needs a `mint_state(bytes32 mint)` cached selector upstream. |
 | Hardhat network config | `rome-solidity-sdk/` uses same network definitions |
@@ -435,7 +435,7 @@ rome-ui consumes a small, stable surface from this repo. Changes to that surface
 
 ### Legacy / not consumed
 
-`RomeBridgePaymaster` and `RomeBridgeInbound` are kept in `chain.contracts` config for back-compat parsing of older chains.yaml files. The current inbound flow is `settle_inbound_bridge` on rome-evm-private (signed by `SOLANA_SETTLE_PAYER_KEY` after Circle/Wormhole `receiveMessage` confirms) — no Rome EVM tx involved. Don't expand these contracts; deprecate them.
+`RomeBridgePaymaster` and `RomeBridgeInbound` are kept in `chain.contracts` config for back-compat parsing of older chains.yaml files. The current inbound flow is `settle_inbound_bridge` on rome-evm (signed by `SOLANA_SETTLE_PAYER_KEY` after Circle/Wormhole `receiveMessage` confirms) — no Rome EVM tx involved. Don't expand these contracts; deprecate them.
 
 ### Behavioral contracts (not just ABI)
 
