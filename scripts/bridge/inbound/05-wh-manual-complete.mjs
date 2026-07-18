@@ -45,7 +45,7 @@ async function main() {
 
   // Use public Solana devnet for post_vaa (Rome RPC lacks WS); Rome RPC for complete_transfer
   const vaaConn = new Connection("https://api.devnet.solana.com", "confirmed");
-  const solConn = new Connection("https://node1.devnet-eu-sol-api.devnet.romeprotocol.xyz", "confirmed");
+  const solConn = new Connection((process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com"), "confirmed");
 
   const parsed = parseVaa(VAA_BASE64);
   console.log("VAA parsed: chain=", parsed.emitterChain, "seq=", parsed.sequence.toString());

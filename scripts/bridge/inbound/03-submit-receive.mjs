@@ -22,7 +22,7 @@ const TOKEN_MESSENGER_MINTER_PID   = new PublicKey("CCTPiPYPc6AsJuwueEnWgSgucamX
 const SPL_TOKEN_PROGRAM_ID         = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const USDC_MINT_DEVNET             = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
 
-const SOL_RPC = "https://node1.devnet-eu-sol-api.devnet.romeprotocol.xyz";
+const SOL_RPC = (process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com");
 const MAX_NONCES_PER_PDA = 6400n;
 
 // ----------------------------------------------------------------------------

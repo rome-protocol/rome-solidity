@@ -13,7 +13,7 @@ async function main() {
   console.log(`Recipient: ${RECIPIENT.toBase58()}`);
   console.log(`USDC ATA:  ${recipientAta.toBase58()}`);
 
-  const conn = new Connection("https://node1.devnet-eu-sol-api.devnet.romeprotocol.xyz", "confirmed");
+  const conn = new Connection((process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com"), "confirmed");
   const info = await conn.getAccountInfo(recipientAta);
   if (!info) { console.log("ATA NOT INITIALIZED"); return; }
   const owner = new PublicKey(info.data.subarray(32, 64));

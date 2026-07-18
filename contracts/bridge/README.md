@@ -166,7 +166,7 @@ Each tx now fits the budget. This is also the standard ERC-20 bridge pattern (ap
 
 **Why.** Once any CPI has been attempted, Rome sets `found_cpi = true` (before executing). If the EVM then tries to revert the frame, Rome replaces the revert data with `CannotRevertCpi` (`program/src/vm/vm.rs:434`). This is intentional — the CPI's real side effects on Solana can't be rolled back — but it destroys the specific error data from the failed CPI.
 
-**Debugging approach.** Read the proxy's stdout on the rome host directly: `ssh -i ~/.ssh/devnet-rome ubuntu@<rome-ip> 'sudo docker logs proxy --tail 500 | grep -iE "mollusk|error|custom program"'`. The real Solana program error appears in the `non-evm call error: SimulateTransactionError: mollusk error: Failure(Custom(0))` line along with full Solana logs. Do this first when a CPI fails unexplained.
+**Debugging approach.** Inspect the proxy's logs on the node serving the chain (grep for `mollusk`, `error`, `custom program`). The real Solana program error appears in the `non-evm call error: SimulateTransactionError: mollusk error: Failure(Custom(0))` line along with full Solana logs. Do this first when a CPI fails unexplained.
 
 ### 5. `block.number` on Rome EVM is the Solana slot, not stable inside a tx
 

@@ -15,7 +15,7 @@ const HADRIAN_GAS_MINT: `0x${string}` =
     "0x3b442cb3912157f13a933d0134282d032b5ffecd01a2dbf1b7790608df002ea7";
 const EVM_RPC = "https://hadrian.testnet.romeprotocol.xyz";
 const SOLANA_RPC =
-    "https://node1.devnet-eu-sol-api.devnet.romeprotocol.xyz";
+    (process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com");
 
 async function jsonRpc(url: string, method: string, params: unknown[]) {
     const r = await fetch(url, {

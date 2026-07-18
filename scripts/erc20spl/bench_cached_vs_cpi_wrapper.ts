@@ -26,7 +26,7 @@ import { readDeployments } from "../lib/deployments.js";
 //   4. Writes a markdown report to scripts/CACHED_VS_CPI_WRAPPER_BENCH.md
 
 const EVM_RPC = "https://hadrian.testnet.romeprotocol.xyz";
-const SOLANA_RPC = "https://node1.devnet-eu-sol-api.devnet.romeprotocol.xyz";
+const SOLANA_RPC = (process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com");
 
 interface BenchRow {
     op: string;
