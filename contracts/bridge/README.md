@@ -18,7 +18,7 @@ This document covers what the bridge does, how it's wired, how to redeploy it, a
 
 Both assets flow as SPL tokens between Solana and Ethereum. On the Rome side, an `SPL_ERC20` wrapper exposes each SPL mint as an ERC-20 so users can interact with standard wallets. The wrapper is a 1:1 view over the user's Solana ATA — there is no additional custody.
 
-**Rome's gas mint is `USDC` (bare).** The `WUSDC` wrapper above is a distinct token from native gas — same underlying SPL, different surface (BalancePDA vs SPL_ERC20). The bridge picker on rome-ui filters out `WUSDC` from the Rome → Solana picker because the native gas withdraw path covers the same destination ATA. See [rome-ui CLAUDE.md § "Bridge asset picker"](https://github.com/rome-protocol/rome-ui/blob/main/CLAUDE.md).
+**Rome's gas mint is `USDC` (bare).** The `WUSDC` wrapper above is a distinct token from native gas — same underlying SPL, different surface (BalancePDA vs SPL_ERC20). The bridge picker on the app filters out `WUSDC` from the Rome → Solana picker because the native gas withdraw path covers the same destination ATA. See the app CLAUDE.md § "Bridge asset picker".
 
 The four CCTP/Wormhole flows (Phase 1):
 
@@ -42,7 +42,7 @@ The two Phase-2 flows (Rome ↔ Solana, any SPL):
                                                                               └─────────────────────────────┘
 ```
 
-Attestation/VAA fetching and the return-leg submission happen off-chain in the bridge relayer (`rome-ui/src/server/bridge/`). The on-chain side is four Solana CPIs from Rome plus four Sepolia transactions.
+Attestation/VAA fetching and the return-leg submission happen off-chain in the bridge relayer (`the app/src/server/bridge/`). The on-chain side is four Solana CPIs from Rome plus four Sepolia transactions.
 
 ---
 
@@ -54,7 +54,7 @@ Three bridge contracts on the `<chain>` devnet EVM:
 
 - **`SPL_ERC20`** (`WUSDC`, `WETH`, `WSOL`, plus any future `W{Symbol}` deployed via the factory) — generic ERC-20 wrapper for any SPL mint. Binds the mint to a standard ERC-20 interface (`balanceOf` reads `getATA(AUTHORITY_PDA, mint)`, transfers/approvals go through Rome's CPI precompile). Phase-2 generic outbound (`bridgeOutToSolana` + `ensureRecipientAta`) lives here — see § "Generic Rome → Solana SPL outbound" below.
 - **`RomeBridgeWithdraw`** — entrypoint for outbound flows. `burnUSDC(amount, ethRecipient)` fires a CCTP `depositForBurn` CPI. `approveBurnETH(amount)` + `burnETH(amount, ethRecipient)` (two separate EVM txs — see "Problems faced") fire an SPL Token Approve CPI then a Wormhole `transferWrapped` CPI. The contract takes all Solana program IDs, sysvars, and PDAs through its constructor so it is network-agnostic.
-- **`RomeBridgePaymaster`** — ERC-2771 trusted forwarder with per-user 3-tx sponsorship cap and a `(target, selector)` allowlist. **Legacy — no longer used by the active bridge worker.** The current inbound flow uses `settle_inbound_bridge` on rome-evm-private signed by `SOLANA_SETTLE_PAYER_KEY`, no Rome EVM tx involved. Kept in chain.contracts config for back-compat parsing only.
+- **`RomeBridgePaymaster`** — ERC-2771 trusted forwarder with per-user 3-tx sponsorship cap and a `(target, selector)` allowlist. **Legacy — no longer used by the active bridge worker.** The current inbound flow uses `settle_inbound_bridge` on rome-evm-private signed by `the settle payer key`, no Rome EVM tx involved. Kept in chain.contracts config for back-compat parsing only.
 
 `IWormholeTokenBridge.sol` and `ICCTP.sol` encode the Solana instructions and account lists for the two CPI targets. All Solana program IDs and sysvar addresses are constructor params, not constants.
 
@@ -81,7 +81,7 @@ A complement to Phase 1's CCTP/Wormhole outbound paths. **Solana-native SPL toke
 | `bridgeOutToSolana(bytes32 recipient, uint256 value) → bool` | Two CPIs in one atomic Rome tx: (1) `AssociatedToken.CreateIdempotent` for the recipient ATA, funded by `msg.sender`'s unified user PDA (no-ops when the ATA already exists); (2) SPL `transfer_checked` from `getATA(AUTHORITY_PDA, mint)` → recipient ATA. Authority = `AUTHORITY_PDA = find_program_address([EXTERNAL_AUTHORITY, evmAddr])`. Emits `BridgedOutToSolana`. |
 | `ensureRecipientAta(bytes32 recipient) → bytes32` | Standalone idempotent ATA-create helper. Funded by sender's unified user PDA. Emits `RecipientAtaEnsured`. Kept as a public utility — `bridgeOutToSolana` no longer requires this as a preflight (the create CPI is inlined). |
 
-Post-2026-05-15 collapse: `bridgeOutToSolana` inlines the recipient-ATA-create CPI internally. The legacy two-step preflight pattern (probe Solana → call `ensureRecipientAta` if missing → call `bridgeOutToSolana`) is no longer required; the rome-ui hook drops the probe-then-call dance. The atomic two-CPI Rome DoTx fits under the 1.4M CU budget (the 5-CPI activator tx measures ~234K CU mean on Hadrian; a 2-CPI bridgeOut sits comfortably below that).
+Post-2026-05-15 collapse: `bridgeOutToSolana` inlines the recipient-ATA-create CPI internally. The legacy two-step preflight pattern (probe Solana → call `ensureRecipientAta` if missing → call `bridgeOutToSolana`) is no longer required; the the app hook drops the probe-then-call dance. The atomic two-CPI Rome DoTx fits under the 1.4M CU budget (the 5-CPI activator tx measures ~234K CU mean on Hadrian; a 2-CPI bridgeOut sits comfortably below that).
 
 **Asset-origin asymmetry** — combined with Phase 1:
 
@@ -90,11 +90,11 @@ Post-2026-05-15 collapse: `bridgeOutToSolana` inlines the recipient-ATA-create C
 | Originates on Ethereum (USDC, ETH, future ERC20s) | CCTP / Wormhole | `RomeBridgeWithdraw.{burnUSDC, burnETH}` | Yes — one method per protocol |
 | Native to Solana (any SPL deployed via `add_spl_token_no_metadata`) | Send SPL to PDA-ATA | **`bridgeOutToSolana`** | **No — one method covers every wrapper** |
 
-Frontend consumer: `rome-ui/src/features/bridge/hooks/useOutboundSplBridge.ts`. See "Cross-repo dependencies — rome-ui" in `/CLAUDE.md` (rome-solidity root) for the full ABI + behavioral-contract map.
+Frontend consumer: `the app/src/features/bridge/hooks/useOutboundSplBridge.ts`. See "Cross-repo dependencies — the app" in `/CLAUDE.md` (rome-solidity root) for the full ABI + behavioral-contract map.
 
-### Off-chain (bridge relayer and UI — `rome-ui`)
+### Off-chain (bridge relayer and UI — `the app`)
 
-The four flows are multi-step (source-chain tx → fetch attestation → target-chain tx). The relayer is a Next.js API server with a Redis-backed state machine:
+The four flows are multi-step (source-chain tx → fetch attestation → target-chain tx). The relayer is an off-chain state machine:
 
 - `src/server/bridge/flows/inboundCctp.ts` — polls Circle IRIS `/messages/{domain}/{txHash}` for the message+attestation, then submits `receiveMessage` on Solana.
 - `src/server/bridge/flows/outboundCctp.ts` — looks up the Solana sig for the `burnUSDC` EVM tx via `rome_solanaTxForEvmTx`, polls IRIS for the attestation, submits `receiveMessage` on Sepolia.
@@ -118,7 +118,7 @@ From `deployments/rome.json`:
 | SPL_ERC20 `WSOL` (v9 — bridgeOutToSolana + ensureRecipientAta) | `0x1b23b52d9c991d580ae6df1b936aff09a5f794a2` |
 | RomeBridgeWithdraw | `0x513f76e39cfd7008f1e143ae37148608cddfcaaf` (Wormhole target chain = 10002 Sepolia) |
 
-The deployed `WUSDC` is still the original Phase-1 wrapper (no `bridgeOutToSolana`); see `rome-ui` BridgePage filter logic for why this is fine — outbound USDC routes through the native Withdraw precompile (`0x42…0016`), not via the wrapper.
+The deployed `WUSDC` is still the original Phase-1 wrapper (no `bridgeOutToSolana`); see `the app` BridgePage filter logic for why this is fine — outbound USDC routes through the native Withdraw precompile (`0x42…0016`), not via the wrapper.
 
 ---
 
@@ -188,7 +188,7 @@ Each tx now fits the budget. This is also the standard ERC-20 bridge pattern (ap
 
 **Symptom.** Multiple redeploy cycles to chase down `InvalidAccountData` errors from Wormhole — wrong number of accounts, wrong mutability flags, wrong order.
 
-**Fix.** Derive the account list directly from the IDL. `IWormholeTokenBridge.sol: buildTransferWrappedAccounts` mirrors the account layout at `@wormhole-foundation/sdk-solana-tokenbridge: dist/esm/utils/tokenBridge/instructions/transferWrapped.js` exactly: 17 accounts (no `sender`), `from_owner` is **signer + writable**, `authority_signer` is **readonly**, `mint` is **writable**, `wormhole_core` and `token` come at the end. Before changing the layout, diff against `scripts/diff-wh-transfer-wrapped.mjs` in `rome-ui` which runs the SDK builder and prints the exact accounts Wormhole expects.
+**Fix.** Derive the account list directly from the IDL. `IWormholeTokenBridge.sol: buildTransferWrappedAccounts` mirrors the account layout at `@wormhole-foundation/sdk-solana-tokenbridge: dist/esm/utils/tokenBridge/instructions/transferWrapped.js` exactly: 17 accounts (no `sender`), `from_owner` is **signer + writable**, `authority_signer` is **readonly**, `mint` is **writable**, `wormhole_core` and `token` come at the end. Before changing the layout, diff against `scripts/diff-wh-transfer-wrapped.mjs` in `the app` which runs the SDK builder and prints the exact accounts Wormhole expects.
 
 ### 8. Wormhole destination chain id was hardcoded to Ethereum mainnet
 
@@ -202,7 +202,7 @@ Each tx now fits the budget. This is also the standard ERC-20 bridge pattern (ap
 
 **Symptom.** The outbound flows need to know the Solana signature of the Rome tx so the relayer can scrape Wormhole logs / poll IRIS. There was no proxy RPC for this — logs had it, but clients couldn't.
 
-**Fix.** Added `rome_solanaTxForEvmTx(evmTxHash)` to `rome-apps/proxy/src/api/rome.rs`. It queries the `evm_tx_sol_tx` table via rome-sdk and returns an array of Solana signatures. The rome proxy runs the `solana-tx-rpc` Docker tag which includes this method.
+**Fix.** Added `rome_solanaTxForEvmTx(evmTxHash)` to the proxy. It queries the `evm_tx_sol_tx` table and returns an array of Solana signatures.
 
 ---
 
@@ -226,7 +226,7 @@ For a fresh deploy on a new Rome chain or to refresh rome:
    ```
    Checks that `burnUSDC` and `approveBurnETH` emulate cleanly. `burnETH` is explicitly skipped in the smoke test — it requires a prior on-chain approve.
 
-7. **Update the frontend** (`rome-ui`) `CHAIN_WITHDRAW` address in `src/features/bridge/hooks/useOutboundWhSend.ts` and any CCTP hook file.
+7. **Update the frontend** (`the app`) `CHAIN_WITHDRAW` address in `src/features/bridge/hooks/useOutboundWhSend.ts` and any CCTP hook file.
 
 ## Test flows end to end
 
@@ -257,7 +257,7 @@ Start here:
 - `scripts/bridge/derive/wormhole-accounts.ts` — PDA derivations. `wrappedMeta` depends on the mint — keep it in sync with the deployed WETH wrapper.
 - `scripts/bridge/constants.ts` — Solana program IDs (mainnet vs devnet) and SPL mints. **`SPL_MINTS_DEVNET.WETH_WORMHOLE` must match the canonical wrapped-ETH mint for the source chain you're bridging from.**
 
-For the off-chain half, see `rome-ui/src/server/bridge/` (flows and Wormhole/CCTP helpers) and `rome-ui/src/features/bridge/` (hooks and UI).
+For the off-chain half, see `the app/src/server/bridge/` (flows and Wormhole/CCTP helpers) and `the app/src/features/bridge/` (hooks and UI).
 
 ---
 

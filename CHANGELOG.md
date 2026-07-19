@@ -60,7 +60,7 @@ wrapper over the same mint) with **no security change** (the mint is the real as
 
 - **Caller-transparent:** `burnToWormhole` / `approveWormholeBurn` / `setWormholeAssetAllowed`
   keep the `address assetWrapper` parameter, and `wormholeAssetAllowed(address)` stays a
-  view (now mint-derived) — bridge-api / rome-ui need no changes. New storage getter
+  view (now mint-derived) — bridge-api / the app need no changes. New storage getter
   `wormholeMintAllowed(bytes32)`; constructor seed + setter + both burn-path guards derive
   the mint internally.
 - **Contract change → requires a RomeBridgeWithdraw redeploy (v10).** Merging is source-ready;
@@ -127,7 +127,7 @@ now fail closed before any precompile touch. No happy-path behavior change.
   emitted alongside the legacy `Withdrawn`.
 - `deploy.ts`/`derive/cctp-accounts.ts` derive v2 config PDAs + per-domain remotes;
   devnet domain list `[0,1,3,6,7,15]` in `constants.ts`.
-- Downstream: rome-ui gains a destination-network picker on outbound (follow-up);
+- Downstream: the app gains a destination-network picker on outbound (follow-up);
   existing 2-arg callers unaffected. `scripts/bridge/tests/portal-cctp-test.ts`
   remains v1-era (do not use against v6).
 
@@ -188,7 +188,7 @@ Follow-up: bump `SimpleActivator` PDA-funding floor to ~5-10 ATAs of headroom.
 
 [`contracts/erc20spl/erc20spl_factory.sol#_register_contract`](contracts/erc20spl/erc20spl_factory.sol) — both `add_spl_token_with_metadata` and `add_spl_token_no_metadata` now spin up `SPL_ERC20_cached` instances. Constructor signature is identical (`bytes32 mint, address cpi_program, string name, string symbol, ERC20Users users`), so the factory's external ABI + `TokenCreated` event surface stays unchanged.
 
-Migration model is **redeploy the factory at a new address** — the existing factory's state (`token_by_mint`, `mint_by_symbol_hash`, `creator_nonce`) is per-instance, so a fresh deploy gets a clean symbol namespace and starts emitting `TokenCreated` events that the rome-ui token indexer picks up. Registry update points `chain.contracts.erc20SplFactory` at the new factory; rome-ui's canonical-only token-sync (overwrites the Redis cache each cycle) auto-purges legacy-wrapper tokens on the next sync.
+Migration model is **redeploy the factory at a new address** — the existing factory's state (`token_by_mint`, `mint_by_symbol_hash`, `creator_nonce`) is per-instance, so a fresh deploy gets a clean symbol namespace and starts emitting `TokenCreated` events that the app token indexer picks up. Registry update points `chain.contracts.erc20SplFactory` at the new factory; the app's canonical-only token-sync (overwrites the token cache each cycle) auto-purges legacy-wrapper tokens on the next sync.
 
 The factory itself remains track-neutral by composition: `create_token_mint` + `init_token_mint` still call `HelperProgram` (legacy track) in their own user-tx; `_register_contract` only emits an event and `new`s the contract; the deployed `SPL_ERC20_cached` operates cache-track in subsequent user-txs. No code path mixes tracks within a single tx.
 
@@ -219,7 +219,7 @@ Selector hex locks at [`tests/erc20spl/cached.selectors.test.ts`](tests/erc20spl
 
 Behavioral integration tests at [`tests/erc20spl/cached.integration.ts`](tests/erc20spl/cached.integration.ts) — exercise constructor + views + mutations + saturation sentinel against a deployed wrapper. **Runtime execution requires Hadrian** (`HADRIAN_PRIVATE_KEY` in keystore + `SPL_ERC20_CACHED_ADDRESS` env var pointing at the deployed wrapper). Demo test files for revert atomicity / iterative-VM / ordering negative — follow-up commits.
 
-Spec: [`rome-specs#128`](https://github.com/rome-protocol/rome-specs/pull/128).
+Spec: `the specs#128`.
 
 ### Changed — Renamed `IWithdrawCached.withdraw_from_ata` → `deposit`; selector `0x214ee485` → `0xb6b55f25`
 
@@ -283,13 +283,13 @@ Other changes:
 - `ERC20Users.get_user` kept (8 callers in `damm_v1_factory.sol` + `damm_v1_pool.sol` rely on its "revert if unregistered" gate; migration deferred).
 - `ERC20SPLFactory.create_token_mint` + `init_token_mint` migrated off `users.get_user` to direct `HelperProgram.pda(msg.sender)` derivation (no behavior change — same address; runtime still catches under-funded PDA at `create_account`).
 - `mint_id` kept public (legit identity, analogous to `bridgeOutToSolana(bytes32 recipient, ...)` which spec explicitly keeps as "legit bytes32").
-- `ensureRecipientAta` kept (per `contracts/bridge/README.md:82` — "public utility"; consumed by rome-ui's `useOutboundSplBridge` legacy path).
+- `ensureRecipientAta` kept (per `contracts/bridge/README.md:82` — "public utility"; consumed by the app's `useOutboundSplBridge` legacy path).
 - `interface.sol` declares all 8 new selector signatures under `IHelperProgram`.
 - `CLAUDE.md` HelperProgram surface table extended with the 8 new rows.
 
 Status: hardhat compile passes (79 files). 39 erc20spl regression tests pass (view-defensive + approve-saturation + bridge-out-collapse helpers). On-chain integration testing pending Hadrian rome-evm program upgrade to [`rome-evm#363`](https://github.com/rome-protocol/rome-evm/pull/363).
 
-Spec: [`rome-specs/active/technical/2026-05-16-spl-erc20-direct-precompile-rewrite.md`](https://github.com/rome-protocol/rome-specs/blob/main/active/technical/2026-05-16-spl-erc20-direct-precompile-rewrite.md).
+Spec: `the specs/active/technical/2026-05-16-spl-erc20-direct-precompile-rewrite.md`.
 
 ### Added — `UserPda.atas(user, mints[])` — batch ATA derivation across mints
 New ergonomic helper on the `UserPda` library: derives N ATAs for one EVM user across N classic SPL Token mints in two precompile dispatches total (vs N calls today). Composes:
@@ -326,7 +326,7 @@ Side effects:
 
 No ABI change. Output is byte-identical to the prior derivation chain (output ordering contract from PdasBatch's NatSpec: `result[i]` ↔ `seedGroups[i]`).
 
-CU measurement post-deploy will land in `rome-specs/active/technical/2026-05-14-rome-primitive-cu-baseline.md` — paired follow-up, not gating this ship per the surface rollout plan.
+CU measurement post-deploy will land in `the specs/active/technical/2026-05-14-rome-primitive-cu-baseline.md` — paired follow-up, not gating this ship per the surface rollout plan.
 
 ### Added — `PdasBatch` library — surfaces `pdas_batch_derive` for everybody
 New library `contracts/cpi/PdasBatch.sol` wraps the `pdas_batch_derive` CPI shortcut selector (`0x944336f8` on `0xFF…08`) — N independent PDAs against one Solana program in one syscall. Counterpart to the existing `PdaDeriver` (single PDA via `0xFF…07`); both stay available, callers pick by shape.
@@ -337,7 +337,7 @@ Primary surface:
 - `PdasBatch.triplet(seedsA, seedsB, seedsC, programId)` — 3-PDA
 - `PdasBatch.quad(seedsA, seedsB, seedsC, seedsD, programId)` — 4-PDA
 
-Hard limits enforced by the precompile (per `rome-evm/program/src/non_evm/derive_helpers.rs`): N ≤ 16, M ≤ 8 inner seeds, len ≤ 32 bytes per seed. Output ordering is deterministic — `result[i]` corresponds to `seedGroups[i]`, a stability contract every downstream consumer (rome-sdk TS + Rust mirrors, off-chain previews) depends on.
+Hard limits enforced by the precompile (per `rome-evm/program/src/non_evm/derive_helpers.rs`): N ≤ 16, M ≤ 8 inner seeds, len ≤ 32 bytes per seed. Output ordering is deterministic — `result[i]` corresponds to `seedGroups[i]`, a stability contract every downstream consumer (the SDK (TS + Rust mirrors), off-chain previews) depends on.
 
 No new types: input element is `ISystemProgram.Seed` (reused — compatible with existing `PdaDeriver.seedBytes` / `makeSeeds` builders), result element is `ICrossProgramInvocation.PdaWithBump` (already declared in `interface.sol`). The library lives next to the precompile that owns the call, not under `SystemProgram`.
 
@@ -367,7 +367,7 @@ First-time bootstrap entry point on Rome chains. Three `payable` functions becau
 - **`SimpleActivator.createWusdcAta()`** — tops up the activator's own PDA via `create_payer`, then creates the user's WUSDC ATA via the wrapper's `ensure_token_account` (owned by the user's PDA). Caller sends `msg.value ≥ tokenAccountsCost()` (default 0.5 USDC). Idempotent.
 - **`SimpleActivator.createWsolAta()`** — same pattern for WSOL ATA.
 
-Total user cost: ~2 USDC across three MetaMask confirmations. The rome-ui fires the three txs sequentially behind a single button click. After this, downstream wrapper writes (`transfer` / `approve` / `transferFrom`), DEX swaps, and bridge-out flows resolve `users.get_user(msg.sender)` correctly and the user's WUSDC + WSOL ATAs exist on Solana — rent-exempt for life.
+Total user cost: ~2 USDC across three MetaMask confirmations. The the app fires the three txs sequentially behind a single button click. After this, downstream wrapper writes (`transfer` / `approve` / `transferFrom`), DEX swaps, and bridge-out flows resolve `users.get_user(msg.sender)` correctly and the user's WUSDC + WSOL ATAs exist on Solana — rent-exempt for life.
 
 Sybil resistance: user pays all calls themselves; zero operator subsidy. Uses only existing precompiles and existing primitives (`RomeEVMAccount.create_payer`, `ERC20Users.ensure_user`, `SPL_ERC20.ensure_token_account`) — no new precompile, no rome-evm change.
 
@@ -375,7 +375,7 @@ Sybil resistance: user pays all calls themselves; zero operator subsidy. Uses on
 - **`scripts/activation/deploy-simple-activator.ts`** — single-step deploy: reads `users` from `factory.users()`, takes `usdcWrapper` + `wsolWrapper` + `factory` as env / defaults, deploys `SimpleActivator` with all wiring resolved. Default per-call cost = 0.5 USDC (× 2 = 1 USDC across both ATA calls).
 - **`CLAUDE.md`** — `contracts/activation/` bullet rewritten; Change Impact Map and Cross-repo dependencies tables updated for the three-call ABI; Behavioral contracts notes describe the three-tx pattern.
 
-Replaces `PdaActivator` (deleted in this release — never shipped past unreleased): the prior single-tx Meteora-swap design exceeded the 1.4M-CU cap on chains with the post-clean-slate wrapper stack and was rejected by the rome-sdk pre-flight (`TooManyComputeUnitsInAtomicTx`).
+Replaces `PdaActivator` (deleted in this release — never shipped past unreleased): the prior single-tx Meteora-swap design exceeded the 1.4M-CU cap on chains with the post-clean-slate wrapper stack and was rejected by the SDK pre-flight (`TooManyComputeUnitsInAtomicTx`).
 
 ### Removed — `PdaActivator` (single-tx Meteora-swap activation path)
 - **`contracts/activation/PdaActivator.sol`** — file deleted.
@@ -393,7 +393,7 @@ The operator-subsidy PDA-funding path is removed in favor of `SimpleActivator.ac
 - **`RomeBridgeWithdraw.sol`** — `burnUSDC` / `burnETH` comments updated to point at `SimpleActivator.activate` as the activation prerequisite.
 
 ### Fixed — `RomeBridgeWithdraw` aligned with unified-PDA model + correct devnet Wormhole sub-PDAs
-Companion to `rome-evm` 0acabea ("Remove PAYER seed from user PDA derivation"). With the user's authority and payer collapsed onto a single PDA at `find_program_address([EXTERNAL_AUTHORITY, evm_addr])`, the bridge contract is updated to fill every previously-PAYER_PDA slot with the unified user PDA — matching the rome-ui hooks (`useOutboundCctpSend` / `useOutboundWhSend`) that submit calldata directly to the CPI precompile per `rome-ui/docs/BRIDGE_OUTBOUND_CPI.md`.
+Companion to `rome-evm` 0acabea ("Remove PAYER seed from user PDA derivation"). With the user's authority and payer collapsed onto a single PDA at `find_program_address([EXTERNAL_AUTHORITY, evm_addr])`, the bridge contract is updated to fill every previously-PAYER_PDA slot with the unified user PDA — matching the the app hooks (`useOutboundCctpSend` / `useOutboundWhSend`) that submit calldata directly to the CPI precompile per `the app/docs/BRIDGE_OUTBOUND_CPI.md`.
 
 - **`RomeBridgeWithdraw.burnUSDC`** — `event_rent_payer` (CCTP `deposit_for_burn` metas[1]) now passes `userPda` (was `userPayerPda`). Salts shrunk from `[bytes32("PAYER"), cctpSalt]` to `[cctpSalt]` (only the per-tx `messageSentEventData` PDA needs an explicit signer seed; the unified user PDA is auto-signed by the precompile when it appears in metas — see `rome-evm/program/src/non_evm/cpi_ix.rs:42-66`). Pre-condition: caller's unified PDA must hold ≥ ~13M lamports for `messageSentEventData` rent (factory.create_user pre-funds 50M).
 - **`RomeBridgeWithdraw.burnETH`** — same surgery for Wormhole `transfer_wrapped`: `payer` (metas[0]) and `from_owner` (metas[3]) both = `userPda`; salts shrunk from `[bytes32("PAYER"), whSalt]` to `[whSalt]`.
@@ -437,13 +437,13 @@ The CHANGELOG sections describing past deploys to retired chains are preserved (
 - `archive` block extended with the previous addresses for `RomeBridgeWithdraw`, `ERC20Users`, `SPL_ERC20_USDC` (v1), `SPL_ERC20_WETH` (v1), and `OracleAdapterFactory` (300s-staleness deploy) so the file retains provenance for the superseded deploys. Mirrors the existing `RomeBridgeWithdrawPrevious` / `RomeBridgeInboundPrevious` convention; no schema changes.
 
 ### Changed — `scripts/bridge/deploy.ts` parameterized per-chain via `USDC_MINT` / `WETH_MINT` env vars; `r` symbols swapped to `W`
-- `scripts/bridge/deploy.ts` — `loadSolanaPdas` and `main()` no longer read `SPL_MINTS.USDC_NATIVE` / `SPL_MINTS.WETH_WORMHOLE` (Rome's mints) regardless of target. Both now require explicit `USDC_MINT` / `WETH_MINT` env vars at invocation; the script skips the corresponding `SPL_ERC20` wrapper if a mint is unset. `RomeBridgeWithdraw` deploys only when **both** mints are set, since its constructor takes both wrappers and the per-mint Wormhole / CCTP PDAs cannot be derived without them — chains with no Ethereum-origin bridge target therefore get paymaster + ERC20Users + (optional) wrappers, with no broken withdraw artefact written. Surfaced during the cassius-test (121298) bring-up rehearsal — `rome-specs/active/technical/2026-04-28-rome-chain-bring-up-runbook-plan.md` Chapter 10.4 — where the previous default deployed Rome's mints onto cassius-test as throwaway wrappers.
+- `scripts/bridge/deploy.ts` — `loadSolanaPdas` and `main()` no longer read `SPL_MINTS.USDC_NATIVE` / `SPL_MINTS.WETH_WORMHOLE` (Rome's mints) regardless of target. Both now require explicit `USDC_MINT` / `WETH_MINT` env vars at invocation; the script skips the corresponding `SPL_ERC20` wrapper if a mint is unset. `RomeBridgeWithdraw` deploys only when **both** mints are set, since its constructor takes both wrappers and the per-mint Wormhole / CCTP PDAs cannot be derived without them — chains with no Ethereum-origin bridge target therefore get paymaster + ERC20Users + (optional) wrappers, with no broken withdraw artefact written. Surfaced during the cassius-test (121298) bring-up rehearsal — `the specs/active/technical/2026-04-28-rome-chain-bring-up-runbook-plan.md` Chapter 10.4 — where the previous default deployed Rome's mints onto cassius-test as throwaway wrappers.
 - `scripts/bridge/deploy.ts` — `deployWithdraw(...)` signature gained two trailing string params (`usdcMintBase58`, `wethMintBase58`) so PDAs are derived from the actual deploy-time mints rather than a global. The single in-tree caller (`scripts/setup-local.ts`) updated.
 - `scripts/bridge/deploy.ts`, `scripts/setup-local.ts` — wrapper labels updated from the legacy `r` prefix (`Rome USDC` / `rUSDC`, `Rome wETH` / `rETH`) to the canonical `W` prefix per `CLAUDE.md` § "Token nomenclature" (`Wrapped USDC` / `WUSDC`, `Wrapped ETH` / `WETH`). The on-chain `symbol()` of newly-deployed wrappers reads `WUSDC` / `WETH`; existing deployments are unchanged. Aligns the bridge-script wrapper output with WETH9/WBTC convention so Ethereum-familiar users see the symbol they already recognize. `setup-local.ts` was the last remaining call site producing `r`-prefixed symbols in this repo.
 
 ### Fixed — `ERC20SPLFactory.TokenCreated` event was declared but never emitted
-- `contracts/erc20spl/erc20spl_factory.sol` — `_register_contract` (called from both `add_spl_token_with_metadata` and `add_spl_token_no_metadata`) now emits `TokenCreated(creator, mint, wrapper, name, symbol, nonce)` after writing the `token_by_mint` / `mint_by_symbol_hash` / `token_by_symbol_hash` mappings. Previously the event was declared on lines 26-33 but had zero `emit` sites — so the rome-ui backend's token-discovery indexer (which watches `TokenCreated` per the cross-repo deps note in `CLAUDE.md`) never populated wrappers deployed via this factory. The bootstrap-bridged-wrappers script added in a prior session was relying on an event the factory wasn't emitting; this fix completes that loop. `nonce` carries the creator's current `creator_nonce[msg.sender]` at registration time.
-- Surfaced during the cassius-test (121298) bring-up rehearsal — `rome-specs/active/technical/2026-04-28-rome-chain-bring-up-runbook-plan.md` Chapter 10.4 lessons.
+- `contracts/erc20spl/erc20spl_factory.sol` — `_register_contract` (called from both `add_spl_token_with_metadata` and `add_spl_token_no_metadata`) now emits `TokenCreated(creator, mint, wrapper, name, symbol, nonce)` after writing the `token_by_mint` / `mint_by_symbol_hash` / `token_by_symbol_hash` mappings. Previously the event was declared on lines 26-33 but had zero `emit` sites — so the the app backend's token-discovery indexer (which watches `TokenCreated` per the cross-repo deps note in `CLAUDE.md`) never populated wrappers deployed via this factory. The bootstrap-bridged-wrappers script added in a prior session was relying on an event the factory wasn't emitting; this fix completes that loop. `nonce` carries the creator's current `creator_nonce[msg.sender]` at registration time.
+- Surfaced during the cassius-test (121298) bring-up rehearsal — `the specs/active/technical/2026-04-28-rome-chain-bring-up-runbook-plan.md` Chapter 10.4 lessons.
 
 ### Added — Generic Rome → Solana SPL outbound (`SPL_ERC20.bridgeOutToSolana` + `ensureRecipientAta`)
 - `contracts/erc20spl/erc20spl.sol` — new `bridgeOutToSolana(bytes32 recipient, uint256 value) → bool`: single CPI `transfer_checked` from `getATA(AUTHORITY_PDA, mint)` → recipient ATA, signed as `AUTHORITY_PDA = find_program_address([EXTERNAL_AUTHORITY, evmAddr])` with empty seeds. Generic outbound for any wrapper deployed by the factory — one method covers WUSDC/WETH/WSOL today and every future Solana-native SPL. Emits `BridgedOutToSolana`.
@@ -452,13 +452,13 @@ The CHANGELOG sections describing past deploys to retired chains are preserved (
 - `scripts/bridge/deploy-weth-v9.ts`, `scripts/bridge/deploy-wsol-v9.ts` — minimal canonical SPL_ERC20 deploys carrying the v9 outbound surface. Use to refresh wrappers on a chain after the contract upgrade.
 - `contracts/bridge/README.md` — new "Generic Rome → Solana SPL outbound" section documenting the asset-origin asymmetry: Ethereum-origin assets need CCTP/Wormhole; Solana-native SPLs need only `bridgeOutToSolana`.
 - `scripts/bridge/README.md` — bifurcated "Adding a new asset" section by origin (Solana-native SPLs are factory-only; Ethereum-origin assets still need per-asset RomeBridgeWithdraw entrypoints).
-- `CLAUDE.md` — "Cross-repo dependencies — rome-ui" section listing every method/event rome-ui consumes and the consumer file path. Mirror section in `rome-ui/CLAUDE.md`.
+- `CLAUDE.md` — "Cross-repo dependencies — the app" section listing every method/event the app consumes and the consumer file path. Mirror section in `the app/CLAUDE.md`.
 
 ### Changed — `ERC20SPLFactory.create_user` pre-funds 1,000,000 lamports (was 1,000,000,000)
 - `contracts/erc20spl/erc20spl_factory.sol` — `CREATE_PAYER_LAMPORTS = 1_000_000` (was 1B inline). 1M is above the 0-byte rent-exempt minimum (~890,880) but below subsequent operation costs (~2,039,280 per ATA create). Per `/rome/CLAUDE.md`'s "no faucets, no starter-gas-on-us" rule — bridging / ATA-creation lamports come from user funds going forward. ABI is unchanged; only the internal constant differs. Existing users on the deployed factory keep their previously-pre-funded balance.
 
 ### Added — Bridged-wrapper bootstrap script
-- `scripts/bridge/bootstrap-bridged-wrappers.ts` — registers the canonical bridged SPL mints (USDC, WETH) on a chain's `ERC20SPLFactory` via `add_spl_token_no_metadata`. The factory's `TokenCreated` event is what the rome-ui backend's token watcher consumes to populate Portfolio / Swap / TokenSelectModal; wrappers deployed by direct `new SPL_ERC20(...)` (legacy bridge redeploy scripts) bypass that event and stay invisible in the UI. Run after `scripts/deploy_erc20spl_factory.ts` on a fresh chain — the script is idempotent (skips mints with a non-zero `token_by_mint`) and writes resulting wrapper addresses into `deployments/<network>.json` under `SPL_ERC20_USDC` / `SPL_ERC20_WETH`. Mint set is auto-selected per network (devnet vs mainnet); override via `BRIDGED_SET=devnet|mainnet` for one-offs.
+- `scripts/bridge/bootstrap-bridged-wrappers.ts` — registers the canonical bridged SPL mints (USDC, WETH) on a chain's `ERC20SPLFactory` via `add_spl_token_no_metadata`. The factory's `TokenCreated` event is what the the app backend's token watcher consumes to populate Portfolio / Swap / TokenSelectModal; wrappers deployed by direct `new SPL_ERC20(...)` (legacy bridge redeploy scripts) bypass that event and stay invisible in the UI. Run after `scripts/deploy_erc20spl_factory.ts` on a fresh chain — the script is idempotent (skips mints with a non-zero `token_by_mint`) and writes resulting wrapper addresses into `deployments/<network>.json` under `SPL_ERC20_USDC` / `SPL_ERC20_WETH`. Mint set is auto-selected per network (devnet vs mainnet); override via `BRIDGED_SET=devnet|mainnet` for one-offs.
 
 ### Added — Oracle Gateway V2 GitHub Actions deploy workflow
 - `.github/workflows/deploy-oracle.yml` — manual-trigger (`workflow_dispatch`) workflow that deploys Oracle Gateway V2 (core + seed feeds + verification) against a selected Rome devnet using a single shared GitHub Secret (`ROME_DEVNET_PRIVATE_KEY`). Posts the resulting `deployments/<network>.json` back as a reviewable bot PR via `peter-evans/create-pull-request` when `open_pr: true`. Toggles: `run_seed_feeds`, `run_verification`, `open_pr`, `force_redeploy`. Closes #33.
@@ -468,7 +468,7 @@ The CHANGELOG sections describing past deploys to retired chains are preserved (
 ### Changed — Oracle Gateway V2 deploy scripts: idempotency + naming
 - `scripts/oracle/deploy-v2-polish.ts` — now idempotent. If `deployments/<network>.json` already contains a populated `OracleGatewayV2` block, the script prints existing addresses and exits without deploying. Set `FORCE_REDEPLOY=1` to override. Previously every invocation redeployed unconditionally, which wasted gas and orphaned the prior deploy on every CI run.
 - Deploy block renamed: `OracleGatewayV2Polished` → `OracleGatewayV2`. The "Polished" suffix existed only because a parallel legacy `OracleGatewayV2` block was being preserved during the audit refactor; that block is now an artifact and has been renamed to `OracleGatewayV2Legacy` in `deployments/monti_spl.json` (the only file that carried it; `monti_spl` itself is retired). `deploy-seed-feeds.ts` and `test-feeds-v2.ts` updated to the new name. `test-feeds-v2.ts` also fixed to read the current plain-string address shape (previously still expected the old `{address: "0x..."}` nesting from `deploy.ts`).
-- `deployments/rome.json` — block renamed. Addresses refreshed by a dry-run of the workflow against `<chain>`; **downstream consumers (rome-oracle-portal, etc.) must update their rome V2 addresses**.
+- `deployments/rome.json` — block renamed. Addresses refreshed by a dry-run of the workflow against `<chain>`; **downstream consumers (the oracle service, etc.) must update their rome V2 addresses**.
 
 ### Changed — Rome Bridge Phase 1 outbound Wormhole target chain
 - `contracts/bridge/RomeBridgeWithdraw` — added `wormholeTargetChain` immutable constructor param; `burnETH` now uses that instead of a hardcoded `2`. Wormhole testnet Sepolia is chain id 10002, not 2 (which is Ethereum mainnet). Without this, outbound VAAs targeted the wrong chain and the Sepolia Token Bridge refused to redeem them with `"invalid target chain"`.
@@ -506,7 +506,7 @@ The CHANGELOG sections describing past deploys to retired chains are preserved (
 - Added `@solana/web3.js` (PDA derivation in deploy scripts).
 
 ### Spec
-See `rome-product/specs/rome-bridge-phase1.md` for the full design spec (Variant B auto-redeem, USDC as Rome EVM gas token, Wormhole + CCTP sequencing).
+See `the product docs/specs/rome-bridge-phase1.md` for the full design spec (Variant B auto-redeem, USDC as Rome EVM gas token, Wormhole + CCTP sequencing).
 
 ## [Unreleased]
 
