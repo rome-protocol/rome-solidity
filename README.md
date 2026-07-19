@@ -1,5 +1,7 @@
 # `rome-solidity`
 
+> **Built on [Rome Protocol](https://docs.rome.builders)** — EVM chains that run natively inside the Solana runtime, where Solidity apps call Solana programs atomically (CPI) and Solana users drive EVM apps: two VMs, one chain, one block.
+
 `rome-solidity` is a Solidity smart contract monorepo for **bidirectional EVM ↔ Solana interop primitives** within the Rome-EVM program stack, token utilities, and a Meteora DEX AMM implementation, tested via Hardhat.
 
 ## Key goals
