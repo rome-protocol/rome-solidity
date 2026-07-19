@@ -42,7 +42,7 @@ The two Phase-2 flows (Rome ↔ Solana, any SPL):
                                                                               └─────────────────────────────┘
 ```
 
-Attestation/VAA fetching and the return-leg submission happen off-chain in the bridge relayer (`the app/src/server/bridge/`). The on-chain side is four Solana CPIs from Rome plus four Sepolia transactions.
+Attestation/VAA fetching and the return-leg submission happen off-chain in the bridge relayer (the app). The on-chain side is four Solana CPIs from Rome plus four Sepolia transactions.
 
 ---
 
@@ -54,7 +54,7 @@ Three bridge contracts on the `<chain>` devnet EVM:
 
 - **`SPL_ERC20`** (`WUSDC`, `WETH`, `WSOL`, plus any future `W{Symbol}` deployed via the factory) — generic ERC-20 wrapper for any SPL mint. Binds the mint to a standard ERC-20 interface (`balanceOf` reads `getATA(AUTHORITY_PDA, mint)`, transfers/approvals go through Rome's CPI precompile). Phase-2 generic outbound (`bridgeOutToSolana` + `ensureRecipientAta`) lives here — see § "Generic Rome → Solana SPL outbound" below.
 - **`RomeBridgeWithdraw`** — entrypoint for outbound flows. `burnUSDC(amount, ethRecipient)` fires a CCTP `depositForBurn` CPI. `approveBurnETH(amount)` + `burnETH(amount, ethRecipient)` (two separate EVM txs — see "Problems faced") fire an SPL Token Approve CPI then a Wormhole `transferWrapped` CPI. The contract takes all Solana program IDs, sysvars, and PDAs through its constructor so it is network-agnostic.
-- **`RomeBridgePaymaster`** — ERC-2771 trusted forwarder with per-user 3-tx sponsorship cap and a `(target, selector)` allowlist. **Legacy — no longer used by the active bridge worker.** The current inbound flow uses `settle_inbound_bridge` on rome-evm-private signed by `the settle payer key`, no Rome EVM tx involved. Kept in chain.contracts config for back-compat parsing only.
+- **`RomeBridgePaymaster`** — ERC-2771 trusted forwarder with per-user 3-tx sponsorship cap and a `(target, selector)` allowlist. **Legacy — no longer used by the active bridge worker.** The current inbound flow uses `settle_inbound_bridge` on rome-evm signed by `the settle payer key`, no Rome EVM tx involved. Kept in chain.contracts config for back-compat parsing only.
 
 `IWormholeTokenBridge.sol` and `ICCTP.sol` encode the Solana instructions and account lists for the two CPI targets. All Solana program IDs and sysvar addresses are constructor params, not constants.
 
@@ -81,7 +81,7 @@ A complement to Phase 1's CCTP/Wormhole outbound paths. **Solana-native SPL toke
 | `bridgeOutToSolana(bytes32 recipient, uint256 value) → bool` | Two CPIs in one atomic Rome tx: (1) `AssociatedToken.CreateIdempotent` for the recipient ATA, funded by `msg.sender`'s unified user PDA (no-ops when the ATA already exists); (2) SPL `transfer_checked` from `getATA(AUTHORITY_PDA, mint)` → recipient ATA. Authority = `AUTHORITY_PDA = find_program_address([EXTERNAL_AUTHORITY, evmAddr])`. Emits `BridgedOutToSolana`. |
 | `ensureRecipientAta(bytes32 recipient) → bytes32` | Standalone idempotent ATA-create helper. Funded by sender's unified user PDA. Emits `RecipientAtaEnsured`. Kept as a public utility — `bridgeOutToSolana` no longer requires this as a preflight (the create CPI is inlined). |
 
-Post-2026-05-15 collapse: `bridgeOutToSolana` inlines the recipient-ATA-create CPI internally. The legacy two-step preflight pattern (probe Solana → call `ensureRecipientAta` if missing → call `bridgeOutToSolana`) is no longer required; the the app hook drops the probe-then-call dance. The atomic two-CPI Rome DoTx fits under the 1.4M CU budget (the 5-CPI activator tx measures ~234K CU mean on Hadrian; a 2-CPI bridgeOut sits comfortably below that).
+Post-2026-05-15 collapse: `bridgeOutToSolana` inlines the recipient-ATA-create CPI internally. The legacy two-step preflight pattern (probe Solana → call `ensureRecipientAta` if missing → call `bridgeOutToSolana`) is no longer required; the app hook drops the probe-then-call dance. The atomic two-CPI Rome DoTx fits under the 1.4M CU budget (the 5-CPI activator tx measures ~234K CU mean on Hadrian; a 2-CPI bridgeOut sits comfortably below that).
 
 **Asset-origin asymmetry** — combined with Phase 1:
 
@@ -90,7 +90,7 @@ Post-2026-05-15 collapse: `bridgeOutToSolana` inlines the recipient-ATA-create C
 | Originates on Ethereum (USDC, ETH, future ERC20s) | CCTP / Wormhole | `RomeBridgeWithdraw.{burnUSDC, burnETH}` | Yes — one method per protocol |
 | Native to Solana (any SPL deployed via `add_spl_token_no_metadata`) | Send SPL to PDA-ATA | **`bridgeOutToSolana`** | **No — one method covers every wrapper** |
 
-Frontend consumer: `the app/src/features/bridge/hooks/useOutboundSplBridge.ts`. See "Cross-repo dependencies — the app" in `/CLAUDE.md` (rome-solidity root) for the full ABI + behavioral-contract map.
+Frontend consumer: the app. See "Cross-repo dependencies — the app" in `/CLAUDE.md` (rome-solidity root) for the full ABI + behavioral-contract map.
 
 ### Off-chain (bridge relayer and UI — `the app`)
 
@@ -130,7 +130,7 @@ Each subsection here is a real incident that blocked a flow and cost time to dia
 
 **Symptom.** `burnETH` failed on-chain with `Error processing Instruction 2: Computational budget exceeded`. The Rome `DoTx` instruction consumed 1,399,644 of 1,399,700 compute units before Wormhole's `transfer_wrapped` even finished its inner burn-and-post-message CPIs.
 
-**Why.** Rome forces atomic mode whenever any CPI happens in the EVM tx: `is_atomic = steps_executed <= NUMBER_OPCODES_PER_TX && ... || found_cpi` (`rome-evm-private/emulator/src/api/mod.rs`). Iterative mode (which splits execution across multiple Solana txs) is not safe for CPIs because CPI side effects can't be replayed. That means every CPI-bearing EVM tx is one Solana tx, capped at 1.4M CU. Rome's DoTx overhead (EVM interpretation, account loading, state merge for a contract with ~20 writable accounts) is ~1.3M CU. Wormhole's `transfer_wrapped` needs ~300K CU. Two CPIs don't fit.
+**Why.** Rome forces atomic mode whenever any CPI happens in the EVM tx: `is_atomic = steps_executed <= NUMBER_OPCODES_PER_TX && ... || found_cpi` (`rome-evm/emulator/src/api/mod.rs`). Iterative mode (which splits execution across multiple Solana txs) is not safe for CPIs because CPI side effects can't be replayed. That means every CPI-bearing EVM tx is one Solana tx, capped at 1.4M CU. Rome's DoTx overhead (EVM interpretation, account loading, state merge for a contract with ~20 writable accounts) is ~1.3M CU. Wormhole's `transfer_wrapped` needs ~300K CU. Two CPIs don't fit.
 
 **Fix.** Split the outbound Wormhole path into two EVM txs:
 1. `approveBurnETH(amount)` — single CPI: SPL Token Approve, delegating Wormhole's `authority_signer` PDA to burn the user's ATA.
@@ -172,7 +172,7 @@ Each tx now fits the budget. This is also the standard ERC-20 bridge pattern (ap
 
 **Symptom.** CCTP outbound initially used `block.number` as part of the salt for the transient `messageSentEventData` PDA. The emulator would pass one PDA; by the time the on-chain tx ran, `block.number` had changed and the program computed a different PDA → `AccountNotFound`.
 
-**Why.** On Rome EVM, `block.number` returns the current Solana slot (`rome-evm-private/program/src/state/handler.rs: block_number() → self.slot`). Slots advance every 400ms; emulation and execution happen on different slots.
+**Why.** On Rome EVM, `block.number` returns the current Solana slot (`rome-evm/program/src/state/handler.rs: block_number() → self.slot`). Slots advance every 400ms; emulation and execution happen on different slots.
 
 **Fix.** Per-user monotonic counter in storage (`mapping(address => uint64) burnNonce`). Stable within a tx, unique across txs. Also include `address(this)` in the salt so redeploys don't collide with PDAs used under the previous contract address. See the salt derivation at the top of `burnUSDC` / `burnETH`.
 
@@ -257,7 +257,7 @@ Start here:
 - `scripts/bridge/derive/wormhole-accounts.ts` — PDA derivations. `wrappedMeta` depends on the mint — keep it in sync with the deployed WETH wrapper.
 - `scripts/bridge/constants.ts` — Solana program IDs (mainnet vs devnet) and SPL mints. **`SPL_MINTS_DEVNET.WETH_WORMHOLE` must match the canonical wrapped-ETH mint for the source chain you're bridging from.**
 
-For the off-chain half, see `the app/src/server/bridge/` (flows and Wormhole/CCTP helpers) and `the app/src/features/bridge/` (hooks and UI).
+For the off-chain half, see the app (flows and Wormhole/CCTP helpers) and the app (hooks and UI).
 
 ---
 

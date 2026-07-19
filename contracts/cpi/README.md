@@ -5,7 +5,7 @@ Shared library + templates every Cardo app adapter is built on top of.
 Lives at `rome-solidity/contracts/cpi/`. Imported by each adapter in
 `rome-showcase/contracts/<adapter>/`.
 
-See the canonical spec: `the specs/active/technical/cardo-foundation.md`.
+See the canonical spec: the specs.
 
 ---
 
@@ -229,7 +229,7 @@ Every new capability goes through the budget gate before implementation:
 | Account count | ≤ 24 (leaves margin under Solana's 32-account ceiling) | Sum IDL account array |
 | Solana tx size | ≤ 1000 bytes (leaves ~200 for Rome's DoTx prologue) | 8 (disc) + args + 34 × accounts |
 
-See `the specs/active/technical/app-distribution-portal-m2-showcase-contracts.md §0`
+See the specs
 for the recon template.
 
 ---

@@ -86,7 +86,7 @@ ETH_PK=<deployer> npx hardhat run scripts/oracle/deploy-v2-polish.ts --network <
 # 2. Seed feeds — pyth/switchboard + cached (cached auto-seeded when the
 #    deployment has the cached impls; Switchboard skippable per chain)
 ETH_PK=<deployer> npx hardhat run scripts/oracle/deploy-seed-feeds.ts --network <chain>
-# 3. emit-registry-update (run by the the deploy workflows oracle-deploy workflow)
+# 3. emit-registry-update (run by the deploy workflows oracle-deploy workflow)
 #    writes oracle.json (cached feeds keyed "<PAIR>-CACHEDPYTH" / "<PAIR>-CACHED")
 #    + contracts.json, and auto-PRs them to the registry. Don't hand-edit oracle.json.
 ```
