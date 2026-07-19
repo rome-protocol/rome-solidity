@@ -2,7 +2,7 @@
 
 Cross-chain bridge between **Ethereum Sepolia** and **Rome rome devnet** using **Circle CCTP** for USDC and **Wormhole Token Bridge** for ETH (Phase 1 — Ethereum-origin assets), plus a **generic Rome → Solana SPL outbound** for any wrapper deployed by `ERC20SPLFactory` (Phase 2 — Solana-native and Solana-bridged SPLs).
 
-Token nomenclature follows the canonical W-prefix standard documented in [`/CLAUDE.md` § "Token nomenclature"](../../CLAUDE.md#token-nomenclature--canonical-repo-wide). Native gas keeps its bare symbol (`USDC` on Rome); ERC20-SPL wrappers get `W` (e.g. `WUSDC`, `WETH`, `WSOL`).
+Token nomenclature follows the canonical W-prefix standard. Native gas keeps its bare symbol (`USDC` on Rome); ERC20-SPL wrappers get `W` (e.g. `WUSDC`, `WETH`, `WSOL`).
 
 This document covers what the bridge does, how it's wired, how to redeploy it, and — most importantly — the non-obvious problems that came up during bring-up and the fixes that unblocked them. Read the "Problems faced and fixes" section before touching the code.
 
@@ -18,7 +18,7 @@ This document covers what the bridge does, how it's wired, how to redeploy it, a
 
 Both assets flow as SPL tokens between Solana and Ethereum. On the Rome side, an `SPL_ERC20` wrapper exposes each SPL mint as an ERC-20 so users can interact with standard wallets. The wrapper is a 1:1 view over the user's Solana ATA — there is no additional custody.
 
-**Rome's gas mint is `USDC` (bare).** The `WUSDC` wrapper above is a distinct token from native gas — same underlying SPL, different surface (BalancePDA vs SPL_ERC20). The bridge picker on the app filters out `WUSDC` from the Rome → Solana picker because the native gas withdraw path covers the same destination ATA. See the app CLAUDE.md § "Bridge asset picker".
+**Rome's gas mint is `USDC` (bare).** The `WUSDC` wrapper above is a distinct token from native gas — same underlying SPL, different surface (BalancePDA vs SPL_ERC20). The bridge picker on the app filters out `WUSDC` from the Rome → Solana picker because the native gas withdraw path covers the same destination ATA.
 
 The four CCTP/Wormhole flows (Phase 1):
 
@@ -90,7 +90,7 @@ Post-2026-05-15 collapse: `bridgeOutToSolana` inlines the recipient-ATA-create C
 | Originates on Ethereum (USDC, ETH, future ERC20s) | CCTP / Wormhole | `RomeBridgeWithdraw.{burnUSDC, burnETH}` | Yes — one method per protocol |
 | Native to Solana (any SPL deployed via `add_spl_token_no_metadata`) | Send SPL to PDA-ATA | **`bridgeOutToSolana`** | **No — one method covers every wrapper** |
 
-Frontend consumer: the app. See "Cross-repo dependencies — the app" in `/CLAUDE.md` (rome-solidity root) for the full ABI + behavioral-contract map.
+Frontend consumers integrate via the contract ABIs.
 
 ### Off-chain (bridge relayer and UI — `the app`)
 

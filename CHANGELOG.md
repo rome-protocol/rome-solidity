@@ -219,11 +219,11 @@ Selector hex locks at [`tests/erc20spl/cached.selectors.test.ts`](tests/erc20spl
 
 Behavioral integration tests at [`tests/erc20spl/cached.integration.ts`](tests/erc20spl/cached.integration.ts) — exercise constructor + views + mutations + saturation sentinel against a deployed wrapper. **Runtime execution requires Hadrian** (`HADRIAN_PRIVATE_KEY` in keystore + `SPL_ERC20_CACHED_ADDRESS` env var pointing at the deployed wrapper). Demo test files for revert atomicity / iterative-VM / ordering negative — follow-up commits.
 
-Spec: `the specs#128`.
+Spec: the specs (issue #128).
 
 ### Changed — Renamed `IWithdrawCached.withdraw_from_ata` → `deposit`; selector `0x214ee485` → `0xb6b55f25`
 
-Tracks the post-ship correction in [`rome-evm#386`](https://github.com/rome-protocol/rome-evm/pull/386). Two issues with the original ship:
+Tracks the post-ship correction in `rome-evm#386`. Two issues with the original ship:
 
 1. **Naming** — the operation does SPL transfer caller's ATA → chain's sol_wallet ATA on Solana side, which is a **deposit** of SPL into chain custody, not a withdrawal of anything from `WithdrawCached`. Renamed to `deposit(uint256)` to make the inverse-of-`withdrawal` relationship explicit.
 2. **Accounting** — the original impl deducted `wei_` from `Withdraw::ADDRESS` (`0x42…16`) alongside crediting the caller. But `Withdraw::ADDRESS` is NOT a real economic pool — balance only accumulates from `withdraw_to_*` wrap flows, while SPL tokens enter circulation from bridge-inbound + genesis + direct transfers too. First-time-user unwrap on a chain where bridge-in is the primary SPL source would have **reverted** with insufficient balance at the precompile address. The chain's SPL wallet (sol_wallet ATA) backs gas in circulation, not `Withdraw::ADDRESS`. The fix removes the bogus debit so the EVM-side credit is a pure mint, matching `HelperProgram.deposit_from_ata` semantics (which has always shipped with a single caller-credit entry).
@@ -236,7 +236,7 @@ Behavioral contract: callers of `address(WithdrawCached).delegatecall(abi.encode
 
 ### Added — Phase A cached-track demonstrator methods on `cached.sol` + interface declarations
 
-Surfaces the four cached-track selectors that shipped in [`rome-evm#383`](https://github.com/rome-protocol/rome-evm/pull/383) (merged 2026-05-23):
+Surfaces the four cached-track selectors that shipped in `rome-evm#383` (merged 2026-05-23):
 
 - `ISplCached.transferFrom(address,address,uint256,bytes32)` (`0x401e3367`) — delegate-source SPL transfer. SPL Token accepts the caller-PDA as the from-ATA's owner OR as a delegate with sufficient `delegated_amount`. Unblocks router-driven Romeswap / Compound supply-borrow / Cardo adapters on cached track.
 - `ISplCached.approve(address,uint256,bytes32)` (`0x8180f2fc`) — EVM-spender approve. Sets `external_auth(spender)` as the SPL delegate on owner-ATA via `approve_checked`.
@@ -271,7 +271,7 @@ Post-merge: `MeteoraDAMMv1Factory` needs a redeploy (the buggy constant is baked
 
 ### Changed — `SPL_ERC20` hot paths direct-precompile rewrite (5 new HelperProgram selectors)
 
-Five `IHelperProgram` selectors (8 ABI sigs) added in [`rome-evm#363`](https://github.com/rome-protocol/rome-evm/pull/363) — `approve_spl` / `mint_spl` / `transfer_spl(addr,addr,...)` / `user_balance` / `allowance_of`. This PR migrates `SPL_ERC20`'s `approve` / `transferFrom` / `mint_to` / `balanceOf` / `allowance` off the Solidity-side SPL ix marshaling (`SplTokenLib.approve` / `SplTokenLib.mint_to_checked` + raw `CpiProgram.invoke_signed` via `delegatecall`) into the new dedicated HelperProgram selectors.
+Five `IHelperProgram` selectors (8 ABI sigs) added in `rome-evm#363` — `approve_spl` / `mint_spl` / `transfer_spl(addr,addr,...)` / `user_balance` / `allowance_of`. This PR migrates `SPL_ERC20`'s `approve` / `transferFrom` / `mint_to` / `balanceOf` / `allowance` off the Solidity-side SPL ix marshaling (`SplTokenLib.approve` / `SplTokenLib.mint_to_checked` + raw `CpiProgram.invoke_signed` via `delegatecall`) into the new dedicated HelperProgram selectors.
 
 CU per call:
 - Writes (approve / transferFrom delegate path / mint_to): ~140-180K Solana CU saved per call (Solidity-side AccountMeta[] + ix-data marshaling removed). Mirrors the measured −372 to −394K CU `transfer_spl` migration on Hadrian (2026-05-14 baseline).
@@ -287,7 +287,7 @@ Other changes:
 - `interface.sol` declares all 8 new selector signatures under `IHelperProgram`.
 - `CLAUDE.md` HelperProgram surface table extended with the 8 new rows.
 
-Status: hardhat compile passes (79 files). 39 erc20spl regression tests pass (view-defensive + approve-saturation + bridge-out-collapse helpers). On-chain integration testing pending Hadrian rome-evm program upgrade to [`rome-evm#363`](https://github.com/rome-protocol/rome-evm/pull/363).
+Status: hardhat compile passes (79 files). 39 erc20spl regression tests pass (view-defensive + approve-saturation + bridge-out-collapse helpers). On-chain integration testing pending Hadrian rome-evm program upgrade to `rome-evm#363`.
 
 Spec: the specs.
 
