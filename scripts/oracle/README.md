@@ -36,7 +36,7 @@ git commit -m "ops(oracle): deploy Oracle Gateway V2 to rome"
 
 ### Local stack (no keystore needed)
 
-Requires `rome-setup/deploy/start-local.sh` running.
+Requires `the local dev stack/deploy/start-local.sh` running.
 
 ```bash
 npx hardhat run scripts/oracle/deploy-v2-polish.ts --network local

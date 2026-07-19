@@ -112,7 +112,7 @@ npx hardhat test tests/damm_v1_pool.integration.ts --network local
 ## Notes
 
 - artifacts includes compiled JSON from existing snapshot builds.
-- `deployments/<network>.json` carries the deployed contract metadata for each chain (per `hardhat.config.ts` networks). No live devnet currently — see CLAUDE.md "Networks" section for active hardhat networks.
+- `deployments/<network>.json` carries the deployed contract metadata for each chain (per `hardhat.config.ts` networks). See `hardhat.config.ts` for the configured networks.
 - Keep toolchain with hardhat.config.ts and `tsconfig` consistent with existing pattern.
 
 ---

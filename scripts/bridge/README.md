@@ -2,7 +2,7 @@
 
 Deploy and ops scripts for the Rome Bridge contracts: paymaster (legacy), SPL_ERC20 wrappers (`WUSDC`, `WETH`, `WSOL`, plus per-asset `W{Symbol}` deploys), and `RomeBridgeWithdraw`.
 
-Token nomenclature follows the canonical W-prefix standard documented in [`/CLAUDE.md` § "Token nomenclature"](../../CLAUDE.md#token-nomenclature--canonical-repo-wide).
+Token nomenclature follows the canonical W-prefix standard.
 
 **Read `contracts/bridge/README.md` first** — it covers the architecture, the four bridge flows, and the non-obvious problems that shaped the design (single-tx compute-budget limit, missing SPL Approve, stale canonical mints, etc.). This file is the operational companion.
 
@@ -32,7 +32,7 @@ Token nomenclature follows the canonical W-prefix standard documented in [`/CLAU
 
 ### Local
 
-Requires `rome-setup/deploy/start-local.sh` running. CCTP + Wormhole programs must be present in the local Solana cluster (they're seeded by rome-setup; if you see deploy errors referencing unknown programs, verify your local stack seeded them).
+Requires `the local dev stack/deploy/start-local.sh` running. CCTP + Wormhole programs must be present in the local Solana cluster (they're seeded by the local dev stack; if you see deploy errors referencing unknown programs, verify your local stack seeded them).
 
 ```bash
 npx hardhat keystore set LOCAL_PRIVATE_KEY --dev
@@ -66,7 +66,7 @@ The path differs by asset origin:
 For tokens that originate on Solana (USDT-on-Solana, JUP, BONK, custom long-tail, etc.), you only need an `SPL_ERC20` wrapper on Rome. No `RomeBridgeWithdraw` change, no new burn entrypoint, no paymaster allowlist update — `SPL_ERC20.bridgeOutToSolana` is the generic outbound for all of them.
 
 1. Call `ERC20SPLFactory.add_spl_token_no_metadata(mint, "Symbol", "Name")` against the deployed factory on the target chain.
-2. The backend's `TokenCreated` event indexer picks up the new wrapper and surfaces it in `rome-ui`'s portfolio + bridge picker. The bridge picker auto-includes it because `useRomeHoldings` filters on `kind === "wrap"`.
+2. The backend's `TokenCreated` event indexer picks up the new wrapper and surfaces it in `the app`'s portfolio + bridge picker. The bridge picker auto-includes it because `useRomeHoldings` filters on `kind === "wrap"`.
 
 That's it. One CPI per outbound transfer, same code path as WETH/WSOL today.
 
