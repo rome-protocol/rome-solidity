@@ -118,3 +118,6 @@ npx hardhat test tests/damm_v1_pool.integration.ts --network local
 - Keep toolchain with hardhat.config.ts and `tsconfig` consistent with existing pattern.
 
 ---
+
+## Building on Rome with an agent
+See [`AGENTS.md`](./AGENTS.md) — the Rome-specific rules a coding agent needs.
