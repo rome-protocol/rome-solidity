@@ -2,122 +2,56 @@
 
 > **Built on [Rome Protocol](https://docs.rome.builders)** — EVM chains that run natively inside the Solana runtime, where Solidity apps call Solana programs atomically (CPI) and Solana users drive EVM apps: two VMs, one chain, one block.
 
-`rome-solidity` is a Solidity smart contract monorepo for **bidirectional EVM ↔ Solana interop primitives** within the Rome-EVM program stack, token utilities, and a Meteora DEX AMM implementation, tested via Hardhat.
+`rome-solidity` is the **Solidity SDK for Rome** — the interfaces, wrappers, and contracts a Solidity builder uses to reach Solana from an EVM contract: call any Solana program (CPI), treat any SPL token as an ERC-20, bridge assets out of Rome, and read Solana price feeds through the standard Chainlink interface.
 
-## Key goals
+**Full reference:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — every contract, what it's for, and where it's used.
 
-- Solana-compatible token/account behavior in EVM style
-- `Meteora DAMMv1`: automated market maker + factory/pool system
-- **Cross-program invocation wrappers (CPI)** — let Solidity contracts invoke native Solana programs via the precompile at `0xff…08` (plus gas-token wrap/unwrap, withdraw)
-- **Surface for MetaHook callbacks** — Solana programs invoke Rome EVM contracts with a synthetic EVM sender derived from the calling Solana program ID; Solidity contracts can target this surface to be invoked from Solana side
-- ERC20 interface to SPL tokens (supports liquidity flow in both directions: Solana liquidity consumed in Solidity, Rome-side liquidity contributed back to Solana protocols)
+## What's inside — ordered by importance
 
----
+1. **Precompile interfaces** — [`contracts/interface.sol`](contracts/interface.sol). The ABI bindings to Rome's non-EVM precompiles: **CPI** (`0xff…08`), **Helper** (`0xff…09`), **System** (`0xff…07`), **Withdraw** (`0x42…16`), and the gas-optimised **cached** family (`0xff…04/05/06/0b`). Everything else builds on these.
+2. **CPI toolkit** — [`contracts/cpi/`](contracts/cpi/). Call *any* Solana program from Solidity — account-meta builders, Anchor encoding, PDA derivation, cost quoting, and adapter templates. The differentiator. (Guide: [`contracts/cpi/README.md`](contracts/cpi/README.md).)
+3. **SPL ↔ ERC-20 wrappers** — [`contracts/erc20spl/`](contracts/erc20spl/). Any SPL token *is* an ERC-20 on Rome. Two tracks (**cached** vs **CPI** — see below) plus `ERC20SPLFactory` to wrap existing mints or mint new SPL tokens.
+4. **Bridge** — [`contracts/bridge/`](contracts/bridge/). The on-chain egress from Rome: `RomeBridgeWithdraw` (five rails) over Circle **CCTP v2** and **Wormhole**. (The off-chain orchestrator is the separate `rome-bridge-api`.)
+5. **Oracle** — [`contracts/oracle/`](contracts/oracle/). Solana price feeds (Pyth, Switchboard) delivered to EVM contracts through the standard Chainlink `AggregatorV3Interface`; direct + cached adapters, a clone factory, and a batch reader.
+6. **Account & token primitives** — `rome_evm_account.sol` (PDA derivation), `activation/SimpleActivator.sol` (one-tx user-paid activation), `wrap/WrappedGasFacade.sol`, and the `spl_token/` · `system_program/` · `convert.sol` low-level libraries.
+7. **Examples** — [`contracts/examples/`](contracts/examples/). Worked references for the toolkit.
+
+## The two SPL wrapper tracks — which to use
+
+Both `SPL_ERC20_cached` and `SPL_ERC20` expose the identical `IERC20` surface over the same SPL mint. A contract uses **one track, never both** (a hard rule).
+
+| Use **`SPL_ERC20_cached`** (the default) | Use **`SPL_ERC20`** (CPI-based) |
+|---|---|
+| Standard ERC-20 flows; multi-step / iterative-VM composition (DEX multi-hop, bulkers); anything needing the Solana side effect to **revert atomically** with the EVM tx. Cheaper CU. The factory deploys this. | Only when you need to push SPL out to an **arbitrary raw Solana wallet** (`bridgeOutToSolana` / `ensureRecipientAta`), which requires the permanently-CPI-only `create_ata_for_key`. |
+
+Full explanation: [`docs/ARCHITECTURE.md` §3](docs/ARCHITECTURE.md#3-spl--erc-20-wrappers--contractserc20spl).
+
+## Import paths
+
+```solidity
+import {ICrossProgramInvocation, IHelperProgram, CpiProgram, HelperProgram}
+    from "@rome-protocol/rome-solidity/contracts/interface.sol";
+import {SPL_ERC20_cached} from "@rome-protocol/rome-solidity/contracts/erc20spl/erc20spl_cached.sol";
+import {IAggregatorV3Interface} from "@rome-protocol/rome-solidity/contracts/oracle/IAggregatorV3Interface.sol";
+```
+
+npm publish is pending — consume via a github-pinned git dependency or by copying files. (The CPI-precompile ABIs are also mirrored in [`@rome-protocol/sdk`](https://github.com/rome-protocol/rome-sdk-ts) for TypeScript.)
 
 ## Quick start
 
-### Requirements
-
-- Node.js 18+ (recommended)
-- npm / yarn
-- Hardhat dependencies (installed by `npm install` below)
-
-### Install
-
 ```bash
 npm install
-```
-
-### Compile
-
-```bash
 npx hardhat compile
+# network-independent unit tests (oracle + bridge + CPI foundation):
+npx hardhat test nodejs tests/oracle/*.test.ts tests/bridge/*.test.ts tests/cpi/*.test.ts
 ```
 
----
-
-# Meteora DAMMv1 integration
-
-This integration can be used as an example of how Rome-EVM can provide interoperability with native Solana smart-contracts.
-
-## Preparation
-
-1. Go to https://devnet.meteora.ag/pools#dynamicpools and find Meteora **DAMMv1** pool which your would like to use from within Rome-EVM
-2. Copy the address of this pool (base58) and convert it into HEX. Later we will refer to this address as *POOL_ADDRESS*
-
-## Deployment
-
-Example scripts:
-- deploy_meteora_factory.ts
-- deploy_meteora_pool.ts
-
-```bash
-export <CHAIN>_PRIVATE_KEY=<YOUR_PRIVATE_KEY>
-export POOL_ADDRESS=<YOUR_POOL_ADDRESS>
-npx hardhat run scripts/deploy_meteora_factory.ts --network <chain>
-npx hardhat run scripts/deploy_meteora_pool.ts --network <chain>
-```
-
-After successful deployment, you will see a new file `/deployments/<network>.json`
-which contains information about deployed smart contracts. This file is later used by tests.
-
----
-
-## Tests
-
-Set tester private key in dev keystore:
-
-```bash
-npx hardhat keystore set <CHAIN>_PRIVATE_KEY --dev
-```
-
-Use Hardhat test suite:
-
-```bash
-npx hardhat test tests/damm_v1_pool.integration.ts --network local
-```
-
-## Contract highlights
-
-- `MeteoraDAMMv1Factory`
-  - create pool factory
-  - manage pool creation and fee config
-- `DAMMv1Pool`
-  - liquidity add/remove (WIP)
-  - swap with invariant (WIP)
-  - fee model
-- `ERC20SPLFactory` + `SPL_ERC20`
-  - minting/burning wrapped SPL tokens
-  - bridging SPL tokens to ERC20 style
-
----
-
-## Project policies
-
-- Solidity currently targeted: 0.8.28
-- Prefer non-reentrant checks and SafeMath semantics (built in)
-- Maintain artifacts + `build-info` for deterministic testing
-- Cross-program invocations encouraged through clean wrappers in `interface.sol`
-
----
-
-## Contributing
-
-1. Fork repo
-2. branch `feature/<name>`
-3. add/adjust tests
-4. `npm test`
-5. PR with explanation + gas/security notes
-
----
-
-## Notes
-
-- artifacts includes compiled JSON from existing snapshot builds.
-- `deployments/<network>.json` carries the deployed contract metadata for each chain (per `hardhat.config.ts` networks). See `hardhat.config.ts` for the configured networks.
-- Keep toolchain with hardhat.config.ts and `tsconfig` consistent with existing pattern.
-
----
+Solidity `0.8.28`. Integration tests under `tests/**/*.integration.ts` require a live Rome chain (`--network local`, or a devnet/testnet chain); see [`hardhat.config.ts`](hardhat.config.ts) for configured networks.
 
 ## Building on Rome with an agent
-See [`AGENTS.md`](./AGENTS.md) — the Rome-specific rules a coding agent needs.
+
+See [`AGENTS.md`](AGENTS.md) — the Rome-specific rules a coding agent needs — and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full contract map.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).

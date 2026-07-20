@@ -7,10 +7,9 @@ import hardhat from "hardhat";
  *
  * The on-chain `derive` paths require the CPI precompile (`0xFF…08`),
  * which doesn't exist on hardhatMainnet. Network-independent shape
- * assertions live here; live-precompile assertions are exercised via
- * the Meteora damm_v1_pool integration tests (same library, real
- * call path) — see `tests/damm_v1_pool.integration.ts --network local`
- * or against a live Rome devnet/testnet chain.
+ * assertions live here; live-precompile assertions are exercised
+ * against a live Rome devnet/testnet chain (the CPI precompile is
+ * required for the real derive path).
  *
  * Empty-group path IS exercised here because the precompile fallback
  * for N=0 returns an empty array without any syscall — pure ABI

@@ -81,8 +81,8 @@ contract PdasBatchWrapper {
         bumpB = rB.bump;
     }
 
-    /// Live-precompile path: 5-PDA generic batch (mirrors Meteora's
-    /// dynamic_amm_program group shape used by `damm_v1_pool.sol`).
+    /// Live-precompile path: 5-PDA generic batch (a typical
+    /// multi-PDA adapter group shape).
     function deriveFive(
         bytes32 pool,
         bytes32 token_a_mint,
