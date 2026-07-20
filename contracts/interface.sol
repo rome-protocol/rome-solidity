@@ -22,14 +22,13 @@ interface IWithdraw {
 }
 
 // ─── Cached precompiles ──────────────────────────────────────────────
-// Route through the rome-evm-private journal so non-EVM side effects
+// Route through the the Rome EVM program journal so non-EVM side effects
 // (SPL / ATA / System CPIs + Withdraw) are revertable alongside EVM
 // diffs. The non-cached precompiles above (Withdraw at 0x42..16,
 // System at 0xff..07, etc.) remain wired and continue to dispatch the
 // legacy non-revertable path.
 //
-// Source of truth: rome-evm-private/restore_non_evm_state branch,
-//                  program/src/non_evm_cached/.
+// Source of truth: the Rome EVM program's cached non-EVM dispatch.
 // Selectors below were re-derived from canonical signatures via ethers
 // `id(sig).slice(0,10)` against the Rust dispatch bytes — do not trust
 // the inline `// 0x…` comments in the Rust source if they conflict.
@@ -45,8 +44,8 @@ interface IWithdrawCached {
     // ATA to chain's sol_wallet ATA on Solana side, mint `wei_` native gas to
     // caller on EVM side. Pure mint (no offsetting Withdraw::ADDRESS debit).
     // Single-state only. Cached counterpart of legacy
-    // HelperProgram.deposit_from_ata; shipped in rome-evm-private#383, renamed
-    // from `withdraw_from_ata(uint256)` `0x214ee485` in rome-evm-private#386
+    // HelperProgram.deposit_from_ata; shipped in a Rome EVM program upgrade, renamed
+    // from `withdraw_from_ata(uint256)` `0x214ee485` in a Rome EVM program upgrade
     // (post-ship accounting fix).
     function deposit(uint256 wei_) external;
 }
@@ -100,14 +99,14 @@ interface ISplCached {
     // 0x401e3367 — delegate variant; authority = external_auth(caller),
     // accepted as the from-ATA's owner OR a sufficient-amount delegate.
     // Consumed by SPL_ERC20_cached.transferFrom + router-driven flows.
-    // Shipped in rome-evm-private#383.
+    // Shipped in a Rome EVM program upgrade.
     function transferFrom(address from, address to, uint256 amount, bytes32 mint) external;
     // 0x8180f2fc — EVM-spender approve. owner = external_auth(caller),
-    // delegate = external_auth(spender). Shipped in rome-evm-private#383.
+    // delegate = external_auth(spender). Shipped in a Rome EVM program upgrade.
     function approve(address spender, uint256 amount, bytes32 mint) external;
     // 0x1e458bee — caller-PDA signs as the mint authority (SPL runtime
     // enforces match). Consumed by SPL_ERC20_cached.mint_to + inbound bridge
-    // settle. Shipped in rome-evm-private#383.
+    // settle. Shipped in a Rome EVM program upgrade.
     function mint(address to, uint256 amount, bytes32 mint) external;
     // 0x0b0ad508 — ata, mint, owner
     function init(bytes32 ata, bytes32 mint, bytes32 owner) external;
@@ -149,10 +148,10 @@ interface ICrossProgramInvocation {
     // return value: lamports, owner, is_signer, is_writable, executable, data
     function account_info(bytes32 pubkey) external view returns(uint64, bytes32, bool, bool, bool, bytes memory);
 
-    // ─── CU-shortcut precompiles (rome-evm-private PR #318 + #319) ──────
+    // ─── CU-shortcut precompiles (a Rome EVM program upgrade + #319) ──────
     // Canonical keccak256(sig)[..4] selectors landed via PR #320. See
-    // rome-evm-private/docs/CPI_PRECOMPILE_SHORTCUTS.md (v1) and
-    // CPI_PRECOMPILE_SHORTCUTS_V2.md (v2) for design rationale + measured
+    // the precompile reference (v1) and
+    // the precompile reference (v2) for design rationale + measured
     // CU savings.
 
     // Read a slice of any Solana account's data buffer.
@@ -175,7 +174,7 @@ interface IHelperProgram {
     // Operator pays rent. Used for raw-pubkey recipients in
     // SPL_ERC20.bridgeOutToSolana / ensureRecipientAta / create_token_account
     // (replaces the prior AssociatedSplToken + CpiProgram.invoke marshaling).
-    // Shipped in rome-evm-private PR #364.
+    // Shipped in a Rome EVM program upgrade.
     function create_ata_for_key(bytes32 wallet, bytes32 mint) external;
     // create external pda
     function create_pda(address user) external;
@@ -236,7 +235,7 @@ interface IHelperProgram {
     // Token-2022 4-arg overloads (`approve_spl(...,token_program)` `0xc9884b1e`,
     // `mint_spl(...,token_program)` `0x406ee21b`,
     // `transfer_spl(...,token_program)` `0x7b11c48f`) were removed in
-    // rome-evm-private PR #364 — their impls still called mint_owner_decimals,
+    // a Rome EVM program upgrade — their impls still called mint_owner_decimals,
     // defeating the explicit token_program argument and delivering zero CU
     // saving vs the 3-arg variants. Token-2022 raw-delegate flows will get
     // fresh selectors with proper plumbing when use cases emerge.
@@ -244,17 +243,17 @@ interface IHelperProgram {
     // space=82 (SPL_MINT_LEN), owner=SPL Token, lamports=rent-floor. Funder =
     // caller's external_auth PDA. New account = external_auth_with_salt(caller, salt).
     // Two PDA signers (funder + new mint). Consumed by ERC20SPLFactory.create_token_mint.
-    // Shipped in rome-evm-private PR #364 (selector 0xe97d3291).
+    // Shipped in a Rome EVM program upgrade (selector 0xe97d3291).
     function create_mint_account(bytes32 salt) external;
     // init_spl_mint — SPL Token InitializeMint2 against a pre-allocated mint
     // account. No PDA signer needed (mint_authority + freeze_authority stored
     // as account data, not runtime signers). Consumed by ERC20SPLFactory.init_token_mint.
-    // Shipped in rome-evm-private PR #364 (selector 0x4f75e987).
+    // Shipped in a Rome EVM program upgrade (selector 0x4f75e987).
     function init_spl_mint(bytes32 mint, uint8 decimals, bytes32 mint_authority, bool has_freeze_authority, bytes32 freeze_authority) external;
     // create_and_init_mint — Composed: System CreateAccount + SPL InitializeMint2
     // in one dispatch. Saves one Rome DoTx envelope + one Solidity delegatecall
     // vs calling create_mint_account + init_spl_mint separately. Optional
-    // one-call flow for callers that prefer it. Shipped in rome-evm-private
+    // one-call flow for callers that prefer it. Shipped in the Rome EVM program
     // PR #364 (selector 0x20972d0f).
     function create_and_init_mint(uint8 decimals, bytes32 mint_authority, bool has_freeze_authority, bytes32 freeze_authority, bytes32 salt) external;
     // external pda

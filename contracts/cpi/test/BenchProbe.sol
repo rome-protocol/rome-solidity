@@ -216,7 +216,7 @@ contract BenchProbe {
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // Tier 3 — Universal-delegation (A1-A6 from rome-evm-private #364)
+    // Tier 3 — Universal-delegation (A1-A6 from the Rome EVM program #364)
     //           Paired old/new for benchmark side-by-side
     // ─────────────────────────────────────────────────────────────────
 
@@ -235,7 +235,7 @@ contract BenchProbe {
     }
 
     /// A3 NEW: HelperProgram.pda_with_salt — single dispatch (selector 0x5c6d04b3).
-    /// Shipped in rome-evm-private #364, consumed by RomeEVMAccount.pda_with_salt
+    /// Shipped in the Rome EVM program #364, consumed by RomeEVMAccount.pda_with_salt
     /// in rome-solidity #165.
     function probe_a3_pdaWithSalt_NEW(address user, bytes32 salt) external view returns (bytes32) {
         return HelperProgram.pda_with_salt(user, salt);
@@ -264,7 +264,7 @@ contract BenchProbe {
     /// A2 NEW: HelperProgram.approve_spl_raw_delegate — single dispatch
     /// (selector 0x7881d453). Caller passes `decimals` to skip on-chain
     /// mint read (~30-50K CU saving over a decimals-fetching variant).
-    /// Shipped in rome-evm-private #364, consumed by
+    /// Shipped in the Rome EVM program #364, consumed by
     /// RomeBridgeWithdraw.approveBurnETH in rome-solidity #165.
     function probe_a2_approveSplRawDelegate_NEW(bytes32 delegate, uint64 amount, uint8 decimals) external {
         bytes32 mintId = SystemProgram.mint_id();

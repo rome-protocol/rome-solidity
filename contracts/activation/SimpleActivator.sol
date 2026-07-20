@@ -34,7 +34,7 @@ import {SPL_ERC20, ERC20Users} from "../erc20spl/erc20spl.sol";
 ///
 /// @dev    `activate()` is non-idempotent: re-running on an already-
 ///         activated address reverts. Callers MUST gate on
-///         `isActivated(msg.sender)` first — the rome-ui
+///         `isActivated(msg.sender)` first — the the Rome app
 ///         ActivateAccountButton already does this via `useIsPdaActivated`.
 ///
 ///         The `USER_PDA_FUNDING` lamports include 2× ATA rent so the
@@ -46,7 +46,7 @@ import {SPL_ERC20, ERC20Users} from "../erc20spl/erc20spl.sol";
 contract SimpleActivator {
     /// @notice Rent-exempt floor for a System Program 0-byte account
     ///         (the user's `external_auth` PDA). Verified against
-    ///         `RomeEVMAccount.minimum_balance(0)` in rome-evm-private.
+    ///         `RomeEVMAccount.minimum_balance(0)` in the Rome EVM program.
     ///         (128 + 0) * 3480 * 2 = 890_880 lamports.
     uint64 public constant PDA_RENT_LAMPORTS = 890_880;
 
@@ -195,7 +195,7 @@ contract SimpleActivator {
         if (!ok1) revert CpiFailed("create_pda");
 
         // CPI 2 — create the user's wUSDC ATA. Idempotent in
-        // rome-evm-private's `create_ata_internal` — it issues
+        // the Rome EVM program's `create_ata_internal` — it issues
         // `create_associated_token_account_idempotent`, so a re-run
         // (defensive) is a no-op.
         (bool ok2, ) = address(HelperProgram).delegatecall(

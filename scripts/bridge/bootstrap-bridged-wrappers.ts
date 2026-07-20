@@ -3,7 +3,7 @@
 // Registers the canonical bridged-asset SPL mints (USDC, WETH) on the
 // chain's ERC20SPLFactory. Run once after deploying the factory on a
 // fresh chain — the resulting `TokenCreated` events are what the
-// rome-ui backend's token watcher consumes to populate Portfolio /
+// the Rome app backend's token watcher consumes to populate Portfolio /
 // Swap / TokenSelectModal. Wrappers deployed via direct
 // `new SPL_ERC20(...)` (e.g. legacy bridge redeploy scripts) bypass
 // this event and never appear in the UI; this script keeps the
@@ -27,7 +27,7 @@ type WrapperSpec = {
   symbol: string;       // ERC20 symbol — must be unique within the factory
 };
 
-// Canonical bridged set. Symbols match rome-ui's gas-wrapper-split
+// Canonical bridged set. Symbols match the Rome app's gas-wrapper-split
 // convention: native gas = "USDC", wrapped = "wUSDC"; native chain =
 // nothing here (we don't wrap an EVM-native), wormhole-wrapped ETH =
 // "wETH". Tracked separately for devnet / mainnet because the mint

@@ -34,7 +34,7 @@ import {HelperProgram} from "../interface.sol";
 /// vs ~5K CU), and the single-selector design keeps consumers tight
 /// and easier to audit.
 ///
-/// Source-of-idempotency: rome-evm-private's `create_ata_internal`
+/// Source-of-idempotency: the Rome EVM program's `create_ata_internal`
 /// (see helper.rs) issues `spl_associated_token_account::instruction::
 /// create_associated_token_account_idempotent`.
 ///

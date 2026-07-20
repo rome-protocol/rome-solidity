@@ -152,7 +152,7 @@ contract ERC20SPLFactory {
         _assert_mint_account_missing(mint);
 
         // System CreateAccount via HelperProgram.create_mint_account (selector
-        // 0xe97d3291, shipped in rome-evm-private PR #364). Allocates the
+        // 0xe97d3291, shipped in a Rome EVM program upgrade). Allocates the
         // salt-derived mint PDA with space=82 (SPL_MINT_LEN), owner=SPL Token,
         // lamports=rent-floor for 82 bytes — all hardcoded inside the precompile.
         // Funder = caller's external_auth PDA; new account = external_auth_with_salt
@@ -185,7 +185,7 @@ contract ERC20SPLFactory {
         bytes32 user = HelperProgram.pda(msg.sender);
 
         // SPL Token InitializeMint2 via HelperProgram.init_spl_mint
-        // (selector 0x4f75e987, shipped in rome-evm-private PR #364).
+        // (selector 0x4f75e987, shipped in a Rome EVM program upgrade).
         // No PDA signer needed (mint_authority + freeze_authority are stored
         // as account data, not runtime signers). Replaces the prior
         // SplTokenLib.initialize_mint + invoke marshaling path — saves

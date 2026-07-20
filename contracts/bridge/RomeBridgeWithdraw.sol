@@ -36,7 +36,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     // is set as immutable on the SPL_ERC20 wrapper). Used by approveBurnETH
     // to feed SPL approve_checked through HelperProgram.approve_spl_raw_delegate
     // without an on-chain mint read at each call (~30-50K CU saving per
-    // approveBurnETH). Shipped alongside rome-evm-private PR #364.
+    // approveBurnETH). Shipped alongside a Rome EVM program upgrade.
     uint8 public immutable wethDecimals;
 
     // -------------------------------------------------------------------------
@@ -93,7 +93,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
 
     /// @notice Per-user burn counter used to derive unique message PDAs per tx.
     /// @dev We can't use block.number in the salt — on Rome EVM, block.number
-    ///      returns the Solana slot (rome-evm-private/program/src/state/handler.rs
+    ///      returns the Solana slot (the Rome EVM program
     ///      block_number() → self.slot), which changes between eth_call
     ///      simulation and on-chain execution. That divergence causes the
     ///      emulator to pass one messageSentEventData PDA and the on-chain
@@ -332,7 +332,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     // -------------------------------------------------------------------------
 
     /// @notice Back-compat overload: burns to the Ethereum-family domain (0).
-    ///         Same ABI rome-ui's live hook calls today; routes through the
+    ///         Same ABI the Rome app's live hook calls today; routes through the
     ///         v2 path like every other destination.
     function burnUSDC(uint256 amount, address ethereumRecipient) external {
         _burnUSDC(amount, ethereumRecipient, 0);
@@ -393,7 +393,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         // users activate it (one-time, user-paid) by calling
         // `SimpleActivator.activate{value: activationCost}()` — a single
         // tx that creates + funds the PDA AND creates the wUSDC + wSOL
-        // ATAs AND registers in ERC20Users. The rome-ui surfaces this
+        // ATAs AND registers in ERC20Users. The the Rome app surfaces this
         // as the Activate Account primary CTA on Bridge / Swap /
         // Liquidity pages until `external_auth(user)` has lamports.
 
@@ -512,7 +512,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         // SPL Token inside the precompile (Wormhole-wrapped wETH is SPL
         // Token, not Token-2022). Replaces the prior 3-call composition
         // (SplTokenLib.approve + CpiProgram.invoke marshaling) — saves
-        // ~50-100K EVM CU per approveBurnETH call. Shipped in rome-evm-private
+        // ~50-100K EVM CU per approveBurnETH call. Shipped in the Rome EVM program
         // PR #364 (selector 0x7881d453).
         (bool ok, bytes memory result) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(

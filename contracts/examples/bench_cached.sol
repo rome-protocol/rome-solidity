@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "../interface.sol";
 
 // bench_cached — paired cached / cpi demonstrators for every cached-track
-// selector shipped in rome-evm-private#376 + #383 that has a clean CPI-path
+// selector shipped in a Rome EVM program upgrade + #383 that has a clean CPI-path
 // CPI equivalent on `HelperProgram` / `Withdraw`. For each pair, calling
 // the two methods in separate txs lets a bench script measure
 // apple-to-apple Solana CU + heap cost.
@@ -322,7 +322,7 @@ contract bench_cached {
     }
 
     // ── WithdrawCached PR #383 selector vs CPI HelperProgram ────
-    // Renamed in rome-evm-private#386 (merged 2026-05-23) from
+    // Renamed in a Rome EVM program upgrade (merged 2026-05-23) from
     // `withdraw_from_ata(uint256)` `0x214ee485` to `deposit(uint256)`
     // `0xb6b55f25`. Bench method name kept as `cached_deposit` to track.
 

@@ -7,12 +7,12 @@ import hardhat from "hardhat";
 /// Pre-collapse (master): callers had to call `ensureRecipientAta(recipient)`
 /// first if the recipient's ATA might not exist; otherwise
 /// `bridgeOutToSolana` would revert on the SPL transfer_checked CPI
-/// because the destination ATA didn't exist. rome-ui's `useOutboundSplBridge`
+/// because the destination ATA didn't exist. the Rome app's `the outbound-bridge flow`
 /// probed Solana directly to skip the preflight when possible.
 ///
 /// Post-collapse: `bridgeOutToSolana` internally fires the
 /// `CreateIdempotent` CPI for the recipient ATA (no-op when already exists)
-/// before the SPL transfer. This removes the preflight handshake; rome-ui's
+/// before the SPL transfer. This removes the preflight handshake; the Rome app's
 /// hook can drop the probe-then-call dance.
 ///
 /// What this suite covers (pure-Solidity mirror):

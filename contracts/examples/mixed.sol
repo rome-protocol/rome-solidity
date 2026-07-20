@@ -6,7 +6,7 @@ import "../interface.sol";
 // mixed_example — legal coexistence of cached and non-cached
 // precompiles within a single Solidity call frame.
 //
-// The dispatch rule, enforced by `verify_call` in rome-evm-private
+// The dispatch rule, enforced by `verify_call` in the Rome EVM program
 // program/src/state/handler_non_evm.rs:
 //   - A non-cached MUTATING call (Invoke/Composed) sets `found_cpi`.
 //   - A cached MUTATING call (Invoke/Composed) sets `found_cpi_cached`.

@@ -57,7 +57,7 @@ describe("SimpleActivator post-FB-4 arithmetic + predicates", function () {
     describe("constants", function () {
         it("PDA_RENT_LAMPORTS matches Solana rent floor for 0-byte account", async function () {
             // (128 + 0) * 3480 * 2 = 890_880 lamports.
-            // Verified against rome-evm-private RomeEVMAccount.minimum_balance(0).
+            // Verified against the Rome EVM program RomeEVMAccount.minimum_balance(0).
             const result = await helper.read.PDA_RENT_LAMPORTS();
             assert.equal(result, PDA_RENT_LAMPORTS);
         });

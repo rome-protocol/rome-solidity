@@ -915,9 +915,9 @@ library DAMMv1Lib {
     ///
     /// Historical note: a trailing 16th meta (`prog_dynamic_amm`) used to be
     /// appended here as a Rome-EVM emulator workaround for the pre-#368
-    /// `ix_store` filter in `rome-evm-private/emulator/src/state.rs`, which
+    /// `ix_store` filter in `the Rome EVM program`, which
     /// dropped `ix.program_id` from the per-CPI store and prevented
-    /// `mollusk.rs::load_elf` from finding the AMM program. rome-evm-private
+    /// `mollusk.rs::load_elf` from finding the AMM program. the Rome EVM program
     /// PR #368 (the tightened allowlist that explicitly includes
     /// `ix.program_id`) made the workaround redundant.
     ///
@@ -1370,7 +1370,7 @@ contract DAMMv1Pool {
     ///        derived server-side by the HelperProgram precompile in a
     ///        single dispatch each, saving ~64K CU per ATA call vs the
     ///        legacy two-hop pattern. See:
-    ///          rome-specs/active/technical/2026-05-14-rome-primitive-cu-baseline.md
+    ///          the Rome design specs
     function make_swap_accounts_from_pool(
         address user_addr,
         PoolToken in_token

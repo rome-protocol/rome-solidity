@@ -42,7 +42,7 @@ library Cpi {
     ///      top-level tx plus up to 4 nested CPIs. Rome's EVM-in-Solana wrapper
     ///      consumes one frame before Solidity executes, so adapters have at
     ///      most 3 further nested CPIs before hitting the runtime cap (verify
-    ///      against rome-evm-private precompile semantics).
+    ///      against the Rome EVM program precompile semantics).
     ///      SIMD-0268 (accepted, not yet activated) raises the limit to
     ///      stack-9 (8 nested CPIs); code calling `invoke` should not
     ///      special-case the pre-activation bound.

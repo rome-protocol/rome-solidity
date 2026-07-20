@@ -118,7 +118,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // `AssociatedSplToken + CpiProgram.invoke` marshaling — saves ~30-50K
         // EVM CU per call.
         //
-        // **Rent-payer change post-rome-evm-private #364:** the `payer` arg
+        // **Rent-payer change post-the Rome EVM program #364:** the `payer` arg
         // is now ignored (kept in the signature for back-compat — 5 off-chain
         // test/deploy scripts pass it). The operator pays rent and is
         // reimbursed via Rome's standard gas accounting. Callers that
@@ -155,7 +155,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // create + transfer_checked) and pair.burn (which makes 2× wrapper.
         // transfer back to the LP holder) exceeds Rome's per-tx CPI budget.
         //
-        // Two precompile shortcuts (rome-evm-private PR #318 + #319):
+        // Two precompile shortcuts (a Rome EVM program upgrade + #319):
         //  - `derive_user_ata` collapses 2× findPda (EXTERNAL_AUTH → unified
         //    PDA → ATA-of-PDA) into one syscall.
         //  - `account_lamports` fetches lamports only — no data buffer pull,
@@ -274,7 +274,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // as Phantom and every other Solana wallet.
         bytes32 to_account = ensure_token_account(to);
 
-        // Migration 2026-05-14 (spec: rome-specs/active/technical/
+        // Migration 2026-05-14 (spec: the Rome design specs
         // 2026-05-14-rome-primitive-cu-baseline.md): switched from the
         // legacy `SplTokenLib.transfer_checked + CpiProgram.invoke`
         // pattern (~554K CU per call) to `HelperProgram.transfer_spl`
@@ -429,7 +429,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     ///   The previous attempt at a two-CPI atomic `bridgeOutToSolana`
     ///   failed in the rome-evm CPI emulator (the create + transfer
     ///   sequence reverted at sim time even though the on-chain logic
-    ///   was sound). The recent rome-evm-private clean-up of the CPI
+    ///   was sound). The recent the Rome EVM program clean-up of the CPI
     ///   precompile + the AssociatedSplToken idempotent path lets the
     ///   two CPIs sit in one atomic Rome DoTx without busting the
     ///   1.4M CU budget; the user PDA's pre-funded reserve covers the
@@ -466,7 +466,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
 
         // CPI 1 — `AssociatedToken.CreateIdempotent` for the recipient
         // ATA via `HelperProgram.create_ata_for_key(wallet, mint)`
-        // (selector `0xd258a69d`, shipped in rome-evm-private PR #364).
+        // (selector `0xd258a69d`, shipped in a Rome EVM program upgrade).
         // The precompile accepts a raw Solana pubkey as the ATA owner
         // (the prior 3-arg / addr-keyed `create_ata` variants only
         // handle EVM-derived owners). Idempotent on the Solana side:
@@ -533,7 +533,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
     /// no longer NEED to preflight. This function is kept as a public
     /// idempotent helper for callers (off-chain scripts, custom flows)
     /// that want to pre-warm an ATA without spending tokens. The
-    /// rome-ui hook `useOutboundSplBridge` skips this call in the new
+    /// the Rome app hook `the outbound-bridge flow` skips this call in the new
     /// path; the legacy probe-then-call dance is no longer required.
     ///
     /// Idempotent: returns the same ATA address whether it pre-existed
@@ -563,7 +563,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
         // Idempotent ATA-create via `HelperProgram.create_ata_for_key`
-        // (selector `0xd258a69d`, shipped in rome-evm-private PR #364).
+        // (selector `0xd258a69d`, shipped in a Rome EVM program upgrade).
         // Operator pays rent (no longer drawn from caller's PDA reserve);
         // reimbursed via Rome's standard gas accounting. Replaces the
         // prior `AssociatedSplToken + CpiProgram.invoke` marshaling —
