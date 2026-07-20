@@ -18,27 +18,14 @@ import { SPL_MINTS_DEVNET } from "./bridge/constants.js";
  *      → ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
  *
  * What this does:
- *   1. Deploys MeteoraDAMMv1Factory + registers the pre-seeded SOL/USDC pool
- *   2. Deploys Oracle Gateway V2 (PythPullAdapter, SwitchboardV3Adapter, Factory, BatchReader)
- *   3. Creates Pyth Pull feed adapters for pre-seeded accounts (BTC, USDC, USDT, WETH)
+ *   1. Deploys Oracle Gateway V2 (PythPullAdapter, SwitchboardV3Adapter, Factory, BatchReader)
+ *   2. Creates Pyth Pull + Switchboard feed adapters for pre-seeded accounts
+ *   3. Deploys the SPL-ERC20 wrappers + RomeBridgeWithdraw
  *   4. Saves everything to deployments/local.json
  *
  * Usage:
  *   npx hardhat run scripts/setup-local.ts --network local
  */
-
-// Pre-seeded Meteora pool from the Rome EVM program (mainnet snapshot)
-// Base58: 5yuefgbJJpmFNK2iiYbLSpv1aZXq7F9AUKkZKErTYCvs
-const POOL_PUBKEY: `0x${string}` =
-    "0x4a02cdcd4da84ccd595ceff987b1738f19ee8d39afd64c91c6c123c47db61b18";
-
-// Meteora program IDs (base58-decoded)
-const PROG_DYNAMIC_AMM: `0x${string}` =
-    "0xccf802d4cccc84d7fb21b5f73b49d81a16c5b4c88ee32394e1c91d3588cc4080"; // Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB
-const PROG_DYNAMIC_VAULT: `0x${string}` =
-    "0x0fbfe8846d685cbdc62cca7e04c7e8f68dcc313ab31277e2e0112a2ec0e052e5"; // 24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi
-const CPI_ADDRESS: `0x${string}` = "0xFF00000000000000000000000000000000000008";
-const VAULT_OVERRIDE_NETWORK_MAINNET = 0;
 
 // Oracle program IDs
 const PYTH_RECEIVER_PROGRAM_ID: `0x${string}` =
@@ -110,50 +97,10 @@ async function main() {
     console.log("Balance:", balance.toString());
     console.log();
 
-    const erc20SplFactoryAddress = resolveAddress(
-        process.env.ERC20_SPL_FACTORY_ADDRESS ?? "",
-        "ERC20_SPL_FACTORY_ADDRESS",
-    );
-
     const deployments: Record<string, any> = {};
 
-    // ─── 1. Meteora DAMMv1 Factory ───
-    console.log("=== 1/5 Deploying MeteoraDAMMv1Factory ===");
-    const factory = await viem.deployContract("MeteoraDAMMv1Factory", [
-        erc20SplFactoryAddress,
-        PROG_DYNAMIC_VAULT,
-        PROG_DYNAMIC_AMM,
-        CPI_ADDRESS,
-        VAULT_OVERRIDE_NETWORK_MAINNET,
-    ]);
-    console.log("  Factory:", factory.address);
-    deployments.MeteoraDAMMv1Factory = { address: factory.address };
-
-    // ─── 2. Register pre-seeded pool ───
-    console.log("\n=== 2/5 Registering pre-seeded Meteora pool ===");
-    console.log("  Pool pubkey:", POOL_PUBKEY);
-
-    const addPoolTx = await factory.write.addPool([POOL_PUBKEY], {
-        account: deployer.account,
-    });
-    const addPoolReceipt = await publicClient.waitForTransactionReceipt({ hash: addPoolTx });
-    console.log("  Status:", addPoolReceipt.status);
-
-    const poolCount = await factory.read.allPoolsLength();
-    const poolAddress = await factory.read.allPools([poolCount - 1n]);
-    console.log("  Pool EVM address:", poolAddress);
-
-    deployments.MeteoraDAMMv1Pools = [
-        {
-            pubkey: POOL_PUBKEY,
-            address: poolAddress,
-            txHash: addPoolTx,
-            blockNumber: addPoolReceipt.blockNumber.toString(),
-        },
-    ];
-
-    // ─── 3. Oracle Gateway V2 ───
-    console.log("\n=== 3/5 Deploying Oracle Gateway V2 ===");
+    // ─── 1. Oracle Gateway V2 ───
+    console.log("=== 1/4 Deploying Oracle Gateway V2 ===");
 
     const pythImpl = await viem.deployContract("PythPullAdapter", []);
     console.log("  PythPullAdapter impl:", pythImpl.address);
@@ -186,8 +133,8 @@ async function main() {
         deployedAt: new Date().toISOString(),
     };
 
-    // ─── 4. Create Pyth feeds ───
-    console.log("\n=== 4/5 Creating Pyth Pull feed adapters ===");
+    // ─── 2. Create Pyth feeds ───
+    console.log("\n=== 2/4 Creating Pyth Pull feed adapters ===");
     const feeds: any[] = [];
 
     for (const feed of PYTH_FEEDS) {
@@ -221,8 +168,8 @@ async function main() {
 
     deployments.OracleGatewayV2.feeds = feeds;
 
-    // ─── 5. Create Switchboard feeds ───
-    console.log("\n=== 5/5 Creating Switchboard feed adapters ===");
+    // ─── 3. Create Switchboard feeds ───
+    console.log("\n=== 3/4 Creating Switchboard feed adapters ===");
     const sbFeeds: any[] = [];
 
     for (const feed of SWITCHBOARD_FEEDS) {
@@ -256,8 +203,8 @@ async function main() {
 
     deployments.OracleGatewayV2.switchboardFeeds = sbFeeds;
 
-    // ─── 6. Bridge contracts ───
-    console.log("\n=== 6/6 Deploying Rome Bridge contracts ===");
+    // ─── 4. Bridge contracts ───
+    console.log("\n=== 4/4 Deploying Rome Bridge contracts ===");
 
     // CPI precompile address — defined in contracts/interface.sol as 0xff..08.
     const cpiProgramAddress = "0xFF00000000000000000000000000000000000008" as `0x${string}`;
@@ -314,7 +261,6 @@ async function main() {
 
     console.log("\n=== Setup Complete ===");
     console.log(`Deployments saved to: ${filePath}`);
-    console.log(`Meteora: factory + 1 pool`);
     console.log(`Pyth feeds: ${successFeeds.length}/${feeds.length} created`);
     console.log(`Switchboard feeds: ${successSbFeeds.length}/${sbFeeds.length} created`);
     console.log(`Bridge: WUSDC wrapper + WETH wrapper + RomeBridgeWithdraw`);
@@ -323,7 +269,6 @@ async function main() {
         console.log(`Failed feeds: ${allFailed.map((f: any) => f.pair).join(", ")}`);
     }
     console.log("\nRun tests:");
-    console.log("  npx hardhat test tests/damm_v1_pool.integration.ts --network local");
     console.log("  npx hardhat test tests/oracle/ # parser unit tests (no network needed)");
 }
 

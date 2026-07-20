@@ -10,9 +10,8 @@ import {PdasBatch} from "../cpi/PdasBatch.sol";
 ///         derivation on the CPI precompile (`0xFF…08`, selector
 ///         `0x944336f8`).
 ///
-///         The example mirrors the simplified Meteora "five amm-program
-///         PDAs in one syscall" shape that ships in `damm_v1_pool.sol`
-///         (PR D of the PdasBatch surface rollout).
+///         The example mirrors a common "five program PDAs in one
+///         syscall" adapter shape.
 ///
 ///         Read this when you need to derive 2+ PDAs against the same
 ///         Solana program in one call. For 1 PDA, prefer `PdaDeriver`.
