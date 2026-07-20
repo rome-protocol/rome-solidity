@@ -7,14 +7,14 @@ import "../interface.sol";
 //
 // Cached precompiles dispatch the same Solana side effects as their
 // legacy counterparts (System, SPL Token, Associated Token, Withdraw)
-// but route through the rome-evm-private journal. The side effects are
+// but route through the the Rome EVM program journal. The side effects are
 // buffered in the journal and applied at commit; on revert (either
 // `require` failure or any EVM revert in the call frame) the queued
 // instructions are discarded. The non-cached precompiles invoke
 // `invoke_signed` immediately and can leave Solana state ahead of EVM
 // state if the EVM frame reverts after the CPI.
 //
-// Source of truth: rome-evm-private/program/src/non_evm_cached/.
+// Source of truth: the Rome EVM program
 
 contract cached_example {
     uint value = 0;
@@ -48,9 +48,9 @@ contract cached_example {
     // Inverse of withdrawal — SPL transfer from caller's PDA-owned ATA to
     // chain's sol_wallet ATA on Solana side; mint `wei_` native gas to caller
     // on EVM side. Single-state only. Cached counterpart of legacy
-    // HelperProgram.deposit_from_ata. Shipped via rome-evm-private#383;
+    // HelperProgram.deposit_from_ata. Shipped via a Rome EVM program upgrade;
     // renamed from `withdraw_from_ata(uint256)` `0x214ee485` in
-    // rome-evm-private#386 (post-ship accounting fix).
+    // a Rome EVM program upgrade (post-ship accounting fix).
     function deposit() external {
         (bool success, ) = address(WithdrawCached).delegatecall(
             abi.encodeWithSignature("deposit(uint256)", 1 ether)
@@ -173,7 +173,7 @@ contract cached_example {
     // `IERC20(spl_cached_address)` will dispatch a real SPL `transfer_checked`
     // CPI here, signed by the caller's external_auth PDA. SPL Token accepts
     // the caller-PDA as the from-ATA's owner OR as a delegate with
-    // `delegated_amount >= amount`. Shipped via rome-evm-private#383.
+    // `delegated_amount >= amount`. Shipped via a Rome EVM program upgrade.
     function spl_transferFrom(
         address from, address to, uint256 amount, bytes32 mint
     ) external {
@@ -188,7 +188,7 @@ contract cached_example {
 
     // Same selector as IERC20.approve. Caller-PDA-as-owner sets
     // external_auth(spender) as the SPL delegate on owner-ATA via
-    // approve_checked. Shipped via rome-evm-private#383.
+    // approve_checked. Shipped via a Rome EVM program upgrade.
     function spl_approve(address spender, uint256 amount, bytes32 mint) external {
         (bool success, ) = address(SplCached).delegatecall(
             abi.encodeWithSignature(
@@ -200,7 +200,7 @@ contract cached_example {
 
     // Caller-PDA signs as the mint authority via SPL `mint_to_checked`.
     // SPL Token runtime enforces caller-PDA == on-chain mint authority.
-    // Shipped via rome-evm-private#383.
+    // Shipped via a Rome EVM program upgrade.
     function spl_mint(address to, uint256 amount, bytes32 mint) external {
         (bool success, ) = address(SplCached).delegatecall(
             abi.encodeWithSignature(

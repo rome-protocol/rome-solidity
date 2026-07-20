@@ -27,7 +27,7 @@ import { SPL_MINTS_DEVNET } from "./bridge/constants.js";
  *   npx hardhat run scripts/setup-local.ts --network local
  */
 
-// Pre-seeded Meteora pool from rome-evm-private/ci/dump (mainnet snapshot)
+// Pre-seeded Meteora pool from the Rome EVM program (mainnet snapshot)
 // Base58: 5yuefgbJJpmFNK2iiYbLSpv1aZXq7F9AUKkZKErTYCvs
 const POOL_PUBKEY: `0x${string}` =
     "0x4a02cdcd4da84ccd595ceff987b1738f19ee8d39afd64c91c6c123c47db61b18";
@@ -46,7 +46,7 @@ const PYTH_RECEIVER_PROGRAM_ID: `0x${string}` =
 const SWITCHBOARD_PROGRAM_ID: `0x${string}` =
     "0x068851c68c6832f02fa581b1bf491b77ca41776ba2b988b5a6faba8ee3a2ec90"; // SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f
 
-// Pre-seeded Pyth feed accounts from rome-evm-private/ci/dump (mainnet snapshots)
+// Pre-seeded Pyth feed accounts from the Rome EVM program (mainnet snapshots)
 const PYTH_FEEDS: { pair: string; pubkey: `0x${string}`; base58: string }[] = [
     {
         pair: "BTC / USD",
@@ -70,7 +70,7 @@ const PYTH_FEEDS: { pair: string; pubkey: `0x${string}`; base58: string }[] = [
     },
 ];
 
-// Pre-seeded Switchboard aggregator accounts from rome-evm-private/ci/dump (mainnet snapshots)
+// Pre-seeded Switchboard aggregator accounts from the Rome EVM program (mainnet snapshots)
 const SWITCHBOARD_FEEDS: { pair: string; pubkey: `0x${string}`; base58: string }[] = [
     {
         pair: "SOL / USD (Switchboard)",

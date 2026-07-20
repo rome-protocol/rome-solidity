@@ -7,7 +7,7 @@
 //
 // The legacy RomeBridgePaymaster / RomeBridgeInbound were removed — the active
 // flow is user-paid (burnUSDC / burnETH / bridgeOutToSolana signed directly from
-// the user's wallet) and inbound is settle_inbound_bridge on rome-evm-private.
+// the user's wallet) and inbound is settle_inbound_bridge on the Rome EVM program.
 //
 // Mint configuration is per-chain via env vars; constants no longer hard-code
 // Rome's mints. Operators always pass the mints explicitly:
@@ -146,7 +146,7 @@ export async function ensureErc20Users(): Promise<`0x${string}`> {
 
 // Forward-only: wrappers are ALWAYS created via `bootstrap-bridged-wrappers.ts`
 // (which calls `ERC20SPLFactory.add_spl_token_no_metadata` and emits the
-// `TokenCreated` event the rome-ui backend indexer subscribes to). This
+// `TokenCreated` event the the Rome app backend indexer subscribes to). This
 // helper reads the resulting addresses out of `deployments/<network>.json`
 // and hard-fails if missing — there is intentionally no fallback to a
 // direct `new SPL_ERC20(...)` deploy because that path would create a
@@ -223,7 +223,7 @@ export async function deployWithdraw(
 
   // forwarder = address(0): the meta-tx paymaster was removed. ERC2771Context
   // with a zero forwarder resolves _msgSender() to msg.sender directly — the
-  // user-paid flow rome-ui actually uses (burnUSDC / burnETH / bridgeOutToSolana
+  // user-paid flow the Rome app actually uses (burnUSDC / burnETH / bridgeOutToSolana
   // are signed straight from the user's wallet, never sponsored).
   // Generic-Wormhole allowlist (asset-agnostic + multi-destination egress).
   // Register the wETH wrapper + this chain's Wormhole target so burnToWormhole

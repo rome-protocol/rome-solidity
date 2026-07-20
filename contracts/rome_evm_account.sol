@@ -32,12 +32,12 @@ library RomeEVMAccount {
 
     function pda(address user) internal view returns (bytes32) {
         // Delegates to `HelperProgram.pda(user)` (selector `0x8854a299`).
-        // Byte-identity verified 2026-05-14 against rome-evm-private
+        // Byte-identity verified 2026-05-14 against the Rome EVM program
         // `non_evm/helper_ix.rs:159` → `state/pda.rs:98-105` — both paths
         // compute `find_program_address([EXTERNAL_AUTHORITY, user], rome_evm_program)`.
         // Measured saving on Hadrian (3-sample mean, 2026-05-14): −67,083 CU
         // per call (−36%). Spec:
-        //   rome-specs/active/technical/2026-05-14-rome-primitive-cu-baseline.md
+        //   the Rome design specs
         return HelperProgram.pda(user);
     }
 
@@ -45,10 +45,10 @@ library RomeEVMAccount {
         // Delegates to `HelperProgram.pda_with_salt(user, salt)` (selector
         // `0x5c6d04b3`). Single dispatch replaces the prior 2-call composition
         // (rome_evm_program_id() + find_program_address(seeds)). Byte-identity
-        // verified 2026-05-16 against rome-evm-private
+        // verified 2026-05-16 against the Rome EVM program
         // `non_evm/helper_ix.rs::pda_with_salt` → `state/pda.rs::external_auth_with_salt`
         // — both paths compute `find_program_address([EXTERNAL_AUTHORITY, user, salt],
-        // rome_evm_program)`. Shipped in rome-evm-private PR #364.
+        // rome_evm_program)`. Shipped in a Rome EVM program upgrade.
         return HelperProgram.pda_with_salt(user, salt);
     }
 

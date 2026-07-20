@@ -24,7 +24,7 @@ import { base58ToBytes32 } from "../../lib/pubkey.js";
 import { SOLANA_PROGRAM_IDS } from "../constants.js";
 
 // v6: CCTP **v2** programs. Seeds are IDENTICAL to v1 (validated 20/20
-// against a landed v2 receive by rome-ui's probe template-check); only the
+// against a landed v2 receive by the Rome app's probe template-check); only the
 // program ids differ. v2 is required for v2-only destinations (Monad = 15).
 const CCTP_TOKEN_MESSENGER_ID = new PublicKey(SOLANA_PROGRAM_IDS.CCTP_V2_TOKEN_MESSENGER);
 const CCTP_MESSAGE_TRANSMITTER_ID = new PublicKey(SOLANA_PROGRAM_IDS.CCTP_V2_MESSAGE_TRANSMITTER);

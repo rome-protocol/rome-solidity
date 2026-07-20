@@ -25,7 +25,7 @@ import {ERC20Users} from "./erc20spl.sol";
 ///           2. HelperProgram CrossStateEthCall      — user_balance, allowance_of
 ///           3. CpiProgram CrossStateEthCall         — account_lamports, account_u64_at
 ///
-/// @dev    Per the rome-evm-private one-track-per-contract HARD RULE,
+/// @dev    Per the the Rome EVM program one-track-per-contract HARD RULE,
 ///         this contract does NOT perform any CPI Invoke. Bridge methods
 ///         (bridgeOutToSolana, ensureRecipientAta) which require the
 ///         permanently-CPI-only create_ata_for_key are NOT exposed here
@@ -107,7 +107,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     ///         whichever state (overlay if written, on-chain otherwise).
     ///
     ///         Discovered 2026-05-25 during Hadrian V3 create-pool
-    ///         smoke (rome-ui PR #402). Cross-ref:
+    ///         smoke (the Rome app). Cross-ref:
     ///         rome-uniswap-v3/contracts/UniswapV3Pool.sol:486-490.
     function balanceOf(address account) external view returns (uint256) {
         try SplCached.account(account, mint_id) returns (ISplCached.Account memory acc) {

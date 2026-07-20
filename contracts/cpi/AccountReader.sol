@@ -19,8 +19,8 @@ import {CpiProgram} from "../interface.sol";
 ///   than mechanism, plus a `readBytes32At` convenience that parses a
 ///   32-byte slice without the caller having to slice + decode by hand.
 ///
-///   Selector hex was verified via `cast keccak` against rome-evm-private
-///   const definitions on 2026-05-13 and tracked in `rome-evm-private/
+///   Selector hex was verified via `cast keccak` against the Rome EVM program
+///   const definitions on 2026-05-13 and tracked in `the Rome EVM program/
 ///   CLAUDE.md` §"Non-EVM Bridge".
 ///
 /// ## Scope (deliberately thin)
@@ -55,12 +55,12 @@ import {CpiProgram} from "../interface.sol";
 ///   - **No on-chain side effect.** These are pure cross-state queries —
 ///     equivalent to an `eth_call` against a Solana account.
 ///
-///   Source of truth for the dispatch routing: `rome-evm-private/program/
+///   Source of truth for the dispatch routing: `the Rome EVM program
 ///   src/non_evm/cpi.rs:65` (the `ACCOUNT_DATA_AT => CrossStateEthCall`
 ///   match arm; the three v2 selectors `ACCOUNT_U64_AT`, `ACCOUNT_LAMPORTS`,
 ///   `PDAS_BATCH_DERIVE` join the same arm on lines 71-73). The full per-
 ///   selector dispatch table is in
-///   [`rome-evm-private/CLAUDE.md`](../../../rome-evm-private/CLAUDE.md) §
+///   [`the Rome EVM program`](../../../the Rome EVM program) §
 ///   "CpiProgram" — column "Dispatch" labels each selector with its
 ///   `NonEvmCall` variant.
 ///
@@ -71,7 +71,7 @@ import {CpiProgram} from "../interface.sol";
 /// ## Validation
 ///
 ///   - Selector hex re-verified via `cast keccak <signature>` against
-///     `rome-evm-private/program/src/non_evm/cpi.rs` const block on
+///     `the Rome EVM program` const block on
 ///     2026-05-13 and 2026-05-22 — matches `ACCOUNT_DATA_AT`,
 ///     `ACCOUNT_U64_AT`, `ACCOUNT_LAMPORTS`.
 ///   - Dispatch-variant claim verified against `cpi.rs:65,71-73` —

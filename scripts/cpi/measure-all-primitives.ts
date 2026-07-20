@@ -205,7 +205,7 @@ async function main() {
         { label: "[T2] SPL transfer NEW 4-arg delegate",                          method: "probe_transfer_spl_helper_4arg",     args: [],                              group: "transfer", tier: 2, pairWith: "[T2] SPL transfer LEGACY (SplTokenLib + invoke)" },
         { label: "[T2] SPL transfer LEGACY (SplTokenLib + invoke)",               method: "probe_transfer_spl_legacy",          args: [],                              group: "transfer", tier: 2 },
 
-        // Tier 3 — Universal-delegation (rome-evm-private #364, A1-A6)
+        // Tier 3 — Universal-delegation (the Rome EVM program #364, A1-A6)
         // Side-by-side v1 (multi-call) vs new (single-dispatch precompile)
         { label: "[T3] A3 OLD pda_with_salt (rome_evm_program_id + find_program_address)", method: "probe_a3_pdaWithSalt_OLD",            args: [wallet.address, "0x" + "11".repeat(32)],            group: "salted-pda", tier: 3 },
         { label: "[T3] A3 NEW HelperProgram.pda_with_salt",                       method: "probe_a3_pdaWithSalt_NEW",           args: [wallet.address, "0x" + "11".repeat(32)],            group: "salted-pda", tier: 3, pairWith: "[T3] A3 OLD pda_with_salt (rome_evm_program_id + find_program_address)" },

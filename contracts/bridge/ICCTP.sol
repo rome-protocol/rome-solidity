@@ -26,7 +26,7 @@ library CCTPLib {
 
     /// @notice All 17 accounts required by the Anchor IDL for deposit_for_burn,
     ///         plus 1 trailing meta required by the post-#266 Mollusk emulator's
-    ///         `ix_store` filter (`rome-evm-private/emulator/src/state.rs`) so
+    ///         `ix_store` filter (`the Rome EVM program`) so
     ///         the inner CPI to MessageTransmitter::send_message_with_caller can
     ///         resolve its Anchor event_cpi accounts.
     struct DepositForBurnAccounts {

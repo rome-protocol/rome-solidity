@@ -18,10 +18,10 @@ import {ISystemProgram, ICrossProgramInvocation, CpiProgram} from "../interface.
 ///         CU saving: one syscall instead of N two-hops; ~50–80K CU per
 ///         PDA over a single `find_program_address` baseline. Measured
 ///         numbers post-deploy land in
-///         `rome-specs/active/technical/2026-05-14-rome-primitive-cu-baseline.md`.
+///         `the Rome design specs`.
 ///
 /// @dev    Hard limits enforced by the precompile (see
-///         `rome-evm-private/program/src/non_evm/derive_helpers.rs`):
+///         `the Rome EVM program`):
 ///           - N ≤ 16   (max seed groups)
 ///           - M ≤ 8    (max inner seeds per group)
 ///           - len ≤ 32 (max bytes per seed — Solana hard cap)

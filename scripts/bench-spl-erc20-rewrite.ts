@@ -2,7 +2,7 @@
 // v2 (this PR). For each method, submit one real EVM tx against each
 // wrapper and read Solana `computeUnitsConsumed` from the tx receipt.
 //
-// Spec: rome-specs/active/technical/2026-05-16-spl-erc20-direct-precompile-rewrite.md
+// Spec: the Rome design specs
 // Hadrian addresses from rome-solidity/deployments/hadrian.json.
 
 import hardhat from "hardhat";

@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { keccak256, stringToBytes } from "viem";
 
 // Selector hex locks — assert `cast keccak` matches the consts the cache-based
-// precompiles dispatch on, post-#386. If `rome-evm-private` renames a
+// precompiles dispatch on, post-#386. If `the Rome EVM program` renames a
 // selector or changes a signature, these tests fail and the wrapper rebuild
 // halts before behavioral drift can land.
 //
 // Source of truth:
-//   - rome-evm-private/program/src/non_evm_cached/spl_cached.rs (lines 30-37)
-//   - rome-evm-private/program/src/non_evm_cached/aspl_cached.rs (lines 22-25)
+//   - the Rome EVM program (lines 30-37)
+//   - the Rome EVM program (lines 22-25)
 //
 // Verified against origin/master post-PR #386 on 2026-05-23.
 

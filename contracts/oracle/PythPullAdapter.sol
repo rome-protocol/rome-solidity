@@ -191,7 +191,7 @@ contract PythPullAdapter is IExtendedOracleAdapter, IAdapterMetadata {
     ///
     ///      Reads bytes [0, MIN_DATA_LENGTH) via `account_data_at`. This is
     ///      a deliberate change from the prior `account_info`-based fetch:
-    ///      the new shortcut precompile (rome-evm-private PR #318) returns
+    ///      the new shortcut precompile (a Rome EVM program upgrade) returns
     ///      ONLY the slice we need, skipping the 5 unused fields of the
     ///      account_info 6-tuple AND any data past the parser's last offset.
     ///      Saves ~70-100k CU per read.

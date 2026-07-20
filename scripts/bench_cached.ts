@@ -1,5 +1,5 @@
 // Full-gamut Solana CU + heap benchmark for every cached-track selector
-// shipped in rome-evm-private#376 + #383 against its CPI equivalent
+// shipped in a Rome EVM program upgrade + #383 against its CPI equivalent
 // on HelperProgram / Withdraw, on Hadrian.
 //
 // Run:

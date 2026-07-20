@@ -92,7 +92,7 @@ library UserPda {
     /// `find_program_address` for the AUTHORITY_PDA plus one
     /// `pdas_batch_derive` for the N ATAs — pays off at N ≥ 2 mints, with the
     /// per-PDA saving growing with N. Measurement post-deploy lands in
-    /// `rome-specs/active/technical/2026-05-14-rome-primitive-cu-baseline.md`.
+    /// `the Rome design specs`.
     ///
     /// Use this when one user owns ATAs across multiple mints (Compound
     /// bulker supply/borrow lists, multi-token swap UIs probing balances,

@@ -1,6 +1,6 @@
 // Validation script for the suspect WithdrawCached.deposit bench rows
 // (cached @ 11171 CU vs CPI @ ~124K CU). Originally `withdraw_from_ata`,
-// renamed in rome-evm-private#386 (selector `0x214ee485` → `0xb6b55f25`).
+// renamed in a Rome EVM program upgrade (selector `0x214ee485` → `0xb6b55f25`).
 // Hypothesis: the cached track was short-circuiting because the EOA's
 // wUSDC balance was consumed by an earlier success-path call.
 //
