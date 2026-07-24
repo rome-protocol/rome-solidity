@@ -2,6 +2,11 @@
 
 > **Built on [Rome Protocol](https://docs.rome.builders)** — EVM chains that run natively inside the Solana runtime, where Solidity apps call Solana programs atomically (CPI) and Solana users drive EVM apps: two VMs, one chain, one block.
 
+
+- **Single state** — EVM contracts and Solana programs share one state; no bridging or sync delay.
+- **Atomic CPI access** — Solidity calls any Solana program directly (SPL Token, Meteora, …) inside one atomic transaction.
+- **App Sovereignty** — each app runs its own EVM chain with a custom gas token and captures its own fee revenue.
+
 `rome-solidity` is the **Solidity SDK for Rome** — the interfaces, wrappers, and contracts a Solidity builder uses to reach Solana from an EVM contract: call any Solana program (CPI), treat any SPL token as an ERC-20, bridge assets out of Rome, and read Solana price feeds through the standard Chainlink interface.
 
 **Full reference:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — every contract, what it's for, and where it's used.
