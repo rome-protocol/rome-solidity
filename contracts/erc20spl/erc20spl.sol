@@ -457,12 +457,14 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // confirms −170K, 2026-05-14).
         bytes32 from_ata = HelperProgram.ata(msg.sender, mint_id);
 
-        // Recipient ATA pubkey — same canonical ATA derivation but for
-        // the raw Solana recipient pubkey (not an EVM address), so the
-        // `HelperProgram.ata(address, bytes32)` overload doesn't apply
-        // — `UserPda.ataForKey` keeps the deterministic two-step Solana
-        // find_program_address derivation for an arbitrary pubkey.
-        bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
+        // Recipient ATA pubkey — canonical derivation for the raw Solana
+        // recipient pubkey (not an EVM address). Program-aware: the token
+        // program comes from the mint account's owner, so Token-2022
+        // wrappers derive the SAME address the create-leg below targets
+        // (the pure `UserPda.ataForKey` hardcodes the legacy program and
+        // derives a wrong — guaranteed-revert — address for 2022 mints).
+        // Byte-identical for legacy mints.
+        bytes32 to_ata = UserPda.ataForKeyProgramAware(solana_recipient, mint_id);
 
         // CPI 1 — `AssociatedToken.CreateIdempotent` for the recipient
         // ATA via `HelperProgram.create_ata_for_key(wallet, mint)`
@@ -555,12 +557,12 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // expect the caller to be registered.
         _users.ensure_user(msg.sender);
 
-        // Derive the recipient ATA pubkey client-side via SystemProgram
-        // find_program_address — `create_ata_for_key` is an Invoke that
-        // doesn't return a value, but the ATA address is deterministic
-        // from (wallet, mint, spl_program). Same single `find_program_address`
-        // syscall as the prior derivation inside AssociatedSplToken.
-        bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
+        // Derive the recipient ATA pubkey — `create_ata_for_key` is an
+        // Invoke that doesn't return a value, but the ATA address is
+        // deterministic from (wallet, mint, spl_program). Program-aware so
+        // the returned/emitted address matches what the create-leg makes
+        // for Token-2022 mints; byte-identical for legacy mints.
+        bytes32 to_ata = UserPda.ataForKeyProgramAware(solana_recipient, mint_id);
 
         // Idempotent ATA-create via `HelperProgram.create_ata_for_key`
         // (selector `0xd258a69d`, shipped in a Rome EVM program upgrade).

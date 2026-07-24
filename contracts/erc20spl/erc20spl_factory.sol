@@ -34,12 +34,39 @@ contract ERC20SPLFactory {
         uint64 nonce
     );
 
+    // Token-2022 tier gate (D8, armed-keyed). The program classifies via
+    // HelperProgram.wrap_allowed; this factory holds the enablement policy —
+    // a bitmask over tiers 0..4 (bit N = tier N) — so tiers flip with an
+    // admin tx, not a program upgrade or redeploy. TokenCreated stays
+    // untouched (indexer-stable); the tier record is the NEW event below.
+    event TokenTierRecorded(bytes32 indexed mint, address indexed wrapper, uint8 tier, uint16 feeBps);
+
     error MintAccountAlreadyExists(bytes32 mint);
+    error MintRejected(bytes32 mint);
+    error TierNotEnabled(bytes32 mint, uint8 tier);
+    error NotGateAdmin(address caller);
+
+    uint8 internal constant TIER_REJECTED = 255;
+    // bit0 legacy + bit1 benign. The factory's own create_token_mint path
+    // makes plain legacy mints, so bit0 must stay on.
+    uint8 public constant DEFAULT_ENABLED_TIERS = 0x03;
+
+    address public immutable gate_admin;
+    uint8 public enabled_tiers;
 
     constructor(address _cpi_program) {
         cpi_program = _cpi_program;
         mpl_token_metadata_program = SystemProgram.base58_to_bytes32(bytes(METAPLEX_TOKEN_METADATA_PROGRAM_NAME));
         users = new ERC20Users();
+        gate_admin = msg.sender;
+        enabled_tiers = DEFAULT_ENABLED_TIERS;
+    }
+
+    function set_enabled_tiers(uint8 mask) external {
+        if (msg.sender != gate_admin) {
+            revert NotGateAdmin(msg.sender);
+        }
+        enabled_tiers = mask;
     }
 
     function _check_symbol_hash_exists(bytes32 symbolHash) internal view {
@@ -50,6 +77,14 @@ contract ERC20SPLFactory {
     function _register_contract(bytes32 mint, string memory name, string memory symbol) internal returns(address) {
         bytes32 symbolHash = keccak256(bytes(symbol));
         _check_symbol_hash_exists(symbolHash);
+
+        (uint8 tier, uint16 feeBps) = HelperProgram.wrap_allowed(mint);
+        if (tier == TIER_REJECTED) {
+            revert MintRejected(mint);
+        }
+        if (enabled_tiers & (uint8(1) << tier) == 0) {
+            revert TierNotEnabled(mint, tier);
+        }
 
         // Deploy the cache-track wrapper. `SPL_ERC20_cached` exposes the
         // identical IERC20 + IERC20Metadata surface as the prior
@@ -71,6 +106,7 @@ contract ERC20SPLFactory {
         token_by_symbol_hash[symbolHash] = address(new_contract);
 
         emit TokenCreated(msg.sender, mint, address(new_contract), name, symbol, creator_nonce[msg.sender]);
+        emit TokenTierRecorded(mint, address(new_contract), tier, feeBps);
         return address(new_contract);
     }
 

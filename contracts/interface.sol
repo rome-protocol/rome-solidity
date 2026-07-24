@@ -283,6 +283,18 @@ interface IHelperProgram {
     // actual delegate is another, then transferFrom reverts. Collapses
     // 5 v1 dispatches into one.
     function allowance_of(address owner, address spender, bytes32 mint) external view returns (uint64);
+    // ata_for_key — program-aware ATA derive for a RAW Solana pubkey owner
+    // (not external_auth): the token program comes from the mint account's
+    // owner, so Token-2022 mints derive correctly. Prefer this over
+    // UserPda.ataForKey (legacy program hardcoded in its seeds) whenever the
+    // mint may be Token-2022. 0x9c755807.
+    function ata_for_key(bytes32 wallet, bytes32 mint) external view returns (bytes32);
+    // wrap_allowed — Token-2022 wrapper-tier classifier (armed-keyed, D8).
+    // tier: 0 legacy · 1 benign · 2 benign-watch (re-armable extension
+    // present) · 3 fee-armed (bps in feeBps) · 4 hook-armed · 255 rejected.
+    // The program only classifies; enablement policy lives with the caller
+    // (the factory), so tier flips need no program upgrade. 0xa9c03ecc.
+    function wrap_allowed(bytes32 mint) external view returns (uint8 tier, uint16 feeBps);
     // deposit gas-token from ata
     function deposit_from_ata(uint256 wei_) external;
 }

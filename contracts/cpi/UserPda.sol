@@ -50,6 +50,10 @@ library UserPda {
     /// Derive an ATA for a raw Solana pubkey (pool-side, fee receiver, etc.).
     /// Used when the "wallet" isn't a Rome EVM user — e.g. Meteora pool's
     /// protocol token fee accumulator.
+    ///
+    /// LEGACY-ONLY: the classic SPL Token program is hardcoded in the seeds,
+    /// so a Token-2022 mint derives a WRONG address here. Whenever the mint
+    /// may be Token-2022, use `ataForKeyProgramAware` instead.
     function ataForKey(bytes32 ownerKey, bytes32 mint)
         internal
         pure
@@ -61,6 +65,19 @@ library UserPda {
             SolanaConstants.SPL_TOKEN_PROGRAM,
             SolanaConstants.ASSOCIATED_TOKEN_PROGRAM
         );
+    }
+
+    /// Program-aware ATA derive for a raw Solana pubkey owner: delegates to
+    /// `HelperProgram.ata_for_key` (0x9c755807), which reads the mint
+    /// account's owner and derives under that token program — byte-identical
+    /// to `ataForKey` for legacy mints, correct for Token-2022. Requires the
+    /// mint account to exist (the EthCall fails loud on a missing mint).
+    function ataForKeyProgramAware(bytes32 ownerKey, bytes32 mint)
+        internal
+        view
+        returns (bytes32)
+    {
+        return HelperProgram.ata_for_key(ownerKey, mint);
     }
 
     /// ATA with caller-supplied token program. Reserved for future Token-2022
@@ -98,6 +115,13 @@ library UserPda {
     /// bulker supply/borrow lists, multi-token swap UIs probing balances,
     /// portfolio screens enumerating per-mint balances). For single-mint or
     /// arbitrary-owner cases, prefer `ata(user, mint)` / `ataForKey(...)`.
+    ///
+    /// LEGACY-ONLY: every seed group hardcodes the classic SPL Token
+    /// program; a Token-2022 mint in the list derives a WRONG address.
+    /// Deliberately unchanged — making this variant read N mint owners would
+    /// add N account reads + N accounts to existing legacy adapter flows
+    /// near the 28-key ALT threshold. Token-2022 adapters use
+    /// `atasWithPrograms` and pass the programs they already know.
     function atas(address user, bytes32[] memory mints)
         internal
         view
@@ -118,6 +142,44 @@ library UserPda {
             groups[i] = PdaDeriver.makeSeeds(
                 PdaDeriver.seedBytes(owner),
                 PdaDeriver.seedBytes(SolanaConstants.SPL_TOKEN_PROGRAM),
+                PdaDeriver.seedBytes(mints[i])
+            );
+        }
+
+        ICrossProgramInvocation.PdaWithBump[] memory pdas =
+            PdasBatch.derive(groups, SolanaConstants.ASSOCIATED_TOKEN_PROGRAM);
+        for (uint256 i = 0; i < n; ++i) {
+            result[i] = pdas[i].pda;
+        }
+    }
+
+    /// Program-aware batch derive: like `atas`, but each seed group takes
+    /// the CALLER-SUPPLIED token program for that mint — zero extra account
+    /// reads, so it costs the same as `atas`. Adapters registering
+    /// Token-2022 wrappers already know each mint's program (from the
+    /// factory tier record or `wrap_allowed`); passing it here keeps
+    /// existing legacy flows and their ALT budgets untouched.
+    function atasWithPrograms(
+        address user,
+        bytes32[] memory mints,
+        bytes32[] memory tokenPrograms
+    )
+        internal
+        view
+        returns (bytes32[] memory result)
+    {
+        uint256 n = mints.length;
+        require(tokenPrograms.length == n, "UserPda: programs length mismatch");
+        result = new bytes32[](n);
+        if (n == 0) return result;
+
+        bytes32 owner = pda(user);
+
+        ISystemProgram.Seed[][] memory groups = new ISystemProgram.Seed[][](n);
+        for (uint256 i = 0; i < n; ++i) {
+            groups[i] = PdaDeriver.makeSeeds(
+                PdaDeriver.seedBytes(owner),
+                PdaDeriver.seedBytes(tokenPrograms[i]),
                 PdaDeriver.seedBytes(mints[i])
             );
         }

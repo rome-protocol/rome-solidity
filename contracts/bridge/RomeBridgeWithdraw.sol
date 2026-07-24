@@ -931,8 +931,11 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         address user = _msgSender();
 
         // Recipient ATA = getATA(recipientWallet, mint) — derived read (EthCall,
-        // track-neutral, never locks the tx track).
-        bytes32 toAta = UserPda.ataForKey(solanaRecipient, mint);
+        // track-neutral, never locks the tx track). Program-aware: the token
+        // program comes from the mint account's owner, so a Token-2022
+        // wrapper's egress targets the address its create-leg makes (the pure
+        // legacy-seeded derive was a guaranteed revert for 2022 mints).
+        bytes32 toAta = UserPda.ataForKeyProgramAware(solanaRecipient, mint);
 
         // Single legacy CPI: SPL transfer_checked from caller's PDA-owned ATA
         // to the recipient ATA, signed as external_auth(caller).

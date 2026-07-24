@@ -173,17 +173,22 @@ describe("RomeBridgeWithdraw — generic Wormhole burn", function () {
     assert.equal(await bridge.read.wormholeTargetChainAllowed([23]), true);
   });
 
+  // NotOwner asserts match the decoded name OR the raw selector 0x245aecd3:
+  // with the program-aware ATA derive the bridge bytecode staticcalls a Rome
+  // precompile address, and hardhat v3's EDR then renders reverts from
+  // non-default senders as "unrecognized custom error (return data:
+  // 0x245aecd3…)" instead of decoding — same revert, different rendering.
   it("non-owner cannot toggle the asset allowlist (reverts NotOwner)", async function () {
     await assert.rejects(
       bridge.write.setWormholeAssetAllowed([unregistered.address, true], { account: otherAddr }),
-      /NotOwner/,
+      /NotOwner|0x245aecd3/,
     );
   });
 
   it("non-owner cannot toggle the target-chain allowlist (reverts NotOwner)", async function () {
     await assert.rejects(
       bridge.write.setWormholeTargetChainAllowed([6, true], { account: otherAddr }),
-      /NotOwner/,
+      /NotOwner|0x245aecd3/,
     );
   });
 
@@ -197,7 +202,7 @@ describe("RomeBridgeWithdraw — generic Wormhole burn", function () {
     await b.write.transferOwnership([otherAddr]);
     assert.equal((await b.read.owner()).toLowerCase(), otherAddr.toLowerCase());
     // Old owner is now powerless; new owner can administer.
-    await assert.rejects(b.write.setWormholeTargetChainAllowed([23, true]), /NotOwner/);
+    await assert.rejects(b.write.setWormholeTargetChainAllowed([23, true]), /NotOwner|0x245aecd3/);
     await b.write.setWormholeTargetChainAllowed([23, true], { account: otherAddr });
     assert.equal(await b.read.wormholeTargetChainAllowed([23]), true);
   });
