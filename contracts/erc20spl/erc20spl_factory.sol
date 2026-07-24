@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {ERC20Users} from "./erc20spl.sol";
+import {ERC20Users, SPL_ERC20} from "./erc20spl.sol";
 import {SPL_ERC20_cached} from "./erc20spl_cached.sol";
 import {MplTokenMetadataLib} from "../mpl_token_metadata/lib.sol";
 import {SplTokenLib} from "../spl_token/spl_token.sol";
@@ -10,6 +10,34 @@ import {ICrossProgramInvocation, ISystemProgram, SystemProgram, HelperProgram} f
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {Convert} from "../convert.sol";
 import {AccountReader} from "../cpi/AccountReader.sol";
+
+/// Satellite deployer for the legacy CPI-track wrapper class. Exists only
+/// because embedding BOTH wrapper creation codes pushes the factory's
+/// runtime past EIP-170 (measured 26,189 > 24,576 bytes). Stateless,
+/// constructor-wired, callable only by its factory; the hot cached path
+/// stays embedded in the factory itself.
+contract SPL_ERC20Deployer {
+    address public immutable factory;
+
+    error NotFactory(address caller);
+
+    constructor() {
+        factory = msg.sender;
+    }
+
+    function deploy(
+        bytes32 mint,
+        address cpi_program,
+        string memory name,
+        string memory symbol,
+        ERC20Users users
+    ) external returns (address) {
+        if (msg.sender != factory) {
+            revert NotFactory(msg.sender);
+        }
+        return address(new SPL_ERC20(mint, cpi_program, name, symbol, users));
+    }
+}
 
 contract ERC20SPLFactory {
     uint8 public constant DEFAULT_DECIMALS = 9;
@@ -47,12 +75,14 @@ contract ERC20SPLFactory {
     error NotGateAdmin(address caller);
 
     uint8 internal constant TIER_REJECTED = 255;
+    uint8 internal constant TIER_HOOK = 4;
     // bit0 legacy + bit1 benign. The factory's own create_token_mint path
     // makes plain legacy mints, so bit0 must stay on.
     uint8 public constant DEFAULT_ENABLED_TIERS = 0x03;
 
     address public immutable gate_admin;
     uint8 public enabled_tiers;
+    SPL_ERC20Deployer public immutable legacy_track_deployer;
 
     constructor(address _cpi_program) {
         cpi_program = _cpi_program;
@@ -60,6 +90,7 @@ contract ERC20SPLFactory {
         users = new ERC20Users();
         gate_admin = msg.sender;
         enabled_tiers = DEFAULT_ENABLED_TIERS;
+        legacy_track_deployer = new SPL_ERC20Deployer();
     }
 
     function set_enabled_tiers(uint8 mask) external {
@@ -86,28 +117,27 @@ contract ERC20SPLFactory {
             revert TierNotEnabled(mint, tier);
         }
 
-        // Deploy the cache-track wrapper. `SPL_ERC20_cached` exposes the
-        // identical IERC20 + IERC20Metadata surface as the prior
-        // `SPL_ERC20`, but dispatches every mutating SPL operation
-        // through `SplCached` / `AssociatedSplCached` (0xff..05 / 06).
-        // Net effects vs the legacy CPI-track wrapper:
-        //   - Iterative-VM compatible (cached SPL ops don't trip the
-        //     legacy CpiProhibitedInIterativeTx gate), so multi-step
-        //     flows like Compound's Bulker and multi-hop swaps compose.
-        //   - EVM-revert atomicity over the Solana-side SPL side
-        //     effects (committed only at end-of-tx via the cache).
-        //   - 2–10% CU reduction on most ops (see rome-solidity #210
-        //     bench).
-        // Constructor signature is identical, so the factory's
-        // ABI / event surface is unchanged.
-        SPL_ERC20_cached new_contract = new SPL_ERC20_cached(mint, cpi_program, name, symbol, users);
-        token_by_mint[mint] = address(new_contract);
+        // Track routing: one wrapper class per track, decided by the mint's
+        // MECHANICS. Default = the cache-track `SPL_ERC20_cached` (identical
+        // IERC20 surface; iterative-VM compatible; EVM-revert atomicity over
+        // the SPL effects; 2–10% CU reduction — see rome-solidity #210).
+        // Hook-armed mints get the legacy CPI-track `SPL_ERC20` instead: the
+        // cached overlay cannot execute a transfer hook (foreign bytecode —
+        // its transfers gate off with a named error), while the legacy
+        // wrapper dispatches through HelperProgram, whose transfer funnel
+        // resolves and appends the hook's EAML accounts. Constructor
+        // signatures are identical; the factory's ABI / event surface is
+        // unchanged, and TokenTierRecorded(tier=4) marks the routing.
+        address new_contract = tier == TIER_HOOK
+            ? legacy_track_deployer.deploy(mint, cpi_program, name, symbol, users)
+            : address(new SPL_ERC20_cached(mint, cpi_program, name, symbol, users));
+        token_by_mint[mint] = new_contract;
         mint_by_symbol_hash[symbolHash] = mint;
-        token_by_symbol_hash[symbolHash] = address(new_contract);
+        token_by_symbol_hash[symbolHash] = new_contract;
 
-        emit TokenCreated(msg.sender, mint, address(new_contract), name, symbol, creator_nonce[msg.sender]);
-        emit TokenTierRecorded(mint, address(new_contract), tier, feeBps);
-        return address(new_contract);
+        emit TokenCreated(msg.sender, mint, new_contract, name, symbol, creator_nonce[msg.sender]);
+        emit TokenTierRecorded(mint, new_contract, tier, feeBps);
+        return new_contract;
     }
 
     /**
