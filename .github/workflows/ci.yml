@@ -41,6 +41,7 @@ jobs:
       - name: Run CPI foundation + oracle + bridge tests
         run: |
           npx hardhat test nodejs \
+            tests/erc20spl/*.test.ts \
             tests/oracle/*.test.ts \
             tests/bridge/*.test.ts \
             tests/cpi/AccountMetaBuilder.test.ts \
