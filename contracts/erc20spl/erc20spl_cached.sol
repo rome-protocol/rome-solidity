@@ -207,6 +207,13 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     function _transfer(address from, address to, uint256 value) internal returns (bool) {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
         _users.ensure_user(msg.sender);
+
+        // Read the destination before the transfer only when a fee is armed;
+        // an unarmed or absent fee credits exactly `value`, so the common path
+        // pays nothing for this.
+        (, , , uint16 feeBps, ) = SplCached.mint_info(mint_id);
+        bool fee_armed = feeBps > 0;
+        uint256 before = fee_armed ? _balance_of(to) : 0;
         // Gate recipient ATA-create on existence (mirror approve #216): on the
         // common transfer-to-existing-holder path, skip the idempotent
         // AssociatedSplCached.create_ata round-trip. Overlay-aware via
@@ -246,8 +253,34 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
             );
         }
         require(ok, string(Convert.revert_msg(result)));
-        emit Transfer(from, to, value);
+
+        // A transfer-fee mint credits the destination less than was requested,
+        // and the fee is capped by maximum_fee — which mint_info deliberately
+        // does not carry, because computing the fee here would duplicate SPL's
+        // arithmetic and be wrong at the cap. So measure the delta instead of
+        // computing it, and only pay for the extra reads when a fee is actually
+        // armed: feeBps is a predicate, not an operand.
+        // Self-transfer needs the other direction. Sending to yourself with an
+        // armed fee debits `value` and credits `value - fee`, so the account nets
+        // MINUS fee — `after - before` would underflow and revert, and ERC-20
+        // self-transfer must not revert. Measuring the loss gives the delivered
+        // amount in both directions.
+        uint256 delivered = value;
+        if (fee_armed) {
+            uint256 now_ = _balance_of(to);
+            delivered = to == from ? value - (before - now_) : now_ - before;
+        }
+        emit Transfer(from, to, delivered);
         return true;
+    }
+
+    /// Destination balance, overlay-aware, 0 when the ATA does not exist yet.
+    function _balance_of(address account) internal view returns (uint256) {
+        try SplCached.account(account, mint_id) returns (ISplCached.Account memory acc) {
+            return uint256(acc.amount);
+        } catch {
+            return 0;
+        }
     }
 
     /// @notice ERC-20: approve succeeds for any caller regardless of balance.

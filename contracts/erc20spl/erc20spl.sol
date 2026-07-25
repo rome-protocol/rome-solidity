@@ -275,6 +275,16 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // the precompile derives `external_auth(msg.sender)` itself.
         // Callers still compute `user` for the `ensure_user` mapping-side-effect.
         user;
+
+        // A transfer-fee mint credits the destination less than was requested,
+        // and the fee is capped by maximum_fee — which mint_info deliberately
+        // does not carry, because computing the fee here would duplicate SPL's
+        // arithmetic and be wrong at the cap. So the delta is measured, and the
+        // extra reads are paid for only when a fee is actually armed: feeBps is
+        // a predicate, not an operand. Read on this contract's own track.
+        (, , , uint16 feeBps, ) = HelperProgram.mint_info(mint_id);
+        bool fee_armed = feeBps > 0;
+        uint256 before = fee_armed ? balanceOf(to) : 0;
         // Auto-create the recipient's PDA-owned ATA on first transfer.
         // Without this, sending an SPL_ERC20 wrapper to a fresh address
         // reverts with "Token account does not exist" because the
@@ -337,7 +347,17 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         }
 
         require (success, string(Convert.revert_msg(result)));
-        emit Transfer(from, to, value);
+        // Self-transfer needs the other direction. Sending to yourself with an
+        // armed fee debits `value` and credits `value - fee`, so the account nets
+        // MINUS fee — `after - before` would underflow and revert, and ERC-20
+        // self-transfer must not revert. Measuring the loss gives the delivered
+        // amount in both directions.
+        uint256 delivered = value;
+        if (fee_armed) {
+            uint256 now_ = balanceOf(to);
+            delivered = to == from ? value - (before - now_) : now_ - before;
+        }
+        emit Transfer(from, to, delivered);
         return true;
     }
 
