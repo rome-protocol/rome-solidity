@@ -65,6 +65,11 @@ contract ERC20Users {
     }
 }
 
+/// A mint whose transfer hook is armed cannot be wrapped: the hook requires
+/// extra accounts that no transfer path in this wrapper supplies. Unarmed hooks
+/// are inert and are accepted.
+error ArmedTransferHookUnsupported(bytes32 mint, bytes32 hookProgram);
+
 contract SPL_ERC20 is IERC20, IERC20Metadata {
     // SystemProgram
     bytes32 public constant system_program_id = 0x0000000000000000000000000000000000000000000000000000000000000000;
@@ -91,11 +96,20 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         string memory symbol_,
         ERC20Users users_
     ) {
-        SplTokenLib.SplMint memory mint = SplTokenLib.load_mint(_mint_id, _cpi_program);
+        // decimals is the only mint fact this wrapper needs, and mint_info
+        // supplies it without parsing mint bytes in Solidity. It also tells us
+        // whether a transfer hook is ARMED, which this wrapper cannot honour —
+        // an armed hook needs extra accounts no transfer path here supplies, so
+        // the wrapper refuses to exist rather than reverting on every transfer.
+        // A present-but-unarmed hook is inert and must pass.
+        (, uint8 mint_decimals, bytes32 hook_program, ,) = HelperProgram.mint_info(_mint_id);
+        if (hook_program != bytes32(0)) {
+            revert ArmedTransferHookUnsupported(_mint_id, hook_program);
+        }
 
         cpi_program = _cpi_program;
         mint_id = _mint_id;
-        decimals = mint.decimals;
+        decimals = mint_decimals;
         _name = name_;
         _symbol = symbol_;
         _users = users_;
@@ -261,6 +275,16 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // the precompile derives `external_auth(msg.sender)` itself.
         // Callers still compute `user` for the `ensure_user` mapping-side-effect.
         user;
+
+        // A transfer-fee mint credits the destination less than was requested,
+        // and the fee is capped by maximum_fee — which mint_info deliberately
+        // does not carry, because computing the fee here would duplicate SPL's
+        // arithmetic and be wrong at the cap. So the delta is measured, and the
+        // extra reads are paid for only when a fee is actually armed: feeBps is
+        // a predicate, not an operand. Read on this contract's own track.
+        (, , , uint16 feeBps, ) = HelperProgram.mint_info(mint_id);
+        bool fee_armed = feeBps > 0;
+        uint256 before = fee_armed ? balanceOf(to) : 0;
         // Auto-create the recipient's PDA-owned ATA on first transfer.
         // Without this, sending an SPL_ERC20 wrapper to a fresh address
         // reverts with "Token account does not exist" because the
@@ -323,7 +347,17 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         }
 
         require (success, string(Convert.revert_msg(result)));
-        emit Transfer(from, to, value);
+        // Self-transfer needs the other direction. Sending to yourself with an
+        // armed fee debits `value` and credits `value - fee`, so the account nets
+        // MINUS fee — `after - before` would underflow and revert, and ERC-20
+        // self-transfer must not revert. Measuring the loss gives the delivered
+        // amount in both directions.
+        uint256 delivered = value;
+        if (fee_armed) {
+            uint256 now_ = balanceOf(to);
+            delivered = to == from ? value - (before - now_) : now_ - before;
+        }
+        emit Transfer(from, to, delivered);
         return true;
     }
 
@@ -460,8 +494,9 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // Recipient ATA pubkey — same canonical ATA derivation but for
         // the raw Solana recipient pubkey (not an EVM address), so the
         // `HelperProgram.ata(address, bytes32)` overload doesn't apply
-        // — `UserPda.ataForKey` keeps the deterministic two-step Solana
-        // find_program_address derivation for an arbitrary pubkey.
+        // — `UserPda.ataForKey` derives it for an arbitrary pubkey, resolving
+        // the token program from the mint so the address matches whatever
+        // `create_ata_for_key` will actually create.
         bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
         // CPI 1 — `AssociatedToken.CreateIdempotent` for the recipient
@@ -555,11 +590,10 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // expect the caller to be registered.
         _users.ensure_user(msg.sender);
 
-        // Derive the recipient ATA pubkey client-side via SystemProgram
-        // find_program_address — `create_ata_for_key` is an Invoke that
-        // doesn't return a value, but the ATA address is deterministic
-        // from (wallet, mint, spl_program). Same single `find_program_address`
-        // syscall as the prior derivation inside AssociatedSplToken.
+        // Derive the recipient ATA client-side — `create_ata_for_key` is an
+        // Invoke and returns nothing, but the address is deterministic from
+        // (wallet, mint, spl_program). The token program comes from the mint
+        // rather than being assumed, since it is part of the seeds.
         bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
         // Idempotent ATA-create via `HelperProgram.create_ata_for_key`

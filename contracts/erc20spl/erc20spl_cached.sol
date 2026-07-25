@@ -12,7 +12,7 @@ import {
 } from "../interface.sol";
 import {AccountReader} from "../cpi/AccountReader.sol";
 import {Convert} from "../convert.sol";
-import {ERC20Users} from "./erc20spl.sol";
+import {ERC20Users, ArmedTransferHookUnsupported} from "./erc20spl.sol";
 
 /// @title  SPL_ERC20_cached
 /// @notice Cache-based ERC20 wrapper around an SPL mint. Replaces the
@@ -55,10 +55,18 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         string memory symbol_,
         ERC20Users users_
     ) {
-        SplTokenLib.SplMint memory mint = SplTokenLib.load_mint(_mint_id, _cpi_program);
+        // Read on this contract's own track: once a cached invoke has fired in a
+        // transaction, verify_call refuses a legacy cross-state read. Same
+        // selector, same answer. An armed hook is refused here too — the cached
+        // track additionally cannot stage one at all, since the processor it runs
+        // in-process would reach a real CPI.
+        (, uint8 mint_decimals, bytes32 hook_program, ,) = SplCached.mint_info(_mint_id);
+        if (hook_program != bytes32(0)) {
+            revert ArmedTransferHookUnsupported(_mint_id, hook_program);
+        }
         cpi_program = _cpi_program;
         mint_id = _mint_id;
-        decimals = mint.decimals;
+        decimals = mint_decimals;
         _name = name_;
         _symbol = symbol_;
         _users = users_;
@@ -109,7 +117,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     ///         Discovered 2026-05-25 during Hadrian V3 create-pool
     ///         smoke (the Rome app). Cross-ref:
     ///         rome-uniswap-v3/contracts/UniswapV3Pool.sol:486-490.
-    function balanceOf(address account) external view returns (uint256) {
+    function balanceOf(address account) public view returns (uint256) {
         try SplCached.account(account, mint_id) returns (ISplCached.Account memory acc) {
             return uint256(acc.amount);
         } catch {
@@ -199,6 +207,13 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     function _transfer(address from, address to, uint256 value) internal returns (bool) {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
         _users.ensure_user(msg.sender);
+
+        // Read the destination before the transfer only when a fee is armed;
+        // an unarmed or absent fee credits exactly `value`, so the common path
+        // pays nothing for this.
+        (, , , uint16 feeBps, ) = SplCached.mint_info(mint_id);
+        bool fee_armed = feeBps > 0;
+        uint256 before = fee_armed ? balanceOf(to) : 0;
         // Gate recipient ATA-create on existence (mirror approve #216): on the
         // common transfer-to-existing-holder path, skip the idempotent
         // AssociatedSplCached.create_ata round-trip. Overlay-aware via
@@ -238,7 +253,24 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
             );
         }
         require(ok, string(Convert.revert_msg(result)));
-        emit Transfer(from, to, value);
+
+        // A transfer-fee mint credits the destination less than was requested,
+        // and the fee is capped by maximum_fee — which mint_info deliberately
+        // does not carry, because computing the fee here would duplicate SPL's
+        // arithmetic and be wrong at the cap. So measure the delta instead of
+        // computing it, and only pay for the extra reads when a fee is actually
+        // armed: feeBps is a predicate, not an operand.
+        // Self-transfer needs the other direction. Sending to yourself with an
+        // armed fee debits `value` and credits `value - fee`, so the account nets
+        // MINUS fee — `after - before` would underflow and revert, and ERC-20
+        // self-transfer must not revert. Measuring the loss gives the delivered
+        // amount in both directions.
+        uint256 delivered = value;
+        if (fee_armed) {
+            uint256 now_ = balanceOf(to);
+            delivered = to == from ? value - (before - now_) : now_ - before;
+        }
+        emit Transfer(from, to, delivered);
         return true;
     }
 

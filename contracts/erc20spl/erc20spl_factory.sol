@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {ERC20Users} from "./erc20spl.sol";
+import {ERC20Users, ArmedTransferHookUnsupported} from "./erc20spl.sol";
 import {SPL_ERC20_cached} from "./erc20spl_cached.sol";
 import {MplTokenMetadataLib} from "../mpl_token_metadata/lib.sol";
 import {SplTokenLib} from "../spl_token/spl_token.sol";
@@ -51,6 +51,17 @@ contract ERC20SPLFactory {
         bytes32 symbolHash = keccak256(bytes(symbol));
         _check_symbol_hash_exists(symbolHash);
 
+        // Refuse an armed transfer hook before deploying, not after. The wrapper
+        // constructor refuses it too, but a factory that only found out via a
+        // failing CREATE would burn the caller's gas and leave a confusing
+        // revert; this check names the reason. A present-but-unarmed hook is
+        // inert and is accepted — refusing on presence would reject most real
+        // Token-2022 mints.
+        (, , bytes32 hook_program, ,) = HelperProgram.mint_info(mint);
+        if (hook_program != bytes32(0)) {
+            revert ArmedTransferHookUnsupported(mint, hook_program);
+        }
+
         // Deploy the cache-track wrapper. `SPL_ERC20_cached` exposes the
         // identical IERC20 + IERC20Metadata surface as the prior
         // `SPL_ERC20`, but dispatches every mutating SPL operation
@@ -82,16 +93,54 @@ contract ERC20SPLFactory {
      * this function will revert. Symbol must be unique across all tokens created through this factory.
      * @param mint SPL token mint address
      */
+    /// The identity the mint itself asserts, if it asserts one.
+    ///
+    /// A Token-2022 mint can carry its name and symbol inside the mint account,
+    /// under the mint's own metadata authority — MetadataPointer alongside
+    /// TokenMetadata. That is where 2022 tokens put it, and it is checked first
+    /// because it is the source closest to the mint. Metaplex stays the fallback,
+    /// and is what legacy SPL mints use.
+    ///
+    /// Deliberately not read: a MetadataPointer aimed at a SEPARATE account. Such a
+    /// mint falls through to the Metaplex attempt, which is exactly today's
+    /// behaviour — the self-referential shape is what real mints use, and it is the
+    /// one verified against actual mint bytes.
+    function _mint_identity(bytes32 mint)
+    internal
+    view
+    returns (bool, string memory, string memory) {
+        (uint64 lamports, , , , , bytes memory data) =
+            ICrossProgramInvocation(cpi_program).account_info(mint);
+        if (lamports != 0) {
+            (bool has_pointer, bytes32 where) = SplTokenLib.metadata_pointer(data);
+            if (has_pointer && where == mint) {
+                (bool ok, string memory n, string memory sym) = SplTokenLib.token_metadata(data);
+                if (ok) {
+                    return (true, n, sym);
+                }
+            }
+        }
+
+        (bool metadata_exists, MplTokenMetadataLib.Metadata memory metadata) = MplTokenMetadataLib.load_metadata(
+            mint, mpl_token_metadata_program, cpi_program
+        );
+        if (metadata_exists) {
+            return (true, metadata.name, metadata.symbol);
+        }
+        return (false, "", "");
+    }
+
     function add_spl_token_with_metadata(bytes32 mint)
     public
     returns (address) {
         require(token_by_mint[mint] == address(0), "Token exists");
 
-        (bool metadata_exists, MplTokenMetadataLib.Metadata memory metadata) = MplTokenMetadataLib.load_metadata(
-            mint, mpl_token_metadata_program, cpi_program
-        );
-        require(metadata_exists, "Metadata does not exist");
-        return _register_contract(mint, metadata.name, metadata.symbol);
+        (bool found, string memory name, string memory symbol) = _mint_identity(mint);
+        // Says which condition failed. The old message claimed no metadata existed,
+        // which was untrue of any Token-2022 mint carrying it natively — the mint
+        // had it, in a place this function did not look.
+        require(found, "Mint asserts no name: use add_spl_token_no_metadata");
+        return _register_contract(mint, name, symbol);
     }
 
     /**
