@@ -42,6 +42,27 @@ contract MintInfoMock {
     bytes32 public constant TOKEN_LEGACY =
         0x06ddf6e1d765a193d9cbe146ceeb79ac1cb485ed5f5b37913a8cf5857eff00a9;
 
+    /// The one real mint this mock knows: ai16z, dumped from mainnet and committed
+    /// as a CI fixture. Its identity lives in the mint itself — MetadataPointer
+    /// self-referential, TokenMetadata carrying name and symbol "ai16z" — which is
+    /// the shape the factory has to read and today does not.
+    bytes32 public constant FIXTURE_MINT =
+        0xf74be1d76ab9a6c2be4999663fc6a0e19974000e836ef30c5b6286f42c020f87;
+    bytes public constant FIXTURE_MINT_DATA = hex"010000008e266e49fd037319a0710185b369e0be018bbb2b1baa2b240e6b84f1837b01efb6c4322896b0430f0901000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001120040000000000000000000000000000000000000000000000000000000000000000000f74be1d76ab9a6c2be4999663fc6a0e19974000e836ef30c5b6286f42c020f871300aa008e266e49fd037319a0710185b369e0be018bbb2b1baa2b240e6b84f1837b01eff74be1d76ab9a6c2be4999663fc6a0e19974000e836ef30c5b6286f42c020f8705000000616931367a05000000616931367a5000000068747470733a2f2f697066732e696f2f697066732f6261666b726569676166346d6d69626b6d6a6d7a346d6e346f7073767a62637037346b3265646c6475693268787465636f666c616c746f6737783400000000";
+
+    /// Only the fixture mint exists; everything else reads as absent, so the
+    /// Metaplex fallback finds nothing and the native path is what is under test.
+    function account_info(bytes32 pubkey)
+        external
+        pure
+        returns (uint64, bytes32, bool, bool, bool, bytes memory)
+    {
+        if (pubkey == FIXTURE_MINT) {
+            return (1, TOKEN_2022, false, false, false, FIXTURE_MINT_DATA);
+        }
+        return (0, bytes32(0), false, false, false, "");
+    }
+
     /// The factory's constructor converts a program name before any mint is in
     /// play, so installing this at the System precompile too is what makes the
     /// factory deployable here. The value is irrelevant to the gate under test.
@@ -71,6 +92,12 @@ contract MintInfoMock {
         pure
         returns (bytes32 tokenProgram, uint8 decimals, bytes32 hookProgram, uint16 feeBps, uint32 extensions)
     {
+        // The fixture is a real mint, so report what it actually is rather than
+        // deriving from its pubkey — byte 1 of a real pubkey is arbitrary and would
+        // otherwise trip the armed-hook gate.
+        if (mint == FIXTURE_MINT) {
+            return (TOKEN_2022, 9, bytes32(0), 0, (uint32(1) << 18) | (uint32(1) << 19));
+        }
         decimals = uint8(mint[0]);
 
         // Unarmed reads as zero, exactly as the program encodes it — a hook can
