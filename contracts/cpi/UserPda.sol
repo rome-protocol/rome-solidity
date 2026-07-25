@@ -26,10 +26,11 @@ library UserPda {
         return RomeEVMAccount.pda(user);
     }
 
-    /// User's Associated Token Account for the given mint, assuming the
-    /// classic SPL Token program (Tokenkeg...). Token-2022 ATAs use a
-    /// different derivation; adapters that support Token-2022 call
-    /// `ataWithProgram` directly.
+    /// User's Associated Token Account for the given mint. The token program is
+    /// resolved from the mint's own owner inside `HelperProgram.ata`, so this is
+    /// correct for Token-2022 as well. An earlier revision of this comment said
+    /// the opposite and sent readers to `ataWithProgram`; that is not needed
+    /// here, and "fixing" this path would break it.
     ///
     /// Delegates to `HelperProgram.ata(address, bytes32)` — selector
     /// `0xfeb1c647` on `0xff…09` (HelperProgram precompile; rome-evm-
@@ -50,6 +51,9 @@ library UserPda {
     /// Derive an ATA for a raw Solana pubkey (pool-side, fee receiver, etc.).
     /// Used when the "wallet" isn't a Rome EVM user — e.g. Meteora pool's
     /// protocol token fee accumulator.
+    /// @dev Legacy SPL Token only — the token program is baked into the ATA
+    ///      seeds, so this returns the WRONG address for a Token-2022 mint.
+    ///      Callers that may see either program use `ataForKeyWithProgram`.
     function ataForKey(bytes32 ownerKey, bytes32 mint)
         internal
         pure
@@ -98,6 +102,27 @@ library UserPda {
     /// bulker supply/borrow lists, multi-token swap UIs probing balances,
     /// portfolio screens enumerating per-mint balances). For single-mint or
     /// arbitrary-owner cases, prefer `ata(user, mint)` / `ataForKey(...)`.
+    /// @notice ATA for a raw Solana pubkey owner under an explicit token
+    ///         program. The program is part of the ATA seeds, so a Token-2022
+    ///         mint derives a different address than the same mint would under
+    ///         legacy SPL Token — pass the program the mint is actually owned
+    ///         by, e.g. from `mint_info`.
+    function ataForKeyWithProgram(bytes32 ownerKey, bytes32 mint, bytes32 tokenProgram)
+        internal
+        pure
+        returns (bytes32)
+    {
+        return AssociatedSplToken.get_associated_token_address_with_program_id(
+            ownerKey,
+            mint,
+            tokenProgram,
+            SolanaConstants.ASSOCIATED_TOKEN_PROGRAM
+        );
+    }
+
+    /// @dev Legacy SPL Token only, same reason as `ataForKey`. No program-aware
+    ///      batch exists because nothing calls this with a Token-2022 mint yet;
+    ///      one lands when a consumer needs it rather than in advance.
     function atas(address user, bytes32[] memory mints)
         internal
         view

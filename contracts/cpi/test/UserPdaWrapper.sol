@@ -19,6 +19,11 @@ contract UserPdaWrapper {
     function ataForKey(bytes32 ownerKey, bytes32 mint) external pure returns (bytes32) {
         return UserPda.ataForKey(ownerKey, mint);
     }
+    function ataForKeyWithProgram(bytes32 ownerKey, bytes32 mint, bytes32 tokenProgram)
+        external pure returns (bytes32)
+    {
+        return UserPda.ataForKeyWithProgram(ownerKey, mint, tokenProgram);
+    }
 
     function ataWithProgram(address user, bytes32 mint, bytes32 tokenProgram)
         external

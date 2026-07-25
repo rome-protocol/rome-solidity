@@ -932,7 +932,11 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
 
         // Recipient ATA = getATA(recipientWallet, mint) — derived read (EthCall,
         // track-neutral, never locks the tx track).
-        bytes32 toAta = UserPda.ataForKey(solanaRecipient, mint);
+        // The token program is part of the ATA seeds, so resolve it from the
+        // mint rather than assuming legacy. Today's bridged assets are legacy
+        // SPL, so this is behaviour-neutral now and correct if that changes.
+        (bytes32 tokenProgram, , , ,) = HelperProgram.mint_info(mint);
+        bytes32 toAta = UserPda.ataForKeyWithProgram(solanaRecipient, mint, tokenProgram);
 
         // Single legacy CPI: SPL transfer_checked from caller's PDA-owned ATA
         // to the recipient ATA, signed as external_auth(caller).
