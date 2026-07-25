@@ -30,11 +30,41 @@ pragma solidity 0.8.28;
 ///      Only the shape the wrappers consume is modelled. It is deliberately not
 ///      a Token-2022 implementation: `mint_info` is the whole surface either
 ///      constructor touches, which is why this is one function.
+interface ISeed {
+    struct Seed {
+        bytes item;
+    }
+}
+
 contract MintInfoMock {
     bytes32 public constant TOKEN_2022 =
         0x06ddf6e1ee758fde18425dbce46ccddab61afc4d83b90d27febdf928d8a18bfc;
     bytes32 public constant TOKEN_LEGACY =
         0x06ddf6e1d765a193d9cbe146ceeb79ac1cb485ed5f5b37913a8cf5857eff00a9;
+
+    /// The factory's constructor converts a program name before any mint is in
+    /// play, so installing this at the System precompile too is what makes the
+    /// factory deployable here. The value is irrelevant to the gate under test.
+    function base58_to_bytes32(bytes calldata) external pure returns (bytes32) {
+        return keccak256("mint_info.mock.base58");
+    }
+
+    /// Enough of `find_program_address` to make ATA derivation observable: the
+    /// answer is a hash of everything that went in, so two derivations differ
+    /// exactly when their seeds do. That is the property under test — an ATA's
+    /// seeds include the token program, so resolving it from the mint rather than
+    /// hardcoding it has to change the address.
+    function find_program_address(bytes32 program, ISeed.Seed[] calldata seeds)
+        external
+        pure
+        returns (bytes32, uint8)
+    {
+        bytes memory acc;
+        for (uint256 i = 0; i < seeds.length; ++i) {
+            acc = abi.encodePacked(acc, seeds[i].item);
+        }
+        return (keccak256(abi.encodePacked(program, acc)), uint8(255));
+    }
 
     function mint_info(bytes32 mint)
         external

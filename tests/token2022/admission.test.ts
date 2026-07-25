@@ -101,7 +101,10 @@ describe("armed-hook admission, executed", async () => {
     const client = await viem.getPublicClient();
     const code = await client.getCode({ address: mock.address });
     assert.ok(code && code !== "0x", "mock must have deployed code to install");
-    for (const addr of [HELPER, SPL_CACHED]) {
+    // Also the System precompile: the factory's constructor converts a program
+    // name through it before any mint is involved.
+    const SYSTEM = "0xff00000000000000000000000000000000000007";
+    for (const addr of [HELPER, SPL_CACHED, SYSTEM]) {
         await conn.provider.request({ method: "hardhat_setCode", params: [addr, code] });
     }
 
@@ -176,6 +179,94 @@ describe("armed-hook admission, executed", async () => {
         await assert.rejects(
             deployWrapper("SPL_ERC20_cached", mintId(6, true, 50, 5)),
             /ArmedTransferHookUnsupported/,
+        );
+    });
+
+    // The third admission path. It refuses before deploying rather than letting
+    // the wrapper's own constructor fail, so the caller does not pay for a CREATE
+    // that was always going to revert. The gate is the first thing the register
+    // path does after the symbol check, which is why it is reachable here without
+    // mocking the mint-creation machinery behind it.
+    it("the factory refuses an armed hook before it deploys anything", async () => {
+        const factory = await viem.deployContract("ERC20SPLFactory", [
+            "0xff00000000000000000000000000000000000008",
+        ]);
+        await assert.rejects(
+            factory.write.add_spl_token_no_metadata([mintId(6, true, 0, 6), "Wrapped", "WRAP"]),
+            /ArmedTransferHookUnsupported/,
+        );
+    });
+
+    // This path registers a wrapper over a mint that already exists, so it needs
+    // no mint-creation machinery: mocking mint_info is enough for it to run to
+    // completion. A present-but-unarmed hook therefore has to produce a wrapper,
+    // not a revert — and the wrapper it deploys reads the same mint_info on the
+    // cached track, so this covers both gates in one call.
+    it("the factory registers a wrapper for a present-but-unarmed hook", async () => {
+        const factory = await viem.deployContract("ERC20SPLFactory", [
+            "0xff00000000000000000000000000000000000008",
+        ]);
+        const mint = mintId(6, false, 0, 7, true);
+        await factory.write.add_spl_token_no_metadata([mint, "Wrapped2", "WRP2"]);
+
+        const wrapper = await factory.read.token_by_mint([mint]);
+        assert.notEqual(
+            wrapper,
+            "0x0000000000000000000000000000000000000000",
+            "an inert hook must not stop the factory from registering",
+        );
+    });
+});
+
+// The block above installs the mock at both homes, so it cannot tell whether each
+// wrapper reads its OWN track — only that each reads something. The distinction
+// matters: verify_call refuses a legacy cross-state read once a cached invoke has
+// fired, so a cached wrapper reading the legacy home would fail mid-transaction,
+// on a path no local test would exercise.
+//
+// Install one home at a time. The wrapper whose track is absent must fail to
+// deploy, which is the source assertion above turned into behaviour.
+describe("each wrapper reads its own track, executed", async () => {
+    const HELPER = "0xff00000000000000000000000000000000000009";
+    const SPL_CACHED = "0xff00000000000000000000000000000000000005";
+
+    const conn = await network.connect();
+    const { viem } = conn;
+    const mock = await viem.deployContract("MintInfoMock");
+    const code = await (await viem.getPublicClient()).getCode({ address: mock.address });
+
+    async function installOnly(present: string, absent: string) {
+        await conn.provider.request({ method: "hardhat_setCode", params: [present, code] });
+        await conn.provider.request({ method: "hardhat_setCode", params: [absent, "0x"] });
+    }
+
+    async function deploy(name: string) {
+        const users = await viem.deployContract("ERC20Users");
+        const mint = `0x06${"00".repeat(31)}` as `0x${string}`; // 6 decimals, nothing armed
+        return viem.deployContract(name, [
+            mint,
+            "0xff00000000000000000000000000000000000008",
+            "Wrapped",
+            "WRAP",
+            users.address,
+        ]);
+    }
+
+    it("the cached wrapper needs SplCached, not HelperProgram", async () => {
+        await installOnly(SPL_CACHED, HELPER);
+        await deploy("SPL_ERC20_cached"); // resolves
+        await assert.rejects(
+            deploy("SPL_ERC20"),
+            "the legacy wrapper must be reading HelperProgram, which is absent here",
+        );
+    });
+
+    it("the legacy wrapper needs HelperProgram, not SplCached", async () => {
+        await installOnly(HELPER, SPL_CACHED);
+        await deploy("SPL_ERC20"); // resolves
+        await assert.rejects(
+            deploy("SPL_ERC20_cached"),
+            "the cached wrapper must be reading SplCached, which is absent here",
         );
     });
 });

@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { network } from "hardhat";
 
 // The token program is part of the ATA seeds, so an ATA for a Token-2022 mint is
 // at a DIFFERENT address than the same mint under legacy SPL Token. Deriving with
@@ -56,5 +57,71 @@ describe("ATA derivation is program-aware", () => {
         const s = src("cpi/UserPda.sol");
         assert.match(s, /correct for Token-2022 as well/);
         assert.doesNotMatch(s, /assuming the\s+\/\/\/ classic SPL Token program/);
+    });
+});
+
+// The block above reads source, and its comment said byte-identity "belongs to the
+// funded suite" because hardhat has no find_program_address. That is now only half
+// true: byte-identity against Solana still needs a real chain (asserted on a live
+// stack in the tests repo), but the property that actually broke bridge-out is
+// observable here.
+//
+// That property is program-dependence: an ATA's seeds include the token program,
+// so resolving it from the mint has to produce a different address than resolving
+// it to a hardcoded legacy program. Two mints that differ in nothing but which
+// program they report must therefore derive to different addresses — and an
+// implementation with the program hardcoded returns the same one for both.
+describe("ATA derivation is program-aware, executed", async () => {
+    const SYSTEM = "0xff00000000000000000000000000000000000007";
+    const HELPER = "0xff00000000000000000000000000000000000009";
+
+    const conn = await network.connect();
+    const { viem } = conn;
+    const mock = await viem.deployContract("MintInfoMock");
+    const code = await (await viem.getPublicClient()).getCode({ address: mock.address });
+    for (const a of [SYSTEM, HELPER]) {
+        await conn.provider.request({ method: "hardhat_setCode", params: [a, code] });
+    }
+    const wrapper = await viem.deployContract("UserPdaWrapper");
+
+    /// Identical mints but for byte 4, which is what the mocked mint_info reads to
+    /// decide whether the mint is Token-2022 or legacy.
+    function mint(legacy: boolean): `0x${string}` {
+        const b = new Uint8Array(32);
+        b[0] = 6;
+        b[4] = legacy ? 1 : 0;
+        b[31] = 0xa7;
+        return `0x${Buffer.from(b).toString("hex")}` as `0x${string}`;
+    }
+
+    const owner = `0x${"11".repeat(32)}` as `0x${string}`;
+
+    it("the same owner and mint derive different ATAs under different token programs", async () => {
+        const as2022 = await wrapper.read.ataForKey([owner, mint(false)]);
+        const asLegacy = await wrapper.read.ataForKey([owner, mint(true)]);
+        assert.notEqual(
+            as2022,
+            asLegacy,
+            "ataForKey must feed the mint's own program into the seeds — a hardcoded " +
+                "program derives one address for both, which is the bug that made " +
+                "bridge-out target an account create_ata_for_key never created",
+        );
+    });
+
+    it("it is the token program that moves the address, not the mint bytes", async () => {
+        // Same program, different mint: also different, so the previous assertion
+        // is not just observing that the mint changed.
+        const a = await wrapper.read.ataForKey([owner, mint(false)]);
+        const b = new Uint8Array(32);
+        b[0] = 6;
+        b[31] = 0xa8;
+        const other = await wrapper.read.ataForKey([owner, `0x${Buffer.from(b).toString("hex")}` as `0x${string}`]);
+        assert.notEqual(a, other, "the mint is in the seeds too");
+    });
+
+    it("deriving twice is stable", async () => {
+        const a = await wrapper.read.ataForKey([owner, mint(false)]);
+        const b = await wrapper.read.ataForKey([owner, mint(false)]);
+        assert.equal(a, b);
     });
 });
