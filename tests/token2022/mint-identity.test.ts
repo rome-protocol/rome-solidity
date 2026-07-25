@@ -101,3 +101,58 @@ describe("the factory reads identity from the mint", async () => {
         await assert.rejects(factory.write.add_spl_token_with_metadata([bare]));
     });
 });
+
+// Red team the TLV walk. Its input is a mint account — data someone else controls
+// — and every length in it is attacker-chosen, so the parser has to survive a
+// hostile one rather than trust it.
+describe("the TLV walk survives hostile mint data", async () => {
+    const { viem } = await network.connect();
+    const lib = await viem.deployContract("SplTokenLibHarness");
+
+    const mutate = (at: number, bytes: string) => {
+        const b = Buffer.from(AI16Z_MINT.slice(2), "hex");
+        Buffer.from(bytes, "hex").copy(b, at);
+        return `0x${b.toString("hex")}` as `0x${string}`;
+    };
+
+    it("an entry claiming more bytes than the account has is refused", async () => {
+        // First TLV entry sits at 166: type u16 then len u16, little-endian.
+        const [found] = await lib.read.tokenMetadata([mutate(168, "ffff")]);
+        assert.equal(found, false, "must not read past the account");
+    });
+
+    it("a zero-length entry of the right type is refused, not parsed as empty", async () => {
+        // type 19 (TokenMetadata) with len 0 — shorter than the fixed prefix.
+        const [found] = await lib.read.tokenMetadata([mutate(166, "13000000")]);
+        assert.equal(found, false);
+    });
+
+    it("a name length larger than the entry is refused", async () => {
+        // TokenMetadata payload: 32 authority + 32 mint, then u32 name length.
+        const [, off] = [0, 166 + 4 + 64];
+        const [found] = await lib.read.tokenMetadata([mutate(off, "ffffffff")]);
+        assert.equal(found, false, "the string must stay inside its own entry");
+    });
+
+    it("entries with no terminator terminate anyway", async () => {
+        // Every entry advances the cursor by at least the 4-byte header, so a
+        // buffer of zero-length non-zero-type entries cannot loop forever. If this
+        // ever times out rather than returning, the walk can be stalled.
+        const b = Buffer.alloc(400);
+        for (let o = 166; o + 4 <= 400; o += 4) {
+            b[o] = 0x63; // type 99, absent
+            b[o + 1] = 0x00;
+            b[o + 2] = 0x00; // len 0
+            b[o + 3] = 0x00;
+        }
+        const [found] = await lib.read.tokenMetadata([`0x${b.toString("hex")}`]);
+        assert.equal(found, false);
+    });
+
+    it("a truncated account, and an empty one, are refused", async () => {
+        for (const d of ["0x", "0x00", `0x${"00".repeat(165)}`]) {
+            const [found] = await lib.read.tokenMetadata([d as `0x${string}`]);
+            assert.equal(found, false, `len ${(d.length - 2) / 2} must be refused`);
+        }
+    });
+});
