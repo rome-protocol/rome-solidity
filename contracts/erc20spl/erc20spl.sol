@@ -65,6 +65,11 @@ contract ERC20Users {
     }
 }
 
+/// A mint whose transfer hook is armed cannot be wrapped: the hook requires
+/// extra accounts that no transfer path in this wrapper supplies. Unarmed hooks
+/// are inert and are accepted.
+error ArmedTransferHookUnsupported(bytes32 mint, bytes32 hookProgram);
+
 contract SPL_ERC20 is IERC20, IERC20Metadata {
     // SystemProgram
     bytes32 public constant system_program_id = 0x0000000000000000000000000000000000000000000000000000000000000000;
@@ -91,11 +96,20 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         string memory symbol_,
         ERC20Users users_
     ) {
-        SplTokenLib.SplMint memory mint = SplTokenLib.load_mint(_mint_id, _cpi_program);
+        // decimals is the only mint fact this wrapper needs, and mint_info
+        // supplies it without parsing mint bytes in Solidity. It also tells us
+        // whether a transfer hook is ARMED, which this wrapper cannot honour —
+        // an armed hook needs extra accounts no transfer path here supplies, so
+        // the wrapper refuses to exist rather than reverting on every transfer.
+        // A present-but-unarmed hook is inert and must pass.
+        (, uint8 mint_decimals, bytes32 hook_program, ,) = HelperProgram.mint_info(_mint_id);
+        if (hook_program != bytes32(0)) {
+            revert ArmedTransferHookUnsupported(_mint_id, hook_program);
+        }
 
         cpi_program = _cpi_program;
         mint_id = _mint_id;
-        decimals = mint.decimals;
+        decimals = mint_decimals;
         _name = name_;
         _symbol = symbol_;
         _users = users_;

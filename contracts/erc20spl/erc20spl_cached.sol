@@ -12,7 +12,7 @@ import {
 } from "../interface.sol";
 import {AccountReader} from "../cpi/AccountReader.sol";
 import {Convert} from "../convert.sol";
-import {ERC20Users} from "./erc20spl.sol";
+import {ERC20Users, ArmedTransferHookUnsupported} from "./erc20spl.sol";
 
 /// @title  SPL_ERC20_cached
 /// @notice Cache-based ERC20 wrapper around an SPL mint. Replaces the
@@ -55,10 +55,18 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         string memory symbol_,
         ERC20Users users_
     ) {
-        SplTokenLib.SplMint memory mint = SplTokenLib.load_mint(_mint_id, _cpi_program);
+        // Read on this contract's own track: once a cached invoke has fired in a
+        // transaction, verify_call refuses a legacy cross-state read. Same
+        // selector, same answer. An armed hook is refused here too — the cached
+        // track additionally cannot stage one at all, since the processor it runs
+        // in-process would reach a real CPI.
+        (, uint8 mint_decimals, bytes32 hook_program, ,) = SplCached.mint_info(_mint_id);
+        if (hook_program != bytes32(0)) {
+            revert ArmedTransferHookUnsupported(_mint_id, hook_program);
+        }
         cpi_program = _cpi_program;
         mint_id = _mint_id;
-        decimals = mint.decimals;
+        decimals = mint_decimals;
         _name = name_;
         _symbol = symbol_;
         _users = users_;

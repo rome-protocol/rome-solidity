@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {ERC20Users} from "./erc20spl.sol";
+import {ERC20Users, ArmedTransferHookUnsupported} from "./erc20spl.sol";
 import {SPL_ERC20_cached} from "./erc20spl_cached.sol";
 import {MplTokenMetadataLib} from "../mpl_token_metadata/lib.sol";
 import {SplTokenLib} from "../spl_token/spl_token.sol";
@@ -50,6 +50,17 @@ contract ERC20SPLFactory {
     function _register_contract(bytes32 mint, string memory name, string memory symbol) internal returns(address) {
         bytes32 symbolHash = keccak256(bytes(symbol));
         _check_symbol_hash_exists(symbolHash);
+
+        // Refuse an armed transfer hook before deploying, not after. The wrapper
+        // constructor refuses it too, but a factory that only found out via a
+        // failing CREATE would burn the caller's gas and leave a confusing
+        // revert; this check names the reason. A present-but-unarmed hook is
+        // inert and is accepted — refusing on presence would reject most real
+        // Token-2022 mints.
+        (, , bytes32 hook_program, ,) = HelperProgram.mint_info(mint);
+        if (hook_program != bytes32(0)) {
+            revert ArmedTransferHookUnsupported(mint, hook_program);
+        }
 
         // Deploy the cache-track wrapper. `SPL_ERC20_cached` exposes the
         // identical IERC20 + IERC20Metadata surface as the prior
