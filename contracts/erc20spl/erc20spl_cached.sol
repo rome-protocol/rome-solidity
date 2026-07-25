@@ -117,7 +117,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     ///         Discovered 2026-05-25 during Hadrian V3 create-pool
     ///         smoke (the Rome app). Cross-ref:
     ///         rome-uniswap-v3/contracts/UniswapV3Pool.sol:486-490.
-    function balanceOf(address account) external view returns (uint256) {
+    function balanceOf(address account) public view returns (uint256) {
         try SplCached.account(account, mint_id) returns (ISplCached.Account memory acc) {
             return uint256(acc.amount);
         } catch {
@@ -213,7 +213,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         // pays nothing for this.
         (, , , uint16 feeBps, ) = SplCached.mint_info(mint_id);
         bool fee_armed = feeBps > 0;
-        uint256 before = fee_armed ? _balance_of(to) : 0;
+        uint256 before = fee_armed ? balanceOf(to) : 0;
         // Gate recipient ATA-create on existence (mirror approve #216): on the
         // common transfer-to-existing-holder path, skip the idempotent
         // AssociatedSplCached.create_ata round-trip. Overlay-aware via
@@ -267,20 +267,11 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         // amount in both directions.
         uint256 delivered = value;
         if (fee_armed) {
-            uint256 now_ = _balance_of(to);
+            uint256 now_ = balanceOf(to);
             delivered = to == from ? value - (before - now_) : now_ - before;
         }
         emit Transfer(from, to, delivered);
         return true;
-    }
-
-    /// Destination balance, overlay-aware, 0 when the ATA does not exist yet.
-    function _balance_of(address account) internal view returns (uint256) {
-        try SplCached.account(account, mint_id) returns (ISplCached.Account memory acc) {
-            return uint256(acc.amount);
-        } catch {
-            return 0;
-        }
     }
 
     /// @notice ERC-20: approve succeeds for any caller regardless of balance.
