@@ -20,32 +20,34 @@ function src(p: string): string {
 }
 
 describe("ATA derivation is program-aware", () => {
-    it("both raw-pubkey callers pass a program resolved from the mint", () => {
+    it("ataForKey resolves the token program itself — callers cannot get it wrong", () => {
+        const s = src("cpi/UserPda.sol");
+        // Fixed in place rather than given a sibling: a second entry point would
+        // leave the wrong one reachable, and callers would have to remember which.
+        assert.match(
+            s,
+            /function ataForKey\(bytes32 ownerKey, bytes32 mint\)\s+internal\s+view/,
+            "ataForKey must be view — it reads the mint to resolve the program",
+        );
+        assert.match(s, /HelperProgram\.mint_info\(mint\)/);
+        assert.doesNotMatch(
+            s,
+            /ataForKeyWithProgram/,
+            "no explicit-program sibling: the one function is correct for both",
+        );
+    });
+
+    it("callers just call it, and pass no program", () => {
         for (const f of ["erc20spl/erc20spl.sol", "bridge/RomeBridgeWithdraw.sol"]) {
-            const s = src(f);
-            assert.match(
-                s,
-                /ataForKeyWithProgram\(/,
-                `${f} must derive with an explicit token program`,
-            );
-            assert.match(
-                s,
-                /mint_info\(/,
-                `${f} must take that program from the mint, not assume it`,
-            );
-            assert.doesNotMatch(
-                s,
-                /UserPda\.ataForKey\(/,
-                `${f} must not use the legacy-only derivation`,
-            );
+            assert.match(src(f), /UserPda\.ataForKey\(/, `${f} derives via UserPda`);
         }
     });
 
-    it("the legacy-only helpers say so, so they are not reached for by mistake", () => {
-        const s = src("cpi/UserPda.sol");
-        // ataForKey and atas both bake in SPL_TOKEN_PROGRAM.
-        assert.match(s, /Legacy SPL Token only — the token program is baked/);
-        assert.match(s, /Legacy SPL Token only, same reason as `ataForKey`/);
+    it("the batch variant is still legacy-only, and says so", () => {
+        // atas bakes in SPL_TOKEN_PROGRAM. It has no caller outside its test
+        // wrapper, so it is documented rather than given a per-mint resolve it
+        // would pay for N times.
+        assert.match(src("cpi/UserPda.sol"), /Legacy SPL Token only — unlike `ataForKey`/);
     });
 
     it("ata() is documented as already program-aware, so nobody 'fixes' it", () => {

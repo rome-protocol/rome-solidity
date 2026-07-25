@@ -51,21 +51,6 @@ library UserPda {
     /// Derive an ATA for a raw Solana pubkey (pool-side, fee receiver, etc.).
     /// Used when the "wallet" isn't a Rome EVM user — e.g. Meteora pool's
     /// protocol token fee accumulator.
-    /// @dev Legacy SPL Token only — the token program is baked into the ATA
-    ///      seeds, so this returns the WRONG address for a Token-2022 mint.
-    ///      Callers that may see either program use `ataForKeyWithProgram`.
-    function ataForKey(bytes32 ownerKey, bytes32 mint)
-        internal
-        pure
-        returns (bytes32)
-    {
-        return AssociatedSplToken.get_associated_token_address_with_program_id(
-            ownerKey,
-            mint,
-            SolanaConstants.SPL_TOKEN_PROGRAM,
-            SolanaConstants.ASSOCIATED_TOKEN_PROGRAM
-        );
-    }
 
     /// ATA with caller-supplied token program. Reserved for future Token-2022
     /// support — no current adapter uses it. Kept internal so Slither won't
@@ -84,34 +69,25 @@ library UserPda {
         );
     }
 
-    /// Batch-derive N ATAs for one EVM user across N classic SPL Token mints.
+    /// @notice ATA for a raw Solana pubkey owner (not an EVM address), with the
+    ///         token program resolved from the mint's own owner — so this is
+    ///         correct for legacy SPL Token and Token-2022 alike.
     ///
-    /// Composes two primitives:
-    ///   1. `RomeEVMAccount.pda(user)` — single dispatch, returns AUTHORITY_PDA
-    ///   2. `PdasBatch.derive(seedGroups, ASSOCIATED_TOKEN_PROGRAM)` — N PDAs
-    ///      in one syscall, each `[authority_pda, SPL_TOKEN_PROGRAM, mint_i]`
+    /// @dev The program is part of the ATA seeds, so assuming one derives an
+    ///      address that `create_ata_for_key` never creates. Resolving here
+    ///      rather than asking callers to pass a program keeps that impossible
+    ///      to get wrong, and mirrors `ata(address,bytes32)`, which resolves the
+    ///      same way inside HelperProgram.
     ///
-    /// CU vs N×`ata(user, mint)`: the per-mint `HelperProgram.ata` shortcut
-    /// is ~129K CU each (Hadrian 2026-05-14 baseline). This path is one
-    /// `find_program_address` for the AUTHORITY_PDA plus one
-    /// `pdas_batch_derive` for the N ATAs — pays off at N ≥ 2 mints, with the
-    /// per-PDA saving growing with N. Measurement post-deploy lands in
-    /// `the Rome design specs`.
-    ///
-    /// Use this when one user owns ATAs across multiple mints (Compound
-    /// bulker supply/borrow lists, multi-token swap UIs probing balances,
-    /// portfolio screens enumerating per-mint balances). For single-mint or
-    /// arbitrary-owner cases, prefer `ata(user, mint)` / `ataForKey(...)`.
-    /// @notice ATA for a raw Solana pubkey owner under an explicit token
-    ///         program. The program is part of the ATA seeds, so a Token-2022
-    ///         mint derives a different address than the same mint would under
-    ///         legacy SPL Token — pass the program the mint is actually owned
-    ///         by, e.g. from `mint_info`.
-    function ataForKeyWithProgram(bytes32 ownerKey, bytes32 mint, bytes32 tokenProgram)
+    ///      Reads via HelperProgram, so a cached-track contract must not call
+    ///      this after staging a cached invoke — `verify_call` refuses a legacy
+    ///      cross-state read at that point. No cached-track caller exists today.
+    function ataForKey(bytes32 ownerKey, bytes32 mint)
         internal
-        pure
+        view
         returns (bytes32)
     {
+        (bytes32 tokenProgram, , , ,) = HelperProgram.mint_info(mint);
         return AssociatedSplToken.get_associated_token_address_with_program_id(
             ownerKey,
             mint,
@@ -120,9 +96,10 @@ library UserPda {
         );
     }
 
-    /// @dev Legacy SPL Token only, same reason as `ataForKey`. No program-aware
-    ///      batch exists because nothing calls this with a Token-2022 mint yet;
-    ///      one lands when a consumer needs it rather than in advance.
+    /// @dev Legacy SPL Token only — unlike `ataForKey`, this bakes in
+    ///      SPL_TOKEN_PROGRAM. It has no caller outside its test wrapper, so it
+    ///      is left as-is rather than given a per-mint resolve it would pay for
+    ///      N times; it gains one when a consumer needs it.
     function atas(address user, bytes32[] memory mints)
         internal
         view

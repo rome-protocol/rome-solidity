@@ -496,12 +496,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // `HelperProgram.ata(address, bytes32)` overload doesn't apply
         // — `UserPda.ataForKey` keeps the deterministic two-step Solana
         // find_program_address derivation for an arbitrary pubkey.
-        // The token program is part of the ATA seeds, so it must come from the
-        // mint rather than being assumed: with a hardcoded legacy program this
-        // derived one address while HelperProgram.create_ata_for_key created
-        // another, and the transfer then targeted an account that never existed.
-        (bytes32 token_program, , , ,) = HelperProgram.mint_info(mint_id);
-        bytes32 to_ata = UserPda.ataForKeyWithProgram(solana_recipient, mint_id, token_program);
+        bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
         // CPI 1 — `AssociatedToken.CreateIdempotent` for the recipient
         // ATA via `HelperProgram.create_ata_for_key(wallet, mint)`
@@ -599,11 +594,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // doesn't return a value, but the ATA address is deterministic
         // from (wallet, mint, spl_program). Same single `find_program_address`
         // syscall as the prior derivation inside AssociatedSplToken.
-        // Program-aware for the same reason as bridgeOutToSolana: the token
-        // program is part of the ATA seeds, so assuming legacy derives an
-        // address create_ata_for_key never creates.
-        (bytes32 token_program, , , ,) = HelperProgram.mint_info(mint_id);
-        bytes32 to_ata = UserPda.ataForKeyWithProgram(solana_recipient, mint_id, token_program);
+        bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
         // Idempotent ATA-create via `HelperProgram.create_ata_for_key`
         // (selector `0xd258a69d`, shipped in a Rome EVM program upgrade).
