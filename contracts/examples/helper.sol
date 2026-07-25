@@ -87,6 +87,29 @@ contract helper_example {
         bytes32 pda_ = HelperProgram.pda(msg.sender);
         return pda_; 
     }
+
+    // Ask what a mint actually is before acting on it. hookProgram and feeBps
+    // report the ARMED state — both are zero when the extension is absent OR
+    // present and inert — so `hookProgram != 0` is the question worth asking;
+    // checking presence instead would reject most real Token-2022 mints.
+    function mint_info() external view returns (bytes32, uint8, bytes32, uint16, uint32) {
+        return HelperProgram.mint_info(SystemProgram.mint_id());
+    }
+
+    // A cached-track contract must read from its own track: once a cached
+    // invoke has fired in the transaction, verify_call refuses a legacy
+    // cross-state read. Same selector, same answer.
+    function mint_info_cached(bytes32 mint) external view returns (bytes32, uint8, bytes32, uint16, uint32) {
+        return SplCached.mint_info(mint);
+    }
+
+    // Only spend the extra read when a fee is actually armed: measure the
+    // delivered amount instead of computing it, since the real fee is capped by
+    // maximum_fee, which mint_info deliberately does not carry.
+    function is_fee_armed(bytes32 mint) external view returns (bool) {
+        (, , , uint16 feeBps, ) = HelperProgram.mint_info(mint);
+        return feeBps > 0;
+    }
     function deposit_from_ata() external {
         (bool success, ) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature("deposit_from_ata(uint256)", 1 ether)
