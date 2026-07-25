@@ -1,16 +1,24 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { network } from "hardhat";
 
 // Admission is keyed on the ARMED hook, at every path that can bring a wrapper
 // into existence. Three such paths exist: the factory, and each wrapper's own
 // constructor — the second reachable directly by the deploy scripts, which the
 // factory gate never sees.
 //
-// These assert the wiring, which is what can silently regress: that each path
-// declares the error and reads mint_info on its own track. Behaviour against a
-// real armed-hook mint is the funded matrix's job; no armed-hook 2022 mint exists
-// on devnet to point a local run at yet.
+// The first block asserts the wiring, which is what can silently regress: that
+// each path declares the error and reads mint_info on its own track. The second
+// executes the constructors against a mocked mint_info, so the refusal is
+// observed rather than inferred from source.
+//
+// An earlier version of this comment said behaviour was "the funded matrix's job;
+// no armed-hook 2022 mint exists on devnet to point a local run at yet." Both
+// halves are now wrong: an armed-hook mint is a committed fixture
+// (rome-evm-private ci/dump, built by ci/gen-t22-fixtures.sh) that the CI
+// validator loads at genesis, and the refusal against it is asserted on a live
+// stack in the tests repo. Nothing here waits on a funded chain.
 
 function src(p: string): string {
     return readFileSync(`contracts/${p}`, "utf8");
@@ -71,5 +79,103 @@ describe("armed-hook admission", () => {
                 `${iface} must declare mint_info`,
             );
         }
+    });
+});
+
+// The block above reads source. That catches a deleted check, but it would pass
+// just as happily if the check were unreachable, or if the wrapper refused an
+// *unarmed* hook too — the failure that would reject most real Token-2022 mints.
+//
+// So run the constructors. `mint_info` is the only precompile either one calls,
+// so putting MintInfoMock at the two precompile addresses is enough to execute
+// them for real. The mock derives its answer from the mint id (byte 0 decimals,
+// byte 1 arms the hook, bytes 2-3 fee bps), so no per-case setup is needed.
+describe("armed-hook admission, executed", async () => {
+    const HELPER = "0xff00000000000000000000000000000000000009";
+    const SPL_CACHED = "0xff00000000000000000000000000000000000005";
+
+    const conn = await network.connect();
+    const { viem } = conn;
+
+    const mock = await viem.deployContract("MintInfoMock");
+    const client = await viem.getPublicClient();
+    const code = await client.getCode({ address: mock.address });
+    assert.ok(code && code !== "0x", "mock must have deployed code to install");
+    for (const addr of [HELPER, SPL_CACHED]) {
+        await conn.provider.request({ method: "hardhat_setCode", params: [addr, code] });
+    }
+
+    /// byte 0 decimals · byte 1 arms the hook · bytes 2-3 fee bps ·
+    /// byte 5 marks the hook present in the bitmap without arming it · rest distinct.
+    /// `hookPresent` defaults to whatever `hookArmed` is, since arming implies
+    /// presence; pass it explicitly to build the present-but-inert case.
+    function mintId(
+        decimals: number,
+        hookArmed: boolean,
+        feeBps: number,
+        tag: number,
+        hookPresent = hookArmed,
+    ): `0x${string}` {
+        const b = new Uint8Array(32);
+        b[0] = decimals;
+        b[1] = hookArmed ? 1 : 0;
+        b[2] = (feeBps >> 8) & 0xff;
+        b[3] = feeBps & 0xff;
+        b[5] = hookPresent ? 1 : 0;
+        b[31] = tag;
+        return `0x${Buffer.from(b).toString("hex")}` as `0x${string}`;
+    }
+
+    const WRAPPERS = ["SPL_ERC20", "SPL_ERC20_cached"] as const;
+
+    async function deployWrapper(name: string, mint: `0x${string}`) {
+        const users = await viem.deployContract("ERC20Users");
+        return viem.deployContract(name, [
+            mint,
+            "0xff00000000000000000000000000000000000008",
+            "Wrapped",
+            "WRAP",
+            users.address,
+        ]);
+    }
+
+    for (const name of WRAPPERS) {
+        it(`${name} refuses an armed hook, and says which`, async () => {
+            await assert.rejects(
+                deployWrapper(name, mintId(6, true, 0, 1)),
+                (e: Error) => {
+                    assert.match(e.message, /ArmedTransferHookUnsupported/);
+                    return true;
+                },
+                "an armed hook must be refused at construction, not at first transfer",
+            );
+        });
+
+        it(`${name} accepts a present-but-unarmed hook`, async () => {
+            // The mint carries the extension — bit 14 is set in the bitmap —
+            // and its program_id is zero, so the processor's get_program_id()
+            // returns None and no CPI ever fires. Refusing this would refuse
+            // most real Token-2022 mints, so a wrapper keying on presence must
+            // fail this test.
+            const w = await deployWrapper(name, mintId(6, false, 0, 2, true));
+            assert.equal(await w.read.decimals(), 6);
+        });
+
+        it(`${name} accepts an armed fee, which it handles by measuring`, async () => {
+            const w = await deployWrapper(name, mintId(9, false, 50, 3));
+            assert.equal(await w.read.decimals(), 9, "decimals come from mint_info");
+        });
+
+        it(`${name} takes decimals from mint_info rather than a constructor argument`, async () => {
+            const w = await deployWrapper(name, mintId(2, false, 0, 4));
+            assert.equal(await w.read.decimals(), 2);
+        });
+    }
+
+    it("a fee and an armed hook together are still refused for the hook", async () => {
+        await assert.rejects(
+            deployWrapper("SPL_ERC20_cached", mintId(6, true, 50, 5)),
+            /ArmedTransferHookUnsupported/,
+        );
     });
 });
