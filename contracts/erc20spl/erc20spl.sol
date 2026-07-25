@@ -494,8 +494,9 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // Recipient ATA pubkey — same canonical ATA derivation but for
         // the raw Solana recipient pubkey (not an EVM address), so the
         // `HelperProgram.ata(address, bytes32)` overload doesn't apply
-        // — `UserPda.ataForKey` keeps the deterministic two-step Solana
-        // find_program_address derivation for an arbitrary pubkey.
+        // — `UserPda.ataForKey` derives it for an arbitrary pubkey, resolving
+        // the token program from the mint so the address matches whatever
+        // `create_ata_for_key` will actually create.
         bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
         // CPI 1 — `AssociatedToken.CreateIdempotent` for the recipient
@@ -589,11 +590,10 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // expect the caller to be registered.
         _users.ensure_user(msg.sender);
 
-        // Derive the recipient ATA pubkey client-side via SystemProgram
-        // find_program_address — `create_ata_for_key` is an Invoke that
-        // doesn't return a value, but the ATA address is deterministic
-        // from (wallet, mint, spl_program). Same single `find_program_address`
-        // syscall as the prior derivation inside AssociatedSplToken.
+        // Derive the recipient ATA client-side — `create_ata_for_key` is an
+        // Invoke and returns nothing, but the address is deterministic from
+        // (wallet, mint, spl_program). The token program comes from the mint
+        // rather than being assumed, since it is part of the seeds.
         bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
         // Idempotent ATA-create via `HelperProgram.create_ata_for_key`
