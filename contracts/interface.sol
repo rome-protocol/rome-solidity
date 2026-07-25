@@ -117,6 +117,19 @@ interface ISplCached {
     // 0xf9827227 — derives ATA(external_auth(user), mint) internally for an
     // arbitrary mint; mirror of account(address) with an explicit mint.
     function account(address user, bytes32 mint) external view returns(Account memory);
+
+    // 0xe24bf5d4 — mint facts, ARMED not merely present.
+    // hookProgram and feeBps are zero when the extension is absent OR present
+    // and inert (a zero hook program_id fires no CPI; zero bps skips the fee
+    // path), so `hookProgram != 0` is the question worth asking. `extensions`
+    // reports presence, bit N per ExtensionType discriminant N.
+    function mint_info(bytes32 mint) external view returns (
+        bytes32 tokenProgram,
+        uint8 decimals,
+        bytes32 hookProgram,
+        uint16 feeBps,
+        uint32 extensions
+    );
 }
 
 interface IAssociatedSplCached {
@@ -283,6 +296,19 @@ interface IHelperProgram {
     // actual delegate is another, then transferFrom reverts. Collapses
     // 5 v1 dispatches into one.
     function allowance_of(address owner, address spender, bytes32 mint) external view returns (uint64);
+
+    // 0xe24bf5d4 — mint facts, ARMED not merely present.
+    // hookProgram and feeBps are zero when the extension is absent OR present
+    // and inert (a zero hook program_id fires no CPI; zero bps skips the fee
+    // path), so `hookProgram != 0` is the question worth asking. `extensions`
+    // reports presence, bit N per ExtensionType discriminant N.
+    function mint_info(bytes32 mint) external view returns (
+        bytes32 tokenProgram,
+        uint8 decimals,
+        bytes32 hookProgram,
+        uint16 feeBps,
+        uint32 extensions
+    );
     // deposit gas-token from ata
     function deposit_from_ata(uint256 wei_) external;
 }

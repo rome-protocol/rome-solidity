@@ -51,7 +51,8 @@ jobs:
             tests/cpi/CpiError.test.ts \
             tests/cpi/PdaDeriver.test.ts \
             tests/cpi/SolanaConstants.test.ts \
-            tests/cpi/UserPda.test.ts
+            tests/cpi/UserPda.test.ts \
+            tests/token2022/*.test.ts
 
   tx-origin-ban:
     # Strict gate per cardo-foundation section 9 + section 7 Task 14.
