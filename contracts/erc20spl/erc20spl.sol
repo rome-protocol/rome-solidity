@@ -70,7 +70,10 @@ contract ERC20Users {
 /// are inert and are accepted.
 error ArmedTransferHookUnsupported(bytes32 mint, bytes32 hookProgram);
 
-contract SPL_ERC20 is IERC20, IERC20Metadata {
+/// @dev Shared implementation for the fixed-account and hook-aware direct-CPI
+/// wrappers. Concrete wrappers choose their admission policy in the base
+/// constructor; callers must never deploy this abstract implementation.
+abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     // SystemProgram
     bytes32 public constant system_program_id = 0x0000000000000000000000000000000000000000000000000000000000000000;
     // ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL
@@ -82,7 +85,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
 
     string private _name;
     string private _symbol;
-    ERC20Users private _users;
+    ERC20Users internal _users;
     mapping(address => bytes32) private _accounts;
 
     error ERC20InvalidApprover(address approver);
@@ -94,7 +97,8 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         address _cpi_program, 
         string memory name_, 
         string memory symbol_,
-        ERC20Users users_
+        ERC20Users users_,
+        bool supports_armed_transfer_hook
     ) {
         // decimals is the only mint fact this wrapper needs, and mint_info
         // supplies it without parsing mint bytes in Solidity. It also tells us
@@ -103,7 +107,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         // the wrapper refuses to exist rather than reverting on every transfer.
         // A present-but-unarmed hook is inert and must pass.
         (, uint8 mint_decimals, bytes32 hook_program, ,) = HelperProgram.mint_info(_mint_id);
-        if (hook_program != bytes32(0)) {
+        if (hook_program != bytes32(0) && !supports_armed_transfer_hook) {
             revert ArmedTransferHookUnsupported(_mint_id, hook_program);
         }
 
@@ -268,7 +272,7 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         address from,
         address to,
         uint256 value
-    ) internal returns (bool) {
+    ) internal virtual returns (bool) {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
         // Suppress unused-parameter warning. `user` was the SPL Token
         // authority passed explicitly in the legacy path. Post-migration
@@ -657,4 +661,19 @@ contract SPL_ERC20 is IERC20, IERC20Metadata {
         emit Transfer(address(0), to, value);
         return true;
     }
+}
+
+/// @title SPL_ERC20
+/// @notice Fixed-account direct-CPI wrapper for legacy SPL and Token-2022
+///         mints that do not have an armed Transfer Hook.
+/// @dev Its constructor deliberately retains the armed-hook safety gate. The
+///      hook-aware sibling is SPL_ERC20_Token2022Hooked.
+contract SPL_ERC20 is SPL_ERC20Base {
+    constructor(
+        bytes32 _mint_id,
+        address _cpi_program,
+        string memory name_,
+        string memory symbol_,
+        ERC20Users users_
+    ) SPL_ERC20Base(_mint_id, _cpi_program, name_, symbol_, users_, false) {}
 }
