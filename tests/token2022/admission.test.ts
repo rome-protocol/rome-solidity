@@ -3,10 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { network } from "hardhat";
 
-// Admission is keyed on the ARMED hook, at every path that can bring a wrapper
-// into existence. Three such paths exist: the factory, and each wrapper's own
-// constructor — the second reachable directly by the deploy scripts, which the
-// factory gate never sees.
+// Admission is keyed on the ARMED hook at each wrapper constructor. The two
+// fixed-account wrappers refuse it; the factory routes it to the dedicated
+// direct-CPI wrapper, whose caller supplies the resolved hook account plan.
 //
 // The first block asserts the wiring, which is what can silently regress: that
 // each path declares the error and reads mint_info on its own track. The second
@@ -30,7 +29,6 @@ function abi(iface: string) {
 }
 
 const PATHS: Array<[string, string, string]> = [
-    ["factory", "erc20spl/erc20spl_factory.sol", "HelperProgram"],
     ["legacy wrapper ctor", "erc20spl/erc20spl.sol", "HelperProgram"],
     ["cached wrapper ctor", "erc20spl/erc20spl_cached.sol", "SplCached"],
 ];
@@ -118,12 +116,14 @@ describe("armed-hook admission, executed", async () => {
         feeBps: number,
         tag: number,
         hookPresent = hookArmed,
+        legacy = false,
     ): `0x${string}` {
         const b = new Uint8Array(32);
         b[0] = decimals;
         b[1] = hookArmed ? 1 : 0;
         b[2] = (feeBps >> 8) & 0xff;
         b[3] = feeBps & 0xff;
+        b[4] = legacy ? 1 : 0;
         b[5] = hookPresent ? 1 : 0;
         b[31] = tag;
         return `0x${Buffer.from(b).toString("hex")}` as `0x${string}`;
@@ -182,18 +182,56 @@ describe("armed-hook admission, executed", async () => {
         );
     });
 
-    // The third admission path. It refuses before deploying rather than letting
-    // the wrapper's own constructor fail, so the caller does not pay for a CREATE
-    // that was always going to revert. The gate is the first thing the register
-    // path does after the symbol check, which is why it is reachable here without
-    // mocking the mint-creation machinery behind it.
-    it("the factory refuses an armed hook before it deploys anything", async () => {
+    it("the hook-aware wrapper requires an armed Token-2022 hook", async () => {
+        await assert.rejects(
+            deployWrapper("SPL_ERC20_Token2022Hooked", mintId(6, false, 0, 51)),
+            /ArmedTransferHookRequired/,
+        );
+        await assert.rejects(
+            deployWrapper("SPL_ERC20_Token2022Hooked", mintId(6, true, 0, 52, true, true)),
+            /Token2022MintRequired/,
+        );
+    });
+
+    it("the hook-aware wrapper makes the account-plan requirement explicit", async () => {
+        const hooked = await deployWrapper(
+            "SPL_ERC20_Token2022Hooked",
+            mintId(6, true, 0, 53),
+        );
+        await assert.rejects(
+            hooked.read.transfer(["0x0000000000000000000000000000000000000001", 1n]),
+            /HookAccountPlanRequired/,
+        );
+        await assert.rejects(
+            hooked.read.transferFrom([
+                "0x0000000000000000000000000000000000000001",
+                "0x0000000000000000000000000000000000000002",
+                1n,
+            ]),
+            /HookAccountPlanRequired/,
+        );
+    });
+
+    it("the factory routes an armed hook to the direct-CPI wrapper", async () => {
         const factory = await viem.deployContract("ERC20SPLFactory", [
             "0xff00000000000000000000000000000000000008",
         ]);
-        await assert.rejects(
-            factory.write.add_spl_token_no_metadata([mintId(6, true, 0, 6), "Wrapped", "WRAP"]),
-            /ArmedTransferHookUnsupported/,
+        const mint = mintId(6, true, 0, 6);
+        await factory.write.add_spl_token_no_metadata([mint, "Wrapped", "WRAP"]);
+
+        const wrapper = await factory.read.token_by_mint([mint]);
+        assert.notEqual(wrapper, "0x0000000000000000000000000000000000000000");
+        const hooked = await viem.getContractAt("SPL_ERC20_Token2022Hooked", wrapper as `0x${string}`);
+        assert.equal(await hooked.read.mint_id(), mint);
+        assert.notEqual(
+            await hooked.read.hook_program(),
+            `0x${"00".repeat(32)}`,
+            "the wrapper pins the armed hook discovered from mint_info",
+        );
+        assert.equal(
+            await factory.read.wrapper_kind_by_mint([mint]),
+            2,
+            "factory records Token2022HookedCpi for client routing",
         );
     });
 
@@ -215,6 +253,7 @@ describe("armed-hook admission, executed", async () => {
             "0x0000000000000000000000000000000000000000",
             "an inert hook must not stop the factory from registering",
         );
+        assert.equal(await factory.read.wrapper_kind_by_mint([mint]), 1);
     });
 });
 
