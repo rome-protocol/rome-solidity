@@ -86,7 +86,6 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     string private _name;
     string private _symbol;
     ERC20Users internal _users;
-    mapping(address => bytes32) private _accounts;
 
     error ERC20InvalidApprover(address approver);
     error ERC20InvalidSpender(address spender);
@@ -150,12 +149,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         );
         require(success, string(Convert.revert_msg(result)));
 
-        // Cache the derived ATA in `_accounts` for back-compat — derive
-        // client-side using the canonical ATA formula (deterministic from
-        // wallet + mint + spl_program).
-        bytes32 associated_account_address = HelperProgram.ata(user, mint_id);
-        _accounts[user] = associated_account_address;
-        return associated_account_address;
+        return HelperProgram.ata(user, mint_id);
     }
 
     /**
@@ -183,10 +177,6 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         uint64 lamports = AccountReader.lamportsOf(ata);
         if (lamports != 0) {
             // Account already exists on Solana — no CPI needed.
-            // Cache write-through is optional; legacy callers checking
-            // `_accounts[user] != 0` still need a non-zero entry, so we
-            // populate it for back-compat.
-            _accounts[user] = ata;
             return ata;
         }
 
@@ -204,11 +194,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
      *      bridge-in deposits land and where balanceOf reads. No revert when
      *      the ATA hasn't been on-chain-initialized yet — callers that need
      *      it created must call `ensure_token_account(user)` (idempotent on
-     *      repeat calls). The legacy `_accounts` cache is no longer the
-     *      source of truth; this function ignores it to fix the split-brain
-     *      where balanceOf read AUTHORITY_PDA's ATA but transfer/approve/
-     *      transferFrom read the cached PAYER_PDA's ATA, breaking router-
-     *      mediated flows like Romeswap addLiquidity.
+     *      repeat calls).
      */
     function get_token_account(address user) public view returns (bytes32) {
         return HelperProgram.ata(user, mint_id);
@@ -487,14 +473,6 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         require(value <= type(uint64).max, "Bridge amount exceeds uint64");
         require(solana_recipient != bytes32(0), "Solana recipient cannot be zero");
 
-        // Source ATA = caller's unified-user-PDA's ATA for this mint.
-        // Single CPI via `HelperProgram.ata(user, mint)` — composes the
-        // two `find_program_address` syscalls (EXTERNAL_AUTHORITY → user
-        // PDA → ATA-of-PDA) into one dispatch. Measured −152K Solana CU
-        // vs the prior two-hop path (Marcus 121301, 2026-05-11; Hadrian
-        // confirms −170K, 2026-05-14).
-        bytes32 from_ata = HelperProgram.ata(msg.sender, mint_id);
-
         // Recipient ATA pubkey — same canonical ATA derivation but for
         // the raw Solana recipient pubkey (not an EVM address), so the
         // `HelperProgram.ata(address, bytes32)` overload doesn't apply
@@ -535,7 +513,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         // to the recipient's ATA. The `bytes32 to_ata` overload is
         // required because the recipient is a raw Solana pubkey (not
         // an EVM address). Signs as `external_auth(msg.sender)`,
-        // matching `from_ata`'s owner.
+        // matching the caller's PDA-owned source ATA.
         (bool xferOk, bytes memory xferResult) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
                 "transfer_spl(bytes32,uint64,bytes32)",
@@ -543,11 +521,6 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
             )
         );
         require(xferOk, string(Convert.revert_msg(xferResult)));
-
-        // Reference `from_ata` so the compiler doesn't warn — kept as a
-        // doc-only variable since the precompile re-derives source ATA
-        // server-side from the caller's external_auth PDA.
-        from_ata;
 
         emit BridgedOutToSolana(msg.sender, solana_recipient, mint_id, value);
         return true;

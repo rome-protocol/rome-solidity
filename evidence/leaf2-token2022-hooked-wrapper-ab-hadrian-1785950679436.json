@@ -1,0 +1,116 @@
+{
+  "status": "pass",
+  "scope": "warmed-ATA Token-2022 Transfer Hook wrapper A/B on Hadrian",
+  "controls": {
+    "mint": "75wP528i7uzEH9NGJa1cpFigDrLE4bnb1kS1MUauRkSz",
+    "hookProgram": "6e52qcdWaHV1DHnafeCWf2FuAH2fqj13nAD1KVoZWTm3",
+    "validation": "3XK9JaBnrEHsXrLK455Vz6hXxtSP2qxMZw8uEJk1QzH6",
+    "sender": "0x5667b3700b4a021Cc475157cbf3dE2d756Fae597",
+    "recipient": "0x74d76F704109a14DDf4C4474548ecC7a0356188a",
+    "amount": "1000",
+    "samplesPerTrack": 3
+  },
+  "contracts": {
+    "baseline": "0xD80B71b26F1FB45917142077a69E597186e1BEA8",
+    "optimized": "0xf579ca3eaafaba094c869b98c5dfe5285c874ce9",
+    "users": "0x025828AEf53026509c01fEADa7Ca8cA34a342fa8",
+    "optimizedDeployment": "0x8025ef8abf6360a15d9805fdf69aa6db6e4ace19dd83b3933885bffc0eadc0ec"
+  },
+  "samples": [
+    {
+      "track": "baseline",
+      "sample": 1,
+      "evmTx": "0xbdad17102af1ac88aa3347926f10d07d081042c04818778605c648bbf1dabd22",
+      "evmGasUsed": "10001",
+      "solanaTx": "57Qtoj8YbHfs8mRrgC2A7hy6igZpvVK1Pkci1wHNaYLJb9m6eM8BwE62CAZ8TzRScJXUqfhTwVjBtud2EhwPFkF5",
+      "solanaCu": 538731,
+      "requestedCu": 586676,
+      "heapBytes": 50648,
+      "nativeFeeLamports": 5001
+    },
+    {
+      "track": "optimized",
+      "sample": 1,
+      "evmTx": "0x2a14e2260e9e9d97e7bfd56d2dc92e12db1662cc7e56f4abbedaf54ca5cc242d",
+      "evmGasUsed": "10001",
+      "solanaTx": "2PkvSJqQSUbXNg5yn6zWRiXinFx3KfFRspFnR5c9M6a9UwBsqMfLAFWWdgDURFQuMaP3cmB6iy1CRqGDCBDpeR2p",
+      "solanaCu": 448681,
+      "requestedCu": 496626,
+      "heapBytes": 47088,
+      "nativeFeeLamports": 5001
+    },
+    {
+      "track": "baseline",
+      "sample": 2,
+      "evmTx": "0x1fbc9e8e20cbe0a1b00f4e7e2b8d6156d693c622cfdca6486d3d4f6dd1537945",
+      "evmGasUsed": "10001",
+      "solanaTx": "3KLBBdzDZu8KdAq1YGBfkUqamFPshrUAzigqzXhayUztZtAJHY35YAbJhqcDDprvvUhE6nPrPhy1nJdXgfTKDG8L",
+      "solanaCu": 537181,
+      "requestedCu": 585126,
+      "heapBytes": 50648,
+      "nativeFeeLamports": 5001
+    },
+    {
+      "track": "optimized",
+      "sample": 2,
+      "evmTx": "0xd869a43419d169c8bf1a224ac8de2210e4425dc22833a15b5f9ae3699b7c3782",
+      "evmGasUsed": "10001",
+      "solanaTx": "4hrM6RsjaDXxHenYAhJ18QHMaYcrAzJ8Qon43w8HQYf6vLkpnBMzYpdVDJFuJPjakJFnGiYBjvSofXrF1oxMnRix",
+      "solanaCu": 445680,
+      "requestedCu": 493625,
+      "heapBytes": 47088,
+      "nativeFeeLamports": 5001
+    },
+    {
+      "track": "baseline",
+      "sample": 3,
+      "evmTx": "0x6c1f44e2965bcfc680066e0412643ec7003588c083250e2f934b9ddb4e456fa2",
+      "evmGasUsed": "10001",
+      "solanaTx": "3UsXFKbb4Yv2LuzftaRT2A9FJDZ2PwqwGcT9KRsjb6SzsZXLzv8Bj9W8LsG6mMceTpiKpjHBBiXECw1tEbaHs74F",
+      "solanaCu": 534181,
+      "requestedCu": 582126,
+      "heapBytes": 50648,
+      "nativeFeeLamports": 5001
+    },
+    {
+      "track": "optimized",
+      "sample": 3,
+      "evmTx": "0xa1c5095ffa826f2122abd9647f812d89931fa707721141d9968118cd709bfd62",
+      "evmGasUsed": "10001",
+      "solanaTx": "5HVPKfTuS7nmNgDcKNhGSarxYZp28E5kq1Qtw8RoUmwLqr8i6jeSNBpLdvSH6YN4DTZNWUfvHzoNhstKCvkf3SAm",
+      "solanaCu": 442681,
+      "requestedCu": 490626,
+      "heapBytes": 47088,
+      "nativeFeeLamports": 5001
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "samples": 3,
+      "meanEvmGasUsed": 10001,
+      "meanSolanaCu": 536697.6666666666,
+      "meanHeapBytes": 50648,
+      "requestedCu": [
+        586676,
+        585126,
+        582126
+      ]
+    },
+    "optimized": {
+      "samples": 3,
+      "meanEvmGasUsed": 10001,
+      "meanSolanaCu": 445680.6666666667,
+      "meanHeapBytes": 47088,
+      "requestedCu": [
+        496626,
+        493625,
+        490626
+      ]
+    },
+    "delta": {
+      "evmGasUsed": 0,
+      "solanaCu": -91016.99999999994,
+      "heapBytes": -3560
+    }
+  }
+}
