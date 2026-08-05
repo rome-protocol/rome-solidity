@@ -318,7 +318,14 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     function mint_to(address to, uint256 value) external returns (bool) {
         require(value <= type(uint64).max, "Mint amount exceeds uint64");
         _users.ensure_user(msg.sender);
-        ensure_token_account(to);
+        // Mirror _transfer's overlay-aware ATA gate. Minting to an existing
+        // holder should not spend an idempotent create-ATA invoke; an ATA
+        // created earlier in this cached transaction is visible here too.
+        try SplCached.account(to, mint_id) returns (ISplCached.Account memory) {
+            // Recipient ATA already exists in the cache/on-chain state.
+        } catch {
+            ensure_token_account(to);
+        }
         (bool ok, bytes memory result) = address(SplCached).delegatecall(
             abi.encodeWithSignature(
                 "mint(address,uint256,bytes32)",

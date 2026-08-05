@@ -80,8 +80,8 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
     function transferWithHookAccounts(
         address to,
         uint256 value,
-        ICrossProgramInvocation.AccountMeta[] memory hookMetas
-    ) public returns (bool) {
+        ICrossProgramInvocation.AccountMeta[] calldata hookMetas
+    ) external returns (bool) {
         _users.ensure_user(msg.sender);
         return _hookedTransfer(msg.sender, to, value, hookMetas);
     }
@@ -90,16 +90,16 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
         address from,
         address to,
         uint256 value,
-        ICrossProgramInvocation.AccountMeta[] memory hookMetas
-    ) public returns (bool) {
+        ICrossProgramInvocation.AccountMeta[] calldata hookMetas
+    ) external returns (bool) {
         _users.ensure_user(msg.sender);
         return _hookedTransfer(from, to, value, hookMetas);
     }
 
     function _validateCurrentPlan(
-        ICrossProgramInvocation.AccountMeta[] memory hookMetas
-    ) internal view {
-        (bytes32 tokenProgram, , bytes32 currentHookProgram, ,) =
+        ICrossProgramInvocation.AccountMeta[] calldata hookMetas
+    ) internal view returns (uint16 feeBps) {
+        (bytes32 tokenProgram, , bytes32 currentHookProgram, uint16 currentFeeBps,) =
             HelperProgram.mint_info(mint_id);
         if (tokenProgram != SolanaConstants.TOKEN_2022_PROGRAM) {
             revert Token2022MintRequired(mint_id, tokenProgram);
@@ -110,18 +110,17 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
         Token2022HookedTransfer.validate(
             hook_program, validation_account, hookMetas
         );
+        return currentFeeBps;
     }
 
     function _hookedTransfer(
         address from,
         address to,
         uint256 value,
-        ICrossProgramInvocation.AccountMeta[] memory hookMetas
+        ICrossProgramInvocation.AccountMeta[] calldata hookMetas
     ) internal returns (bool) {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
-        _validateCurrentPlan(hookMetas);
-
-        (, , , uint16 feeBps, ) = HelperProgram.mint_info(mint_id);
+        uint16 feeBps = _validateCurrentPlan(hookMetas);
         bool feeArmed = feeBps > 0;
         uint256 beforeBalance = feeArmed ? balanceOf(to) : 0;
 
@@ -161,13 +160,12 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
     function bridgeOutToSolanaWithHookAccounts(
         bytes32 solanaRecipient,
         uint256 value,
-        ICrossProgramInvocation.AccountMeta[] memory hookMetas
-    ) public returns (bool) {
+        ICrossProgramInvocation.AccountMeta[] calldata hookMetas
+    ) external returns (bool) {
         require(value <= type(uint64).max, "Bridge amount exceeds uint64");
         require(solanaRecipient != bytes32(0), "Solana recipient cannot be zero");
         _validateCurrentPlan(hookMetas);
 
-        _users.ensure_user(msg.sender);
         bytes32 destination = ensureRecipientAta(solanaRecipient);
         bytes32 source = HelperProgram.ata(msg.sender, mint_id);
         Token2022HookedTransfer.transferChecked(

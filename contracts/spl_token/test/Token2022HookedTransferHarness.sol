@@ -12,7 +12,7 @@ contract Token2022HookedTransferHarness {
         bytes32 authority,
         uint64 amount,
         uint8 decimals,
-        ICrossProgramInvocation.AccountMeta[] memory hookMetas
+        ICrossProgramInvocation.AccountMeta[] calldata hookMetas
     ) external pure returns (bytes memory, ICrossProgramInvocation.AccountMeta[] memory) {
         return Token2022HookedTransfer.plan(
             source, mint, destination, authority, amount, decimals, hookMetas
@@ -22,7 +22,7 @@ contract Token2022HookedTransferHarness {
     function validate(
         bytes32 hookProgram,
         bytes32 validation,
-        ICrossProgramInvocation.AccountMeta[] memory hookMetas
+        ICrossProgramInvocation.AccountMeta[] calldata hookMetas
     ) external pure {
         Token2022HookedTransfer.validate(hookProgram, validation, hookMetas);
     }

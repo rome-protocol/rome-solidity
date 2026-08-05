@@ -1,0 +1,39 @@
+{
+  "status": "pass",
+  "scope": "cold-recipient hook-aware wrapper parity on Hadrian",
+  "controls": {
+    "mint": "75wP528i7uzEH9NGJa1cpFigDrLE4bnb1kS1MUauRkSz",
+    "hookProgram": "6e52qcdWaHV1DHnafeCWf2FuAH2fqj13nAD1KVoZWTm3",
+    "validation": "3XK9JaBnrEHsXrLK455Vz6hXxtSP2qxMZw8uEJk1QzH6",
+    "sender": "0x5667b3700b4a021Cc475157cbf3dE2d756Fae597",
+    "amount": "1000"
+  },
+  "optimizedDeployment": {
+    "address": "0x828d1f58fd4bb1a7460e50fdf1a7c714bbe613a3",
+    "transaction": "0x7668333fd27034271aa43d416a264d8ff64916c92c70cb5050ad8ebb88853a84"
+  },
+  "results": [
+    {
+      "track": "baseline",
+      "wrapper": "0xD80B71b26F1FB45917142077a69E597186e1BEA8",
+      "recipient": "0xE83Be25dabC033ceAaf55Bb3AA22a82BfE0E0752",
+      "recipientAta": "ELSsUsB2YAQcNC6tQjWPR5bz2Zzr1R3HB88P61vVvwgx",
+      "before": "absent",
+      "afterAmount": "1000",
+      "evmTx": "0x018a1fcbbcb9cfc811ab5488fb7f2a9f24870cc807d3e0b5dd463d12fd65c82f",
+      "evmGasUsed": "4986401",
+      "solanaCu": 717501
+    },
+    {
+      "track": "optimized",
+      "wrapper": "0x828d1f58fd4bb1a7460e50fdf1a7c714bbe613a3",
+      "recipient": "0x589b4089bE59224e7963c02E9BE351e3653B5f9C",
+      "recipientAta": "CAJxzgCg28r5B9Wvr8mktifJN5VSDu2QCnN2dau1q5rJ",
+      "before": "absent",
+      "afterAmount": "1000",
+      "evmTx": "0x22712d9a387c9a98f1e2d7886ab22f0e9a8826301d416464616d1ea02e07472d",
+      "evmGasUsed": "3552641",
+      "solanaCu": 609108
+    }
+  ]
+}
