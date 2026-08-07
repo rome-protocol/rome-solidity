@@ -81,6 +81,14 @@ export default defineConfig({
       chainId: 7531,
       url: configVariable("RUBICON_RPC_URL"),
       accounts: [configVariable("RUBICON_PRIVATE_KEY")],
+      // The proxy enforces a pool-derived minimum gas price but serves stub
+      // eth_feeHistory values, so Hardhat's automatic fee estimation
+      // underprices every tx (rejected with "Gas_price is less than the
+      // minimum value"). Pin a legacy gasPrice for the run:
+      //   export RUBICON_GAS_PRICE=$(( $(cast gas-price -r <rpc>) * 11 / 10 ))
+      gasPrice: process.env.RUBICON_GAS_PRICE
+        ? BigInt(process.env.RUBICON_GAS_PRICE)
+        : "auto",
     },
     hardhatMainnet: {
       type: "edr-simulated",
