@@ -73,6 +73,15 @@ export default defineConfig({
       url: "https://hadrian.testnet.romeprotocol.xyz/",
       accounts: [configVariable("HADRIAN_PRIVATE_KEY")],
     },
+    // Mainnet. URL kept out of source so deploys can target a non-public
+    // endpoint; the key is injected transiently for one-shot runs.
+    rubicon: {
+      type: "http",
+      chainType: "l1",
+      chainId: 7531,
+      url: configVariable("RUBICON_RPC_URL"),
+      accounts: [configVariable("RUBICON_PRIVATE_KEY")],
+    },
     hardhatMainnet: {
       type: "edr-simulated",
       chainType: "l1",

@@ -2,7 +2,9 @@ import hardhat from "hardhat";
 import { readDeployments } from "../lib/deployments.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
 const CPI = "0xFF00000000000000000000000000000000000008" as const;
-const WETH_MINT = "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs";
+// Devnet default; mainnet runs must pass the canonical Wormhole wETH mint
+// (7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs) via the env var.
+const WETH_MINT = process.env.WETH_MINT ?? "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs";
 async function main() {
   const { viem, networkName } = (await hardhat.network.connect()) as unknown as {
     viem: { getWalletClients: () => Promise<Array<{ account?: { address: `0x${string}` } }>>; deployContract: (n: "SPL_ERC20", a: readonly [`0x${string}`,`0x${string}`,string,string,`0x${string}`]) => Promise<{ address: `0x${string}` }>; };
