@@ -48,5 +48,98 @@
     "name": "Rome WETH (v9 ensureRecipientAta)",
     "symbol": "WETHv9",
     "via": "scripts/bridge/deploy-weth-v9.ts"
+  },
+  "OracleGatewayV2": {
+    "deployedAt": "2026-08-07T03:52:51.863Z",
+    "defaultMaxStaleness": 3600,
+    "pythReceiverProgramId": "0x0cb7fabb52f7a648bb5b317d9a018b9057cb024774fafe01e6c4df98cc385881",
+    "switchboardProgramId": "0x068851c68c6832f02fa581b1bf491b77ca41776ba2b988b5a6faba8ee3a2ec90",
+    "PythPullAdapterImpl": "0xcaa8748bf6cce1b172fd7ec0ffcede6422d0c295",
+    "SwitchboardV3AdapterImpl": "0x34fc806cab46e8b0eefb5bb0f32abec04f3b0a0a",
+    "CachedPythAdapterImpl": "0xe59caf8049522e8a44c201f6e5ff252d3c98ecfa",
+    "CachedFeedAdapterImpl": "0x7e14f5be8b9078aed37f80c7b0161efad66fc022",
+    "OracleAdapterFactory": "0x6a1340dd86c3951b6f13d9001b3951d56a2fe581",
+    "BatchReader": "0x580dc0ecb226530ee8a90b57e0f0cd2555fb4f0f",
+    "feeds": {
+      "pyth": [
+        {
+          "pair": "SOL/USD",
+          "adapter": "0xe06E9239C9ccc4B51068009687b62562bcF57E28",
+          "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+          "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
+        },
+        {
+          "pair": "BTC/USD",
+          "adapter": "0x2612f480e9938b5296B00986C832Ae55b38Bf994",
+          "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
+          "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
+        },
+        {
+          "pair": "ETH/USD",
+          "adapter": "0x4BFb45C6D7d640dF2A6c4C56e79b4190f025b940",
+          "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+          "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
+        },
+        {
+          "pair": "USDC/USD",
+          "adapter": "0xF81329f5A85DfC962a4DB88235Bf2595A64329Ef",
+          "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+          "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
+        }
+      ],
+      "switchboard": [],
+      "cachedPyth": [
+        {
+          "pair": "SOL/USD",
+          "adapter": "0x9d95d2709A5Ac1B3cdB03B4093C08b40F883C64D",
+          "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+          "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
+        },
+        {
+          "pair": "BTC/USD",
+          "adapter": "0xD547fee1a5FA3bE33B28ae943E5Cc4113D3ccCD9",
+          "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
+          "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
+        },
+        {
+          "pair": "ETH/USD",
+          "adapter": "0x314Dc084D9608b764E0eEAaC2bBcc9435172aEf0",
+          "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+          "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
+        },
+        {
+          "pair": "USDC/USD",
+          "adapter": "0x76F3a1627098de21FD03b58E6b7014F71E2aeDd0",
+          "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+          "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
+        }
+      ],
+      "cachedFeed": [
+        {
+          "pair": "SOL/USD",
+          "adapter": "0x00d3B3698b8249Ad7Ef445011437065c2732Bb3f",
+          "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+          "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
+        },
+        {
+          "pair": "BTC/USD",
+          "adapter": "0x1547A2581180Df9Ff03D2c239273a3E907674239",
+          "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
+          "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
+        },
+        {
+          "pair": "ETH/USD",
+          "adapter": "0x3797d49BD5B0eE8E2D0fcf144C797b0e34AB954f",
+          "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+          "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
+        },
+        {
+          "pair": "USDC/USD",
+          "adapter": "0x8f4e081f2049Fd78Df39756A634bc916E22e446e",
+          "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+          "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
+        }
+      ]
+    }
   }
 }
