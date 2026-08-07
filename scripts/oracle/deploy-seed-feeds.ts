@@ -111,6 +111,36 @@ function b58ToBytes32(b58: string): `0x${string}` {
     return ("0x" + Buffer.from(bytes).toString("hex")) as `0x${string}`;
 }
 
+// The built-in seed lists above are Solana-DEVNET accounts. Other clusters
+// (mainnet-beta) pass their own catalog via SEED_FEEDS_FILE — a JSON file of
+// shape { "pyth": SeedFeed[], "switchboard": SeedFeed[] } (either key may be
+// omitted). Checked-in catalogs live under scripts/oracle/seeds/. Every
+// pubkey is validated (32-byte base58) before any network traffic.
+function loadSeeds(): { pyth: SeedFeed[]; switchboard: SeedFeed[] } {
+    const file = process.env.SEED_FEEDS_FILE;
+    if (!file) {
+        return { pyth: PYTH_SEEDS, switchboard: SWITCHBOARD_SEEDS };
+    }
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as {
+        pyth?: SeedFeed[];
+        switchboard?: SeedFeed[];
+    };
+    const pyth = parsed.pyth ?? [];
+    const switchboard = parsed.switchboard ?? [];
+    for (const s of [...pyth, ...switchboard]) {
+        if (!s.pair || !s.pubkeyBase58 || !s.description) {
+            throw new Error(
+                `SEED_FEEDS_FILE entry missing pair/pubkeyBase58/description: ${JSON.stringify(s)}`,
+            );
+        }
+        b58ToBytes32(s.pubkeyBase58);
+    }
+    console.log(
+        `Loaded ${pyth.length} pyth + ${switchboard.length} switchboard seeds from ${file}`,
+    );
+    return { pyth, switchboard };
+}
+
 type DeployResult = {
     pair: string;
     adapter: `0x${string}`;
@@ -120,6 +150,9 @@ type DeployResult = {
 };
 
 async function main() {
+    // Load + validate seeds BEFORE any network traffic, so a malformed
+    // SEED_FEEDS_FILE fails fast and gas-free.
+    const { pyth: pythSeeds, switchboard: switchboardSeeds } = loadSeeds();
     const { viem, networkName } = await hardhat.network.connect();
     const [deployer] = await viem.getWalletClients();
     if (!deployer?.account) {
@@ -307,7 +340,7 @@ async function main() {
     // ─── Pyth ───
     console.log("=== Deploying Pyth seed feeds ===");
     const pythResults: DeployResult[] = [];
-    for (const seed of PYTH_SEEDS) {
+    for (const seed of pythSeeds) {
         try {
             pythResults.push(await deployPythSeed(seed));
         } catch (e: any) {
@@ -320,7 +353,7 @@ async function main() {
     // ─── Switchboard ───
     console.log("\n=== Deploying Switchboard seed feeds ===");
     const sbResults: DeployResult[] = [];
-    for (const seed of SWITCHBOARD_SEEDS) {
+    for (const seed of switchboardSeeds) {
         try {
             sbResults.push(await deploySwitchboardSeed(seed));
         } catch (e: any) {
@@ -335,7 +368,7 @@ async function main() {
     const cachedFeedResults: DeployResult[] = [];
     if (v2.CachedPythAdapterImpl || v2.CachedFeedAdapterImpl) {
         console.log("\n=== Deploying cached-pyth seed feeds ===");
-        for (const seed of PYTH_SEEDS) {
+        for (const seed of pythSeeds) {
             try {
                 cachedPythResults.push(await deployCachedPythSeed(seed));
             } catch (e: any) {
@@ -376,10 +409,10 @@ async function main() {
     console.log();
     console.log("=== Summary ===");
     console.log(
-        `Pyth:        ${pythDeployed} deployed, ${pythSkipped} skipped, ${PYTH_SEEDS.length - pythResults.length} failed`,
+        `Pyth:        ${pythDeployed} deployed, ${pythSkipped} skipped, ${pythSeeds.length - pythResults.length} failed`,
     );
     console.log(
-        `Switchboard: ${sbDeployed} deployed, ${sbSkipped} skipped, ${SWITCHBOARD_SEEDS.length - sbResults.length} failed`,
+        `Switchboard: ${sbDeployed} deployed, ${sbSkipped} skipped, ${switchboardSeeds.length - sbResults.length} failed`,
     );
     console.log(
         `Wrote ${pythResults.length} Pyth + ${sbResults.length} Switchboard entries to ${deployPath}`,

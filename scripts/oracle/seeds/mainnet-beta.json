@@ -1,0 +1,30 @@
+{
+  "$comment": "Pyth Pull PriceFeedAccount PDAs on Solana MAINNET-BETA (shard 0, push-oracle pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT, owner rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ). PDA addresses are cluster-agnostic (identical to the devnet built-ins); what this catalog asserts is that these accounts EXIST and are Pyth-Labs-maintained on mainnet-beta — each verified on-chain 2026-08-07: owner + embedded feed id + publish_time <=70s old. staleness matches the 3600s per-env convention. Used via SEED_FEEDS_FILE=scripts/oracle/seeds/mainnet-beta.json for mainnet chain deploys (first consumer: rubicon 7531).",
+  "pyth": [
+    {
+      "pair": "SOL/USD",
+      "pubkeyBase58": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+      "description": "SOL / USD",
+      "staleness": 3600
+    },
+    {
+      "pair": "BTC/USD",
+      "pubkeyBase58": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
+      "description": "BTC / USD",
+      "staleness": 3600
+    },
+    {
+      "pair": "ETH/USD",
+      "pubkeyBase58": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+      "description": "ETH / USD",
+      "staleness": 3600
+    },
+    {
+      "pair": "USDC/USD",
+      "pubkeyBase58": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+      "description": "USDC / USD",
+      "staleness": 3600
+    }
+  ],
+  "switchboard": []
+}
