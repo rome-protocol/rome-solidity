@@ -23,7 +23,7 @@
     "chai": "^6.2.2",
     "forge-std": "github:foundry-rs/forge-std#v1.16.1",
     "mocha": "^11.8.0",
-    "typescript": "~6.0.3",
+    "typescript": "~7.0.2",
     "viem": "^2.55.10",
     "vitest": "^4.1.10"
   },
