@@ -38,6 +38,11 @@ jobs:
           cache: 'npm'
       - run: npm install
       - run: npx hardhat compile
+      - name: ABI parity — discovery interfaces vs implementations
+        # Solidity's `is IFoo` only enforces interface ⊆ impl. Nothing in the
+        # language catches a new contract function the interface omits, which is
+        # how IRomeBridgeWithdraw shipped without three live egress rails.
+        run: node scripts/check-abi-parity.js
       - name: Run CPI foundation + oracle + bridge tests
         run: |
           npx hardhat test nodejs \
