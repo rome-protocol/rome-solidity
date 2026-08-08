@@ -72,6 +72,15 @@ export function buildPythPullAccount(params: PythPullAccountParams): `0x${string
     // verification_level at offset 40 (default 0x01 = Full)
     buf[40] = params.verificationVariant ?? 0x01;
 
+    // feed_id at offset 41 ([u8;32])
+    if (params.feedId) {
+        const fid = params.feedId.replace(/^0x/, "");
+        if (fid.length !== 64) throw new Error("feedId must be 32 bytes of hex");
+        for (let i = 0; i < 32; i++) {
+            buf[41 + i] = parseInt(fid.slice(i * 2, i * 2 + 2), 16);
+        }
+    }
+
     // price at offset 73 (i64, LE)
     writeInt64LE(buf, 73, params.price);
 
