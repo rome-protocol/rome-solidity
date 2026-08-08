@@ -1,6 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SCOPE: Rome precompile bindings ONLY.
+//
+// This file is a chain-ABI header — the Solidity projection of the rome-evm
+// program's non-EVM dispatch table. It version-tracks the program: its only
+// reason to change is a rome-evm program upgrade. It is the ONE file in this repo
+// allowed to hardcode addresses, because precompile addresses (0xFF.., 0x42..)
+// are protocol constants, invariant across every Rome chain.
+//
+// Admission rule: an interface belongs here IFF its address is a fixed constant
+// burned into the program dispatch. Application contracts do NOT belong here —
+// their addresses are per-chain and canonical in rome-protocol/registry.
+//
+//   • App-contract interfaces → each area's own file
+//       (e.g. bridge/IRomeBridgeWithdraw.sol, oracle/IExtendedOracleAdapter.sol)
+//   • Deployed addresses      → rome-protocol/registry, never here
+//   • Discovery map           → contracts/README.md
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface ISystemProgram {
     struct Seed{
         bytes item;
