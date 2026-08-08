@@ -3,16 +3,20 @@
  * PriceBook Phase-0 triage — measures refreshAll() capacity on a LIVE Rome
  * chain from on-chain receipts (never from architecture): Solana compute
  * units, account metas, serialized tx size, and whether the proxy kept each
- * width atomic. Protocol:
+ * width atomic.
  *
- *   INIT      refreshAll(8, force=false)  first-write storage creation (labeled, excluded from marginals)
- *   W1/2/4/8  refreshAll(w, force=true)   steady-state commit path at each width
- *   SKIP8     refreshAll(8, force=false)  the all-skip (nothing newer) path
- *   FAULT     refreshAll([bogus]+7, true) one faulted feed inside a surviving batch
+ * MODE=legacy (default) → PriceBookProbe (PythPullParser path):
+ *   INIT, W1/2/4/8 (force), SKIP8, FAULT
+ * MODE=fast → PriceBookProbeFast (assembly parse, cheap-skip, packed slot):
+ *   same protocol, plus decomposition runs that attribute the per-feed cost:
+ *   FETCH8 (reads only), PARSEFAST8 (read+fast parse), PARSELEG2 (read+legacy
+ *   parse at an atomic-safe width for the A/B).
  *
  * Attribution: after each EVM tx, new Solana signatures touching feed[0]'s
  * account (anchored with `until`) are classified by whether the raw tx bytes
  * contain the probe address (ours) vs a known adapter address (keeper's).
+ * Holder-staged executions escape this filter — reconcile those with the
+ * post-hoc leg scan by instruction log.
  *
  * Env (all endpoints/keys injected, nothing baked in):
  *   RPC               Rome EVM JSON-RPC                  (required)
@@ -20,6 +24,7 @@
  *   EVM_KEY_FILE      path to 0x-hex private key file    (required; key never printed)
  *   FEEDS_JSON        registry-style oracle.json         (required)
  *   ROME_EVM_PROGRAM  base58 program id                  (required)
+ *   MODE              legacy | fast                      (default legacy)
  *   PROBE             pre-deployed probe address         (optional; skips deploy)
  *   OUT               JSON results path                  (optional)
  */
@@ -40,10 +45,12 @@ const SOLANA_RPC = need("SOLANA_RPC");
 const KEY_FILE = need("EVM_KEY_FILE");
 const FEEDS_JSON = need("FEEDS_JSON");
 const PROGRAM = need("ROME_EVM_PROGRAM");
-const OUT = process.env.OUT ?? "pricebook-triage-results.json";
+const MODE = process.env.MODE ?? "legacy";
+const OUT = process.env.OUT ?? `pricebook-triage-${MODE}.json`;
 
+const CONTRACT = MODE === "fast" ? "PriceBookProbeFast" : "PriceBookProbe";
 const ART = JSON.parse(
-    readFileSync(new URL("../../artifacts/contracts/oracle/test/PriceBookProbe.sol/PriceBookProbe.json", import.meta.url)),
+    readFileSync(new URL(`../../artifacts/contracts/oracle/test/${CONTRACT}.sol/${CONTRACT}.json`, import.meta.url)),
 );
 const AGG_ABI = [
     {
@@ -109,7 +116,7 @@ const pub = createPublicClient({ transport: http(RPC) });
 const wallet = createWalletClient({ account, transport: http(RPC) });
 const gasPrice = await pub.getGasPrice(); // legacy sends: feeHistory is stubbed on Rome proxies
 const chainId = await pub.getChainId();
-console.log(`chain ${chainId} · sender ${account.address} · gasPrice ${gasPrice} · ${FEEDS.length} pyth feeds`);
+console.log(`chain ${chainId} · mode ${MODE} · sender ${account.address} · gasPrice ${gasPrice} · ${FEEDS.length} pyth feeds`);
 
 // ── deploy (or reuse) ───────────────────────────────────────────────────
 let probe = process.env.PROBE;
@@ -119,8 +126,9 @@ if (!probe) {
     const rc = await pub.waitForTransactionReceipt({ hash, timeout: 240_000 });
     if (rc.status !== "success") throw new Error("deploy failed");
     probe = rc.contractAddress;
+    await sleep(6000); // freshly created probe accounts are lock-TTL'd; let estimation settle
 }
-console.log(`probe ${probe}`);
+console.log(`probe ${probe} (${CONTRACT})`);
 const probeHex = probe.slice(2).toLowerCase();
 const adapterHexes = pythFeeds.map((f) => f.adapter.slice(2).toLowerCase());
 
@@ -145,7 +153,7 @@ async function classify(sig) {
     const rawHex = Buffer.from(rawB64, "base64").toString("hex");
     const size = Buffer.from(rawB64, "base64").length;
     const owner = rawHex.includes(probeHex) ? "probe" : adapterHexes.some((a) => rawHex.includes(a)) ? "keeper" : "other";
-    const cuLog = (j.meta.logMessages ?? []).filter((l) => l.includes("consumed") && l.includes(PROGRAM));
+    const shape = (j.meta.logMessages ?? []).find((l) => l.includes("Instruction:"))?.split("Instruction:")[1]?.trim();
     return {
         sig,
         owner,
@@ -158,21 +166,33 @@ async function classify(sig) {
         totalKeys: allKeys.length,
         altLookups: (msg.addressTableLookups ?? []).length,
         size,
-        cuLog,
+        shape,
     };
 }
 
 // ── one measured run ────────────────────────────────────────────────────
 const runs = [];
-async function run(label, accts, force) {
+async function run(label, functionName, args) {
     const anchor = (await sol("getSignaturesForAddress", [anchorPda, { limit: 1, commitment: "confirmed" }]))[0]?.signature;
     const t0 = Math.floor(Date.now() / 1000);
-    const gas = await pub.estimateContractGas({ address: probe, abi: ART.abi, functionName: "refreshAll", args: [accts, force], account });
+    let gas;
+    for (let attempt = 1; ; attempt++) {
+        try {
+            gas = await pub.estimateContractGas({ address: probe, abi: ART.abi, functionName, args, account });
+            break;
+        } catch (e) {
+            // Post-deploy/estimation transients (account lock TTL, pool payer)
+            // self-heal in seconds — retry before giving up.
+            if (attempt >= 3) throw e;
+            console.log(`  estimate retry ${attempt} (${(e.shortMessage ?? e.message ?? "").split("\n")[0].slice(0, 110)})`);
+            await sleep(4000);
+        }
+    }
     const hash = await wallet.writeContract({
         address: probe,
         abi: ART.abi,
-        functionName: "refreshAll",
-        args: [accts, force],
+        functionName,
+        args,
         gas: (gas * 15n) / 10n,
         gasPrice,
         chain: null,
@@ -194,10 +214,11 @@ async function run(label, accts, force) {
     }
     legs.reverse(); // chronological
     const totalCU = legs.reduce((a, l) => a + (l.cu ?? 0), 0);
+    const width = Array.isArray(args[0]) ? args[0].length : 0;
     const r = {
         label,
-        width: accts.length,
-        force,
+        functionName,
+        width,
         ethTx: hash,
         ethGasUsed: rc.gasUsed.toString(),
         ethStatus: rc.status,
@@ -208,29 +229,37 @@ async function run(label, accts, force) {
     };
     runs.push(r);
     console.log(
-        `${label.padEnd(6)} w=${accts.length} eth=${rc.status} gasUsed=${rc.gasUsed} ` +
+        `${label.padEnd(10)} w=${width} eth=${rc.status} gasUsed=${rc.gasUsed} ` +
             `C/S/F=${events.FeedRefreshed}/${events.FeedSkippedNotNewer}/${events.FeedRefreshFailed} ` +
-            `legs=${legs.length} CU=${totalCU} keys=${legs[0]?.totalKeys ?? "?"} size=${legs[0]?.size ?? "?"}B`,
+            `legs=${legs.length} CU=${totalCU} keys=${legs[0]?.totalKeys ?? "?"} size=${legs[0]?.size ?? "?"}B ${legs[0]?.shape ?? ""}`,
     );
     return r;
 }
 
 // ── protocol ────────────────────────────────────────────────────────────
 const A = FEEDS.map((f) => f.acct);
-await run("INIT", A, false);
-await run("W1", A.slice(0, 1), true);
-await run("W2", A.slice(0, 2), true);
-await run("W4", A.slice(0, 4), true);
-await run("W8", A, true);
-await run("SKIP8", A, false);
+await run("INIT", "refreshAll", [A, false]);
+await run("W1", "refreshAll", [A.slice(0, 1), true]);
+await run("W2", "refreshAll", [A.slice(0, 2), true]);
+await run("W4", "refreshAll", [A.slice(0, 4), true]);
+await run("W8", "refreshAll", [A, true]);
+await run("SKIP8", "refreshAll", [A, false]);
 const bogus = process.env.FAULT_ACCOUNT ?? sbFeed?.underlyingAccount;
-if (bogus) await run("FAULT", [b58ToBytes32(bogus), ...A.slice(0, 7)], true);
+if (bogus) await run("FAULT", "refreshAll", [[b58ToBytes32(bogus), ...A.slice(0, 7)], true]);
+if (MODE === "fast") {
+    await run("FETCH8", "fetchAll", [A]);
+    await run("PARSEFAST8", "parseAllFast", [A]);
+    await run("PARSELEG2", "parseAllLegacy", [A.slice(0, 2)]);
+}
 
 // ── cross-check: probe entries vs live raw adapters ─────────────────────
 console.log("\ncross-check vs deployed raw adapters:");
 const checks = [];
 for (const f of FEEDS.slice(0, 3)) {
-    const e = await pub.readContract({ address: probe, abi: ART.abi, functionName: "entries", args: [f.acct] });
+    const e =
+        MODE === "fast"
+            ? await pub.readContract({ address: probe, abi: ART.abi, functionName: "getEntry", args: [f.acct] })
+            : await pub.readContract({ address: probe, abi: ART.abi, functionName: "entries", args: [f.acct] });
     const a = await pub.readContract({ address: f.adapter, abi: AGG_ABI, functionName: "latestRoundData" });
     const match = e[2] === BigInt(a[3]) ? (e[0] === a[1] ? "EXACT" : "MISMATCH!") : "source-advanced";
     checks.push({ feed: f.name, probeAnswer: e[0].toString(), probePt: e[2].toString(), adapterAnswer: a[1].toString(), adapterPt: a[3].toString(), match });
@@ -250,5 +279,5 @@ if (w[1] && w[8] && w[1].solanaLegs === 1 && w[8].solanaLegs === 1) {
     console.log("\n8-wide did not land as a single atomic leg — see per-run legs for the real tx count");
 }
 
-writeFileSync(OUT, JSON.stringify({ chainId, probe, sender: account.address, feeds: FEEDS, runs, checks, summary }, (k, v) => (typeof v === "bigint" ? v.toString() : v), 2));
+writeFileSync(OUT, JSON.stringify({ chainId, mode: MODE, probe, sender: account.address, feeds: FEEDS, runs, checks, summary }, (k, v) => (typeof v === "bigint" ? v.toString() : v), 2));
 console.log(`\nresults → ${OUT}`);
