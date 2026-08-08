@@ -211,6 +211,84 @@
       ]
     }
   },
+  "PriceBook": {
+    "address": "0x619134d4d5e1e98ea10c9a6782957df24837fdda",
+    "implementation": "0x080350ca88fdaaa1f0c35368a3758794c8583234",
+    "deployedAt": "2026-08-08",
+    "owner": "0x1f4946Be340F06c46A50E65084790968aBcc48F6",
+    "feeds": [
+      {
+        "pair": "SOL/USD",
+        "adapter": "0x2779176109cbEDD2fDdA63937E087518b309F4BE",
+        "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+        "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243",
+        "maxStaleness": 300
+      },
+      {
+        "pair": "BTC/USD",
+        "adapter": "0xF0aF167691D3Bcc49e17902930831AdD58C8cF97",
+        "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
+        "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de",
+        "maxStaleness": 300
+      },
+      {
+        "pair": "ETH/USD",
+        "adapter": "0xDFC77D0Dd2a193C08200ECf9EF6fe5a4bF74E1a7",
+        "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+        "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb",
+        "maxStaleness": 300
+      },
+      {
+        "pair": "USDC/USD",
+        "adapter": "0x0B1697E8f360271090D540Eaf3A16520C8651d12",
+        "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+        "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2",
+        "maxStaleness": 300
+      },
+      {
+        "pair": "USDT/USD",
+        "adapter": "0x0E853850B3310bc5714FE9672e5e69d4A82C9F16",
+        "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
+        "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748",
+        "maxStaleness": 300
+      },
+      {
+        "pair": "JUP/USD",
+        "adapter": "0x979d8F7b518b96d1a99Fa973Ec133F5705F3b5ae",
+        "pubkey": "7dbob1psH1iZBS7qPsm3Kwbf5DzSXK8Jyg31CTgTnxH5",
+        "pubkeyBytes32": "0x628661ff844a6d513411aa02952b8bf902e3b2fe282639f9c96d399e52d86468",
+        "maxStaleness": 300
+      },
+      {
+        "pair": "JTO/USD",
+        "adapter": "0xfBb33E87b5Cf9563BB0a1638EbFEDAc230b8A2C2",
+        "pubkey": "7ajR2zA4MGMMTqRAVjghTKqPPn4kbrj3pYkAVRVwTGzP",
+        "pubkeyBytes32": "0x61ca3f110915af36104573608c75b56a0758cbef2cb34551cf02cad9a63ed00c",
+        "maxStaleness": 300
+      },
+      {
+        "pair": "JITOSOL/USD",
+        "adapter": "0xC9afE27D4074d8f4Fe025360C6CFcB86F555d395",
+        "pubkey": "AxaxyeDT8JnWERSaTKvFXvPKkEdxnamKSqpWbsSjYg1g",
+        "pubkeyBytes32": "0x93f6880418b35aad10f98e24e374d087058430512df03245e0ada7647385b53b",
+        "maxStaleness": 300
+      },
+      {
+        "pair": "MSOL/USD",
+        "adapter": "0x6dDcFF771f8E00D61086243f28e6B629b240c15b",
+        "pubkey": "5CKzb9j4ChgLUt8Gfm5CNGLN6khXKiqMbnGAW4cgXgxK",
+        "pubkeyBytes32": "0x3e559ca93e1bf119b0e7c20adf557067caca210c2e1778cef652a1dd4dc84644",
+        "maxStaleness": 300
+      },
+      {
+        "pair": "BONK/USD",
+        "adapter": "0xA5D6693323C58B7Da65578C46E041D975aaEb030",
+        "pubkey": "DBE3N8uNjhKPRHfANdwGvCZghWXyLPdqdSbEW2XFwBiX",
+        "pubkeyBytes32": "0xb4eacbe402ae9165c2ab7dfcdbe5044d27f284106f88a90bfddefa5fbff60ca0",
+        "maxStaleness": 300
+      }
+    ]
+  },
   "MeteoraDAMMv1Factory": {
     "address": "0x6ce0e90db2b54b9a433530cd5b3d31573a401c3e"
   },

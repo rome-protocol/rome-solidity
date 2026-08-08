@@ -19,6 +19,14 @@ export interface DeploymentsFeed {
   pubkeyBytes32: `0x${string}`;
 }
 
+export interface PriceBookFeed {
+  pair: string; // "SOL/USD"
+  adapter: `0x${string}`; // BookFeedAdapter clone for this feed
+  pubkey: string; // Solana base58
+  pubkeyBytes32: `0x${string}`;
+  maxStaleness: number; // per-feed, set at registerFeed(...) time
+}
+
 export interface DeploymentsFile {
   OracleGatewayV2: {
     deployedAt: string;
@@ -38,15 +46,30 @@ export interface DeploymentsFile {
       cachedFeed?: DeploymentsFeed[];
     };
   };
+  // Optional — PriceBook is a standalone contract (one aggregated write,
+  // N per-feed BookFeedAdapter clones) deployed independently of the
+  // OracleGatewayV2 stack. Absent on deployments files that predate it.
+  PriceBook?: {
+    address: `0x${string}`;
+    implementation: `0x${string}`; // BookFeedAdapter implementation
+    deployedAt: string;
+    owner: `0x${string}`;
+    feeds: PriceBookFeed[];
+  };
 }
 
 export interface RegistryOracleFile {
   factory: string;
+  // Present only when the source deployments file has a PriceBook block.
+  priceBook?: {
+    address: string;
+    implementation: string;
+  };
   feeds: Record<
     string,
     {
       address: string;
-      source: "pyth" | "switchboard" | "cached-pyth" | "cached-feed";
+      source: "pyth" | "switchboard" | "cached-pyth" | "cached-feed" | "book";
       underlyingAccount?: string;
     }
   >;
@@ -148,9 +171,25 @@ function buildOracle({ deployments }: EmitInput): RegistryOracleFile {
       underlyingAccount: f.pubkey,
     };
   }
+  // PriceBook — one aggregated write, N per-feed BookFeedAdapter clones.
+  // Keyed "-BOOK" so it never collides with the raw/cached entries above.
+  // Additive: a deployments file without a PriceBook block emits nothing new.
+  for (const f of deployments.PriceBook?.feeds ?? []) {
+    feeds[`${f.pair}-BOOK`] = {
+      address: f.adapter,
+      source: "book",
+      underlyingAccount: f.pubkey,
+    };
+  }
 
   return {
     factory: og.OracleAdapterFactory,
+    ...(deployments.PriceBook && {
+      priceBook: {
+        address: deployments.PriceBook.address,
+        implementation: deployments.PriceBook.implementation,
+      },
+    }),
     feeds,
   };
 }

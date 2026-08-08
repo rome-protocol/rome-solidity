@@ -525,3 +525,74 @@ describe("emitRegistryUpdate — cached feeds", () => {
     expect(names).not.toContain("CachedFeedAdapterImpl");
   });
 });
+
+describe("emitRegistryUpdate — PriceBook feeds", () => {
+  const withBook: DeploymentsFile = {
+    ...HADRIAN_DEPLOYMENTS,
+    PriceBook: {
+      address: "0x1111100000000000000000000000000000000000",
+      implementation: "0x2222200000000000000000000000000000000000",
+      deployedAt: "2026-08-08",
+      owner: "0x3333300000000000000000000000000000000000",
+      feeds: [
+        {
+          pair: "SOL/USD",
+          adapter: "0x4444400000000000000000000000000000000000",
+          pubkey: "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+          pubkeyBytes32: "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243",
+          maxStaleness: 300,
+        },
+        {
+          pair: "BTC/USD",
+          adapter: "0x5555500000000000000000000000000000000000",
+          pubkey: "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
+          pubkeyBytes32: "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de",
+          maxStaleness: 300,
+        },
+      ],
+    },
+  };
+
+  it("emits book feeds keyed <PAIR>-BOOK", () => {
+    const { oracle } = emitRegistryUpdate({
+      deployments: withBook,
+      oracle: EMPTY_ORACLE,
+      contracts: EMPTY_CONTRACTS,
+      options: META,
+    });
+    expect(oracle.feeds["SOL/USD-BOOK"]).toEqual({
+      address: "0x4444400000000000000000000000000000000000",
+      source: "book",
+      underlyingAccount: "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+    });
+    expect(oracle.feeds["BTC/USD-BOOK"]).toEqual({
+      address: "0x5555500000000000000000000000000000000000",
+      source: "book",
+      underlyingAccount: "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
+    });
+  });
+
+  it("emits a top-level priceBook block with address + implementation", () => {
+    const { oracle } = emitRegistryUpdate({
+      deployments: withBook,
+      oracle: EMPTY_ORACLE,
+      contracts: EMPTY_CONTRACTS,
+      options: META,
+    });
+    expect(oracle.priceBook).toEqual({
+      address: "0x1111100000000000000000000000000000000000",
+      implementation: "0x2222200000000000000000000000000000000000",
+    });
+  });
+
+  it("does not emit priceBook or any -BOOK feed when PriceBook is absent (back-compat)", () => {
+    const { oracle } = emitRegistryUpdate({
+      deployments: HADRIAN_DEPLOYMENTS,
+      oracle: EMPTY_ORACLE,
+      contracts: EMPTY_CONTRACTS,
+      options: META,
+    });
+    expect(oracle.priceBook).toBeUndefined();
+    expect(Object.keys(oracle.feeds).some((k) => k.endsWith("-BOOK"))).toBe(false);
+  });
+});
