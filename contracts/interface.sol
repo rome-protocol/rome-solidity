@@ -15,7 +15,7 @@ pragma solidity ^0.8.20;
 // their addresses are per-chain and canonical in rome-protocol/registry.
 //
 //   • App-contract interfaces → each area's own file
-//       (e.g. bridge/IRomeBridgeWithdraw.sol, oracle/IExtendedOracleAdapter.sol)
+//       (e.g. bridge/interfaces/IRomeBridgeWithdraw.sol, oracle/IExtendedOracleAdapter.sol)
 //   • Deployed addresses      → rome-protocol/registry, never here
 //   • Discovery map           → contracts/README.md
 // ─────────────────────────────────────────────────────────────────────────────

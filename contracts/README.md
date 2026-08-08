@@ -24,7 +24,7 @@ This is the **discovery surface** for Rome's Solidity contracts. It answers "whe
 |---|---|---|---|
 | **Precompiles** | `interface.sol` — `ISystemProgram`, `IWithdraw`, `IWithdrawCached`, `ISystemCached`, `ISplCached`, `IAssociatedSplCached`, `ICrossProgramInvocation`, `IHelperProgram` | fixed constants **in `interface.sol`** | Chain-ABI header; version-tracks the program dispatch. `mint_info` + Token-2022 cached ops live here. |
 | **erc20spl** | `IERC20` / `IERC20Metadata` (via `SPL_ERC20Base`) | registry | 3 wrapper kinds: legacy `SPL_ERC20`, `SPL_ERC20_cached`, `SPL_ERC20_Token2022Hooked` (`ERC20SPLFactory.WrapperKind`). Composers type against `IERC20`. |
-| **bridge** | `IRomeBridgeWithdraw`, `IWormholeTokenBridge`, `ICCTP` / `ICCTPV2`, `RomeBridgeEvents` | registry | On-chain egress (CCTP + Wormhole). |
+| **bridge** | `IRomeBridgeWithdraw` (`bridge/interfaces/`), `RomeBridgeEvents`; CPI marshaling libs `CCTPLib` / `CCTPV2Lib` / `WormholeTokenBridgeLib` (in `ICCTP.sol` / `ICCTPV2.sol` / `IWormholeTokenBridge.sol` — libraries, not interfaces) | registry | On-chain egress: CCTP (USDC), Wormhole (ETH, wrapped, and Solana-native mints), and direct-CPI Solana. Lifecycle events are canonical in `RomeBridgeEvents`, not in `IRomeBridgeWithdraw`. |
 | **oracle** | `IExtendedOracleAdapter`, `IAggregatorV3Interface`, `IAdapterFactory`, `IAdapterMetadata` | registry | Oracle Gateway V2: Pyth Pull / Switchboard V3 / cached adapters + parsers. |
 | **wrap** | `WrappedGasFacade` | registry | Native-gas ⇄ SPL wrap facade. |
 | **spl_token** | `spl_token.sol`, `associated_spl_token.sol`, `token2022_hooked_transfer.sol` | n/a (libs) | Solidity-side SPL helpers. |
