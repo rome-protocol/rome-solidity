@@ -24,7 +24,12 @@ import {CpiProgram} from "../interface.sol";
 ///         publishTime → fault (a committed future timestamp would wedge the
 ///         feed against monotonicity), value bounds → fault with no write
 ///         (prior entry keeps serving until it ages out), pause → healthy
-///         write-side skip (reads are never pause-gated; the entry ages out).
+///         write-side skip AND a fail-closed read: the served entry's status
+///         flips to paused (answer/publishTime/cachedAt retained) so reads
+///         revert immediately instead of aging out; unpause re-refreshes and
+///         only resumes serving when the source is strictly newer than the
+///         retained entry and fresh within maxStaleness — any failure rolls
+///         back atomically, leaving the feed paused.
 ///
 ///         Cheap-skip: a bound feed on the fast path pre-reads publish_time
 ///         (one u64) and skips before the full fetch + parse. The pre-read
@@ -37,6 +42,7 @@ contract PriceBook {
         address adapter; // the feed's BookFeedAdapter clone
         uint16 maxConfBps; // conf/price bound, bps
         uint32 halfWindowSec; // cheap-skip bypass threshold (maxStaleness/2)
+        uint32 maxStaleness; // exact bound (halfWindowSec halves it, losing the odd second) — unpause freshness gate matches BookFeedAdapter's read gate to the second
     }
 
     address public owner;
@@ -51,6 +57,7 @@ contract PriceBook {
     mapping(address => bool) internal _paused;
 
     uint16 public constant DEFAULT_MAX_CONF_BPS = 200; // legacy adapters' constant
+    uint8 private constant STATUS_PAUSED = 2; // entry status byte: 0 = never written, 1 = live, 2 = paused
     uint256 private constant OUTCOME_COMMIT = 0;
     uint256 private constant OUTCOME_SKIP = 1;
     uint256 private constant OUTCOME_FAULT = 2;
@@ -69,6 +76,9 @@ contract PriceBook {
     error StalenessOutOfRange(uint256 staleness);
     error ConfBpsOutOfRange(uint256 bps);
     error NotARegisteredAdapter();
+    error UnpauseSourceNotNewer();
+    error UnpauseStalePrice();
+    error UnpauseRefreshFailed(bytes4 reason);
     error RegistrationRefreshFailed(bytes4 reason);
     error AllFeedsFaulted();
     // per-feed fault reasons (also surfaced via FeedRefreshFailed)
@@ -117,7 +127,8 @@ contract PriceBook {
             expectedFeedId: expectedFeedId,
             adapter: adapter,
             maxConfBps: maxConfBps == 0 ? DEFAULT_MAX_CONF_BPS : uint16(maxConfBps),
-            halfWindowSec: uint32(maxStaleness / 2)
+            halfWindowSec: uint32(maxStaleness / 2),
+            maxStaleness: uint32(maxStaleness)
         });
         _accounts.push(sourceAccount);
         accountOfAdapter[adapter] = sourceAccount;
@@ -189,14 +200,30 @@ contract PriceBook {
     // ── admin ───────────────────────────────────────────────────────────
 
     function pauseAdapter(address adapter) external onlyOwner {
-        if (accountOfAdapter[adapter] == bytes32(0)) revert NotARegisteredAdapter();
+        bytes32 acct = accountOfAdapter[adapter];
+        if (acct == bytes32(0)) revert NotARegisteredAdapter();
         _paused[adapter] = true;
+        _entries[acct] = (_entries[acct] & ((uint256(1) << 192) - 1)) | (uint256(STATUS_PAUSED) << 192);
         emit AdapterPauseSet(adapter, true);
     }
 
+    /// @notice Unpause and re-validate against the live source in one step.
+    ///         A no-op if the adapter isn't currently paused — safe to
+    ///         include in a bulk/blind unpause without checking state first.
+    ///         Otherwise reverts (rolling back `_paused` and the entry
+    ///         together) unless the source is strictly newer than the
+    ///         retained entry AND fresh within `maxStaleness` — pause/unpause
+    ///         never resurrects a stale or non-newer price.
     function unpauseAdapter(address adapter) external onlyOwner {
-        if (accountOfAdapter[adapter] == bytes32(0)) revert NotARegisteredAdapter();
+        bytes32 acct = accountOfAdapter[adapter];
+        if (acct == bytes32(0)) revert NotARegisteredAdapter();
+        if (!_paused[adapter]) return;
         _paused[adapter] = false;
+        (uint256 outcome, bytes4 reason) = _refreshOne(acct, false);
+        if (outcome == OUTCOME_SKIP) revert UnpauseSourceNotNewer();
+        if (outcome != OUTCOME_COMMIT) revert UnpauseRefreshFailed(reason);
+        uint64 publishTime = uint64(_entries[acct] >> 64);
+        if (block.timestamp - publishTime > _regs[acct].maxStaleness) revert UnpauseStalePrice();
         emit AdapterPauseSet(adapter, false);
     }
 

@@ -19,10 +19,10 @@ interface IPriceBookRead {
 ///         its source account and applies the same staleness math as
 ///         CachedPythAdapter (clock = publishTime; same error selectors).
 ///
-///         There is deliberately NO pause check on the read path — matching
-///         CachedPythAdapter, where `_checkPaused` gates only `refresh()`.
-///         Pausing this adapter in the book stops the book from refreshing the
-///         entry, which then ages out and reads revert `StalePriceFeed`.
+///         The read path fails closed on pause: a paused entry's status byte
+///         is 2, and `latestRoundData` reverts `AdapterPaused` immediately —
+///         unlike CachedPythAdapter, where `_checkPaused` gates only
+///         `refresh()` and a paused read just ages out to `StalePriceFeed`.
 ///
 ///         Deployed as EIP-1167 clone by the book at feed registration.
 contract BookFeedAdapter is IAggregatorV3Interface, IAdapterMetadata {
@@ -35,6 +35,7 @@ contract BookFeedAdapter is IAggregatorV3Interface, IAdapterMetadata {
 
     error StalePriceFeed();
     error UninitializedPriceFeed();
+    error AdapterPaused();
     error HistoricalRoundsNotSupported();
     error AlreadyInitialized();
     error StalenessOutOfRange(uint256 staleness);
@@ -82,9 +83,10 @@ contract BookFeedAdapter is IAggregatorV3Interface, IAdapterMetadata {
     }
 
     /// @notice Book entry as a Chainlink round. Pure SLOADs (via the book).
-    ///         Reverts `UninitializedPriceFeed` before the entry's first commit
-    ///         and `StalePriceFeed` past `maxStaleness` — same conditions and
-    ///         selectors as CachedPythAdapter.
+    ///         Reverts `AdapterPaused` while the book has paused this feed,
+    ///         `UninitializedPriceFeed` before the entry's first commit, and
+    ///         `StalePriceFeed` past `maxStaleness` — the latter two match
+    ///         CachedPythAdapter's conditions and selectors.
     function latestRoundData()
         external
         view
@@ -92,6 +94,7 @@ contract BookFeedAdapter is IAggregatorV3Interface, IAdapterMetadata {
         returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
     {
         (int256 a, uint64 publishTime,, uint8 status) = IPriceBookRead(book).entryOf(sourceAccount);
+        if (status == 2) revert AdapterPaused();
         if (status == 0) revert UninitializedPriceFeed();
         if (publishTime > block.timestamp || block.timestamp - publishTime > maxStaleness) {
             revert StalePriceFeed();

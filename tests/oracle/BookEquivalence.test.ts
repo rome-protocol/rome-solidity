@@ -10,9 +10,10 @@ import { buildPythPullAccount } from "./helpers/mockPythPull.js";
  *
  * Matrix: uninitialized / fresh / stale / getRoundData / decimals / version /
  * description / metadata shape. Pause is intentionally NOT in the read
- * matrix — the legacy read path has no pause check (verified: _checkPaused
- * gates only refresh()); write-side pause behavior is covered in
- * PriceBook.test.ts.
+ * matrix — it's a deliberate divergence (S5-F3): legacy's read path has no
+ * pause check (verified: _checkPaused gates only refresh()), while the
+ * book's read path now fails closed on pause. See BookPauseFailClosed.test.ts
+ * for the book's own pause/unpause matrix.
  */
 
 const RECEIVER = ("0x" + "de".repeat(32)) as `0x${string}`;
