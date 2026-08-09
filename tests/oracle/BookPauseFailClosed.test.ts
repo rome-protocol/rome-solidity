@@ -90,10 +90,12 @@ describe("PriceBook / BookFeedAdapter — pause fails closed", () => {
         await assert.rejects(adapter.read.latestRoundData(), /AdapterPaused/, "reads still gated");
     });
 
-    it("unpause reverts UnpauseStalePrice when the newer source price is itself stale", async () => {
+    it("unpause reverts UnpauseStalePrice when the newer source price is itself stale, and rolls back the commit", async () => {
         const b = await deployBook();
-        const { adapterAddr, pt0 } = await registerFresh(b);
+        const { adapterAddr, adapter, pt0 } = await registerFresh(b);
         await b.write.pauseAdapter([adapterAddr]);
+        const entryPaused = await b.read.entryOf([ACCT_A]);
+        assert.equal(entryPaused[3], 2, "paused marker set before the doomed unpause attempt");
 
         // Strictly newer than pt0, but by the time unpause runs the chain
         // clock has moved well past maxStaleness relative to this publishTime.
@@ -103,7 +105,18 @@ describe("PriceBook / BookFeedAdapter — pause fails closed", () => {
         await test.mine({ blocks: 1 });
 
         await assert.rejects(b.write.unpauseAdapter([adapterAddr]), /UnpauseStalePrice/);
+
+        // _refreshOne committed the newer-but-stale price mid-call; the
+        // revert must unwind that commit too — the entry has to land back on
+        // exactly the paused-P0 marker, not the reverted P1 commit.
         assert.equal(await b.read.isPaused([adapterAddr]), true, "stays paused");
+        const entryAfter = await b.read.entryOf([ACCT_A]);
+        assert.deepEqual(
+            [...entryAfter],
+            [...entryPaused],
+            "entry rolled back to the paused marker, not left at the reverted commit",
+        );
+        await assert.rejects(adapter.read.latestRoundData(), /AdapterPaused/, "reads still gated");
     });
 
     it("unpause succeeds when the source is strictly newer AND fresh: emits FeedRefreshed, serves P1", async () => {
@@ -138,5 +151,26 @@ describe("PriceBook / BookFeedAdapter — pause fails closed", () => {
 
         const live = (await adapter.read.latestRoundData()) as readonly bigint[];
         assert.equal(live[1], p1Price, "adapter now serves P1");
+    });
+
+    it("unpause on a never-paused feed is a harmless no-op", async () => {
+        const b = await deployBook();
+        const { adapterAddr, adapter } = await registerFresh(b);
+        assert.equal(await b.read.isPaused([adapterAddr]), false);
+        const entryBefore = await b.read.entryOf([ACCT_A]);
+
+        // Live, never-paused feed: must NOT revert (the bulk/blind-unpause
+        // footgun — without the guard this hits UnpauseSourceNotNewer since
+        // the source hasn't moved).
+        const hash = await b.write.unpauseAdapter([adapterAddr]);
+        const receipt = await pc.waitForTransactionReceipt({ hash });
+        assert.equal(receipt.status, "success");
+
+        assert.equal(await b.read.isPaused([adapterAddr]), false);
+        const entryAfter = await b.read.entryOf([ACCT_A]);
+        assert.deepEqual([...entryAfter], [...entryBefore], "entry untouched by the no-op");
+
+        const live = (await adapter.read.latestRoundData()) as readonly bigint[];
+        assert.equal(live[1], P0, "adapter still serves P0");
     });
 });

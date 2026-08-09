@@ -208,13 +208,16 @@ contract PriceBook {
     }
 
     /// @notice Unpause and re-validate against the live source in one step.
-    ///         Reverts (rolling back `_paused` and the entry together) unless
-    ///         the source is strictly newer than the retained entry AND fresh
-    ///         within `maxStaleness` — pause/unpause never resurrects a stale
-    ///         or non-newer price.
+    ///         A no-op if the adapter isn't currently paused — safe to
+    ///         include in a bulk/blind unpause without checking state first.
+    ///         Otherwise reverts (rolling back `_paused` and the entry
+    ///         together) unless the source is strictly newer than the
+    ///         retained entry AND fresh within `maxStaleness` — pause/unpause
+    ///         never resurrects a stale or non-newer price.
     function unpauseAdapter(address adapter) external onlyOwner {
         bytes32 acct = accountOfAdapter[adapter];
         if (acct == bytes32(0)) revert NotARegisteredAdapter();
+        if (!_paused[adapter]) return;
         _paused[adapter] = false;
         (uint256 outcome, bytes4 reason) = _refreshOne(acct, false);
         if (outcome == OUTCOME_SKIP) revert UnpauseSourceNotNewer();
