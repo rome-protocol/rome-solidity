@@ -173,4 +173,33 @@ describe("PriceBook / BookFeedAdapter — pause fails closed", () => {
         const live = (await adapter.read.latestRoundData()) as readonly bigint[];
         assert.equal(live[1], P0, "adapter still serves P0");
     });
+
+    it("unpause reverts UnpauseRefreshFailed on a genuine per-feed fault, and rolls back", async () => {
+        const b = await deployBook();
+        const { adapterAddr, adapter, pt0 } = await registerFresh(b);
+        await b.write.pauseAdapter([adapterAddr]);
+        const entryPaused = await b.read.entryOf([ACCT_A]);
+        assert.equal(entryPaused[3], 2, "paused marker set before the doomed unpause attempt");
+
+        // Strictly newer than pt0 — so the cheap-skip peek sees a newer
+        // publishTime and does NOT short-circuit to SKIP, and the full
+        // monotonic guard doesn't SKIP either — but a non-positive price
+        // faults the full validated read. OUTCOME_FAULT, not SKIP, not a
+        // staleness gate: this is the UnpauseRefreshFailed leg.
+        await b.write.setAccountData([ACCT_A, priceAt(pt0 + 10, 0n)]);
+
+        await assert.rejects(b.write.unpauseAdapter([adapterAddr]), /UnpauseRefreshFailed/);
+
+        // Full rollback: the fault happens before _refreshOne ever writes
+        // _entries, and _paused must land back on true — entry must be
+        // exactly the paused-P0 marker, with no mid-call state leaked.
+        assert.equal(await b.read.isPaused([adapterAddr]), true, "stays paused");
+        const entryAfter = await b.read.entryOf([ACCT_A]);
+        assert.deepEqual(
+            [...entryAfter],
+            [...entryPaused],
+            "entry rolled back to the paused marker — no mid-call state leaked",
+        );
+        await assert.rejects(adapter.read.latestRoundData(), /AdapterPaused/, "reads still gated");
+    });
 });
