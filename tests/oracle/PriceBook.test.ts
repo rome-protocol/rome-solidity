@@ -11,7 +11,9 @@ import { buildPythPullAccount } from "./helpers/mockPythPull.js";
  *   fault, value-bound faults, feed-id binding, unregistered fault,
  *   pause = healthy write-side skip, all-faulted-only revert (per call),
  *   empty no-op, automatic fault recovery, cheap-skip with the
- *   age > window/2 bypass.
+ *   age > window/2 bypass. Unpause re-validates against the live source
+ *   before resuming service (fail-closed read + strictly-newer-and-fresh
+ *   unpause gate: see BookPauseFailClosed.test.ts for the full matrix).
  *
  * Harness overrides the account reads (precompile unavailable on the
  * simulated network): per-account full bytes, an independent peek value
@@ -171,6 +173,11 @@ describe("PriceBook", () => {
         const { result } = await b.simulate.refreshAll([[ACCT_A]]);
         assert.deepEqual(result, [0n, 1n, 0n], "paused → skip, no revert despite zero commits");
 
+        // Fail-closed unpause (S5-F3): the book re-validates against the live
+        // source before resuming service, so unpauseAdapter only succeeds once
+        // the source is strictly newer than the retained entry.
+        const [, pt0] = await b.read.entryOf([ACCT_A]);
+        await b.write.setAccountData([ACCT_A, await fresh({ publishTime: Number(pt0) + 10 })]);
         await b.write.unpauseAdapter([adapter]);
         assert.equal(await b.read.isPaused([adapter]), false);
     });
