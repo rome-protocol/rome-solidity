@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {ERC20Users} from "./erc20spl.sol";
 import {SPL_ERC20_cached} from "./erc20spl_cached.sol";
+import {SPL_ERC20_RwaStandard} from "./erc20spl_rwa_standard.sol";
 import {ERC20SPLHookedDeployer} from "./erc20spl_hooked_deployer.sol";
 import {MplTokenMetadataLib} from "../mpl_token_metadata/lib.sol";
 import {SplTokenLib} from "../spl_token/spl_token.sol";
@@ -16,7 +17,8 @@ contract ERC20SPLFactory {
     enum WrapperKind {
         None,
         Cached,
-        Token2022HookedCpi
+        Token2022HookedCpi,
+        RwaStandard
     }
     uint8 public constant DEFAULT_DECIMALS = 9;
     uint64 internal constant SPL_MINT_LEN = 82;
@@ -170,6 +172,35 @@ contract ERC20SPLFactory {
     returns (address) {
         require(token_by_mint[mint] == address(0), "Token exists");
         return _register_contract(mint, name, symbol);
+    }
+
+    /// @notice Registers the canonical ordinary-ERC-20 facade for a
+    /// Solana-native RWA asset. The facade only accepts a hook-less,
+    /// zero-transfer-fee Token-2022 mint; native issuer policy remains the
+    /// authority for DefaultAccountState, allowlisting, thaw and revocation.
+    /// @dev This is intentionally an explicit route rather than changing the
+    /// general-purpose registration path, which supports a wider Token-2022
+    /// compatibility surface.
+    function add_rwa_standard_token_no_metadata(
+        bytes32 mint,
+        string memory name,
+        string memory symbol
+    ) public returns (address) {
+        require(token_by_mint[mint] == address(0), "Token exists");
+        bytes32 symbolHash = keccak256(bytes(symbol));
+        _check_symbol_hash_exists(symbolHash);
+
+        SPL_ERC20_RwaStandard standard = new SPL_ERC20_RwaStandard(
+            mint, cpi_program, name, symbol, users
+        );
+        address wrapper = address(standard);
+        token_by_mint[mint] = wrapper;
+        wrapper_kind_by_mint[mint] = WrapperKind.RwaStandard;
+        mint_by_symbol_hash[symbolHash] = mint;
+        token_by_symbol_hash[symbolHash] = wrapper;
+
+        emit TokenCreated(msg.sender, mint, wrapper, name, symbol, creator_nonce[msg.sender]);
+        return wrapper;
     }
 
     /**
