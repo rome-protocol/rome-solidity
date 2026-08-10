@@ -16,7 +16,9 @@ const factoryAbi = [
 
 const wrapperAbi = [
     { type: "function", name: "get_token_account", stateMutability: "view", inputs: [{ type: "address", name: "user" }], outputs: [{ type: "bytes32" }] },
+    { type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ type: "address", name: "spender" }, { type: "uint256", name: "value" }], outputs: [{ type: "bool" }] },
     { type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ type: "address", name: "to" }, { type: "uint256", name: "value" }], outputs: [{ type: "bool" }] },
+    { type: "function", name: "transferFrom", stateMutability: "nonpayable", inputs: [{ type: "address", name: "from" }, { type: "address", name: "to" }, { type: "uint256", name: "value" }], outputs: [{ type: "bool" }] },
 ] as const;
 
 function required(name: string): string {
@@ -68,9 +70,10 @@ async function main(): Promise<void> {
     const mint = required("B0A_MINT");
     const deployer = privateKeyToAccount(deployerPrivateKey(required("B0A_DEPLOYER_JSON_PATH")));
     const holder = privateKeyToAccount(holderPrivateKey(required("B0A_HOLDER_KEY_PATH")));
-    const publicClient = createPublicClient({ transport: http(hadrianRpc) });
-    const deployerClient = createWalletClient({ account: deployer, transport: http(hadrianRpc) });
-    const holderClient = createWalletClient({ account: holder, transport: http(hadrianRpc) });
+    const transport = http(hadrianRpc, { timeout: 60_000 });
+    const publicClient = createPublicClient({ transport });
+    const deployerClient = createWalletClient({ account: deployer, transport });
+    const holderClient = createWalletClient({ account: holder, transport });
     const options = { gasPrice: await gasPrice(hadrianRpc) };
 
     const existingFactory = process.env.B0A_FACTORY as `0x${string}` | undefined;
@@ -114,6 +117,7 @@ async function main(): Promise<void> {
     const recipientBefore = await tokenAmount(solana, recipientAta);
     assert.ok(sourceBefore >= TRANSFER_AMOUNT, "holder fixture balance is insufficient");
 
+    let approve: `0x${string}` | undefined;
     let transfer: `0x${string}` | undefined;
     if (process.env.B0A_EXPECT_FROZEN === "1") {
         let rejected = false;
@@ -129,6 +133,17 @@ async function main(): Promise<void> {
         assert.ok(rejected, "frozen native account unexpectedly permitted EVM transfer");
         assert.equal(await tokenAmount(solana, sourceAta), sourceBefore);
         assert.equal(await tokenAmount(solana, recipientAta), recipientBefore);
+    } else if (process.env.B0A_TRANSFER_FROM === "1") {
+        approve = await holderClient.writeContract({
+            ...options, address: wrapper, abi: wrapperAbi, functionName: "approve", args: [deployer.address, TRANSFER_AMOUNT],
+        });
+        assert.equal((await publicClient.waitForTransactionReceipt({ hash: approve })).status, "success");
+        transfer = await deployerClient.writeContract({
+            ...options, address: wrapper, abi: wrapperAbi, functionName: "transferFrom", args: [holder.address, deployer.address, TRANSFER_AMOUNT],
+        });
+        assert.equal((await publicClient.waitForTransactionReceipt({ hash: transfer })).status, "success");
+        assert.equal(await tokenAmount(solana, sourceAta), sourceBefore - TRANSFER_AMOUNT);
+        assert.equal(await tokenAmount(solana, recipientAta), recipientBefore + TRANSFER_AMOUNT);
     } else {
         transfer = await holderClient.writeContract({
             ...options, address: wrapper, abi: wrapperAbi, functionName: "transfer", args: [deployer.address, TRANSFER_AMOUNT],
@@ -138,7 +153,7 @@ async function main(): Promise<void> {
         assert.equal(await tokenAmount(solana, recipientAta), recipientBefore + TRANSFER_AMOUNT);
     }
 
-    console.log(JSON.stringify({ status: "pass", expectedFrozen: process.env.B0A_EXPECT_FROZEN === "1", factory, wrapper, holder: holder.address, sourceAta: sourceAta.toBase58(), recipient: deployer.address, recipientAta: recipientAta.toBase58(), transactions: { factoryDeploy, register, transfer } }, null, 2));
+    console.log(JSON.stringify({ status: "pass", expectedFrozen: process.env.B0A_EXPECT_FROZEN === "1", transferFrom: process.env.B0A_TRANSFER_FROM === "1", factory, wrapper, holder: holder.address, sourceAta: sourceAta.toBase58(), recipient: deployer.address, recipientAta: recipientAta.toBase58(), transactions: { factoryDeploy, register, approve, transfer } }, null, 2));
 }
 
 main().catch((error) => {
