@@ -141,5 +141,41 @@
         }
       ]
     }
+  },
+  "PriceBook": {
+    "address": "0xebdd74245704dea4c5caab0a1786c35a802939b9",
+    "implementation": "0xbac6ae51232566d1fc13f31c0dbdace0f12f7b2e",
+    "deployedAt": "2026-08-11",
+    "owner": "0x3D60F9B3E11CBe57516351F18FD9D6c3Fd4B8F96",
+    "feeds": [
+      {
+        "pair": "SOL/USD",
+        "adapter": "0x5382dD1a9995fc96b0F11AcF964Cf1E9cAf890F2",
+        "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+        "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243",
+        "maxStaleness": 3600
+      },
+      {
+        "pair": "BTC/USD",
+        "adapter": "0x63724f6D50072bE42DE0724e3b80a827d759e729",
+        "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
+        "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de",
+        "maxStaleness": 3600
+      },
+      {
+        "pair": "ETH/USD",
+        "adapter": "0x233EDe364FDeE39BA2113E7905df3807D64b7D16",
+        "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
+        "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb",
+        "maxStaleness": 3600
+      },
+      {
+        "pair": "USDC/USD",
+        "adapter": "0x66ed8a6BCE30A09A537babD2c1B48919F50309a5",
+        "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+        "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2",
+        "maxStaleness": 3600
+      }
+    ]
   }
 }
