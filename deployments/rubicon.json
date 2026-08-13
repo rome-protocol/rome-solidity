@@ -1,6 +1,6 @@
 {
   "ERC20SPLFactory": {
-    "address": "0x888a485a8338b52f1d24742cb0d98a557f845409",
+    "address": "0xe0501c6c524fea785044a0d1730dec983e34f984",
     "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
   },
   "SPL_ERC20_USDC": {
@@ -28,7 +28,7 @@
     "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   },
   "ERC20Users": {
-    "address": "0x36AE2E5d76BB48E38c192A899C69c9A7525Dddb9",
+    "address": "0xD3649E5125D773a64B2359A636Bc0a74a22b9D50",
     "via": "ERC20SPLFactory.users()"
   },
   "RomeBridgeWithdraw": {
