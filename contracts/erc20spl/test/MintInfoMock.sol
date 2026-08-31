@@ -8,6 +8,8 @@ pragma solidity 0.8.28;
 /// @dev Installed at the precompile address with `hardhat_setCode`, which copies
 ///      code and not storage, so this must be stateless: the answer is derived
 ///      from the mint id itself. That also means one instance serves every case.
+///      Also answers `rome_evm_program_id()` (Halborn #511 follow-up — the
+///      wrapper constructor reads it to compute the permit EIP-712 domain).
 ///
 ///      Layout of the mint id, most-significant byte first:
 ///
@@ -68,6 +70,17 @@ contract MintInfoMock {
     /// factory deployable here. The value is irrelevant to the gate under test.
     function base58_to_bytes32(bytes calldata) external pure returns (bytes32) {
         return keccak256("mint_info.mock.base58");
+    }
+
+    /// Halborn #511 follow-up — `SPL_ERC20Base`'s constructor now also reads
+    /// this (to fold into the EIP-712 permit `DOMAIN_SEPARATOR`), so it must
+    /// be installed here too for the wrapper to be constructible in these
+    /// tests. The value is irrelevant to every gate under test in this file
+    /// — none of them assert on `DOMAIN_SEPARATOR` or `permit()`; those are
+    /// covered against a real Rome program id in
+    /// `tests/erc20spl/permit-domain.test.ts`.
+    function rome_evm_program_id() external pure returns (bytes32) {
+        return keccak256("mint_info.mock.rome_evm_program_id");
     }
 
     /// Enough of `find_program_address` to make ATA derivation observable: the

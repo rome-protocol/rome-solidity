@@ -59,7 +59,8 @@ jobs:
             tests/cpi/UserPda.test.ts \
             tests/token2022/*.test.ts \
             tests/erc20spl/delegatecall-gate.selectors.test.ts \
-            tests/erc20spl/factory-create-mint-gate.selectors.test.ts
+            tests/erc20spl/factory-create-mint-gate.selectors.test.ts \
+            tests/erc20spl/permit-domain.test.ts
 
   tx-origin-ban:
     # Strict gate per cardo-foundation section 9 + section 7 Task 14.

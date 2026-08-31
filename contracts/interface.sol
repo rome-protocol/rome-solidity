@@ -330,6 +330,34 @@ interface IHelperProgram {
     );
     // deposit gas-token from ata
     function deposit_from_ata(uint256 wei_) external;
+
+    // permit_approve_spl_raw_delegate — Halborn #511 follow-up: the
+    // recover-authorized sibling of approve_spl_raw_delegate. Sets the SPL
+    // delegate on ownerAta from an EIP-712 Permit(owner,spender,value,
+    // nonce,deadline) signature; authority is secp256k1_recover(digest) ==
+    // owner, never the caller — any account may submit. `ownerAta` is
+    // asserted against ata(external_auth(owner), mint); the on-chain
+    // delegate is bound to external_auth(spender) from the SAME signed
+    // address (never a caller-supplied raw pubkey). `nonce` is read from
+    // the program's PermitNonce PDA internally, not a call argument —
+    // matches the standard EIP-2612 permit() shape. Selector 0x3a2cef1b.
+    function permit_approve_spl_raw_delegate(
+        bytes32 ownerAta,
+        address owner,
+        address spender,
+        uint64 value,
+        bytes32 mint,
+        uint8 decimals,
+        uint64 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external;
+
+    // permit_nonce — read-through for the EIP-2612 nonces(address) view.
+    // Single source of truth: the program's PermitNonce PDA. Selector
+    // 0xf08c1556.
+    function permit_nonce(address owner) external view returns (uint64);
 }
 
 address constant system_cached_address = address(0xFf00000000000000000000000000000000000004);

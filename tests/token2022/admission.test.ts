@@ -268,11 +268,17 @@ describe("armed-hook admission, executed", async () => {
 describe("each wrapper reads its own track, executed", async () => {
     const HELPER = "0xff00000000000000000000000000000000000009";
     const SPL_CACHED = "0xff00000000000000000000000000000000000005";
+    // Halborn #511 follow-up: `SPL_ERC20`'s constructor (via `SPL_ERC20Base`)
+    // now also reads the System precompile for the permit EIP-712 domain,
+    // independent of which of HELPER/SPL_CACHED is under test here — always
+    // install it so that read isn't what makes a deploy fail/succeed.
+    const SYSTEM = "0xff00000000000000000000000000000000000007";
 
     const conn = await network.connect();
     const { viem } = conn;
     const mock = await viem.deployContract("MintInfoMock");
     const code = await (await viem.getPublicClient()).getCode({ address: mock.address });
+    await conn.provider.request({ method: "hardhat_setCode", params: [SYSTEM, code] });
 
     async function installOnly(present: string, absent: string) {
         await conn.provider.request({ method: "hardhat_setCode", params: [present, code] });

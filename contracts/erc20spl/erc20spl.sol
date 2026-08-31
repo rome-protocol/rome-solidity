@@ -3,9 +3,10 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SplTokenLib} from "../spl_token/spl_token.sol";
 import {AssociatedSplToken} from "../spl_token/associated_spl_token.sol";
-import {ISystemProgram, ICrossProgramInvocation, CpiProgram, HelperProgram} from "../interface.sol";
+import {ISystemProgram, SystemProgram, ICrossProgramInvocation, CpiProgram, HelperProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {UserPda} from "../cpi/UserPda.sol";
 import {AccountReader} from "../cpi/AccountReader.sol";
@@ -73,15 +74,28 @@ error ArmedTransferHookUnsupported(bytes32 mint, bytes32 hookProgram);
 /// @dev Shared implementation for the fixed-account and hook-aware direct-CPI
 /// wrappers. Concrete wrappers choose their admission policy in the base
 /// constructor; callers must never deploy this abstract implementation.
-abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
+abstract contract SPL_ERC20Base is IERC20, IERC20Metadata, IERC20Permit {
     // SystemProgram
     bytes32 public constant system_program_id = 0x0000000000000000000000000000000000000000000000000000000000000000;
     // ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL
     bytes32 public constant associated_token_program_id = 0x8c97258f4e2489f1bb3d1029148e0d830b5a1399daff1084048e7bd8dbe9f859;
 
+    // Halborn #511 follow-up — EIP-2612 permit. Domain name is this
+    // wrapper family's own ("Rome SPL ERC20"), deliberately distinct from
+    // rome-evm's bridge-settlement EIP-712 domain — a wallet signing an
+    // ordinary token approval should never see a bridge-settlement label.
+    // MUST byte-match the domain rome-evm's `non_evm::permit::permit_digest`
+    // recomputes (locked by a cross-language golden vector on both sides).
+    bytes32 private constant PERMIT_EIP712_DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,bytes32 salt)");
+    bytes32 public constant PERMIT_TYPEHASH =
+        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+
     address public immutable cpi_program;
     bytes32 public immutable mint_id;
     uint8 public immutable decimals;
+    /// @inheritdoc IERC20Permit
+    bytes32 public immutable DOMAIN_SEPARATOR;
 
     string private _name;
     string private _symbol;
@@ -116,6 +130,19 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         _name = name_;
         _symbol = symbol_;
         _users = users_;
+
+        // EIP-712 domain — same derivation shape rome-evm's permit_digest
+        // uses: keccak256(TYPEHASH, name, version, chainId, salt), salt =
+        // keccak256(rome_evm_program_id bytes). chainId = block.chainid,
+        // the numeric id the on-chain program reads as source_evm_chain_id
+        // for THIS Rome chain (no cross-chain aspect for permit).
+        DOMAIN_SEPARATOR = keccak256(abi.encode(
+            PERMIT_EIP712_DOMAIN_TYPEHASH,
+            keccak256(bytes("Rome SPL ERC20")),
+            keccak256(bytes("1")),
+            block.chainid,
+            keccak256(abi.encodePacked(SystemProgram.rome_evm_program_id()))
+        ));
     }
 
     /**
@@ -417,6 +444,48 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     function transferFrom(address from, address to, uint256 value) public virtual returns (bool) {
         address spender = msg.sender;
         return _transfer(_users.ensure_user(spender), from, to, value);
+    }
+
+    /// @inheritdoc IERC20Permit
+    /// @dev Halborn #511 follow-up. `nonce` is NOT a call argument — read
+    /// from the program's PermitNonce PDA internally via
+    /// `HelperProgram.permit_nonce`, matching the standard EIP-2612 shape
+    /// where the signer includes `nonces(owner)` in the message they sign.
+    /// Single source of truth: no second nonce is kept in EVM storage.
+    function nonces(address owner) public view virtual returns (uint256) {
+        return uint256(HelperProgram.permit_nonce(owner));
+    }
+
+    /// @inheritdoc IERC20Permit
+    /// @dev Folds the user-direct `approve` the #511 gate now requires into
+    /// one EIP-712 signature — any account may submit (a relayer, not
+    /// necessarily `owner`). Authority is
+    /// `secp256k1_recover(digest) == owner` on the Rome-evm side, never
+    /// `msg.sender` here — see `HelperProgram.permit_approve_spl_raw_delegate`
+    /// and the Rome EVM program's `non_evm::permit` module.
+    function permit(
+        address owner,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) public virtual {
+        require(value <= type(uint64).max, "Permit amount exceeds uint64");
+        require(deadline <= type(uint64).max, "Permit deadline exceeds uint64");
+
+        bytes32 ownerAta = HelperProgram.ata(owner, mint_id);
+        (bool success, bytes memory result) = address(HelperProgram).call(
+            abi.encodeWithSignature(
+                "permit_approve_spl_raw_delegate(bytes32,address,address,uint64,bytes32,uint8,uint64,uint8,bytes32,bytes32)",
+                ownerAta, owner, spender, uint64(value), mint_id, decimals, uint64(deadline), v, r, s
+            )
+        );
+        require(success, string(Convert.revert_msg(result)));
+
+        _users.ensure_user(owner);
+        emit Approval(owner, spender, value);
     }
 
     /// @notice Move this wrapper's underlying SPL out of the caller's
