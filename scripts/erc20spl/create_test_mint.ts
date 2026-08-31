@@ -2,17 +2,23 @@ import hardhat from "hardhat";
 import { isAddress, parseAbi } from "viem";
 import { readDeployments } from "../lib/deployments.js";
 
-// Create a deployer-authored test mint via the existing ERC20SPLFactory.
+// Create a deployer-authored test mint.
 //
-//   1. create_token_mint() — System CreateAccount for a salt-derived PDA
-//                            with the deployer as the mint creator
-//   2. init_token_mint(mint) — InitializeMint2 with the deployer's
-//                              external_auth PDA as the mint authority
-//                              (so SPL_ERC20_cached.mint_to works when
-//                              called by the deployer)
+//   1. HelperProgram.create_and_init_mint(...) — called DIRECTLY by the
+//      deployer (not via the factory — see ERC20SPLFactory.create_token_mint's
+//      NatSpec for why: the rome-evm DELEGATECALL identity gate requires
+//      context.caller == the actual creator for both the salt-derived mint
+//      PDA and its rent payer to resolve correctly, which only a user-direct
+//      call preserves). System CreateAccount + SPL InitializeMint2 in one
+//      dispatch, mint authority = the deployer's own EXTERNAL_AUTHORITY PDA.
+//   2. factory.confirm_created_mint(mint) — advances the deployer's nonce so
+//      get_current_mint predicts a fresh salt for their next mint.
 //
 // Prints the resulting mint pubkey. Use it as WRAPPER_MINT_ID for the
 // SPL_ERC20_cached deploy script.
+
+const HELPER_PROGRAM = "0xff00000000000000000000000000000000000009" as const;
+const DEFAULT_DECIMALS = 9;
 
 async function main() {
     const networkName = process.env.HARDHAT_NETWORK ?? "hadrian";
@@ -35,47 +41,57 @@ async function main() {
     const wallet = wallets[0];
 
     const factoryAbi = parseAbi([
-        "function create_token_mint() external returns (bytes32)",
-        "function init_token_mint(bytes32 mint) external",
+        "function confirm_created_mint(bytes32 mint) external",
         "function get_current_mint(address user) external view returns (bytes32, bytes32)",
     ]);
+    const helperAbi = parseAbi([
+        "function pda(address user) external view returns (bytes32)",
+        "function create_and_init_mint(uint8 decimals, bytes32 mint_authority, bool has_freeze_authority, bytes32 freeze_authority, bytes32 salt) external",
+    ]);
 
-    // Pre-compute the mint pubkey via get_current_mint — same value
-    // create_token_mint will produce on this caller's next nonce.
-    const [predicted] = (await publicClient.readContract({
+    // Pre-compute the mint pubkey + salt via get_current_mint — same value
+    // create_and_init_mint will produce for this caller's next nonce.
+    const [predicted, mintSeed] = (await publicClient.readContract({
         address: factoryAddress as `0x${string}`,
         abi: factoryAbi,
         functionName: "get_current_mint",
         args: [wallet.account.address],
     })) as [`0x${string}`, `0x${string}`];
 
+    const mintAuthority = (await publicClient.readContract({
+        address: HELPER_PROGRAM,
+        abi: helperAbi,
+        functionName: "pda",
+        args: [wallet.account.address],
+    })) as `0x${string}`;
+
     console.log(`Predicted mint pubkey: ${predicted}`);
-    console.log(`Calling factory.create_token_mint()...`);
+    console.log(`Calling HelperProgram.create_and_init_mint(...) directly...`);
 
     const createHash = await wallet.writeContract({
-        address: factoryAddress as `0x${string}`,
-        abi: factoryAbi,
-        functionName: "create_token_mint",
-        args: [],
+        address: HELPER_PROGRAM,
+        abi: helperAbi,
+        functionName: "create_and_init_mint",
+        args: [DEFAULT_DECIMALS, mintAuthority, false, `0x${"0".repeat(64)}` as `0x${string}`, mintSeed],
     });
     const createReceipt = await publicClient.waitForTransactionReceipt({ hash: createHash });
     if (createReceipt.status !== "success") {
-        throw new Error(`create_token_mint reverted: tx ${createHash}`);
+        throw new Error(`create_and_init_mint reverted: tx ${createHash}`);
     }
-    console.log(`  create_token_mint tx: ${createHash} (block ${createReceipt.blockNumber})`);
+    console.log(`  create_and_init_mint tx: ${createHash} (block ${createReceipt.blockNumber})`);
 
-    console.log(`Calling factory.init_token_mint(${predicted})...`);
-    const initHash = await wallet.writeContract({
+    console.log(`Calling factory.confirm_created_mint(${predicted})...`);
+    const confirmHash = await wallet.writeContract({
         address: factoryAddress as `0x${string}`,
         abi: factoryAbi,
-        functionName: "init_token_mint",
+        functionName: "confirm_created_mint",
         args: [predicted],
     });
-    const initReceipt = await publicClient.waitForTransactionReceipt({ hash: initHash });
-    if (initReceipt.status !== "success") {
-        throw new Error(`init_token_mint reverted: tx ${initHash}`);
+    const confirmReceipt = await publicClient.waitForTransactionReceipt({ hash: confirmHash });
+    if (confirmReceipt.status !== "success") {
+        throw new Error(`confirm_created_mint reverted: tx ${confirmHash}`);
     }
-    console.log(`  init_token_mint tx: ${initHash} (block ${initReceipt.blockNumber})`);
+    console.log(`  confirm_created_mint tx: ${confirmHash} (block ${confirmReceipt.blockNumber})`);
 
     console.log("");
     console.log("Test mint created. Use it for SPL_ERC20_cached deploy:");

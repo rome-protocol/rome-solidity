@@ -32,7 +32,9 @@ npx hardhat test nodejs \
   tests/cpi/PdaDeriver.test.ts \
   tests/cpi/SolanaConstants.test.ts \
   tests/cpi/UserPda.test.ts \
-  tests/token2022/*.test.ts
+  tests/token2022/*.test.ts \
+  tests/erc20spl/delegatecall-gate.selectors.test.ts \
+  tests/erc20spl/factory-create-mint-gate.selectors.test.ts
 
 # ABI parity gate — required after compile. Fails the build if a
 # discovery interface drifts from its implementation (either direction).

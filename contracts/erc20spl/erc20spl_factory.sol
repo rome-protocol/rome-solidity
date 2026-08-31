@@ -9,7 +9,6 @@ import {SplTokenLib} from "../spl_token/spl_token.sol";
 import {SystemProgramLib} from "../system_program/system_program.sol";
 import {ICrossProgramInvocation, ISystemProgram, SystemProgram, HelperProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
-import {Convert} from "../convert.sol";
 import {AccountReader} from "../cpi/AccountReader.sol";
 
 contract ERC20SPLFactory {
@@ -41,8 +40,6 @@ contract ERC20SPLFactory {
         string symbol,
         uint64 nonce
     );
-
-    error MintAccountAlreadyExists(bytes32 mint);
 
     constructor(address _cpi_program) {
         cpi_program = _cpi_program;
@@ -192,48 +189,57 @@ contract ERC20SPLFactory {
         return (RomeEVMAccount.pda_with_salt(user, mintSeed), mintSeed);
     }
 
-    function _assert_mint_account_missing(bytes32 mint) internal view {
-        require(token_by_mint[mint] == address(0), "Token exists");
-        // Typed lamports-only probe via account_lamports (selector 0xde79ed54)
-        // — skips the full account_info 6-tuple decode + 82-byte data buffer.
-        // Saves ~15-30K CU per create_token_mint call (Agent 2/4 audit, 2026-05-16).
-        if (AccountReader.lamportsOf(mint) != 0) {
-            revert MintAccountAlreadyExists(mint);
-        }
-    }
+    /// The rome-evm DELEGATECALL identity gate (Halborn #511,
+    /// owner_authenticated := context.address == code_address) rejects this
+    /// call's old form outright, and there is no gate-safe replacement a
+    /// contract can make on its behalf: a direct CALL passes the gate but
+    /// rebinds context.caller to this factory instead of the creator, which
+    /// would corrupt both the salt-derived mint PDA (get_current_mint is
+    /// keyed by the creator, not the factory) and the rent payer (must be
+    /// the creator's own EXTERNAL_AUTHORITY PDA, not an unfunded factory
+    /// PDA). Both properties require context.caller == the actual creator,
+    /// which only a user-direct call preserves.
+    error CreateTokenMintMovedOffFactory();
 
     /**
-     * Creates and initializes a new SPL token mint atomically.
-     * Token mint is derived from the creator's address and their current nonce, so each creator can create multiple tokens
-     * by calling this function multiple times.
-     *
-     * @return (bytes32 mint) Address of the created and initialized SPL Token mint.
+     * REMOVED as an on-chain-creating entrypoint — see CreateTokenMintMovedOffFactory.
+     * The create step is now user-direct: call
+     * HelperProgram.create_and_init_mint(DEFAULT_DECIMALS, HelperProgram.pda(msg.sender),
+     * false, bytes32(0), <mintSeed from get_current_mint(msg.sender)>) straight from the
+     * creator's own tx (atomic create+init, same one dispatch as before — the #326
+     * front-run fix lives in that atomicity, not in who calls it). Then register the
+     * result with add_spl_token_no_metadata / add_spl_token_with_metadata as before.
+     * get_current_mint(user) still predicts the same salt-derived address, and the
+     * on-chain mint authority is still the creator's own PDA — unchanged.
      */
-    function create_token_mint() external returns (bytes32) {
-        (bytes32 mint, bytes32 mintSeed) = get_current_mint(msg.sender);
-        _assert_mint_account_missing(mint);
-        bytes32 user = HelperProgram.pda(msg.sender); // mint authority = caller's EXTERNAL_AUTHORITY PDA
-
-        // System CreateAccount + SPL InitializeMint2 via HelperProgram.create_and_init_mint
-        // (selector 0x20972d0f) in a single dispatch — the mint is never left
-        // created-but-uninitialized for a third party to initialize and seize authority
-        // over. Same salt-derived mint address as the prior two-call path.
-        (bool success, bytes memory result) = address(HelperProgram).delegatecall(
-            abi.encodeWithSignature(
-                "create_and_init_mint(uint8,bytes32,bool,bytes32,bytes32)",
-                DEFAULT_DECIMALS, user, false, bytes32(0), mintSeed
-            )
-        );
-        require(success, string(Convert.revert_msg(result)));
-
-        creator_nonce[msg.sender] = creator_nonce[msg.sender] + 1;
-        return mint;
+    function create_token_mint() external pure returns (bytes32) {
+        revert CreateTokenMintMovedOffFactory();
     }
 
     /**
-     * Backward-compatible no-op: create_token_mint now creates and initializes atomically,
-     * so a legitimate mint reaching here is already initialized. Reverts otherwise — this
-     * never initializes an arbitrary caller-supplied mint.
+     * Advances the caller's nonce after a user-direct create (see create_token_mint's
+     * NatSpec), so get_current_mint(msg.sender) next predicts a fresh salt instead of
+     * re-deriving the mint just created. Requires `mint` to be exactly the caller's
+     * current predicted mint (get_current_mint) AND already initialized on-chain —
+     * this only ever advances the CALLER's own nonce for the CALLER's own next
+     * self-created mint, so it is not front-runnable: a third party's call checks
+     * their own (different) predicted mint and simply does not match. Optional —
+     * only needed before creating a second mint; registering (add_spl_token_*) does
+     * not require it.
+     */
+    function confirm_created_mint(bytes32 mint) external {
+        (bytes32 predicted, ) = get_current_mint(msg.sender);
+        require(predicted == mint, "not caller's predicted mint");
+        bytes memory isInitialized = AccountReader.readBytesAt(mint, 45, 1);
+        require(isInitialized[0] == 0x01, "mint not initialized");
+        creator_nonce[msg.sender] = creator_nonce[msg.sender] + 1;
+    }
+
+    /**
+     * Backward-compatible no-op: the mint reaching here was created and initialized
+     * atomically by the creator's own direct HelperProgram.create_and_init_mint call
+     * (see create_token_mint's NatSpec), so a legitimate mint is already initialized.
+     * Reverts otherwise — this never initializes an arbitrary caller-supplied mint.
      */
     function init_token_mint(bytes32 mint) external view {
         // SPL Mint.is_initialized is a single bool byte at offset 45. Reading just that

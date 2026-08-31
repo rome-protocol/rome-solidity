@@ -8,23 +8,37 @@
 // init the VICTIM's created-but-uninitialized mint, become its authority, and
 // mint the victim's token while the victim was permanently locked out.
 //
-// Fix: create_token_mint() now creates AND initializes the mint atomically (one
-// HelperProgram.create_and_init_mint dispatch) — there is never a created-but-
-// uninitialized window. init_token_mint(bytes32) is now a view-only backward-
-// compat shim: it reverts unless `mint` is already initialized, and never
-// performs any initialization itself, so it can no longer be used to seize
-// authority over anyone's mint — pre-emptively (on a not-yet-created mint,
-// front-running the deterministic address) or otherwise.
+// Fix (#326): the create dispatch (HelperProgram.create_and_init_mint) creates
+// AND initializes the mint atomically in one dispatch — there is never a
+// created-but-uninitialized window. init_token_mint(bytes32) is a view-only
+// backward-compat shim: it reverts unless `mint` is already initialized, and
+// never performs any initialization itself, so it can no longer be used to
+// seize authority over anyone's mint.
+//
+// Updated (Halborn #511, delegatecall identity gate): the atomic create dispatch
+// used to be factory-mediated (create_token_mint() delegatecalled into
+// HelperProgram). The gate now rejects that — DELEGATECALL fails
+// owner_authenticated outright, and a direct CALL would rebind context.caller to
+// the factory instead of the victim, corrupting the salt-derived mint PDA and
+// rent payer. So the create step is now user-direct: the VICTIM calls
+// HelperProgram.create_and_init_mint directly, then factory.confirm_created_mint
+// advances their nonce. The #326 fix is unaffected — the atomicity that closes
+// the front-run window lives in create_and_init_mint's single dispatch, not in
+// who calls it, so this POC still proves the same property against the new
+// call path.
 //
 //   VICTIM   = walletClients[0]  (the funded HADRIAN_PRIVATE_KEY account)
 //   ATTACKER = a fresh keypair, funded by the victim in-test
 //
 // RUN:  npx hardhat test tests/erc20spl_factory_hijack.poc.ts --network hadrian
 //
-// This test only passes once the fixed factory is deployed — it is the
-// acceptance test for the fix, not a standalone unit test. Every state-changing
-// tx carries an explicit gas price above the proxy minimum so reverts revert for
-// the RIGHT reason (mint not yet initialized), never for gas.
+// This test only passes once the fixed factory AND a rome-evm program build
+// including the Halborn #511 gate are both deployed — it is the acceptance test
+// for both fixes, not a standalone unit test (see
+// tests/erc20spl/delegatecall-gate.integration.ts for the gate-deployment
+// caveat, which applies here too). Every state-changing tx carries an explicit
+// gas price above the proxy minimum so reverts revert for the RIGHT reason,
+// never for gas.
 // =============================================================================
 
 import { before, describe, it } from "node:test";
@@ -39,6 +53,12 @@ const CPI_PROGRAM = "0xff00000000000000000000000000000000000008" as const;    //
 
 const HELPER_ABI = [
     { type: "function", name: "pda", stateMutability: "view", inputs: [{ name: "user", type: "address" }], outputs: [{ name: "", type: "bytes32" }] },
+    { type: "function", name: "create_and_init_mint", stateMutability: "nonpayable",
+      inputs: [
+        { name: "decimals", type: "uint8" }, { name: "mint_authority", type: "bytes32" },
+        { name: "has_freeze_authority", type: "bool" }, { name: "freeze_authority", type: "bytes32" },
+        { name: "salt", type: "bytes32" },
+      ], outputs: [] },
 ] as const;
 const CPI_ABI = [
     { type: "function", name: "account_info", stateMutability: "view", inputs: [{ name: "key", type: "bytes32" }],
@@ -124,9 +144,10 @@ describe("S6-F1 FIXED — hijack closed", () => {
     });
 
     it("closes the front-run window and the after-init hijack, without breaking the two-step callers", async () => {
-        // [1] mintId is deterministic from (victim, nonce) and PUBLICLY predictable via
-        //     get_current_mint — before the victim ever calls create_token_mint.
-        [mintId] = await factory.read.get_current_mint([victim.account.address]);
+        // [1] mintId + mintSeed are deterministic from (victim, nonce) and PUBLICLY
+        //     predictable via get_current_mint — before the victim ever creates.
+        let mintSeed: `0x${string}`;
+        [mintId, mintSeed] = await factory.read.get_current_mint([victim.account.address]);
         console.log(`\n[1] victim-derived mint (not yet created) = ${mintId}`);
 
         // [2] FRONT-RUN ATTEMPT: attacker tries to init a mint that doesn't exist yet.
@@ -137,17 +158,22 @@ describe("S6-F1 FIXED — hijack closed", () => {
             factory.read.init_token_mint([mintId], { account: attacker.account.address }),
             "ATTACKER init_token_mint(not-yet-created victim mint)");
 
-        // [3] VICTIM creates its mint — create_token_mint now creates AND initializes
-        //     atomically in the same call.
+        // [3] VICTIM creates its mint — user-direct HelperProgram.create_and_init_mint
+        //     creates AND initializes atomically in the same call (the #326 fix's
+        //     atomicity is unchanged; only who calls it moved off the factory).
         await assertSuccess(publicClient,
-            await factory.write.create_token_mint([], { account: victim.account, gasPrice }),
-            "VICTIM create_token_mint");
+            await victim.writeContract({
+                address: HELPER_PROGRAM, abi: HELPER_ABI, functionName: "create_and_init_mint",
+                args: [9, victimPda, false, `0x${"0".repeat(64)}` as `0x${string}`, mintSeed],
+                account: victim.account, gasPrice,
+            }),
+            "VICTIM create_and_init_mint (direct)");
 
         let info: any = await publicClient.readContract({
             address: CPI_PROGRAM, abi: CPI_ABI, functionName: "account_info", args: [mintId] });
         let data: `0x${string}` = info[5];
         assert.ok((data.length - 2) / 2 >= 82, "mint account data must be at least 82 bytes");
-        assert.equal(slice(data, 45, 46), "0x01", "mint must already be initialized right after create_token_mint");
+        assert.equal(slice(data, 45, 46), "0x01", "mint must already be initialized right after create_and_init_mint");
         let onchainAuthority = slice(data, 4, 36);
         console.log(`[3] mint_authority on-chain = ${onchainAuthority}`);
         console.log(`    victim PDA              = ${victimPda}`);
@@ -163,6 +189,25 @@ describe("S6-F1 FIXED — hijack closed", () => {
         console.log(`[4] mint_authority after attacker's no-op call = ${onchainAuthority}`);
         assert.equal(onchainAuthority.toLowerCase(), victimPda.toLowerCase(), "authority MUST still be the victim's PDA");
         assert.notEqual(onchainAuthority.toLowerCase(), attackerPda.toLowerCase(), "authority MUST NOT be the attacker's PDA");
+
+        // [4b] confirm_created_mint is not front-runnable: it checks the mint against
+        //      the CALLER's own predicted mint, so the attacker's attempt (checked
+        //      against the attacker's own, different, predicted mint) simply does not
+        //      match and reverts — it never touches the victim's nonce.
+        const nonceBefore = await factory.read.creator_nonce([victim.account.address]);
+        await assert.rejects(
+            factory.simulate.confirm_created_mint([mintId], { account: attacker.account }),
+            "ATTACKER confirm_created_mint(victim's mint) MUST revert");
+        assert.equal(
+            await factory.read.creator_nonce([victim.account.address]), nonceBefore,
+            "attacker's failed confirm MUST NOT advance the victim's nonce");
+
+        await assertSuccess(publicClient,
+            await factory.write.confirm_created_mint([mintId], { account: victim.account, gasPrice }),
+            "VICTIM confirm_created_mint");
+        assert.equal(
+            await factory.read.creator_nonce([victim.account.address]), nonceBefore + 1n,
+            "VICTIM's own confirm_created_mint MUST advance their nonce by exactly one");
 
         // [5] VICTIM can use the mint normally: register the wrapper and mint to self.
         const sym = `FIX${Date.now().toString().slice(-6)}`;

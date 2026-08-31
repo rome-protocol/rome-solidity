@@ -6,6 +6,8 @@ import {
     getAddress,
     isAddress,
     keccak256,
+    parseAbi,
+    slice,
     stringToHex,
     zeroAddress,
     custom
@@ -129,21 +131,69 @@ describe("ERC20SPLFactory integration", { concurrency: false }, function () {
         // factory.create_user was removed (operator-subsidy cleanup). User registration
         // in the wrapper's `users` mapping now happens implicitly via the first
         // wrapper-mediated mutation (transfer / approve / transferFrom) — for this
-        // test, the create_token_mint flow fires it as a side effect when needed.
-        [mintId] = await factory.read.get_current_mint([accountA.account.address]);
+        // test, the create flow fires it as a side effect when needed.
+        //
+        // create_token_mint() no longer creates on-chain (Halborn #511 gate
+        // migration — the rome-evm DELEGATECALL identity gate requires
+        // context.caller == the actual creator, which only a user-direct call
+        // preserves; see the function's NatSpec). The create step is now a
+        // direct HelperProgram.create_and_init_mint call from accountA, followed
+        // by factory.confirm_created_mint to advance the nonce.
+        const HELPER_PROGRAM = "0xff00000000000000000000000000000000000009" as const;
+        const helperAbi = parseAbi([
+            "function pda(address user) external view returns (bytes32)",
+            "function create_and_init_mint(uint8 decimals, bytes32 mint_authority, bool has_freeze_authority, bytes32 freeze_authority, bytes32 salt) external",
+        ]);
+        // Matches contracts/interface.sol's canonical account_info signature exactly
+        // (uint64,bytes32,bool,bool,bool,bytes) — only `data` (index 5) is read below.
+        const cpiAbi = parseAbi([
+            "function account_info(bytes32 key) external view returns (uint64, bytes32, bool, bool, bool, bytes)",
+        ]);
+        const CPI_PROGRAM = "0xff00000000000000000000000000000000000008" as const;
 
-        const createTokenTxHash = await factory.write.create_token_mint([], {
+        let mintSeed: `0x${string}`;
+        [mintId, mintSeed] = await factory.read.get_current_mint([accountA.account.address]);
+
+        const expectedAuthority = (await publicClient.readContract({
+            address: HELPER_PROGRAM,
+            abi: helperAbi,
+            functionName: "pda",
+            args: [accountA.account.address],
+        })) as `0x${string}`;
+
+        const createTokenTxHash = await accountA.writeContract({
+            address: HELPER_PROGRAM,
+            abi: helperAbi,
+            functionName: "create_and_init_mint",
+            args: [9, expectedAuthority, false, `0x${"0".repeat(64)}` as `0x${string}`, mintSeed],
             account: accountA.account,
         });
-        await waitForSuccess(publicClient, createTokenTxHash, "create_token_mint");
+        await waitForSuccess(publicClient, createTokenTxHash, "HelperProgram.create_and_init_mint");
 
-        assert.ok(isHex32(mintId), "create_token_mint must return bytes32 mint");
-        assert.notEqual(mintId, `0x${"0".repeat(64)}`, "create_token_mint must not return zero mint");
+        assert.ok(isHex32(mintId), "get_current_mint must return bytes32 mint");
+        assert.notEqual(mintId, `0x${"0".repeat(64)}`, "get_current_mint must not return zero mint");
+
+        // (ii) mint authority is exactly the intended party — the creator's own
+        // EXTERNAL_AUTHORITY PDA, unchanged from before the gate migration.
+        const info: any = await publicClient.readContract({
+            address: CPI_PROGRAM, abi: cpiAbi, functionName: "account_info", args: [mintId],
+        });
+        const onchainAuthority = slice(info[5] as `0x${string}`, 4, 36);
+        assert.equal(
+            onchainAuthority.toLowerCase(),
+            expectedAuthority.toLowerCase(),
+            "mint authority must be the creator's own PDA, not the factory's",
+        );
 
         const initTokenTxHash = await factory.write.init_token_mint([mintId], {
             account: accountA.account,
         });
         await waitForSuccess(publicClient, initTokenTxHash, "init_token_mint");
+
+        const confirmTxHash = await factory.write.confirm_created_mint([mintId], {
+            account: accountA.account,
+        });
+        await waitForSuccess(publicClient, confirmTxHash, "confirm_created_mint");
 
         const addTokenSimulation = await factory.simulate.add_spl_token_no_metadata([mintId, testName, testSymbol], {
             account: accountA.account,
