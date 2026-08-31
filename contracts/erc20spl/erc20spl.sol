@@ -299,17 +299,21 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         bool success;
         bytes memory result;
         if (from == msg.sender) {
-            // SENDER PATH (`transfer(to, value)`): caller owns the
-            // source ATA. The 3-arg overload `transfer_spl(address,
-            // uint64, bytes32)` derives `src_ata = HelperProgram.ata(
-            // msg.sender, mint)` server-side — matches the canonical
-            // owner ATA. Signs as `external_auth(msg.sender)` which IS
-            // the source ATA's owner. Measured saving: −394K CU
-            // (−71%) vs legacy.
-            (success, result) = address(HelperProgram).delegatecall(
+            // SENDER PATH (`transfer(to, value)`): rome-evm's DELEGATECALL
+            // identity gate refuses owner-signs-as-caller (Halborn #511)
+            // — under DELEGATECALL, `caller` is borrowed from the outer
+            // frame, so an owner-authenticated sign is a forgeable
+            // authority. Instead: a DIRECT call (not delegatecall) into
+            // the addr-keyed delegate overload, signing as
+            // external_auth(this) — only ever this wrapper's own
+            // identity. Requires the caller to have pre-approved this
+            // wrapper as delegate (`approve(address(this), value)`, or
+            // the SDK's one-time direct-precompile approve step folded
+            // into the same tx as the first transfer).
+            (success, result) = address(HelperProgram).call(
                 abi.encodeWithSignature(
-                    "transfer_spl(address,uint64,bytes32)",
-                    to, uint64(value), mint_id
+                    "transfer_spl(address,address,uint64,bytes32)",
+                    from, to, uint64(value), mint_id
                 )
             );
         } else {
@@ -385,13 +389,14 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
             ? type(uint64).max
             : uint64(value);
 
-        // Migration to HelperProgram.approve_spl — moves SPL Approve ix
-        // marshaling from Solidity (SplTokenLib.approve + raw invoke,
-        // ~150-200K CU of EVM bytecode) into Rust (~5-10K CU). Signs
-        // as external_auth(msg.sender) which IS the owner of the source
-        // ATA. SPL Token runtime stores external_auth(spender) as the
-        // delegate; allowance_of compares against the same derivation.
-        (bool success, bytes memory result) = address(HelperProgram).delegatecall(
+        // Direct call, not delegatecall (Halborn #511 — the rome-evm gate
+        // refuses owner-signs-as-caller under DELEGATECALL). Owner
+        // resolves to external_auth(this), so this sets a delegate on
+        // the wrapper's OWN ATA, not the caller's — the functional
+        // approve for a user's own tokens is the SDK's direct-precompile
+        // call (spender=this wrapper), composed ahead of the first
+        // transfer/bridge-out. Kept for IERC20 interface compatibility.
+        (bool success, bytes memory result) = address(HelperProgram).call(
             abi.encodeWithSignature(
                 "approve_spl(address,uint64,bytes32)",
                 spender, storedAmount, mint_id
@@ -509,15 +514,19 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         );
         require(ataOk, string(Convert.revert_msg(ataResult)));
 
-        // CPI 2 — SPL `transfer_checked` from caller's PDA-owned ATA
-        // to the recipient's ATA. The `bytes32 to_ata` overload is
-        // required because the recipient is a raw Solana pubkey (not
-        // an EVM address). Signs as `external_auth(msg.sender)`,
-        // matching the caller's PDA-owned source ATA.
-        (bool xferOk, bytes memory xferResult) = address(HelperProgram).delegatecall(
+        // CPI 2 — SPL `transfer_checked` from caller's PDA-owned ATA to
+        // the recipient's ATA. Direct call, not delegatecall (Halborn
+        // #511) — the raw-ATA delegate overload
+        // (`transfer_spl(bytes32,bytes32,uint64,bytes32)`, 0x766b362a)
+        // signs as external_auth(this), requiring the caller to have
+        // pre-approved this wrapper as delegate on their own ATA (the
+        // SDK's direct-precompile approve step, folded into the same tx
+        // as the first transfer/bridge-out).
+        bytes32 senderAta = HelperProgram.ata(msg.sender, mint_id);
+        (bool xferOk, bytes memory xferResult) = address(HelperProgram).call(
             abi.encodeWithSignature(
-                "transfer_spl(bytes32,uint64,bytes32)",
-                to_ata, uint64(value), mint_id
+                "transfer_spl(bytes32,bytes32,uint64,bytes32)",
+                senderAta, to_ata, uint64(value), mint_id
             )
         );
         require(xferOk, string(Convert.revert_msg(xferResult)));
@@ -617,13 +626,10 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         // on repeat (lamports != 0 fast-path).
         ensure_token_account(to);
 
-        // Migration to HelperProgram.mint_spl — moves SPL MintTo ix
-        // marshaling from Solidity (SplTokenLib.mint_to_checked + raw
-        // invoke) into Rust. Signs as external_auth(msg.sender); SPL
-        // runtime enforces caller-PDA == on-chain mint authority.
-        // Projected saving: ~150-200K CU per call (matches transfer_spl
-        // migration which measured -372K CU on Hadrian).
-        (bool success, bytes memory result) = address(HelperProgram).delegatecall(
+        // Direct call, not delegatecall (Halborn #511 [H2]). Mint
+        // authority resolves to external_auth(this) — SPL Token enforces
+        // that this wrapper's own PDA is the on-chain mint authority.
+        (bool success, bytes memory result) = address(HelperProgram).call(
             abi.encodeWithSignature(
                 "mint_spl(address,uint64,bytes32)",
                 to, uint64(value), mint_id

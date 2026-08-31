@@ -227,11 +227,21 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         bool ok;
         bytes memory result;
         if (from == msg.sender) {
-            // Sender path — caller-PDA owns the source ATA. Cache
-            // SplCached.transfer(address,uint256,bytes32) at 0x57cfeeee.
-            (ok, result) = address(SplCached).delegatecall(
+            // Sender path — rome-evm's DELEGATECALL identity gate refuses
+            // the owner-signs-as-caller precompile path (Halborn #511):
+            // under DELEGATECALL, `caller` is borrowed from the outer
+            // frame, so an owner-authenticated sign is a forgeable
+            // authority. Instead: a DIRECT call (not delegatecall) into
+            // the delegate selector, signing as external_auth(this) —
+            // which is only ever this wrapper's own identity, never an
+            // upstream caller's. Requires the caller to have pre-approved
+            // this wrapper as delegate (`approve(address(this), value)`,
+            // or the SDK's one-time direct-precompile approve step that
+            // folds into the same tx as the first transfer).
+            (ok, result) = address(SplCached).call(
                 abi.encodeWithSignature(
-                    "transfer(address,uint256,bytes32)",
+                    "transferFrom(address,address,uint256,bytes32)",
+                    from,
                     to,
                     value,
                     mint_id
@@ -296,7 +306,14 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         uint64 storedAmount = value > type(uint64).max
             ? type(uint64).max
             : uint64(value);
-        (bool ok, bytes memory result) = address(SplCached).delegatecall(
+        // Direct call, not delegatecall (Halborn #511 — the rome-evm gate
+        // refuses owner-signs-as-caller under DELEGATECALL). Owner
+        // resolves to external_auth(this), so this sets a delegate on
+        // the wrapper's OWN ATA, not the caller's — the functional
+        // approve for a user's own tokens is the SDK's direct-precompile
+        // call (spender=this wrapper), composed ahead of the first
+        // transfer/bridge-out. Kept for IERC20 interface compatibility.
+        (bool ok, bytes memory result) = address(SplCached).call(
             abi.encodeWithSignature(
                 "approve(address,uint256,bytes32)",
                 spender,
@@ -326,7 +343,10 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         } catch {
             ensure_token_account(to);
         }
-        (bool ok, bytes memory result) = address(SplCached).delegatecall(
+        // Direct call, not delegatecall (Halborn #511 [H2]). Mint
+        // authority resolves to external_auth(this) — SPL Token enforces
+        // that this wrapper's own PDA is the on-chain mint authority.
+        (bool ok, bytes memory result) = address(SplCached).call(
             abi.encodeWithSignature(
                 "mint(address,uint256,bytes32)",
                 to,
