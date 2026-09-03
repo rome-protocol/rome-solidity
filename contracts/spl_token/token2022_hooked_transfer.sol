@@ -86,9 +86,12 @@ library Token2022HookedTransfer {
         }
     }
 
-    /// @dev Delegatecall is required: the Rome CPI precompile signs as the EVM
-    ///      caller visible in the current context. CALL would make the wrapper
-    ///      contract, rather than the user/delegate, the Solana authority.
+    /// @dev Post-#511 (default-deny at the non-EVM dispatch boundary refuses a
+    ///      DELEGATECALL/CALLCODE into a mutating precompile selector that
+    ///      isn't exempt): direct CALL, which signs as external_auth(address
+    ///      (this)) — the caller must pass `authority` = its own PDA and be
+    ///      the source ATA owner's SPL delegate (one-time approve_spl, as in
+    ///      erc20spl.sol §4.1), not derive it from context.caller.
     function transferChecked(
         bytes32 source,
         bytes32 mint,
@@ -100,7 +103,7 @@ library Token2022HookedTransfer {
     ) internal {
         (bytes memory data, ICrossProgramInvocation.AccountMeta[] memory metas) =
             plan(source, mint, destination, authority, amount, decimals, hookMetas);
-        (bool ok, bytes memory result) = address(CpiProgram).delegatecall(
+        (bool ok, bytes memory result) = address(CpiProgram).call(
             abi.encodeWithSignature(
                 "invoke(bytes32,(bytes32,bool,bool)[],bytes)",
                 SolanaConstants.TOKEN_2022_PROGRAM,

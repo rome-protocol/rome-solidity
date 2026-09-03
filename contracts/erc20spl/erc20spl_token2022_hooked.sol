@@ -93,6 +93,12 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
         ICrossProgramInvocation.AccountMeta[] calldata hookMetas
     ) external returns (bool) {
         _users.ensure_user(msg.sender);
+        // Post-#511: transferChecked's authority is fixed to the wrapper's
+        // own PDA regardless of msg.sender (§0.2), so SPL's own delegate
+        // check no longer distinguishes which caller invoked this. The
+        // inherited EVM allowance (SPL_ERC20Base §4.1) is now the only
+        // per-spender gate — spend it exactly as the base transferFrom does.
+        _spendAllowance(from, msg.sender, value);
         return _hookedTransfer(from, to, value, hookMetas);
     }
 
@@ -126,11 +132,14 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
 
         bytes32 destination = ensure_token_account(to);
         bytes32 source = HelperProgram.ata(from, mint_id);
+        // Post-#511: a direct CALL signs as external_auth(address(this)), not
+        // external_auth(msg.sender) — the wrapper itself must be from's SPL
+        // delegate (one-time approve_spl, exactly as erc20spl.sol §4.1).
         Token2022HookedTransfer.transferChecked(
             source,
             mint_id,
             destination,
-            RomeEVMAccount.pda(msg.sender),
+            RomeEVMAccount.pda(address(this)),
             uint64(value),
             decimals,
             hookMetas
@@ -168,11 +177,13 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
 
         bytes32 destination = ensureRecipientAta(solanaRecipient);
         bytes32 source = HelperProgram.ata(msg.sender, mint_id);
+        // Post-#511: same authority shift as _hookedTransfer above — the
+        // wrapper must be msg.sender's SPL delegate.
         Token2022HookedTransfer.transferChecked(
             source,
             mint_id,
             destination,
-            RomeEVMAccount.pda(msg.sender),
+            RomeEVMAccount.pda(address(this)),
             uint64(value),
             decimals,
             hookMetas

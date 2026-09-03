@@ -480,16 +480,30 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
 
     function transferFrom(address from, address to, uint256 value) public virtual returns (bool) {
         address spender = msg.sender;
-        uint256 currentAllowance = _allowances[from][spender];
+        _spendAllowance(from, spender, value);
+        return _transfer(_users.ensure_user(spender), from, to, value);
+    }
+
+    /// @notice Checks and decrements `_allowances[owner][spender]`, matching
+    /// OZ's infinite-approval semantics (`type(uint256).max` is never
+    /// decremented, no `Approval` re-emit on spend). Factored out so a
+    /// sibling entrypoint that cannot itself call `transferFrom` — e.g.
+    /// `SPL_ERC20_Token2022Hooked.transferFromWithHookAccounts`, which needs
+    /// its own CPI plan and hook-account tail — reuses this exact check
+    /// instead of re-declaring a second `_allowances`-shaped mapping. Post-
+    /// #511 this EVM-side check is the *only* per-spender access control:
+    /// a direct CALL always signs as external_auth(address(this)), so the
+    /// SPL runtime itself no longer distinguishes which caller invoked it.
+    function _spendAllowance(address owner, address spender, uint256 value) internal {
+        uint256 currentAllowance = _allowances[owner][spender];
         if (currentAllowance != type(uint256).max) {
             if (currentAllowance < value) {
                 revert ERC20InsufficientAllowance(spender, currentAllowance, value);
             }
             unchecked {
-                _allowances[from][spender] = currentAllowance - value;
+                _allowances[owner][spender] = currentAllowance - value;
             }
         }
-        return _transfer(_users.ensure_user(spender), from, to, value);
     }
 
     /// @notice Move this wrapper's underlying SPL out of the caller's
