@@ -153,4 +153,35 @@ describe("SPL_ERC20 dispatch shape (#511 gate) — structural, source-of-truth i
             ">= 0 would always report true and defeat the whole point of the check"
         );
     });
+
+    /// #511 hooked-wrapper review finding: `_spendAllowance` was extracted
+    /// (build-hooked.md change 3) specifically so `transferFromWithHookAccounts`
+    /// could reuse it — its own doc comment calls it "the only per-spender
+    /// access control" now that a direct CALL always signs as
+    /// external_auth(address(this)). No existing test (here or in
+    /// tests/token2022/direct-call-hooked-shape.test.ts) pinned the actual
+    /// comparison operators, only that the function exists and is called.
+    /// Verified independently: mutating `currentAllowance < value` to
+    /// `currentAllowance < value / 2` (lets a spender move up to 2x their
+    /// approved amount before reverting) left the full erc20spl+activation+
+    /// token2022 suite at 190/190 green before this test was added.
+    it("_spendAllowance reverts a spend that exceeds the exact remaining allowance, and skips decrement only at the infinite-approval sentinel", function () {
+        const body = bodyOf("function _spendAllowance(address owner, address spender, uint256 value)");
+        assert.ok(
+            /currentAllowance\s*!=\s*type\(uint256\)\.max/.test(body),
+            "must special-case exactly type(uint256).max as the infinite-approval sentinel — " +
+            "any other comparison either saturates a finite approval early or never lets a real max approval skip the decrement"
+        );
+        assert.ok(
+            /currentAllowance\s*<\s*value\s*\)/.test(body),
+            "the insufficient-allowance guard must be a strict '<' against exactly the full requested " +
+            "value (immediately closed by the if's parenthesis) — '<=' would revert on an exact-match " +
+            "spend, and any scaled comparison (e.g. value/2) would let a spender move more than they " +
+            "were approved for"
+        );
+        assert.ok(
+            /_allowances\[owner\]\[spender\]\s*=\s*currentAllowance\s*-\s*value/.test(body),
+            "the decrement must subtract the exact spent value from the exact current allowance"
+        );
+    });
 });
