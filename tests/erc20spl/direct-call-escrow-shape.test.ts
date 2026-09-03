@@ -138,4 +138,19 @@ describe("SPL_ERC20 dispatch shape (#511 gate) — structural, source-of-truth i
         // ensureRecipientAta, and the wrapper's own escrow-ATA ensure).
         assert.equal(delegatecallBlocks.length, 4, `expected exactly 4 exempt delegatecall sites, found: ${delegatecallBlocks.join(", ")}`);
     });
+
+    it("isEnabled(user) reports the one-time SPL-level delegate grant (scope §4.1 change 2)", function () {
+        assert.ok(
+            /function isEnabled\(address user\) public view returns \(bool\)/.test(src),
+            "SPL_ERC20Base must expose isEnabled(address) — the only way a caller can check " +
+            "whether `user` has sent the one-time approve_spl(wrapper, …, mint) grant this " +
+            "wrapper now depends on for every EOA-side transfer"
+        );
+        const body = bodyOf("function isEnabled(address user)");
+        assert.ok(
+            /HelperProgram\.allowance_of\(\s*user,\s*address\(this\),\s*mint_id\s*\)\s*>\s*0/.test(body),
+            "isEnabled must return whether the grant is non-zero (allowance_of(...) > 0) — " +
+            ">= 0 would always report true and defeat the whole point of the check"
+        );
+    });
 });

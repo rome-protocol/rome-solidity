@@ -459,6 +459,16 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         return _allowances[owner][spender];
     }
 
+    /// @notice Whether `user` has sent the one-time SPL-level delegate
+    /// grant (`approve_spl(wrapper, …, mint)` direct to 0xff..09) this
+    /// wrapper now needs to move their SPL at all. A precompile read,
+    /// unaffected by the #511 gate. Callers (rome-ui, off-chain scripts)
+    /// use this to decide whether to prompt the user for the one-time
+    /// grant before the first transfer.
+    function isEnabled(address user) public view returns (bool) {
+        return HelperProgram.allowance_of(user, address(this), mint_id) > 0;
+    }
+
     function approve(address spender, uint256 value) public virtual returns (bool) {
         if (spender == address(0)) {
             revert ERC20InvalidSpender(address(0));
