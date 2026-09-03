@@ -125,6 +125,25 @@ describe("SPL_ERC20_cached dispatch shape (#511 gate) — structural, source-of-
             "— mixing tracks in the same contract is the one-track rule this file must not break"
         );
         assert.ok(!body.includes("HelperProgram.allowance_of"), "must not touch the legacy allowance_of selector");
+        // The prior version of this test only checked the read call and the
+        // absence of the legacy selector — it did not pin the predicate, so
+        // `acc.delegated_amount >= 0` (always true) or dropping the delegate
+        // check entirely both left 14/14 green. Pin both halves of the
+        // boolean explicitly.
+        assert.ok(
+            /acc\.delegate\s*==\s*HelperProgram\.pda\(address\(this\)\)/.test(body),
+            "isEnabled must check the delegate is THIS wrapper's own external_auth PDA, " +
+            "not merely that some delegate exists"
+        );
+        assert.ok(
+            /acc\.delegated_amount\s*>\s*0/.test(body),
+            "isEnabled's amount check must be strictly '> 0' — '>= 0' is always true " +
+            "(delegated_amount is unsigned) and would report every user enabled"
+        );
+        assert.ok(
+            /acc\.delegate\s*==\s*HelperProgram\.pda\(address\(this\)\)\s*&&\s*acc\.delegated_amount\s*>\s*0/.test(body),
+            "isEnabled must AND the delegate check with the amount check, not evaluate either alone"
+        );
     });
 
     it("balanceOf(account) dispatches on account.code.length, contract holders read the escrow ledger", function () {
