@@ -13,6 +13,41 @@ import {
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { readDeployments } from "../scripts/lib/deployments.js";
 
+// #511: `SPL_ERC20.mint_to` is DELETED (a direct CALL would sign as the
+// wrapper's own PDA, which is not the on-chain mint authority). Minting is
+// now a creator/operator act sent directly by the mint authority to
+// HelperProgram (0xff..09) — never through the wrapper.
+const HELPER_PROGRAM = "0xff00000000000000000000000000000000000009" as const;
+const MINT_SPL_ABI = [
+    {
+        type: "function",
+        name: "mint_spl",
+        stateMutability: "nonpayable",
+        inputs: [
+            { name: "to", type: "address" },
+            { name: "value", type: "uint64" },
+            { name: "mint", type: "bytes32" },
+        ],
+        outputs: [],
+    },
+] as const;
+
+async function mintSpl(
+    walletClient: { writeContract: (args: unknown) => Promise<`0x${string}`> },
+    account: unknown,
+    to: `0x${string}`,
+    value: bigint,
+    mint: `0x${string}`,
+): Promise<`0x${string}`> {
+    return walletClient.writeContract({
+        address: HELPER_PROGRAM,
+        abi: MINT_SPL_ABI,
+        functionName: "mint_spl",
+        args: [to, value, mint],
+        account,
+    });
+}
+
 function resolveFactoryAddress(networkName: string): `0x${string}` {
     const address = readDeployments(networkName).ERC20SPLFactory?.address;
 
@@ -199,7 +234,7 @@ describe("ERC20SPLFactory integration", { concurrency: false }, function () {
         assert.equal(symbol, testSymbol);
     });
 
-    it("supports mint_to, approve, allowance, and transferFrom lifecycle", async function () {
+    it("supports mint (direct precompile), approve, allowance, and transferFrom lifecycle", async function () {
         const ensureAccountATxHash = await tokenFromA.write.ensure_token_account([accountA.account.address], {
             account: accountA.account,
         });
@@ -210,10 +245,10 @@ describe("ERC20SPLFactory integration", { concurrency: false }, function () {
         });
         await waitForSuccess(publicClient, ensureAccountBTxHash, "ensure token account for account B");
 
-        const mintToTxHash = await tokenFromA.write.mint_to([accountBWallet.account.address, mintAmount], {
-            account: accountA.account,
-        });
-        await waitForSuccess(publicClient, mintToTxHash, "mint_to account B");
+        // #511: minting moved off the wrapper — the mint authority (account
+        // A, per create_token_mint) sends mint_spl directly to 0xff..09.
+        const mintToTxHash = await mintSpl(accountA, accountA.account, accountBWallet.account.address, mintAmount, mintId);
+        await waitForSuccess(publicClient, mintToTxHash, "mint_spl account B");
 
         const balanceAAfterMint = await tokenFromA.read.balanceOf([accountA.account.address]);
         const balanceBAfterMint = await tokenFromA.read.balanceOf([accountBWallet.account.address]);
@@ -258,11 +293,14 @@ describe("ERC20SPLFactory integration", { concurrency: false }, function () {
     });
 
     it("does not allow account B to mint without mint authority", async function () {
+        // #511: minting is a direct precompile call now, not a wrapper
+        // method — the non-authority check moved with it. A direct CALL
+        // signs as external_auth(account B); SPL Token's MintToChecked
+        // enforces that PDA against the mint's on-chain authority
+        // (HelperProgram.pda(account A), set at create_token_mint) and
+        // rejects it.
         await expectWriteToFail(
-            () =>
-                tokenFromB.write.mint_to([accountBWallet.account.address, 1n], {
-                    account: accountBWallet.account,
-                }),
+            () => mintSpl(accountBWallet, accountBWallet.account, accountBWallet.account.address, 1n, mintId),
             publicClient,
         );
     });
@@ -284,11 +322,8 @@ describe("ERC20SPLFactory integration", { concurrency: false }, function () {
             accountA.account.address,
         ], { account: accountA.account });
         await waitForSuccess(publicClient, ensureSenderTxHash, "ensure sender ATA");
-        const mintToSenderTxHash = await tokenFromA.write.mint_to([
-            accountA.account.address,
-            seedAmount,
-        ], { account: accountA.account });
-        await waitForSuccess(publicClient, mintToSenderTxHash, "seed sender balance");
+        const mintToSenderTxHash = await mintSpl(accountA, accountA.account, accountA.account.address, seedAmount, mintId);
+        await waitForSuccess(publicClient, mintToSenderTxHash, "seed sender balance via mint_spl");
 
         // Brand-new EVM address. NO `ensure_token_account` call for
         // this address — that's the whole point.
@@ -311,25 +346,38 @@ describe("ERC20SPLFactory integration", { concurrency: false }, function () {
         );
     });
 
-    it("auto-creates the recipient ATA on mint_to to a fresh address", async function () {
-        // Mint authority calling mint_to into a fresh address used to
-        // hit the same revert as transfer. Same fix path: mint_to now
-        // calls ensure_token_account(to) before the SPL
-        // mint_to_checked CPI.
+    // #511 behavior change: mint_to (wrapper-mediated, auto-created the
+    // recipient's ATA via ensure_token_account before the SPL CPI) is
+    // deleted. Minting now goes straight to HelperProgram — it has no
+    // wrapper method to hook an auto-create into, so a mint to a
+    // never-touched address's ATA fails until something (the wrapper's
+    // still-live ensure_token_account, a prior transfer, an inbound
+    // bridge) creates it first. This replaces the old "mint auto-creates"
+    // regression test with its mirror image: mint alone does NOT create
+    // the ATA any more; ensure_token_account still does.
+    it("mint_spl to a fresh address's un-created ATA fails; ensure_token_account first fixes it", async function () {
         const freshKey = generatePrivateKey();
         const freshAddress = privateKeyToAccount(freshKey).address;
         const mintAmt = 500n;
 
-        const mintTxHash = await tokenFromA.write.mint_to([freshAddress, mintAmt], {
+        await expectWriteToFail(
+            () => mintSpl(accountA, accountA.account, freshAddress, mintAmt, mintId),
+            publicClient,
+        );
+
+        const ensureFreshTxHash = await tokenFromA.write.ensure_token_account([freshAddress], {
             account: accountA.account,
         });
-        await waitForSuccess(publicClient, mintTxHash, "mint_to fresh recipient");
+        await waitForSuccess(publicClient, ensureFreshTxHash, "ensure fresh recipient ATA");
+
+        const mintTxHash = await mintSpl(accountA, accountA.account, freshAddress, mintAmt, mintId);
+        await waitForSuccess(publicClient, mintTxHash, "mint_spl to fresh recipient post-ensure");
 
         const balanceFresh = await tokenFromA.read.balanceOf([freshAddress]);
         assert.equal(
             balanceFresh,
             mintAmt,
-            "fresh recipient balance must equal minted amount post-ATA-create",
+            "fresh recipient balance must equal minted amount once its ATA exists",
         );
     });
 

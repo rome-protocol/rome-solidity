@@ -2,12 +2,22 @@ import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import hardhat from "hardhat";
 
-/// FB-2 regression suite for the defensive-guard arithmetic used by the
-/// SPL_ERC20 view methods `allowance` and `totalSupply`. The on-chain SPL
-/// CPI roundtrips that read the SPL Mint + TokenAccount account buffers
-/// cannot run on hardhat-network — this verifies the predicate + early-exit
-/// arithmetic via a mirror helper contract, identical in shape to FB-1's
-/// `ApproveSaturationHelper`.
+/// FB-2 regression suite for the defensive-guard arithmetic originally used
+/// by the SPL_ERC20 view methods `allowance` and `totalSupply`. The
+/// on-chain SPL CPI roundtrips that read the SPL Mint + TokenAccount
+/// account buffers cannot run on hardhat-network — this verifies the
+/// predicate + early-exit arithmetic via a mirror helper contract,
+/// identical in shape to FB-1's `ApproveSaturationHelper`.
+///
+/// #511 note: FB-2a/FB-2b/FB-2e describe the SPL-CPI delegate-comparison
+/// guard that backed `SPL_ERC20.allowance`/`.approve` before #511.
+/// `SPL_ERC20.allowance`/`.approve` are now a plain EVM mapping with no
+/// guard logic at all (see evm-allowance.test.ts) — this arithmetic now
+/// documents `SPL_ERC20_cached`'s `allowance`/`approve` instead
+/// (`erc20spl_cached.sol`, unchanged, still pre-#511 CPI-backed). FB-2c
+/// (totalSupply) and FB-2d (balanceOf, EOA case) are unaffected by #511
+/// and still describe `SPL_ERC20Base` directly — `balanceOf` gained a
+/// contract-holder branch ahead of this logic, not a change to it.
 ///
 /// The contract-level arithmetic is the new behavior we're locking in:
 ///   FB-2a: when the spender has never been registered in the wrapper's

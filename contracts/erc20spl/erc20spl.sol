@@ -87,6 +87,34 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     string private _symbol;
     ERC20Users internal _users;
 
+    // Post-#511 (default-deny at the non-EVM dispatch boundary refuses a
+    // DELEGATECALL/CALLCODE into a mutating precompile selector that isn't
+    // exempt): this wrapper can no longer move a user's SPL by borrowing
+    // the user's own authority via delegatecall. Every EOA-side movement
+    // below is a direct CALL, which signs as external_auth(address(this))
+    // — so the wrapper must be the user's SPL delegate, set once by the
+    // user's own EOA sending `approve_spl(wrapper, u64.max, mint)` to
+    // 0xff..09. `allowance`/`approve` below are the EVM-side allowance
+    // this contract tracks itself; they no longer touch that SPL-level
+    // grant at all.
+    mapping(address => mapping(address => uint256)) private _allowances;
+
+    // Contract-holder escrow (scope §6.2): a deployed pool/pool-like
+    // contract can never call `approve`, so its SPL lives in this
+    // wrapper's own ATA (owned by external_auth(address(this))) and its
+    // balance is tracked here instead of read off-chain. balanceOf
+    // dispatches on `account.code.length` to decide which of the two to
+    // read. CREATE2-counterfactual note: an address that has no code yet
+    // is treated as an EOA — SPL sent to it lands in
+    // ata(external_auth(addr)), same as any other EOA. If that address is
+    // later deployed to as a contract, those pre-deploy funds are NOT
+    // migrated into `_escrow` automatically (this contract has no way to
+    // observe a future deploy) — they join the same drain/rescue set as
+    // pre-#511 contract-held balances (§0.2's corollary, §5 PR 0). A
+    // counterfactual address that expects to receive funds after code
+    // lands should be funded post-deploy, not pre-deploy.
+    mapping(address => uint256) private _escrow;
+
     error ERC20InvalidApprover(address approver);
     error ERC20InvalidSpender(address spender);
     error ERC20InsufficientAllowance(address spender, uint256 currentAllowance, uint256 requiredAllowance);
@@ -230,6 +258,12 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     }
 
     function balanceOf(address account) public view virtual returns (uint256) {
+        // Contract-holder escrow (§6.2): a contract's SPL sits in this
+        // wrapper's own ATA, not `ata(external_auth(account))` — its
+        // balance is the ledger, not an on-chain read.
+        if (account.code.length > 0) {
+            return _escrow[account];
+        }
         // Single CrossStateEthCall via HelperProgram.user_balance. Reads
         // SPL TokenAccount.amount (u64 LE at offset 64) on the user's
         // PDA-owned ATA. Returns 0 if the ATA doesn't exist (fresh-chain
@@ -262,9 +296,32 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
         // Suppress unused-parameter warning. `user` was the SPL Token
         // authority passed explicitly in the legacy path. Post-migration
-        // the precompile derives `external_auth(msg.sender)` itself.
+        // the precompile derives the signer from context.caller itself.
         // Callers still compute `user` for the `ensure_user` mapping-side-effect.
         user;
+
+        // Post-#511, routing is by whether an endpoint HOLDS SPL under a
+        // PDA it can sign for (an EOA, via the wrapper acting as its
+        // delegate) or under this wrapper's own escrow ATA (a contract,
+        // which can never call `approve`) — not by who the caller is.
+        // `transfer` and `transferFrom` both land here identically.
+        bool fromIsContract = from.code.length > 0;
+        bool toIsContract = to.code.length > 0;
+
+        // contract -> contract: the SPL never leaves this wrapper's own
+        // ATA — a pure EVM ledger move, no CPI, no transfer-fee to net.
+        if (fromIsContract && toIsContract) {
+            uint256 fromBal = _escrow[from];
+            require(fromBal >= value, "insufficient escrow balance");
+            _escrow[from] = fromBal - value;
+            _escrow[to] += value;
+            emit Transfer(from, to, value);
+            return true;
+        }
+
+        if (fromIsContract) {
+            require(_escrow[from] >= value, "insufficient escrow balance");
+        }
 
         // A transfer-fee mint credits the destination less than was requested,
         // and the fee is capped by maximum_fee — which mint_info deliberately
@@ -274,69 +331,72 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         // a predicate, not an operand. Read on this contract's own track.
         (, , , uint16 feeBps, ) = HelperProgram.mint_info(mint_id);
         bool fee_armed = feeBps > 0;
-        uint256 before = fee_armed ? balanceOf(to) : 0;
-        // Auto-create the recipient's PDA-owned ATA on first transfer.
-        // Without this, sending an SPL_ERC20 wrapper to a fresh address
-        // reverts with "Token account does not exist" because the
-        // recipient never went through the wrapper's
-        // `ensure_token_account` flow (no inbound bridge, no prior
-        // receive). MetaMask's `eth_call` simulation surfaces the
-        // revert as a greyed-out Send button, leaving users unable to
-        // transfer their tokens. Idempotent: returns the cached /
-        // existing ATA when it's already there, costs ~0.002 SOL rent
-        // (paid by the sender / spender) when it's not. Same UX model
-        // as Phantom and every other Solana wallet.
-        bytes32 to_account = ensure_token_account(to);
+        // Measure the delivered amount off whichever ATA actually receives
+        // the SPL on-chain: this wrapper's own escrow ATA when `to` is a
+        // contract (its ledger entry isn't updated yet, so balanceOf(to)
+        // would read stale state), `to`'s own PDA-owned ATA otherwise.
+        uint256 before = fee_armed
+            ? (toIsContract ? uint256(HelperProgram.user_balance(address(this), mint_id)) : balanceOf(to))
+            : 0;
 
-        // Migration 2026-05-14 (spec: the Rome design specs
-        // 2026-05-14-rome-primitive-cu-baseline.md): switched from the
-        // legacy `SplTokenLib.transfer_checked + CpiProgram.invoke`
-        // pattern (~554K CU per call) to `HelperProgram.transfer_spl`
-        // overloads (~160K–182K CU per call). Two paths — one for the
-        // sender path where caller IS the owner of the source ATA, one
-        // for the delegate path where caller is the SPL delegate set
-        // by a prior `approve()`.
+        if (toIsContract) {
+            // Contract recipient: ensure THIS wrapper's own escrow ATA
+            // exists (a contract can't call ensure_token_account for
+            // itself in any meaningful sense — the ATA that matters here
+            // is the wrapper's, not `to`'s).
+            _ensureWrapperAta();
+        } else {
+            // Auto-create the recipient's PDA-owned ATA on first transfer.
+            // Without this, sending an SPL_ERC20 wrapper to a fresh address
+            // reverts with "Token account does not exist" because the
+            // recipient never went through the wrapper's
+            // `ensure_token_account` flow (no inbound bridge, no prior
+            // receive). MetaMask's `eth_call` simulation surfaces the
+            // revert as a greyed-out Send button, leaving users unable to
+            // transfer their tokens. Idempotent: returns the cached /
+            // existing ATA when it's already there, costs ~0.002 SOL rent
+            // (paid by the sender / spender) when it's not. Same UX model
+            // as Phantom and every other Solana wallet.
+            ensure_token_account(to);
+        }
+
         bool success;
         bytes memory result;
-        if (from == msg.sender) {
-            // SENDER PATH (`transfer(to, value)`): caller owns the
-            // source ATA. The 3-arg overload `transfer_spl(address,
-            // uint64, bytes32)` derives `src_ata = HelperProgram.ata(
-            // msg.sender, mint)` server-side — matches the canonical
-            // owner ATA. Signs as `external_auth(msg.sender)` which IS
-            // the source ATA's owner. Measured saving: −394K CU
-            // (−71%) vs legacy.
-            (success, result) = address(HelperProgram).delegatecall(
+        if (!fromIsContract) {
+            // `from` is an EOA: its SPL sits in `ata(external_auth(from))`.
+            // Post-#511 this wrapper can no longer sign as that PDA via
+            // delegatecall — it must be `from`'s SPL delegate instead (a
+            // one-time user-signed `approve_spl(wrapper, …)` to 0xff..09).
+            // Direct CALL so the precompile signs as
+            // external_auth(address(this)); the addr-keyed 4-arg overload
+            // accepts delegate-as-authority when delegated_amount ≥ value.
+            // `to` collapses to address(this) when the recipient is a
+            // contract, landing the SPL in this wrapper's own escrow ATA
+            // instead of a contract that could never approve it back out.
+            address dest = toIsContract ? address(this) : to;
+            (success, result) = address(HelperProgram).call(
+                abi.encodeWithSignature(
+                    "transfer_spl(address,address,uint64,bytes32)",
+                    from, dest, uint64(value), mint_id
+                )
+            );
+        } else {
+            // `from` is a contract holder: its SPL already sits in this
+            // wrapper's own ATA (credited on the way in, below). The
+            // 3-arg overload derives src_ata = ata(external_auth(context.
+            // caller), mint) — under direct CALL that's
+            // ata(external_auth(address(this))), the wrapper's own ATA,
+            // which the wrapper owns outright. No delegate needed.
+            (success, result) = address(HelperProgram).call(
                 abi.encodeWithSignature(
                     "transfer_spl(address,uint64,bytes32)",
                     to, uint64(value), mint_id
                 )
             );
-        } else {
-            // DELEGATE PATH (`transferFrom(from, to, v)`): caller is
-            // the SPL delegate set by a prior `approve()` (which now
-            // writes external_auth(spender) as delegate via the new
-            // approve_spl selector). Use the addr-keyed 4-arg overload
-            // — Rust internally derives src_ata = ata(external_auth(from),
-            // mint) and dst_ata = ata(external_auth(to), mint). Signs as
-            // external_auth(msg.sender) = the delegate PDA. SPL Token
-            // accepts delegate-as-authority when delegated_amount ≥ value.
-            // Replaces the prior bytes32-ATA variant (0x766b362a) —
-            // selectors are distinct; this is 0xe479df56. Eliminates
-            // Solidity-side ATA derivation via get_token_account.
-            // Reference `to_account` so the compiler doesn't warn —
-            // ensure_token_account(to) above still creates the ATA when
-            // missing; the precompile re-derives but won't create.
-            to_account;
-            (success, result) = address(HelperProgram).delegatecall(
-                abi.encodeWithSignature(
-                    "transfer_spl(address,address,uint64,bytes32)",
-                    from, to, uint64(value), mint_id
-                )
-            );
         }
 
         require (success, string(Convert.revert_msg(result)));
+
         // Self-transfer needs the other direction. Sending to yourself with an
         // armed fee debits `value` and credits `value - fee`, so the account nets
         // MINUS fee — `after - before` would underflow and revert, and ERC-20
@@ -344,73 +404,81 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         // amount in both directions.
         uint256 delivered = value;
         if (fee_armed) {
-            uint256 now_ = balanceOf(to);
+            uint256 now_ = toIsContract
+                ? uint256(HelperProgram.user_balance(address(this), mint_id))
+                : balanceOf(to);
             delivered = to == from ? value - (before - now_) : now_ - before;
         }
+
+        // Ledger side-effects mirror what actually moved on-chain: `from`
+        // loses exactly `value` (the SPL transfer-fee, if any, is taken
+        // from the destination, not the source); `to` gains exactly what
+        // was delivered — never the raw request, or the ledger sum would
+        // exceed the wrapper's real on-chain escrow-ATA balance.
+        if (fromIsContract) {
+            _escrow[from] -= value;
+        }
+        if (toIsContract) {
+            _escrow[to] += delivered;
+        }
+
         emit Transfer(from, to, delivered);
         return true;
     }
 
-    function allowance(address owner, address spender) public view virtual returns (uint256) {
-        // Single CrossStateEthCall via HelperProgram.allowance_of. Reads
-        // owner-ATA's delegated_amount IFF on-chain delegate ==
-        // external_auth(spender) (HARD REQ enforced inside Rust — see
-        // 2026-05-16 spec). Returns 0 otherwise — covers fresh user (no
-        // ATA), unapproved spender (no delegate or wrong delegate), and
-        // expired allowance. Collapses 5 v1 dispatches into 1. Projected
-        // saving: ~37K Solana CU per call.
-        uint64 delegated = HelperProgram.allowance_of(owner, spender, mint_id);
-        // Saturation sentinel: u64::MAX storage → uint256::MAX readback.
-        // Pairs with the saturation cap inside approve() so wallets that
-        // probe `if allowance == MaxUint256` (infinite-approval sentinel)
-        // keep working.
-        return delegated == type(uint64).max ? type(uint256).max : uint256(delegated);
-    }
-
-    function approve(address spender, uint256 value) public virtual returns (bool) {
-        // Register owner in ERC20Users mapping (mapping-side-effect for
-        // any consumers still reading _users). Spender registration is no
-        // longer required — allowance_of uses external_auth(spender)
-        // directly and the new approve_spl selector signs as the caller's
-        // PDA without needing the spender's mapping entry.
-        _users.ensure_user(msg.sender);
-
-        // SPL Token stores delegated_amount as u64 on-chain; we cannot
-        // expand the storage layer. Saturate when the caller's value
-        // exceeds type(uint64).max. The companion allowance() reader
-        // surfaces uint64.max storage as type(uint256).max so the
-        // standard wallet pattern `if allowance == MaxUint256` keeps
-        // working as an "infinite approval" sentinel.
-        uint64 storedAmount = value > type(uint64).max
-            ? type(uint64).max
-            : uint64(value);
-
-        // Migration to HelperProgram.approve_spl — moves SPL Approve ix
-        // marshaling from Solidity (SplTokenLib.approve + raw invoke,
-        // ~150-200K CU of EVM bytecode) into Rust (~5-10K CU). Signs
-        // as external_auth(msg.sender) which IS the owner of the source
-        // ATA. SPL Token runtime stores external_auth(spender) as the
-        // delegate; allowance_of compares against the same derivation.
+    /// @dev Ensures this wrapper's own SPL ATA exists — the escrow account
+    /// that holds every contract holder's balance (§6.2). Uses the exempt
+    /// `create_ata(address,bytes32)` selector; the ATA owner it derives is
+    /// `external_auth(address(this))`, i.e. the wrapper itself.
+    function _ensureWrapperAta() internal returns (bytes32) {
+        bytes32 wrapperAta = HelperProgram.ata(address(this), mint_id);
+        if (AccountReader.lamportsOf(wrapperAta) != 0) {
+            return wrapperAta;
+        }
         (bool success, bytes memory result) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
-                "approve_spl(address,uint64,bytes32)",
-                spender, storedAmount, mint_id
+                "create_ata(address,bytes32)",
+                address(this), mint_id
             )
         );
         require(success, string(Convert.revert_msg(result)));
+        return wrapperAta;
+    }
 
-        // Emit the effective approval — when storage saturates at u64::MAX
-        // surface as MaxUint256 so the on-chain event matches the readback
-        // from allowance().
-        uint256 emittedValue = storedAmount == type(uint64).max
-            ? type(uint256).max
-            : uint256(storedAmount);
-        emit Approval(msg.sender, spender, emittedValue);
+    function allowance(address owner, address spender) public view virtual returns (uint256) {
+        // Post-#511: `approve_spl` (the SPL-level delegate grant) can no
+        // longer be written by this wrapper on the owner's behalf — a
+        // direct CALL would sign as the wrapper, which isn't the ATA
+        // owner, so SPL Token's Approve instruction would reject it
+        // outright (Tier-1 row #3). ERC-20 allowance is now a plain EVM
+        // mapping, entirely decoupled from the SPL-level grant. No u64
+        // saturation sentinel: this is uint256 EVM storage, not u64 SPL
+        // delegated_amount storage, so there's nothing to saturate
+        // against — a wallet's `approve(spender, type(uint256).max)`
+        // stores exactly that, no remapping needed either way.
+        return _allowances[owner][spender];
+    }
+
+    function approve(address spender, uint256 value) public virtual returns (bool) {
+        if (spender == address(0)) {
+            revert ERC20InvalidSpender(address(0));
+        }
+        _allowances[msg.sender][spender] = value;
+        emit Approval(msg.sender, spender, value);
         return true;
     }
 
     function transferFrom(address from, address to, uint256 value) public virtual returns (bool) {
         address spender = msg.sender;
+        uint256 currentAllowance = _allowances[from][spender];
+        if (currentAllowance != type(uint256).max) {
+            if (currentAllowance < value) {
+                revert ERC20InsufficientAllowance(spender, currentAllowance, value);
+            }
+            unchecked {
+                _allowances[from][spender] = currentAllowance - value;
+            }
+        }
         return _transfer(_users.ensure_user(spender), from, to, value);
     }
 
@@ -509,15 +577,21 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         );
         require(ataOk, string(Convert.revert_msg(ataResult)));
 
-        // CPI 2 — SPL `transfer_checked` from caller's PDA-owned ATA
-        // to the recipient's ATA. The `bytes32 to_ata` overload is
-        // required because the recipient is a raw Solana pubkey (not
-        // an EVM address). Signs as `external_auth(msg.sender)`,
-        // matching the caller's PDA-owned source ATA.
-        (bool xferOk, bytes memory xferResult) = address(HelperProgram).delegatecall(
+        // CPI 2 — SPL `transfer_checked` from caller's PDA-owned ATA to
+        // the recipient's ATA. Post-#511 (Tier-1 row #4): the wrapper can
+        // no longer delegatecall the owner-path selector to borrow the
+        // caller's authority — direct CALL the caller-supplied-src_ata
+        // delegate overload instead, with `src_ata` explicit
+        // (`ata(external_auth(msg.sender))`) since the recipient is a raw
+        // Solana pubkey, not an EVM address the 3-arg overload could
+        // derive the source from. Signs as external_auth(address(this));
+        // the caller must already be the wrapper's delegate (same
+        // one-time approve_spl requirement as `transfer`/`transferFrom`).
+        bytes32 src_ata = HelperProgram.ata(msg.sender, mint_id);
+        (bool xferOk, bytes memory xferResult) = address(HelperProgram).call(
             abi.encodeWithSignature(
-                "transfer_spl(bytes32,uint64,bytes32)",
-                to_ata, uint64(value), mint_id
+                "transfer_spl(bytes32,bytes32,uint64,bytes32)",
+                src_ata, to_ata, uint64(value), mint_id
             )
         );
         require(xferOk, string(Convert.revert_msg(xferResult)));
@@ -602,38 +676,16 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         bytes32 ata
     );
 
-    function mint_to(address to, uint256 value) public virtual returns (bool) {
-        require(value <= type(uint64).max, "Mint amount exceeds uint64");
-
-        // Register caller (mint authority) in ERC20Users mapping for any
-        // consumers still reading _users. The new selector signs as
-        // external_auth(msg.sender) — SPL Token runtime enforces that
-        // this PDA is the on-chain mint authority.
-        _users.ensure_user(msg.sender);
-
-        // Mint to a fresh address: ensure the recipient's PDA-owned
-        // ATA exists before the SPL mint_to_checked CPI. New mint_spl
-        // selector assumes the ATA exists — same as legacy. Idempotent
-        // on repeat (lamports != 0 fast-path).
-        ensure_token_account(to);
-
-        // Migration to HelperProgram.mint_spl — moves SPL MintTo ix
-        // marshaling from Solidity (SplTokenLib.mint_to_checked + raw
-        // invoke) into Rust. Signs as external_auth(msg.sender); SPL
-        // runtime enforces caller-PDA == on-chain mint authority.
-        // Projected saving: ~150-200K CU per call (matches transfer_spl
-        // migration which measured -372K CU on Hadrian).
-        (bool success, bytes memory result) = address(HelperProgram).delegatecall(
-            abi.encodeWithSignature(
-                "mint_spl(address,uint64,bytes32)",
-                to, uint64(value), mint_id
-            )
-        );
-        require(success, string(Convert.revert_msg(result)));
-
-        emit Transfer(address(0), to, value);
-        return true;
-    }
+    // mint_to DELETED (#511 change 5 / scope §6.1): a direct CALL would
+    // sign as external_auth(address(this)), which is not the on-chain
+    // mint authority (`ERC20SPLFactory` sets it to
+    // `HelperProgram.pda(creator)` — erc20spl_factory.sol:216), and this
+    // wrapper cannot become the authority without an operator-run SPL
+    // `SetAuthority` per mint. Minting is a creator/operator act, not a
+    // user act — the creator EOA sends `mint_spl(address,uint64,bytes32)`
+    // directly to 0xff..09 instead. ABI break: `wrapper.mint_to(...)` no
+    // longer exists; callers that relied on it (faucets, test/deploy
+    // tooling) must call the precompile directly from the mint authority.
 }
 
 /// @title SPL_ERC20
