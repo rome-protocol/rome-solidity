@@ -48,6 +48,26 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         uint256 requiredAllowance
     );
 
+    // Post-#511 (default-deny at the non-EVM dispatch boundary refuses a
+    // DELEGATECALL into a mutating precompile selector that isn't exempt):
+    // this wrapper can no longer move a user's SPL by borrowing the user's
+    // own authority via delegatecall. EOA-side movement below is a direct
+    // CALL to SplCached, which signs as external_auth(address(this)) — so
+    // the wrapper must be the user's SPL delegate, set once by the user's
+    // own EOA sending `approve_spl(wrapper, u64.max, mint)` to 0xff..09.
+    // allowance/approve below are the EVM-side allowance this contract
+    // tracks itself; they no longer touch the SPL-level grant at all.
+    mapping(address => mapping(address => uint256)) private _allowances;
+
+    // Contract-holder escrow (scope §6.2): a deployed pool/pool-like
+    // contract can never call `approve`, so its SPL lives in this
+    // wrapper's own ATA and its balance is tracked here instead of read
+    // off-chain. balanceOf dispatches on `account.code.length`. Same
+    // CREATE2-counterfactual note as erc20spl.sol: an address with no code
+    // yet is treated as an EOA; funds sent to it pre-deploy are not
+    // migrated into `_escrow` if it's later deployed to.
+    mapping(address => uint256) private _escrow;
+
     constructor(
         bytes32 _mint_id,
         address _cpi_program,
@@ -118,6 +138,12 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     ///         smoke (the Rome app). Cross-ref:
     ///         rome-uniswap-v3/contracts/UniswapV3Pool.sol:486-490.
     function balanceOf(address account) public view returns (uint256) {
+        // Contract-holder escrow (§6.2): a contract's SPL sits in this
+        // wrapper's own ATA, not `ata(external_auth(account))` — its
+        // balance is the ledger, not an on-chain read.
+        if (account.code.length > 0) {
+            return _escrow[account];
+        }
         try SplCached.account(account, mint_id) returns (ISplCached.Account memory acc) {
             return uint256(acc.amount);
         } catch {
@@ -125,23 +151,27 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         }
     }
 
-    /// @notice ERC-20: allowance returns 0 (not revert) for any (owner, spender).
-    ///         Same overlay-aware pattern as `balanceOf` — try/catch on
-    ///         `SplCached.account` instead of a legacy lamports probe.
-    ///         Reason: a protocol that calls `approve` then reads
-    ///         `allowance` within the same tx would see stale (0) data
-    ///         from the legacy probe, since `SplCached.approve` writes
-    ///         to overlay but the legacy lamports read is on-chain-only.
-    ///         Saturates uint64::max → uint256::max for wallet "infinite approval".
+    /// @notice ERC-20 allowance, post-#511: a plain EVM mapping, entirely
+    ///         decoupled from the SPL-level delegate grant (see
+    ///         `isEnabled`). A direct CALL from this wrapper can no longer
+    ///         write the owner's SPL-level Approve — SPL Token would
+    ///         reject it outright (the wrapper isn't the ATA owner).
     function allowance(address owner, address spender) external view returns (uint256) {
-        try SplCached.account(owner, mint_id) returns (ISplCached.Account memory acc) {
-            bytes32 spenderPda = HelperProgram.pda(spender);
-            if (acc.delegate != spenderPda) return 0;
-            return acc.delegated_amount == type(uint64).max
-                ? type(uint256).max
-                : uint256(acc.delegated_amount);
+        return _allowances[owner][spender];
+    }
+
+    /// @notice Whether `user` has sent the one-time SPL-level delegate
+    ///         grant (`approve_spl(wrapper, …, mint)` direct to 0xff..09)
+    ///         this wrapper needs to move their SPL at all. Reads via the
+    ///         cached-track `SplCached.account` (overlay-aware, stays on
+    ///         this contract's track) rather than the legacy
+    ///         `HelperProgram.allowance_of` — mixing tracks in one
+    ///         contract is the one-track rule this file must not break.
+    function isEnabled(address user) public view returns (bool) {
+        try SplCached.account(user, mint_id) returns (ISplCached.Account memory acc) {
+            return acc.delegate == HelperProgram.pda(address(this)) && acc.delegated_amount > 0;
         } catch {
-            return 0;
+            return false;
         }
     }
 
@@ -198,57 +228,134 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     }
 
     function transferFrom(address from, address to, uint256 value) external returns (bool) {
+        address spender = msg.sender;
+        uint256 currentAllowance = _allowances[from][spender];
+        if (currentAllowance != type(uint256).max) {
+            if (currentAllowance < value) {
+                revert ERC20InsufficientAllowance(spender, currentAllowance, value);
+            }
+            unchecked {
+                _allowances[from][spender] = currentAllowance - value;
+            }
+        }
         return _transfer(from, to, value);
     }
 
-    /// @notice Internal transfer dispatcher — selects sender path or
-    ///         delegate path based on `from == msg.sender`. Both paths
-    ///         go through SplCached, locking the tx to the cache track.
+    /// @dev Ensures this wrapper's own SPL ATA exists — the escrow account
+    /// that holds every contract holder's balance (§6.2). Per the one-track
+    /// rule the create must stay AssociatedSplCached, not the Helper form.
+    /// Overlay-aware existence check (SplCached.account), same pattern as
+    /// ensure_token_account/approve above.
+    function _ensureWrapperAta() internal returns (bytes32) {
+        bytes32 wrapperAta = HelperProgram.ata(address(this), mint_id);
+        try SplCached.account(address(this), mint_id) returns (ISplCached.Account memory) {
+            return wrapperAta;
+        } catch {
+            (bool ok, bytes memory result) = address(AssociatedSplCached).delegatecall(
+                abi.encodeWithSignature("create_ata(address,bytes32)", address(this), mint_id)
+            );
+            require(ok, string(Convert.revert_msg(result)));
+            return wrapperAta;
+        }
+    }
+
+    /// @dev Direct on-chain read of the wrapper's own ATA. Bypasses
+    /// `balanceOf`'s contract branch, which would return
+    /// `_escrow[address(this)]` — the wrong number for measuring what the
+    /// escrow ATA itself actually received.
+    function _wrapperOnChainBalance() internal view returns (uint256) {
+        try SplCached.account(address(this), mint_id) returns (ISplCached.Account memory acc) {
+            return uint256(acc.amount);
+        } catch {
+            return 0;
+        }
+    }
+
+    /// @notice Internal transfer dispatcher. Post-#511, routing is by
+    ///         whether an endpoint HOLDS SPL under a PDA it can sign for
+    ///         (an EOA, via the wrapper acting as its delegate) or under
+    ///         this wrapper's own escrow ATA (a contract, which can never
+    ///         call `approve`) — not by who the caller is (mirrors
+    ///         erc20spl.sol §4.1's `_transfer`). transfer/transferFrom
+    ///         both land here identically.
     function _transfer(address from, address to, uint256 value) internal returns (bool) {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
         _users.ensure_user(msg.sender);
 
+        bool fromIsContract = from.code.length > 0;
+        bool toIsContract = to.code.length > 0;
+
+        // contract -> contract: the SPL never leaves this wrapper's own
+        // ATA — a pure EVM ledger move, no CPI, no transfer-fee to net.
+        if (fromIsContract && toIsContract) {
+            uint256 fromBal = _escrow[from];
+            require(fromBal >= value, "insufficient escrow balance");
+            _escrow[from] = fromBal - value;
+            _escrow[to] += value;
+            emit Transfer(from, to, value);
+            return true;
+        }
+
+        if (fromIsContract) {
+            require(_escrow[from] >= value, "insufficient escrow balance");
+        }
+
         // Read the destination before the transfer only when a fee is armed;
         // an unarmed or absent fee credits exactly `value`, so the common path
-        // pays nothing for this.
+        // pays nothing for this. Measured off whichever ATA actually receives
+        // the SPL on-chain: the wrapper's own escrow ATA when `to` is a
+        // contract, `to`'s own PDA-owned ATA otherwise.
         (, , , uint16 feeBps, ) = SplCached.mint_info(mint_id);
         bool fee_armed = feeBps > 0;
-        uint256 before = fee_armed ? balanceOf(to) : 0;
-        // Gate recipient ATA-create on existence (mirror approve #216): on the
-        // common transfer-to-existing-holder path, skip the idempotent
-        // AssociatedSplCached.create_ata round-trip. Overlay-aware via
-        // try SplCached.account so an ATA created earlier this tx counts.
-        try SplCached.account(to, mint_id) returns (ISplCached.Account memory) {
-            // recipient ATA exists (overlay or on-chain) — skip create
-        } catch {
-            ensure_token_account(to);
+        uint256 before = fee_armed
+            ? (toIsContract ? _wrapperOnChainBalance() : balanceOf(to))
+            : 0;
+
+        if (toIsContract) {
+            // Contract recipient: ensure THIS wrapper's own escrow ATA
+            // exists — the ATA that matters here is the wrapper's, not
+            // `to`'s.
+            _ensureWrapperAta();
+        } else {
+            // Gate recipient ATA-create on existence: on the common
+            // transfer-to-existing-holder path, skip the idempotent
+            // AssociatedSplCached.create_ata round-trip. Overlay-aware via
+            // try SplCached.account so an ATA created earlier this tx counts.
+            try SplCached.account(to, mint_id) returns (ISplCached.Account memory) {
+                // recipient ATA exists (overlay or on-chain) — skip create
+            } catch {
+                ensure_token_account(to);
+            }
         }
 
         bool ok;
         bytes memory result;
-        if (from == msg.sender) {
-            // Sender path — caller-PDA owns the source ATA. Cache
-            // SplCached.transfer(address,uint256,bytes32) at 0x57cfeeee.
-            (ok, result) = address(SplCached).delegatecall(
+        if (!fromIsContract) {
+            // `from` is an EOA: its SPL sits in `ata(external_auth(from))`.
+            // Post-#511 this wrapper can no longer sign as that PDA via
+            // delegatecall — it must be `from`'s SPL delegate instead (a
+            // one-time user-signed `approve_spl(wrapper, …)` to 0xff..09).
+            // Direct CALL so SplCached signs as external_auth(address(this)).
+            // `to` collapses to address(this) when the recipient is a
+            // contract, landing the SPL in this wrapper's own escrow ATA
+            // instead of a contract that could never approve it back out.
+            address dest = toIsContract ? address(this) : to;
+            (ok, result) = address(SplCached).call(
                 abi.encodeWithSignature(
-                    "transfer(address,uint256,bytes32)",
-                    to,
-                    value,
-                    mint_id
+                    "transferFrom(address,address,uint256,bytes32)",
+                    from, dest, value, mint_id
                 )
             );
         } else {
-            // Delegate path — caller-PDA is the SPL delegate set by a
-            // prior approve(). Cache SplCached.transferFrom at
-            // 0x401e3367. SPL Token accepts PDA as ATA owner OR
-            // delegated-amount delegate.
-            (ok, result) = address(SplCached).delegatecall(
+            // `from` is a contract holder: its SPL already sits in this
+            // wrapper's own ATA (credited on the way in). `transfer`
+            // derives from_ata = ata(external_auth(context.caller)) —
+            // under direct CALL that's the wrapper's own ATA, which it
+            // owns outright. No delegate needed.
+            (ok, result) = address(SplCached).call(
                 abi.encodeWithSignature(
-                    "transferFrom(address,address,uint256,bytes32)",
-                    from,
-                    to,
-                    value,
-                    mint_id
+                    "transfer(address,uint256,bytes32)",
+                    to, value, mint_id
                 )
             );
         }
@@ -267,75 +374,42 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         // amount in both directions.
         uint256 delivered = value;
         if (fee_armed) {
-            uint256 now_ = balanceOf(to);
+            uint256 now_ = toIsContract ? _wrapperOnChainBalance() : balanceOf(to);
             delivered = to == from ? value - (before - now_) : now_ - before;
         }
+
+        // Ledger side-effects mirror what actually moved on-chain.
+        if (fromIsContract) {
+            _escrow[from] -= value;
+        }
+        if (toIsContract) {
+            _escrow[to] += delivered;
+        }
+
         emit Transfer(from, to, delivered);
         return true;
     }
 
-    /// @notice ERC-20: approve succeeds for any caller regardless of balance.
-    ///         SPL approve_checked writes the delegate fields on the owner ATA,
-    ///         so the ATA must exist. Auto-create if missing; the existence
-    ///         probe uses overlay-aware `SplCached.account` (try/catch) so
-    ///         repeated approves in the same tx skip the redundant
-    ///         ensure_token_account call. The previous legacy
-    ///         `AccountReader.lamportsOf` probe read on-chain only — it
-    ///         saw stale lamports for an ATA that was created earlier in
-    ///         the same tx (overlay), so it would fire the idempotent
-    ///         AssociatedSplCached.create_ata CPI every time → ~30K CU
-    ///         per redundant call.
-    ///         Saturates uint64::max → uint256::max for wallet "infinite approval".
+    /// @notice ERC-20 approve, post-#511: pure EVM storage, no SPL CPI at
+    ///         all. The SPL-level grant this used to also write is now the
+    ///         user's own one-time `approve_spl(wrapper, u64.max, mint)`
+    ///         direct to 0xff..09, entirely decoupled (see `isEnabled`).
+    ///         No u64 saturation sentinel: this is uint256 EVM storage,
+    ///         not u64 SPL delegated_amount storage, so there's nothing to
+    ///         saturate against.
     function approve(address spender, uint256 value) external returns (bool) {
-        _users.ensure_user(msg.sender);
-        try SplCached.account(msg.sender, mint_id) returns (ISplCached.Account memory) {
-            // ATA exists in cache (overlay or on-chain) — skip create.
-        } catch {
-            ensure_token_account(msg.sender);
+        if (spender == address(0)) {
+            revert ERC20InvalidSpender(address(0));
         }
-        uint64 storedAmount = value > type(uint64).max
-            ? type(uint64).max
-            : uint64(value);
-        (bool ok, bytes memory result) = address(SplCached).delegatecall(
-            abi.encodeWithSignature(
-                "approve(address,uint256,bytes32)",
-                spender,
-                storedAmount,
-                mint_id
-            )
-        );
-        require(ok, string(Convert.revert_msg(result)));
-        uint256 emittedValue = storedAmount == type(uint64).max
-            ? type(uint256).max
-            : uint256(storedAmount);
-        emit Approval(msg.sender, spender, emittedValue);
+        _allowances[msg.sender][spender] = value;
+        emit Approval(msg.sender, spender, value);
         return true;
     }
 
-    /// @notice Caller-PDA signs as the on-chain mint authority. SPL
-    ///         Token runtime enforces caller-PDA == mint authority.
-    ///         Recipient ATA auto-created via ensure_token_account.
-    function mint_to(address to, uint256 value) external returns (bool) {
-        require(value <= type(uint64).max, "Mint amount exceeds uint64");
-        _users.ensure_user(msg.sender);
-        // Mirror _transfer's overlay-aware ATA gate. Minting to an existing
-        // holder should not spend an idempotent create-ATA invoke; an ATA
-        // created earlier in this cached transaction is visible here too.
-        try SplCached.account(to, mint_id) returns (ISplCached.Account memory) {
-            // Recipient ATA already exists in the cache/on-chain state.
-        } catch {
-            ensure_token_account(to);
-        }
-        (bool ok, bytes memory result) = address(SplCached).delegatecall(
-            abi.encodeWithSignature(
-                "mint(address,uint256,bytes32)",
-                to,
-                value,
-                mint_id
-            )
-        );
-        require(ok, string(Convert.revert_msg(result)));
-        emit Transfer(address(0), to, value);
-        return true;
-    }
+    // mint_to DELETED (#511 change 5 / scope §6.1, cached track): a direct
+    // CALL to SplCached.mint would sign as external_auth(address(this)),
+    // which is not the on-chain mint authority. Minting is a creator/
+    // operator act, not a user act — the creator EOA calls
+    // SplCached.mint(address,uint256,bytes32) directly instead. ABI break:
+    // `wrapper.mint_to(...)` no longer exists.
 }

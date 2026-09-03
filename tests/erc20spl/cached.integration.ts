@@ -12,13 +12,19 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 //     `npx hardhat run scripts/erc20spl/deploy_cached.ts --network hadrian`
 //     with WRAPPER_MINT_ID env var set to the test mint)
 //   - The test wallet must be the on-chain mint authority for the test
-//     mint (so `mint_to` calls can be exercised). Create one via the
-//     existing factory's create_token_mint flow before this suite runs.
+//     mint (so direct `SplCached.mint` calls can be exercised). Create one
+//     via the existing factory's create_token_mint flow before this suite
+//     runs.
+//
+// POST-#511: the wrapper no longer exposes `mint_to` (scope §6.1) — a
+// direct CALL would sign as the wrapper's own PDA, which is never the
+// on-chain mint authority. Minting goes straight to the SplCached
+// precompile (0xff..05) from the authority EOA; see `mintSpl` below.
 //
 // SCOPE:
 //   - Constructor: name + symbol + decimals match init values
 //   - Views: totalSupply / balanceOf / allowance / get_token_account
-//   - Mutations: mint_to / transfer / approve / transferFrom
+//   - Mutations: mint (direct precompile) / transfer / approve / transferFrom
 //   - Saturation: approve(MaxUint256) round-trips as MaxUint256 in
 //     allowance() readback
 //   - ATA lifecycle: ensure_token_account + create_token_account
@@ -57,6 +63,24 @@ describe("SPL_ERC20_cached — behavioral integration", () => {
         }
         wrapperAddress = envAddr as `0x${string}`;
     });
+
+    // Post-#511: the wrapper has no `mint_to` — mint straight to the
+    // SplCached precompile from the authority EOA (test wallet must be
+    // the on-chain mint authority for `mint_id`).
+    async function mintSpl(to: `0x${string}`, amount: bigint) {
+        const mintId = await publicClient.readContract({
+            address: wrapperAddress,
+            abi: mintIdAbi,
+            functionName: "mint_id",
+        });
+        const txHash = await walletClient.writeContract({
+            address: SPL_CACHED_ADDRESS,
+            abi: splCachedMintAbi,
+            functionName: "mint",
+            args: [to, amount, mintId],
+        });
+        await publicClient.waitForTransactionReceipt({ hash: txHash });
+    }
 
     it("returns the constructor-passed name", async () => {
         const name = await publicClient.readContract({
@@ -140,7 +164,7 @@ describe("SPL_ERC20_cached — behavioral integration", () => {
         );
     });
 
-    it("mint_to credits recipient (test wallet must be the mint authority)", async () => {
+    it("SplCached.mint (direct precompile, test wallet must be the mint authority) credits recipient", async () => {
         const recipient = privateKeyToAccount(generatePrivateKey()).address;
         const amount = 1_000_000n; // assumes 6-decimal mint
 
@@ -151,13 +175,7 @@ describe("SPL_ERC20_cached — behavioral integration", () => {
             args: [recipient],
         });
 
-        const txHash = await walletClient.writeContract({
-            address: wrapperAddress,
-            abi: mintToAbi,
-            functionName: "mint_to",
-            args: [recipient, amount],
-        });
-        await publicClient.waitForTransactionReceipt({ hash: txHash });
+        await mintSpl(recipient, amount);
 
         const balAfter = await publicClient.readContract({
             address: wrapperAddress,
@@ -173,13 +191,7 @@ describe("SPL_ERC20_cached — behavioral integration", () => {
         const amount = 100_000n;
 
         // Pre-mint to sender so it has balance to send
-        const mintHash = await walletClient.writeContract({
-            address: wrapperAddress,
-            abi: mintToAbi,
-            functionName: "mint_to",
-            args: [senderAddress, amount],
-        });
-        await publicClient.waitForTransactionReceipt({ hash: mintHash });
+        await mintSpl(senderAddress, amount);
 
         const senderBefore = await publicClient.readContract({
             address: wrapperAddress,
@@ -218,7 +230,7 @@ describe("SPL_ERC20_cached — behavioral integration", () => {
         assert.equal(recipAfter - recipBefore, amount);
     });
 
-    it("approve(MaxUint256) saturates uint64 storage + reads back as MaxUint256", async () => {
+    it("approve(MaxUint256) round-trips exactly — post-#511 allowance is plain uint256 EVM storage, no u64 sentinel", async () => {
         const spender = privateKeyToAccount(generatePrivateKey()).address;
         const max = (1n << 256n) - 1n;
 
@@ -298,10 +310,22 @@ const getTokenAccountAbi = [{
     stateMutability: "view",
 }] as const;
 
-const mintToAbi = [{
-    name: "mint_to",
+const mintIdAbi = [{
+    name: "mint_id",
     type: "function",
-    inputs: [{ type: "address" }, { type: "uint256" }],
+    inputs: [],
+    outputs: [{ type: "bytes32" }],
+    stateMutability: "view",
+}] as const;
+
+// SplCached precompile (0xff..05) — post-#511, minting bypasses the
+// wrapper entirely (scope §6.1: no ERC20SPL_cached.mint_to).
+const SPL_CACHED_ADDRESS = "0xff00000000000000000000000000000000000005" as const;
+
+const splCachedMintAbi = [{
+    name: "mint",
+    type: "function",
+    inputs: [{ type: "address" }, { type: "uint256" }, { type: "bytes32" }],
     outputs: [{ type: "bool" }],
     stateMutability: "nonpayable",
 }] as const;

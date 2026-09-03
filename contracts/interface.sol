@@ -124,8 +124,9 @@ interface ISplCached {
     // delegate = external_auth(spender). Shipped in a Rome EVM program upgrade.
     function approve(address spender, uint256 amount, bytes32 mint) external;
     // 0x1e458bee — caller-PDA signs as the mint authority (SPL runtime
-    // enforces match). Consumed by SPL_ERC20_cached.mint_to + inbound bridge
-    // settle. Shipped in a Rome EVM program upgrade.
+    // enforces match). Consumed by inbound bridge settle; SPL_ERC20_cached's
+    // own mint_to was deleted post-#511 (creator mints directly). Shipped
+    // in a Rome EVM program upgrade.
     function mint(address to, uint256 amount, bytes32 mint) external;
     // 0x0b0ad508 — ata, mint, owner
     function init(bytes32 ata, bytes32 mint, bytes32 owner) external;
