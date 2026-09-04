@@ -210,10 +210,15 @@ Each tx now fits the budget. This is also the standard ERC-20 bridge pattern (ap
 
 **Why.** Every mutating call now signs as the bridge's own Rome PDA/ATA instead of borrowing the caller's, so that PDA has ops requirements a delegatecalling contract never had:
 
-- **The bridge's own ATA must exist, per mint, before its first burn.** `transfer_spl_from_ata` has no create leg — call `ensureBridgeAta(mint)` once per mint at deploy time (mirrors `ensureRecipientAta`, same exempt selector).
+- **The bridge's own ATA must exist, per mint, before its first burn.** `transfer_spl_from_ata` has no create leg — call `ensureBridgeAta(mint)` once per mint at deploy time (owner-only; a direct CALL, not the `ensureRecipientAta` exempt-selector delegatecall — see its NatSpec).
 - **The bridge PDA itself must be created**, not just funded — `create_pda(address)` is the exempt call for this; a funded-but-uninitialized PDA cannot sign.
 - **It must hold enough SOL to front CCTP/Wormhole per-tx rent** (~13M lamports/burn for `messageSentEventData`, recouped in gas) on every chain where the bridge is live. Per the ratified funding decision: size the float against expected outbound volume, not per-tx — it's a drain, not a revolving balance, since Wormhole's rent isn't reclaimable and this contract doesn't call CCTP's `reclaimEventAccount` either (rent-reclaim tooling is a possible follow-up, not shipped). Monitor with a floor and fail closed (reject at quote time) when the PDA is under it — never mid-burn.
 - **The pull-delegate precondition changed what the paymaster can sponsor.** `approve_spl(bridge, …)` targets `0xff..09` directly, not the bridge, so the paymaster's `(target, selector)` allowlist cannot cover it — see step 4 below.
+
+### 11. Other consequences of the bridge becoming the on-chain owner
+
+- **CCTP's per-user denylist now screens the bridge PDA, not the sender.** `denylist_account` is keyed on `owner` (`["denylist_account", owner]`), and `owner` is now the bridge on every burn — mechanically required, since the bridge is the true SPL owner post-pull. Denylisting the bridge PDA halts every user on this rail at once; Circle's per-user denylist no longer reaches the actual sender.
+- **Same-user concurrent burns are mutually exclusive, not a regression.** `burnNonce[user]` can move between emulation and execution if a second burn from the same user is in flight, stranding the first one's emulated message-PDA plan. Master's salt already keyed on the same nonce; this is per-user, not a cross-user DoS.
 
 ---
 

@@ -52,10 +52,8 @@ contract WrappedGasFacade {
 
     /// @notice Idempotent one-time bootstrap: create the facade's gas-mint ATA.
     ///         Run once after deploy, before the first `deposit()` or `withdraw()`.
-    ///         The wrap precompile's internal auto-create path cannot be relied on
-    ///         (unsupported in emulation), and `withdraw()`'s pull leg needs the
-    ///         destination ATA to already exist — explicit creation makes the
-    ///         facade order-independent.
+    ///         `withdraw()`'s pull leg (`SplCached.transferFrom`) has no create
+    ///         leg for its destination — the facade's own ATA must already exist.
     function ensureAta() external {
         AssociatedSplCached.create_ata();
     }

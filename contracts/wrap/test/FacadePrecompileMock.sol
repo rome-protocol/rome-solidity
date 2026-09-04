@@ -15,19 +15,25 @@ interface ITxTrack {
 contract TxTrackMock {
     error OneTrackViolation();
     bool public foundCpi;
+    bool public foundCached;
 
+    /// Mirrors `verify_call`: a legacy CPI dispatch after a cached dispatch
+    /// already ran in this transaction is refused.
     function markCpi() external {
+        if (foundCached) revert OneTrackViolation();
         foundCpi = true;
     }
 
     /// Mirrors `verify_call`: a cached-track dispatch after a legacy CPI
     /// already ran in this transaction is refused.
-    function markCached() external view {
+    function markCached() external {
         if (foundCpi) revert OneTrackViolation();
+        foundCached = true;
     }
 
     function reset() external {
         foundCpi = false;
+        foundCached = false;
     }
 }
 

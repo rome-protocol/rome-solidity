@@ -25,10 +25,12 @@
  *     AssociatedSplCached/HelperProgram/SystemProgram addresses, and assert the
  *     precompile sees the FACADE as `msg.sender` (proof of a direct CALL) with
  *     the right ATA/amount at each site.
- *   - one-track: `TxTrackMock` reproduces `verify_call`'s rule (a cached
- *     dispatch after a legacy CPI in the same tx is refused) across every
- *     install, so mixing tracks in `withdraw()` fails here exactly as it
- *     would on-chain.
+ *   - one-track: `TxTrackMock` reproduces `verify_call`'s rule symmetrically
+ *     (a cached dispatch after a legacy CPI is refused, and vice versa)
+ *     across every install; exercised directly against the fixture below.
+ *     `withdraw()`'s own setup also grants the legacy-path authorizer, so a
+ *     mixed-track regression there reaches `OneTrackViolation` instead of
+ *     dying on the mock's own ownership check first.
  */
 
 import { describe, it, before, beforeEach } from "node:test";
@@ -143,6 +145,14 @@ describe("WrappedGasFacade — direct-call migration", () => {
       wrapperMock = await viem.deployContract("MockSplErc20", [mintId]);
       await wrapperMock.write.setDecimals([DECIMALS]);
       facade = await viem.deployContract("WrappedGasFacade", [wrapperMock.address]);
+
+      // Also grant the legacy-path (HelperProgram.transfer_spl) authorizer for
+      // the caller's ATA. Inert against the committed contract — withdraw()
+      // never calls it — but it means a mixed-track regression in withdraw()
+      // reaches the one-track guard instead of dying on the mock's own
+      // "neither owner nor delegate" require first.
+      const userAta = await helper.read.ata([userWallet.account.address, mintId]);
+      await helper.write.setAuthorized([userAta, facade.address, true]);
     });
 
     it("constructor pins weiPerToken from the wrapper's decimals against the chain's gas mint", async function () {
@@ -206,7 +216,7 @@ describe("WrappedGasFacade — direct-call migration", () => {
       assert.equal(events.length, 1);
       assert.equal(events[0].args.wad, wad);
 
-      const gasPaid = receipt.gasUsed * receipt.effectiveGasPrice;
+      const gasPaid = receipt.gasUsed * BigInt(receipt.effectiveGasPrice);
       const nativeAfter = await pc.getBalance({ address: user });
       assert.equal(nativeBefore - nativeAfter, wad + gasPaid, "only whole-token wei + gas leaves the wallet");
     });
@@ -243,7 +253,7 @@ describe("WrappedGasFacade — direct-call migration", () => {
       assert.equal((await withdrawCached.read.lastDepositCaller()).toLowerCase(), facade.address.toLowerCase());
       assert.equal(await withdrawCached.read.lastDepositWei(), wad);
 
-      const gasPaid = receipt.gasUsed * receipt.effectiveGasPrice;
+      const gasPaid = receipt.gasUsed * BigInt(receipt.effectiveGasPrice);
       const nativeAfter = await pc.getBalance({ address: user });
       assert.equal(nativeAfter - nativeBefore, wad - gasPaid, "native credited minus gas");
 
@@ -269,6 +279,80 @@ describe("WrappedGasFacade — direct-call migration", () => {
       await assert.rejects(
         facade.write.withdraw([WEI_PER_TOKEN + 1n], { account: userWallet.account }),
         /Granularity/
+      );
+    });
+
+  });
+
+  describe("one-track guard — direct against TxTrackMock", () => {
+    // Exercises the guard `WrappedGasFacade` relies on directly, independent
+    // of the facade's own call sequencing, so the mechanism itself is proven
+    // to bite in both directions (mirrors `handler_non_evm.rs`'s symmetric
+    // `verify_call`: a legacy CPI after a cached dispatch is refused, and a
+    // cached dispatch after a legacy CPI is refused).
+    let viem: any;
+    let conn: any;
+    let helper: any;
+    let withdrawCached: any;
+    let txTrack: any;
+    let mintId: `0x${string}`;
+    let caller: any;
+
+    before(async function () {
+      conn = await hardhat.network.connect();
+      viem = conn.viem;
+
+      const mockProto = await viem.deployContract("FacadePrecompileMock");
+      const client = await viem.getPublicClient();
+      const code = await client.getCode({ address: mockProto.address });
+      for (const addr of [HELPER_PROGRAM_ADDRESS, WITHDRAW_CACHED_ADDRESS]) {
+        await conn.provider.request({ method: "hardhat_setCode", params: [addr, code] });
+      }
+      await conn.provider.request({
+        method: "hardhat_setBalance",
+        params: [WITHDRAW_CACHED_ADDRESS, "0x21e19e0c9bab2400000"],
+      });
+
+      helper = await viem.getContractAt("FacadePrecompileMock", HELPER_PROGRAM_ADDRESS);
+      withdrawCached = await viem.getContractAt("FacadePrecompileMock", WITHDRAW_CACHED_ADDRESS);
+      mintId = await withdrawCached.read.GAS_MINT();
+
+      txTrack = await viem.deployContract("TxTrackMock");
+      await helper.write.setTxTrack([txTrack.address]);
+      await withdrawCached.write.setTxTrack([txTrack.address]);
+
+      const wallets = await viem.getWalletClients();
+      caller = wallets[1];
+    });
+
+    beforeEach(async function () {
+      await helper.write.reset();
+      await withdrawCached.write.reset();
+      await txTrack.write.reset();
+    });
+
+    it("a legacy CPI (transfer_spl) followed by a cached dispatch (WithdrawCached.deposit) reverts with OneTrackViolation", async function () {
+      const fromAta = ("0x" + "11".repeat(32)) as `0x${string}`;
+      await helper.write.setAuthorized([fromAta, caller.account.address, true]);
+      await helper.write.transfer_spl([fromAta, fromAta, 1n, mintId], { account: caller.account });
+      assert.equal(await txTrack.read.foundCpi(), true);
+
+      await assert.rejects(
+        withdrawCached.write.deposit([1n], { account: caller.account }),
+        /OneTrackViolation/
+      );
+    });
+
+    it("a cached dispatch (WithdrawCached.deposit) followed by a legacy CPI (transfer_spl) reverts with OneTrackViolation", async function () {
+      const fromAta = ("0x" + "22".repeat(32)) as `0x${string}`;
+      await helper.write.setAuthorized([fromAta, caller.account.address, true]);
+
+      await withdrawCached.write.deposit([1n], { account: caller.account });
+      assert.equal(await txTrack.read.foundCached(), true);
+
+      await assert.rejects(
+        helper.write.transfer_spl([fromAta, fromAta, 1n, mintId], { account: caller.account }),
+        /OneTrackViolation/
       );
     });
   });

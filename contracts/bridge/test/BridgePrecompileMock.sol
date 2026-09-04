@@ -97,6 +97,18 @@ contract BridgePrecompileMock {
         approveCount += 1;
     }
 
+    /// create_ata_for_key(bytes32,bytes32) — 0xd258a69d, the exempt
+    /// delegatecall selector `ensureRecipientAta`/`ensureBridgeAta` use.
+    /// Emits rather than records to storage: under delegatecall the emitting
+    /// address is the CALLER (the bridge), so the event lands in the
+    /// caller's own receipt logs with its arguments intact and assertable —
+    /// storage writes here would instead land in the bridge's own slots.
+    event CreateAtaForKey(bytes32 wallet, bytes32 mint);
+
+    function create_ata_for_key(bytes32 wallet, bytes32 mint) external {
+        emit CreateAtaForKey(wallet, mint);
+    }
+
     /// Fixed legacy-SPL-Token, 6-decimal, no-hook, no-fee mint — enough for
     /// `UserPda.ataForKey`'s pure-Solidity ATA derivation.
     function mint_info(bytes32)

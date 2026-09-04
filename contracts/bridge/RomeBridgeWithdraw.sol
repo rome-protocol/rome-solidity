@@ -947,13 +947,22 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         if (!ok) revert CpiFailed(result);
     }
 
-    /// @notice Idempotently create the bridge's own ATA for `mint`.
+    /// @notice Idempotently create the bridge's own ATA for `mint`. Owner-only
+    ///         deploy-time bootstrap — no caller-side purpose, and unlike
+    ///         `ensureRecipientAta` it spends the OPERATOR's rent
+    ///         (`create_ata_for_key` pays from `state.signer()`), so it must
+    ///         not be callable by anyone for an arbitrary mint.
     ///         `transfer_spl_from_ata` has no create leg — every mint the
     ///         bridge egresses needs this run once (deploy-time, per mint)
     ///         before its first burn.
+    /// @dev Direct CALL, not delegatecall: `create_ata_for_key` ignores
+    ///      `context.caller` (owner is the explicit arg, payer is the
+    ///      precompile's own signer, seeds empty), so a direct CALL is
+    ///      behaviourally identical here and passes the gate on
+    ///      `owner_authenticated()` rather than the delegatecall exemption list.
     /// @param mint The wrapper's underlying SPL mint.
-    function ensureBridgeAta(bytes32 mint) external {
-        (bool ok, bytes memory result) = address(HelperProgram).delegatecall(
+    function ensureBridgeAta(bytes32 mint) external onlyOwner {
+        (bool ok, bytes memory result) = address(HelperProgram).call(
             abi.encodeWithSignature(
                 "create_ata_for_key(bytes32,bytes32)",
                 RomeEVMAccount.pda(address(this)),

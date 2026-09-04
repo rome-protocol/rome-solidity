@@ -150,9 +150,14 @@ describe("RomeBridgeWithdraw — direct-call migration", () => {
       assert.ok(body.includes('"create_ata_for_key(bytes32,bytes32)"'));
     });
 
-    it("ensureBridgeAta primes the bridge's own ATA via the same exempt selector, targeting the bridge's own PDA", () => {
+    it("ensureBridgeAta is owner-gated and a direct CALL (not delegatecall, not the exemption list), targeting the bridge's own PDA", () => {
+      const fnStart = src.indexOf("function ensureBridgeAta(");
+      assert.ok(fnStart >= 0, "ensureBridgeAta not found");
+      const signatureEnd = src.indexOf("{", fnStart);
+      assert.ok(src.slice(fnStart, signatureEnd).includes("onlyOwner"), "must be onlyOwner");
       const body = bodyOf("function ensureBridgeAta(");
-      assert.ok(body.includes("address(HelperProgram).delegatecall("));
+      assert.ok(body.includes("address(HelperProgram).call("));
+      assert.ok(!body.includes(".delegatecall("));
       assert.ok(body.includes('"create_ata_for_key(bytes32,bytes32)"'));
       assert.ok(body.includes("RomeEVMAccount.pda(address(this))"));
     });
@@ -241,6 +246,53 @@ describe("RomeBridgeWithdraw — direct-call migration", () => {
         }
       );
       assert.equal(await helper.read.transferCount(), 0n);
+    });
+
+    it("ensureBridgeAta reverts NotOwner for a non-owner caller, before ever reaching the precompile", async function () {
+      await assert.rejects(
+        bridge.write.ensureBridgeAta([PK(40)], { account: userWallet.account }),
+        /NotOwner/
+      );
+    });
+
+    it("ensureBridgeAta delegatecalls create_ata_for_key targeting the bridge's own PDA, not an arbitrary wallet", async function () {
+      const wallets = await viem.getWalletClients();
+      const ownerWallet = wallets[0];
+      const pc = await viem.getPublicClient();
+      const mint = PK(40);
+
+      const txHash = await bridge.write.ensureBridgeAta([mint], { account: ownerWallet.account });
+      const receipt = await pc.waitForTransactionReceipt({ hash: txHash });
+
+      const mockAbi = (await hardhat.artifacts.readArtifact("BridgePrecompileMock")).abi;
+      const { parseEventLogs } = await import("viem");
+      const events = parseEventLogs({ abi: mockAbi, logs: receipt.logs, eventName: "CreateAtaForKey" });
+      assert.equal(events.length, 1);
+      const bridgePda = await helper.read.pda([bridge.address]);
+      assert.equal(events[0].args.wallet, bridgePda, "must target the bridge's own PDA, not an arbitrary wallet");
+      assert.equal(events[0].args.mint, mint);
+    });
+
+    it("ensureRecipientAta delegatecalls create_ata_for_key with (solanaRecipient, mint) unswapped", async function () {
+      const pc = await viem.getPublicClient();
+      const mint = PK(41);
+
+      const txHash = await bridge.write.ensureRecipientAta([RECIPIENT, mint], { account: userWallet.account });
+      const receipt = await pc.waitForTransactionReceipt({ hash: txHash });
+
+      const mockAbi = (await hardhat.artifacts.readArtifact("BridgePrecompileMock")).abi;
+      const { parseEventLogs } = await import("viem");
+      const events = parseEventLogs({ abi: mockAbi, logs: receipt.logs, eventName: "CreateAtaForKey" });
+      assert.equal(events.length, 1);
+      assert.equal(events[0].args.wallet, RECIPIENT, "wallet must be solanaRecipient, not mint");
+      assert.equal(events[0].args.mint, mint);
+    });
+
+    it("ensureRecipientAta reverts ZeroRecipient for a zero solanaRecipient", async function () {
+      await assert.rejects(
+        bridge.write.ensureRecipientAta([ZERO, PK(41)], { account: userWallet.account }),
+        /ZeroRecipient/
+      );
     });
 
     it("burnETH pulls the user's wETH into the bridge's own ATA, re-grants Wormhole's delegate there, and signs invoke_signed as the bridge", async function () {
@@ -419,6 +471,50 @@ describe("RomeBridgeWithdraw — direct-call migration", () => {
       const eventDataB = (await cpi.read.lastAccount([11n]))[0];
 
       assert.notEqual(eventDataA, eventDataB, "messageSentEventData collided across users");
+    });
+
+    it("burnToWormhole: two different users' FIRST burns get different Wormhole message accounts", async function () {
+      const wallets = await viem.getWalletClients();
+      const userA = wallets[1];
+      const userB = wallets[2];
+      const amount = 10n;
+
+      await weth.write.setBalance([userA.account.address, amount]);
+      await weth.write.setBalance([userB.account.address, amount]);
+      const userAtaA = await helper.read.ata([userA.account.address, PK(41)]);
+      const userAtaB = await helper.read.ata([userB.account.address, PK(41)]);
+      await helper.write.setAuthorized([userAtaA, bridge.address, true]);
+      await helper.write.setAuthorized([userAtaB, bridge.address, true]);
+
+      await bridge.write.burnToWormhole([weth.address, amount, RECIPIENT, 10002], { account: userA.account });
+      const messageA = (await cpi.read.lastAccount([8n]))[0]; // TransferWrappedAccounts.message
+
+      await bridge.write.burnToWormhole([weth.address, amount, RECIPIENT, 10002], { account: userB.account });
+      const messageB = (await cpi.read.lastAccount([8n]))[0];
+
+      assert.notEqual(messageA, messageB, "messageAccount collided across users");
+    });
+
+    it("transferNativeToWormhole: two different users' FIRST burns get different Wormhole message accounts", async function () {
+      const wallets = await viem.getWalletClients();
+      const userA = wallets[1];
+      const userB = wallets[2];
+      const amount = 10n;
+
+      await weth.write.setBalance([userA.account.address, amount]);
+      await weth.write.setBalance([userB.account.address, amount]);
+      const userAtaA = await helper.read.ata([userA.account.address, PK(41)]);
+      const userAtaB = await helper.read.ata([userB.account.address, PK(41)]);
+      await helper.write.setAuthorized([userAtaA, bridge.address, true]);
+      await helper.write.setAuthorized([userAtaB, bridge.address, true]);
+
+      await bridge.write.transferNativeToWormhole([weth.address, amount, RECIPIENT, 10002], { account: userA.account });
+      const messageA = (await cpi.read.lastAccount([8n]))[0]; // TransferNativeAccounts.message
+
+      await bridge.write.transferNativeToWormhole([weth.address, amount, RECIPIENT, 10002], { account: userB.account });
+      const messageB = (await cpi.read.lastAccount([8n]))[0];
+
+      assert.notEqual(messageA, messageB, "messageAccount collided across users");
     });
   });
 });
