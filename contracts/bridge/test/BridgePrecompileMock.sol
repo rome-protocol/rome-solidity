@@ -97,12 +97,13 @@ contract BridgePrecompileMock {
         approveCount += 1;
     }
 
-    /// create_ata_for_key(bytes32,bytes32) — 0xd258a69d, the exempt
-    /// delegatecall selector `ensureRecipientAta`/`ensureBridgeAta` use.
-    /// Emits rather than records to storage: under delegatecall the emitting
-    /// address is the CALLER (the bridge), so the event lands in the
-    /// caller's own receipt logs with its arguments intact and assertable —
-    /// storage writes here would instead land in the bridge's own slots.
+    /// create_ata_for_key(bytes32,bytes32) — 0xd258a69d, exempt from the
+    /// delegatecall gate. `ensureRecipientAta` reaches it by delegatecall,
+    /// `ensureBridgeAta` by a direct call. Emits rather than records to
+    /// storage because under delegatecall the emitting address is the caller,
+    /// so either way the event carries its arguments into an assertable
+    /// receipt; storage writes would land in whichever contract's slots the
+    /// call kind selected.
     event CreateAtaForKey(bytes32 wallet, bytes32 mint);
 
     function create_ata_for_key(bytes32 wallet, bytes32 mint) external {

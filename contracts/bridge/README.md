@@ -224,6 +224,12 @@ Each tx now fits the budget. This is also the standard ERC-20 bridge pattern (ap
 
 ## Setup / redeploy
 
+**A redeploy invalidates every user's standing pull grant.** The bridge pulls a
+user's SPL as their SPL delegate, and `approve_spl` scopes the grant to one EVM
+address, so each user must send a fresh `approve_spl(<new bridge>, ...)` before
+their first burn on the replacement — otherwise the pull reverts. This is new: the
+previous shape borrowed the caller's authority and needed no standing grant.
+
 For a fresh deploy on a new Rome chain or to refresh rome:
 
 1. **Verify devnet program IDs** are live on your Solana cluster. All four (CCTP Token Messenger, CCTP Message Transmitter, Wormhole Token Bridge devnet, Wormhole Core devnet) are deployed on Solana devnet — no action needed unless you're on a different cluster.

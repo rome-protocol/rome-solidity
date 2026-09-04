@@ -59,7 +59,7 @@ describe("WrappedGasFacade (Hadrian)", function () {
     const WRAP_WEI = 2_000_000_000_000_000n;
     const DUST_WEI = 123_456_789n; // below weiPerToken; must be refunded
 
-    before(async function (this: any) {
+    before(async function () {
         const conn = (await hardhat.network.connect()) as any;
         viem = conn.viem;
         if (conn.networkName !== "hadrian") {
@@ -77,10 +77,9 @@ describe("WrappedGasFacade (Hadrian)", function () {
         // Self-diagnosing precondition, not an assumption: SPL_ERC20_USDC is
         // Hadrian's gas-mint wrapper by convention (see
         // scripts/activation/deploy-simple-activator.ts), but the local
-        // receipt has previously gone stale against the registry's live
-        // gas-mint wrapper entry (flagged, not fixed, in facade-status.md /
-        // build-facade.md). Skip loudly rather than fail on the
-        // constructor's opaque MintMismatch() if that's happened again.
+        // receipt has gone stale against the registry's live gas-mint
+        // wrapper entry before. Fail with the reason rather than on the
+        // constructor's opaque MintMismatch().
         const chainGasMint = await pc.readContract({
             address: SYSTEM_PROGRAM_ADDRESS, abi: systemProgramAbi, functionName: "mint_id", args: [],
         });
@@ -88,7 +87,7 @@ describe("WrappedGasFacade (Hadrian)", function () {
             address: wrapperAddr, abi: erc20Abi, functionName: "mint_id", args: [],
         });
         if ((wrapperMint as string).toLowerCase() !== (chainGasMint as string).toLowerCase()) {
-            this.skip(
+            throw new Error(
                 `deployments/hadrian.json's SPL_ERC20_USDC (${wrapperAddr}) does not wrap the chain's ` +
                 `gas mint (wrapper mint_id=${wrapperMint}, gas mint=${chainGasMint}) — the local receipt ` +
                 `is stale against the registry's gas-mint wrapper entry. Refresh the receipt (or redeploy ` +

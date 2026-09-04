@@ -118,7 +118,8 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ///         handover, matching this repo's mainnet admin pattern). The ctor
     ///         allowlist is a SEED — the owner enables further assets/chains on
     ///         the live contract (no redeploy per addition). Only gates the two
-    ///         allowlist setters + ownership transfer; every value path
+    ///         allowlist setters, ensureBridgeAta and ownership transfer;
+    ///         every value path
     ///         (burnUSDC/burnETH/burnToWormhole/bridgeOutToSolana) is
     ///         permissionless and unaffected.
     address public owner;

@@ -255,7 +255,7 @@ describe("RomeBridgeWithdraw — direct-call migration", () => {
       );
     });
 
-    it("ensureBridgeAta delegatecalls create_ata_for_key targeting the bridge's own PDA, not an arbitrary wallet", async function () {
+    it("ensureBridgeAta calls create_ata_for_key targeting the bridge's own PDA, not an arbitrary wallet", async function () {
       const wallets = await viem.getWalletClients();
       const ownerWallet = wallets[0];
       const pc = await viem.getPublicClient();
