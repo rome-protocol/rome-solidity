@@ -2,10 +2,12 @@ import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import hardhat from "hardhat";
 
-/// FB-1 regression suite for the saturation + sentinel arithmetic used by
-/// `SPL_ERC20.approve` and `SPL_ERC20.allowance`. The on-chain SPL CPI
-/// roundtrip is out of scope for hardhat-network — this verifies the pure
-/// Solidity arithmetic via a mirror helper. The table is the FB-1 spec.
+/// FB-1 regression suite for the historical u64-sentinel saturation
+/// arithmetic (`ApproveSaturationHelper`, pure functions, no CPI
+/// roundtrip). Neither wrapper's approve/allowance touches SPL-level
+/// delegated_amount anymore — both are plain EVM mappings now (see
+/// `evm-allowance.test.ts`) — this stays as a pinned reference for the
+/// saturation pattern.
 describe("SPL_ERC20 approve saturation + sentinel arithmetic (FB-1)", function () {
     let helper: any;
 
