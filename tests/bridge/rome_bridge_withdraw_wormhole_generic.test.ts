@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import hardhat from "hardhat";
 
 /**
- * RomeBridgeWithdraw — generic Wormhole burn (burnToWormhole / approveWormholeBurn).
+ * RomeBridgeWithdraw — generic Wormhole burn (burnToWormhole).
  *
  * Generalizes the ETH-only/Sepolia-only Wormhole burn to per-call asset +
  * per-call target chain, mirroring burnUSDC's per-domain model. The asset +
@@ -128,12 +128,9 @@ describe("RomeBridgeWithdraw — generic Wormhole burn", function () {
     );
   });
 
-  it("approveWormholeBurn with an unregistered asset reverts UnsupportedAssetWrapper", async function () {
-    await assert.rejects(
-      bridge.write.approveWormholeBurn([unregistered.address, 1000n]),
-      /UnsupportedAssetWrapper/,
-    );
-  });
+  // approveWormholeBurn was deleted (direct-call migration — see
+  // tests/bridge/RomeBridgeWithdraw.direct-call.test.ts for the ABI-removal
+  // and asset-guard coverage on its replacement call sites).
 
   it("constructor rejects mismatched wormhole config (fail-closed)", async function () {
     const usdc = await viem.deployContract("MockSplErc20", [PK(40)]);

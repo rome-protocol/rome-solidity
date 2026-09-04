@@ -16,10 +16,12 @@ pragma solidity ^0.8.28;
 ///         they are registry data, not call surface), and the bridge lifecycle
 ///         events, which stay canonical in `contracts/bridge/RomeBridgeEvents.sol`.
 ///
-///         Two egress flows are DELIBERATELY two transactions — the approve and
-///         the move must not be combined (each Rome DoTx has a ~1.4M-CU budget,
-///         and combining trips the iterative-VM `CpiProhibitedInIterativeTx`
-///         gate). Both halves are listed here; see the per-function notes.
+///         Every mutating call here is a direct CALL, never a DELEGATECALL —
+///         the rome-evm program refuses DELEGATECALL into a mutating
+///         precompile, so the bridge signs every Solana side effect as
+///         itself. Callers grant it an SPL delegate on their own ATA once,
+///         off-contract (`approve_spl(bridge, …)` sent directly to 0xff..09)
+///         before any egress call.
 interface IRomeBridgeWithdraw {
     // ─── Events ──────────────────────────────────────────────────────────────
     // Admin only. Bridge lifecycle events (Withdrawn, WormholeBurn,
@@ -44,21 +46,16 @@ interface IRomeBridgeWithdraw {
     function burnUSDC(uint256 amount, address ethereumRecipient) external;
     function burnUSDC(uint256 amount, address recipient, uint32 destinationDomain) external;
 
-    // ─── Wormhole — ETH egress (2-tx: approve, then burn) ────────────────────
-    /// @notice Step 1 of 2. Must precede `burnETH` in a SEPARATE tx.
-    function approveBurnETH(uint256 amount) external;
-    /// @notice Step 2 of 2. Requires a prior `approveBurnETH` in an earlier tx.
+    // ─── Wormhole — ETH egress ────────────────────────────────────────────────
+    /// @notice Requires the caller to have granted the bridge an SPL delegate
+    ///         on their wETH ATA beforehand (`approve_spl(bridge, …)` sent
+    ///         directly to 0xff..09).
     function burnETH(uint256 amount, address ethereumRecipient) external;
 
-    // ─── Wormhole — generic asset egress (2-tx: approve, then move) ──────────
-    /// @notice Step 1 of 2 for BOTH `burnToWormhole` and `transferNativeToWormhole`.
-    ///         Delegates the Wormhole authority_signer PDA as burn delegate on the
-    ///         caller's ATA. Must precede the move in a SEPARATE tx. Asset-neutral —
-    ///         the same approval serves the wrapped and native paths.
-    function approveWormholeBurn(address assetWrapper, uint256 amount) external;
-
-    /// @notice Step 2 of 2 — transfer_wrapped path, for Wormhole-origin assets
-    ///         (e.g. wETH). Requires a prior `approveWormholeBurn` in an earlier tx.
+    // ─── Wormhole — generic asset egress ─────────────────────────────────────
+    /// @notice transfer_wrapped path, for Wormhole-origin assets (e.g. wETH).
+    ///         Requires the caller to have granted the bridge an SPL delegate
+    ///         on their ATA for `assetWrapper`'s mint beforehand.
     /// @param  targetChain Wormhole chain id, PER-CALL (must be allowlisted).
     function burnToWormhole(
         address assetWrapper,
@@ -67,10 +64,10 @@ interface IRomeBridgeWithdraw {
         uint16 targetChain
     ) external;
 
-    /// @notice Step 2 of 2 — transfer_native path, for Solana-native mints
-    ///         (wSOL, mSOL, LSTs). Requires a prior `approveWormholeBurn` in an
-    ///         earlier tx. Tokens move into Token Bridge custody and a transfer
-    ///         VAA is posted; the recipient redeems on the target chain.
+    /// @notice transfer_native path, for Solana-native mints (wSOL, mSOL,
+    ///         LSTs). Requires the same prior delegate as `burnToWormhole`.
+    ///         Tokens move into Token Bridge custody and a transfer VAA is
+    ///         posted; the recipient redeems on the target chain.
     /// @param  targetChain Wormhole chain id, PER-CALL (must be allowlisted).
     function transferNativeToWormhole(
         address assetWrapper,
