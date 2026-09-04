@@ -23,9 +23,17 @@ import { readDeployments } from "../scripts/lib/deployments";
 
 const erc20Abi = parseAbi([
     "function balanceOf(address) external view returns (uint256)",
-    "function approve(address spender, uint256 value) external returns (bool)",
     "function decimals() external view returns (uint8)",
+    "function mint_id() external view returns (bytes32)",
 ]);
+
+// approve_spl(address,uint64,bytes32) — 0xff..09. withdraw()'s precondition is
+// an SPL-level delegate grant, not an ERC-20 wrapper.approve: the facade moves
+// the caller's SPL straight from their own ATA, never through the wrapper.
+const helperProgramAbi = parseAbi([
+    "function approve_spl(address spender, uint64 amount, bytes32 mint) external",
+]);
+const HELPER_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000009" as const;
 
 const facadeEventsAbi = parseAbi([
     "event Deposit(address indexed dst, uint256 wad)",
@@ -109,11 +117,12 @@ describe("WrappedGasFacade (Hadrian)", function () {
     it("withdraw() unwraps back to native gas, emits Withdrawal", async function () {
         const tokens = WRAP_WEI / weiPerToken;
         const [wallet] = await viem.getWalletClients();
+        const mintId = await pc.readContract({ address: wrapperAddr, abi: erc20Abi, functionName: "mint_id", args: [] });
         const approveHash = await wallet.writeContract({
-            address: wrapperAddr,
-            abi: erc20Abi,
-            functionName: "approve",
-            args: [facade.address, tokens],
+            address: HELPER_PROGRAM_ADDRESS,
+            abi: helperProgramAbi,
+            functionName: "approve_spl",
+            args: [facade.address, tokens, mintId],
         });
         await pc.waitForTransactionReceipt({ hash: approveHash });
 
