@@ -115,6 +115,18 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     // lands should be funded post-deploy, not pre-deploy.
     mapping(address => uint256) private _escrow;
 
+    // Fast path for `ensure_token_account`: once this wrapper has itself
+    // confirmed (via a probe hit or a successful create) that `user`'s ATA
+    // is live, further calls skip the `AccountReader.lamportsOf` existence
+    // read entirely — ATAs are never closed on Rome, so existence is
+    // monotone once true. A false value ALWAYS falls through to the exact
+    // same probe/create path that ran before this optimization, so an ATA
+    // created outside this wrapper (bridge-in, pre-deploy) is still
+    // detected correctly the first time this wrapper sees that user.
+    // Never set true except immediately after a probe/create outcome
+    // confirmed the account exists.
+    mapping(address => bool) private _ataCreated;
+
     error ERC20InvalidApprover(address approver);
     error ERC20InvalidSpender(address spender);
     error ERC20InsufficientAllowance(address spender, uint256 currentAllowance, uint256 requiredAllowance);
@@ -186,6 +198,19 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
      * @return associated_account_address The address of the associated token account created or existing for the user
      */
     function ensure_token_account(address user) public returns (bytes32) {
+        // Fast path (CU optimization on top of the shortcut below): once
+        // THIS wrapper has confirmed `user`'s ATA exists — via either
+        // branch below — every subsequent call skips the account read
+        // entirely and just returns the pure derivation. ATAs are never
+        // closed on Rome, so a confirmed-live ATA stays live; a false flag
+        // always falls through to the unmodified probe/create path, so an
+        // ATA that already existed before this wrapper ever saw `user`
+        // (bridge-in, pre-deploy) is still detected correctly on the first
+        // call.
+        if (_ataCreated[user]) {
+            return HelperProgram.ata(user, mint_id);
+        }
+
         // Canonical user-PDA ATA derivation (post-0acabea unified PDA).
         // Skip the ATA-create CPI when Solana already has the account
         // initialized — saves a CPI per transfer in flows where the
@@ -204,7 +229,9 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         bytes32 ata = HelperProgram.ata(user, mint_id);
         uint64 lamports = AccountReader.lamportsOf(ata);
         if (lamports != 0) {
-            // Account already exists on Solana — no CPI needed.
+            // Account already exists on Solana — no CPI needed. Confirmed
+            // now, so every later call for `user` takes the fast path above.
+            _ataCreated[user] = true;
             return ata;
         }
 
@@ -212,7 +239,11 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         // CPI. ensure_user populates the ERC20Users mapping AND funds the
         // unified user PDA at the rent-exempt floor (1M lamports).
         bytes32 payer = _users.ensure_user(msg.sender);
-        return create_token_account(user, payer);
+        bytes32 result = create_token_account(user, payer);
+        // create_token_account reverts on failure (require(success, ...)),
+        // so reaching here means the ATA is now confirmed live.
+        _ataCreated[user] = true;
+        return result;
     }
 
     /**
