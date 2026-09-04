@@ -41,6 +41,7 @@ interface IRomeBridgeWithdraw {
     error UnsupportedAssetWrapper(address assetWrapper);
     error NotOwner(address caller);
     error ZeroOwner();
+    error SubGranularityAmount(uint256 amount, uint256 granularity);
 
     // ─── CCTP (USDC) egress ──────────────────────────────────────────────────
     function burnUSDC(uint256 amount, address ethereumRecipient) external;
@@ -80,6 +81,12 @@ interface IRomeBridgeWithdraw {
     /// @notice Step 1 of 2. Idempotently creates the recipient's ATA for `mint`
     ///         so a subsequent `bridgeOutToSolana` lands. Separate tx by design.
     function ensureRecipientAta(bytes32 solanaRecipient, bytes32 mint) external;
+
+    /// @notice Deploy-time, per-mint bootstrap: idempotently creates the
+    ///         bridge's own ATA for `mint`. Every mint the bridge egresses
+    ///         needs this run once before its first burn — the pull leg has
+    ///         no create fallback.
+    function ensureBridgeAta(bytes32 mint) external;
 
     /// @notice Step 2 of 2. Transfer-only Rome → Solana egress of a held SPL
     ///         wrapper. The destination ATA MUST already exist — SPL

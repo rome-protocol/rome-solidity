@@ -25,7 +25,7 @@ interface IWrapperMintInfo {
 ///         and is out of scope here — that path needs a wrapper-side entry point.
 ///
 ///         Cached track only (one-track rule): `WithdrawCached` (0xff..0b),
-///         `SplCached` (0xff..05), `HelperProgram` (0xff..09).
+///         `SplCached` (0xff..05), `AssociatedSplCached` (0xff..06).
 contract WrappedGasFacade {
     IWrapperMintInfo public immutable wrapper;
     bytes32 public immutable mintId;
@@ -76,7 +76,9 @@ contract WrappedGasFacade {
 
         // Wrap leg: facade's native wei -> SPL in the facade's own PDA-owned ATA
         // (precompile auto-creates it if missing) -> caller's own ATA, direct.
+        // create_ata is idempotent — cheap no-op after the caller's first deposit.
         WithdrawCached.withdraw_to_ata(wad);
+        AssociatedSplCached.create_ata(msg.sender, mintId);
         SplCached.transfer(msg.sender, wad / weiPerToken);
 
         uint256 dust = msg.value - wad;
@@ -87,22 +89,19 @@ contract WrappedGasFacade {
         emit Deposit(msg.sender, wad);
     }
 
-    /// @notice Unwrap back to native gas. Requires a prior
-    ///         `approve_spl(address(this), wad / weiPerToken, mintId)` call to
-    ///         `0xff..09` from the caller's own EOA — an SPL-level delegate grant,
-    ///         not an ERC-20 `wrapper.approve`.
+    /// @notice Unwrap back to native gas. Requires a prior SPL-level delegate
+    ///         grant from the caller's own EOA to this contract (either
+    ///         `HelperProgram.approve_spl` or `SplCached.approve`, both set
+    ///         `delegate = external_auth(facade)`) — not an ERC-20
+    ///         `wrapper.approve`.
     /// @param wad Native-wei amount; must be a whole multiple of `weiPerToken`.
     function withdraw(uint256 wad) external {
         if (wad == 0 || wad % weiPerToken != 0) revert Granularity();
 
         // Unwrap leg: caller's own ATA -> facade's own ATA (facade signs as the
-        // caller's delegate) -> native credit to the facade, forwarded on.
-        HelperProgram.transfer_spl(
-            HelperProgram.ata(msg.sender, mintId),
-            HelperProgram.ata(address(this), mintId),
-            uint64(wad / weiPerToken),
-            mintId
-        );
+        // caller's delegate), cached track throughout — WithdrawCached.deposit
+        // right after would trip the one-track rule against a legacy CPI here.
+        SplCached.transferFrom(msg.sender, address(this), wad / weiPerToken, mintId);
         WithdrawCached.deposit(wad);
         (bool sent, ) = payable(msg.sender).call{value: wad}("");
         if (!sent) revert NativeSendFailed();

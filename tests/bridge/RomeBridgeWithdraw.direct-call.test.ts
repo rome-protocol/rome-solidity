@@ -103,21 +103,37 @@ describe("RomeBridgeWithdraw — direct-call migration", () => {
       assert.ok(!body.includes(".delegatecall("));
     });
 
-    it("burnETH's pull, delegate-approve, and CPI are all direct CALLs", () => {
+    it("burnETH's own CPI is a direct CALL, never a delegatecall", () => {
       const body = bodyOf("function burnETH(");
       assert.ok(body.includes("address(CpiProgram).call("));
       assert.ok(!body.includes(".delegatecall("));
     });
 
-    it("burnToWormhole's pull, delegate-approve, and CPI are all direct CALLs", () => {
+    it("burnToWormhole's own CPI is a direct CALL, never a delegatecall", () => {
       const body = bodyOf("function burnToWormhole(");
       assert.ok(body.includes("address(CpiProgram).call("));
       assert.ok(!body.includes(".delegatecall("));
     });
 
-    it("transferNativeToWormhole's pull, delegate-approve, and CPI are all direct CALLs", () => {
+    it("transferNativeToWormhole's own CPI is a direct CALL, never a delegatecall", () => {
       const body = bodyOf("function transferNativeToWormhole(");
       assert.ok(body.includes("address(CpiProgram).call("));
+      assert.ok(!body.includes(".delegatecall("));
+    });
+
+    // burnETH / burnToWormhole / transferNativeToWormhole all route their pull
+    // and delegate-approve legs through these two private helpers — checked
+    // once here rather than per call-site, since the caller-body checks above
+    // don't see inside them.
+    it("_pullToBridge is a direct CALL, never a delegatecall", () => {
+      const body = bodyOf("function _pullToBridge(");
+      assert.ok(body.includes("address(HelperProgram).call("));
+      assert.ok(!body.includes(".delegatecall("));
+    });
+
+    it("_approveWormholeDelegate is a direct CALL, never a delegatecall", () => {
+      const body = bodyOf("function _approveWormholeDelegate(");
+      assert.ok(body.includes("address(HelperProgram).call("));
       assert.ok(!body.includes(".delegatecall("));
     });
 
@@ -132,6 +148,22 @@ describe("RomeBridgeWithdraw — direct-call migration", () => {
       const body = bodyOf("function ensureRecipientAta(");
       assert.ok(body.includes("address(HelperProgram).delegatecall("));
       assert.ok(body.includes('"create_ata_for_key(bytes32,bytes32)"'));
+    });
+
+    it("ensureBridgeAta primes the bridge's own ATA via the same exempt selector, targeting the bridge's own PDA", () => {
+      const body = bodyOf("function ensureBridgeAta(");
+      assert.ok(body.includes("address(HelperProgram).delegatecall("));
+      assert.ok(body.includes('"create_ata_for_key(bytes32,bytes32)"'));
+      assert.ok(body.includes("RomeEVMAccount.pda(address(this))"));
+    });
+
+    it("ensureBridgeAta is declared in the discovery interface", async function () {
+      const hre: any = hardhat;
+      const artifact = await hre.artifacts.readArtifact("RomeBridgeWithdraw");
+      const names = artifact.abi
+        .filter((e: any) => e.type === "function")
+        .map((e: any) => e.name);
+      assert.ok(names.includes("ensureBridgeAta"));
     });
   });
 
@@ -284,6 +316,7 @@ describe("RomeBridgeWithdraw — direct-call migration", () => {
       await bridge.write.burnToWormhole([weth.address, amount, RECIPIENT, 10002], { account: userWallet.account });
 
       assert.equal(await helper.read.transferCount(), 1n);
+      assert.equal(await helper.read.lastToAta(), bridgeAta, "pull must land in the bridge's own ATA, not a no-op");
       assert.equal(await helper.read.approveCount(), 1n);
       assert.equal(await helper.read.lastApproveAta(), bridgeAta);
       assert.equal(await cpi.read.invokeSignedCount(), 1n);
@@ -305,13 +338,87 @@ describe("RomeBridgeWithdraw — direct-call migration", () => {
       await bridge.write.transferNativeToWormhole([weth.address, amount, RECIPIENT, 10002], { account: userWallet.account });
 
       assert.equal(await helper.read.transferCount(), 1n);
+      assert.equal(await helper.read.lastToAta(), bridgeAta, "pull must land in the bridge's own ATA, not a no-op");
       assert.equal(await helper.read.approveCount(), 1n);
+      assert.equal(await helper.read.lastApproveAta(), bridgeAta, "authority_signer must be re-granted on the bridge's own ATA, not the user's");
       assert.equal(await cpi.read.invokeSignedCount(), 1n);
       const bridgePda = await helper.read.pda([bridge.address]);
       const payer = await cpi.read.lastAccount([0n]);
       assert.equal(payer[0], bridgePda);
       const from = await cpi.read.lastAccount([2n]);
       assert.equal(from[0], bridgeAta);
+    });
+
+    it("transferNativeToWormhole reverts on a sub-8-decimal remainder instead of stranding it in the bridge's ATA", async function () {
+      await weth.write.setDecimals([9]); // e.g. wSOL/LSTs — transfer_native normalizes to 8dp
+      const amount = 12345n; // not a multiple of 10 == 10**(9-8)
+      const user = userWallet.account.address;
+      await weth.write.setBalance([user, amount]);
+      const userAta = await helper.read.ata([user, PK(41)]);
+      await helper.write.setAuthorized([userAta, bridge.address, true]);
+
+      await assert.rejects(
+        () => bridge.write.transferNativeToWormhole([weth.address, amount, RECIPIENT, 10002], { account: userWallet.account }),
+        (err: any) => ((err?.message ?? "") as string).includes("SubGranularityAmount")
+      );
+      assert.equal(await helper.read.transferCount(), 0n, "must reject before any pull happens");
+    });
+
+    it("transferNativeToWormhole accepts a granularity-aligned amount at 9 decimals", async function () {
+      await weth.write.setDecimals([9]);
+      const amount = 12340n; // multiple of 10
+      const user = userWallet.account.address;
+      await weth.write.setBalance([user, amount]);
+      const userAta = await helper.read.ata([user, PK(41)]);
+      await helper.write.setAuthorized([userAta, bridge.address, true]);
+
+      await bridge.write.transferNativeToWormhole([weth.address, amount, RECIPIENT, 10002], { account: userWallet.account });
+      assert.equal(await helper.read.transferCount(), 1n);
+    });
+
+    // REVIEW — per-tx message PDA must stay unique across users
+    it("burnETH: two different users' FIRST burns get different Wormhole message accounts", async function () {
+      const wallets = await viem.getWalletClients();
+      const userA = wallets[1];
+      const userB = wallets[2];
+      const amount = 10n;
+
+      await weth.write.setBalance([userA.account.address, amount]);
+      await weth.write.setBalance([userB.account.address, amount]);
+      const userAtaA = await helper.read.ata([userA.account.address, PK(41)]);
+      const userAtaB = await helper.read.ata([userB.account.address, PK(41)]);
+      await helper.write.setAuthorized([userAtaA, bridge.address, true]);
+      await helper.write.setAuthorized([userAtaB, bridge.address, true]);
+
+      await bridge.write.burnETH([amount, ETH_RECIPIENT_A], { account: userA.account });
+      const messageA = (await cpi.read.lastAccount([8n]))[0]; // TransferWrappedAccounts.message
+
+      await bridge.write.burnETH([amount, ETH_RECIPIENT_A], { account: userB.account });
+      const messageB = (await cpi.read.lastAccount([8n]))[0];
+
+      assert.notEqual(messageA, messageB, "messageAccount collided across users");
+    });
+
+    it("burnUSDC: two different users' FIRST burns get different CCTP event-data accounts", async function () {
+      const wallets = await viem.getWalletClients();
+      const userA = wallets[1];
+      const userB = wallets[2];
+      const amount = 10n;
+
+      await usdc.write.setBalance([userA.account.address, amount]);
+      await usdc.write.setBalance([userB.account.address, amount]);
+      const userAtaA = await helper.read.ata([userA.account.address, PK(40)]);
+      const userAtaB = await helper.read.ata([userB.account.address, PK(40)]);
+      await helper.write.setAuthorized([userAtaA, bridge.address, true]);
+      await helper.write.setAuthorized([userAtaB, bridge.address, true]);
+
+      await bridge.write.burnUSDC([amount, ETH_RECIPIENT_B, 0], { account: userA.account });
+      const eventDataA = (await cpi.read.lastAccount([11n]))[0]; // DepositForBurnAccounts.messageSentEventData
+
+      await bridge.write.burnUSDC([amount, ETH_RECIPIENT_B, 0], { account: userB.account });
+      const eventDataB = (await cpi.read.lastAccount([11n]))[0];
+
+      assert.notEqual(eventDataA, eventDataB, "messageSentEventData collided across users");
     });
   });
 });

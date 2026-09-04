@@ -27,29 +27,36 @@ async function main() {
   const gasPrice = await provider.getFeeData().then(f => f.gasPrice || 5000000000n);
 
   const sel = (sig: string) => "0x" + keccak256(toUtf8Bytes(sig)).slice(2, 10);
-  const burnUsdcSel = sel("burnUSDC(uint256,address)");
-  const approveSel  = sel("approveBurnETH(uint256)");
-  const burnEthSel  = sel("burnETH(uint256,address)");
+  const burnUsdcSel  = sel("burnUSDC(uint256,address)");
+  const approveSplSel = sel("approve_spl(address,uint64,bytes32)");
+  const burnEthSel   = sel("burnETH(uint256,address)");
+  const HELPER_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000009" as `0x${string}`;
 
   const recipient = wallet.address.slice(2).toLowerCase().padStart(64, "0");
   const amountHex = (1000n).toString(16).padStart(64, "0");
+  const WETH = dep.SPL_ERC20_WETH.address as `0x${string}`;
+  const wethMint = (await provider.call({ to: WETH, data: sel("mint_id()") })) as `0x${string}`;
 
   // Each emulate runs independently — use the on-chain nonce every time.
-  const mk = async (data: string) => {
+  const mk = async (to: `0x${string}`, data: string) => {
     const nonce = await provider.getTransactionCount(wallet.address);
     return wallet.signTransaction({
       chainId: Number(chainId), nonce, gasPrice,
-      gasLimit: 3_000_000n, to: WITHDRAW, value: 0n, data, type: 0,
+      gasLimit: 3_000_000n, to, value: 0n, data, type: 0,
     });
   };
 
   console.log("Smoke-emulating bridge paths against", WITHDRAW);
   console.log("Signer:", wallet.address);
-  await emulate("burnUSDC (CCTP out)",  await mk(burnUsdcSel + amountHex + recipient));
-  await emulate("approveBurnETH (Wh)",  await mk(approveSel + amountHex));
-  // burnETH cannot be emulated standalone: Wormhole transfer_wrapped requires
-  // a prior on-chain approve delegating authority_signer as the ATA burn
-  // delegate. Real E2E: scripts/bridge/submit-burnETH.ts (sends both txs).
-  console.log(`  burnETH (Wh out)       SKIP — requires prior approve, see submit-burnETH.ts`);
+  await emulate("burnUSDC (CCTP out)",  await mk(WITHDRAW, burnUsdcSel + amountHex + recipient));
+  await emulate(
+    "approve_spl (bridge delegate)",
+    await mk(HELPER_PROGRAM_ADDRESS, approveSplSel + WITHDRAW.slice(2).toLowerCase().padStart(64, "0") + amountHex + wethMint.slice(2).padStart(64, "0"))
+  );
+  // burnETH cannot be emulated standalone: it pulls the caller's wETH into
+  // the bridge's own ATA, which needs the delegate grant above to already be
+  // live on-chain (a fresh emulation doesn't persist it). Real E2E:
+  // scripts/bridge/submit-burnETH.ts (sends both txs).
+  console.log(`  burnETH (Wh out)       SKIP — requires prior approve_spl, see submit-burnETH.ts`);
 }
 main().catch(e => console.error(e.message || e));

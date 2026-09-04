@@ -18,18 +18,26 @@ async function main() {
   const amount = balBefore / 2n;
   if (amount === 0n) throw new Error("no rETH");
 
-  // approveBurnETH(uint256 amount) -> selector = keccak("approveBurnETH(uint256)")[0:4]
-  // compute via ethers
+  // burnETH signs as the bridge itself now (direct CALL into the mutating
+  // precompile track, not a delegatecall borrowing the caller's PDA), so it
+  // pulls from the bridge's own ATA rather than the user's. Precondition:
+  // an SPL-level delegate grant straight to 0xff..09 — a bridge-mediated
+  // approveBurnETH tx no longer exists.
   const { keccak256, toUtf8Bytes } = await import("ethers");
-  const approveSel = "0x" + keccak256(toUtf8Bytes("approveBurnETH(uint256)")).slice(2, 10);
-  const burnSel    = "0x" + keccak256(toUtf8Bytes("burnETH(uint256,address)")).slice(2, 10);
-  console.log("approveBurnETH selector:", approveSel);
+  const HELPER_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000009";
+  const approveSplSel = "0x" + keccak256(toUtf8Bytes("approve_spl(address,uint64,bytes32)")).slice(2, 10);
+  const burnSel = "0x" + keccak256(toUtf8Bytes("burnETH(uint256,address)")).slice(2, 10);
+  const mintId: `0x${string}` = await rETH.read.mint_id();
+  console.log("approve_spl selector:", approveSplSel);
   console.log("burnETH selector:", burnSel);
 
-  console.log("\nTX 1: approveBurnETH(amount)…");
-  const approveData = approveSel + amount.toString(16).padStart(64, "0");
+  console.log("\nTX 1: approve_spl(bridge, amount, mint) direct to 0xff..09…");
+  const approveData = approveSplSel +
+    WITHDRAW.slice(2).toLowerCase().padStart(64, "0") +
+    amount.toString(16).padStart(64, "0") +
+    mintId.slice(2).padStart(64, "0");
   const hash1 = await admin.sendTransaction({
-    to: WITHDRAW, data: approveData as `0x${string}`, gas: 3_000_000n,
+    to: HELPER_PROGRAM_ADDRESS, data: approveData as `0x${string}`, gas: 3_000_000n,
   });
   console.log("  TX:", hash1);
   const rcpt1 = await pc.waitForTransactionReceipt({ hash: hash1, timeout: 120_000 });

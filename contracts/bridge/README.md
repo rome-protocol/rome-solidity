@@ -28,7 +28,7 @@ The four CCTP/Wormhole flows (Phase 1):
   Inbound CCTP   (user on Sepolia)  │  depositForBurn  │ ── IRIS attest ──►  │  receiveMessage (CPI)  │  → WUSDC minted to user ATA
   Outbound CCTP  (user on Rome)     │  receiveMessage  │ ◄── IRIS attest ──  │  burnUSDC → CCTP CPI   │  → WUSDC burned
   Inbound Wh     (user on Sepolia)  │  transferTokens  │ ── Guardian VAA ─►  │  complete_transfer_..  │  → WETH minted
-  Outbound Wh    (user on Rome)     │  completeAndUnw..│ ◄── Guardian VAA ─  │  approveBurnETH+burnETH│  → WETH burned
+  Outbound Wh    (user on Rome)     │  completeAndUnw..│ ◄── Guardian VAA ─  │  burnETH (direct CALL) │  → WETH burned
                                     └──────────────────┘                     └────────────────────────┘
 ```
 
@@ -53,7 +53,7 @@ Attestation/VAA fetching and the return-leg submission happen off-chain in the b
 Three bridge contracts on the `<chain>` devnet EVM:
 
 - **`SPL_ERC20`** (`WUSDC`, `WETH`, `WSOL`, plus any future `W{Symbol}` deployed via the factory) — generic ERC-20 wrapper for any SPL mint. Binds the mint to a standard ERC-20 interface (`balanceOf` reads `getATA(AUTHORITY_PDA, mint)`, transfers/approvals go through Rome's CPI precompile). Phase-2 generic outbound (`bridgeOutToSolana` + `ensureRecipientAta`) lives here — see § "Generic Rome → Solana SPL outbound" below.
-- **`RomeBridgeWithdraw`** — entrypoint for outbound flows. `burnUSDC(amount, ethRecipient)` fires a CCTP `depositForBurn` CPI. `approveBurnETH(amount)` + `burnETH(amount, ethRecipient)` (two separate EVM txs — see "Problems faced") fire an SPL Token Approve CPI then a Wormhole `transferWrapped` CPI. The contract takes all Solana program IDs, sysvars, and PDAs through its constructor so it is network-agnostic.
+- **`RomeBridgeWithdraw`** — entrypoint for outbound flows. Every mutating call is a direct CALL signing as the bridge's own PDA (the rome-evm program refuses a delegatecall into a mutating precompile), so each rail pulls the caller's SPL into the bridge's own ATA first — the user grants that pull delegate once, off-contract, via `approve_spl(bridge, …)` sent directly to `0xff..09`. `burnUSDC(amount, ethRecipient)` fires a CCTP `depositForBurn` CPI. `burnETH(amount, ethRecipient)` re-grants Wormhole's `authority_signer` delegate on the bridge's own ATA and fires a `transferWrapped` CPI, all in one tx. The contract takes all Solana program IDs, sysvars, and PDAs through its constructor so it is network-agnostic.
 - **`RomeBridgePaymaster`** — ERC-2771 trusted forwarder with per-user 3-tx sponsorship cap and a `(target, selector)` allowlist. **Legacy — no longer used by the active bridge worker.** The current inbound flow uses `settle_inbound_bridge` on rome-evm signed by `the settle payer key`, no Rome EVM tx involved. Kept in chain.contracts config for back-compat parsing only.
 
 `IWormholeTokenBridge.sol` and `ICCTP.sol` encode the Solana instructions and account lists for the two CPI targets. All Solana program IDs and sysvar addresses are constructor params, not constants.
@@ -132,11 +132,13 @@ Each subsection here is a real incident that blocked a flow and cost time to dia
 
 **Why.** Rome forces atomic mode whenever any CPI happens in the EVM tx: `is_atomic = steps_executed <= NUMBER_OPCODES_PER_TX && ... || found_cpi` (`rome-evm/emulator/src/api/mod.rs`). Iterative mode (which splits execution across multiple Solana txs) is not safe for CPIs because CPI side effects can't be replayed. That means every CPI-bearing EVM tx is one Solana tx, capped at 1.4M CU. Rome's DoTx overhead (EVM interpretation, account loading, state merge for a contract with ~20 writable accounts) is ~1.3M CU. Wormhole's `transfer_wrapped` needs ~300K CU. Two CPIs don't fit.
 
-**Fix.** Split the outbound Wormhole path into two EVM txs:
+**Fix (original, Phase 1).** Split the outbound Wormhole path into two EVM txs:
 1. `approveBurnETH(amount)` — single CPI: SPL Token Approve, delegating Wormhole's `authority_signer` PDA to burn the user's ATA.
 2. `burnETH(amount, ethRecipient)` — single CPI: Wormhole `transfer_wrapped`, which internally burns via the delegate from step 1.
 
 Each tx now fits the budget. This is also the standard ERC-20 bridge pattern (approve then bridge), so the UX isn't a regression. Frontend: `src/features/bridge/hooks/useOutboundWhSend.ts` sends both txs in sequence.
+
+**Superseded.** The direct-call migration deleted `approveBurnETH` — a delegatecall into the SPL Approve selector is refused by the rome-evm program, so it could no longer live in its own tx. `burnETH` / `burnToWormhole` / `transferNativeToWormhole` now re-grant the delegate on the bridge's own ATA and burn in the same tx (pull + approve + CPI, three mutating calls atomic, where the approve was deliberately split into its own tx for exactly this budget). **Unmeasured — must be checked on a funded chain before this ships**, against three separate ceilings: the 1.4M CU budget this section describes, the 64-entry instruction-trace limit, and the account-list size limit (the extra pull leg adds accounts, not just CU). If any of the three is blown, the named fallback is re-splitting pull+approve back into a first tx — a redesign, not a revert, since `approveBurnETH` itself cannot come back (a delegatecall into it is refused).
 
 **CCTP doesn't hit this.** Circle's `depositForBurn` is one CPI and fits in atomic mode — `burnUSDC` stays a single EVM tx.
 
@@ -148,7 +150,7 @@ Each tx now fits the budget. This is also the standard ERC-20 bridge pattern (ap
 
 **Why.** Wormhole's `transfer_wrapped` doesn't burn with the user as authority. It burns via its own `authority_signer` PDA and signs that CPI with the token-bridge program's seeds. For that burn to succeed, the source ATA must have an SPL Token `Approve` in place pointing to `authority_signer` as the delegate. The Wormhole SDK always emits this as a companion instruction (`@wormhole-foundation/sdk-solana-tokenbridge: approve.js → createApproveAuthoritySignerInstruction`). There is a prior commit (`2fc6931`) that removed this approve with an incorrect claim that Wormhole handles it internally. Wormhole does not.
 
-**Fix.** `approveBurnETH(amount)` does the SPL Token Approve CPI. Must run as a separate EVM tx before `burnETH` (because of problem #1). See `contracts/bridge/RomeBridgeWithdraw.sol`.
+**Fix.** The bridge re-grants the delegate itself, inside `burnETH`/`burnToWormhole`/`transferNativeToWormhole`, on every call — see `_approveWormholeDelegate` in `contracts/bridge/RomeBridgeWithdraw.sol`. (Originally a separate `approveBurnETH(amount)` tx, per problem #1's history; superseded by the direct-call migration.) The caller's own precondition is unrelated: an SPL-level delegate grant to the *bridge*, not to Wormhole's `authority_signer` — see "Assets and flows" above.
 
 ### 3. A stale wETH mint constant caused Wormhole to reject the whole instruction
 
@@ -204,6 +206,15 @@ Each tx now fits the budget. This is also the standard ERC-20 bridge pattern (ap
 
 **Fix.** Added `rome_solanaTxForEvmTx(evmTxHash)` to the proxy. It queries the `evm_tx_sol_tx` table and returns an array of Solana signatures.
 
+### 10. Bridge PDA funding — the direct-call migration made the bridge a real Solana account holder
+
+**Why.** Every mutating call now signs as the bridge's own Rome PDA/ATA instead of borrowing the caller's, so that PDA has ops requirements a delegatecalling contract never had:
+
+- **The bridge's own ATA must exist, per mint, before its first burn.** `transfer_spl_from_ata` has no create leg — call `ensureBridgeAta(mint)` once per mint at deploy time (mirrors `ensureRecipientAta`, same exempt selector).
+- **The bridge PDA itself must be created**, not just funded — `create_pda(address)` is the exempt call for this; a funded-but-uninitialized PDA cannot sign.
+- **It must hold enough SOL to front CCTP/Wormhole per-tx rent** (~13M lamports/burn for `messageSentEventData`, recouped in gas) on every chain where the bridge is live. Per the ratified funding decision: size the float against expected outbound volume, not per-tx — it's a drain, not a revolving balance, since Wormhole's rent isn't reclaimable and this contract doesn't call CCTP's `reclaimEventAccount` either (rent-reclaim tooling is a possible follow-up, not shipped). Monitor with a floor and fail closed (reject at quote time) when the PDA is under it — never mid-burn.
+- **The pull-delegate precondition changed what the paymaster can sponsor.** `approve_spl(bridge, …)` targets `0xff..09` directly, not the bridge, so the paymaster's `(target, selector)` allowlist cannot cover it — see step 4 below.
+
 ---
 
 ## Setup / redeploy
@@ -216,7 +227,9 @@ For a fresh deploy on a new Rome chain or to refresh rome:
 
 3. **Deploy** via `scripts/bridge/deploy.ts` (full deploy) or `scripts/bridge/redeploy-withdraw-devnet-wh.ts` (keep paymaster + wrappers, refresh `RomeBridgeWithdraw`). Both scripts write `deployments/{network}.json`.
 
-4. **Allowlist selectors on the paymaster**. The deploy scripts allowlist `burnUSDC` and `burnETH` automatically. `approveBurnETH` is allowlisted by `scripts/bridge/allowlist-approve-selector.ts` — run it after redeploy.
+3a. **Fund and prime the bridge PDA** (see "Bridge PDA funding" above): create the bridge's Rome PDA (`create_pda`), fund it past the monitored floor, then call `ensureBridgeAta(mint)` once per bridged mint (`WUSDC`, `WETH`, `WSOL`, …) before the first burn of that mint.
+
+4. **Allowlist selectors on the paymaster**. The deploy scripts allowlist `burnUSDC` and `burnETH` automatically — both target the bridge, so the paymaster's `(target, selector)` allowlist can sponsor them. The pull-delegate precondition (`approve_spl(bridge, …)`) targets `0xff..09` directly, not the bridge, so it is **not sponsorable** through this allowlist — the gasless path lost that step when `approveBurnETH` was deleted. `allowlist-approve-selector.ts` no longer exists.
 
 5. **Verify the proxy supports `rome_solanaTxForEvmTx`** for the target Rome chain. If not, the outbound Wormhole/CCTP relayer flows will not be able to find Solana sigs.
 
@@ -224,7 +237,7 @@ For a fresh deploy on a new Rome chain or to refresh rome:
    ```bash
    npx hardhat run scripts/bridge/smoke-emulate-all.ts --network <chain>
    ```
-   Checks that `burnUSDC` and `approveBurnETH` emulate cleanly. `burnETH` is explicitly skipped in the smoke test — it requires a prior on-chain approve.
+   Checks that `burnUSDC` and `approve_spl` (the bridge pull-delegate grant) emulate cleanly. `burnETH` is explicitly skipped in the smoke test — it requires that delegate to already be live on-chain.
 
 7. **Update the frontend** (`the app`) `CHAIN_WITHDRAW` address in `src/features/bridge/hooks/useOutboundWhSend.ts` and any CCTP hook file.
 
@@ -233,7 +246,7 @@ For a fresh deploy on a new Rome chain or to refresh rome:
 - **Inbound CCTP** (Sepolia → Rome WUSDC): `scripts/bridge/inbound/01-submit-deposit.mjs` → `02-poll-attestation.mjs` → `03-submit-receive.mjs`.
 - **Outbound CCTP** (Rome WUSDC → Sepolia): `scripts/bridge/submit-burn.ts` then wait for the relayer to advance the record. Or call the UI.
 - **Inbound Wormhole** (Sepolia → Rome WETH): `scripts/bridge/inbound/01b-submit-whETH.mjs` → relayer advances → balance appears.
-- **Outbound Wormhole** (Rome WETH → Sepolia): `scripts/bridge/submit-burnETH.ts` sends `approveBurnETH` then `burnETH`, waits for Sepolia completion.
+- **Outbound Wormhole** (Rome WETH → Sepolia): `scripts/bridge/submit-burnETH.ts` sends `approve_spl` (direct to `0xff..09`) then `burnETH`, waits for Sepolia completion.
 
 All four have been verified E2E on rome against Sepolia with real funds:
 - Inbound CCTP: Sepolia `0x484c00f5...` → Solana `WS6QkvCJ...`
@@ -251,7 +264,7 @@ rome's gas token is `USDC` (bare — native gas mint), priced against `SOL` via 
 
 Start here:
 
-- `contracts/bridge/RomeBridgeWithdraw.sol` — entrypoint contract. The outbound side of both flows lives here. Read the NatSpec on `burnETH` / `approveBurnETH` for the split-tx rationale.
+- `contracts/bridge/RomeBridgeWithdraw.sol` — entrypoint contract. The outbound side of both flows lives here. Read the NatSpec on `burnETH` for the pull-then-burn rationale.
 - `contracts/bridge/IWormholeTokenBridge.sol` — Wormhole account layout. The long comment on `TransferWrappedAccounts` lists the exact order and mutability; match it to the IDL before changing.
 - `contracts/bridge/ICCTP.sol` — CCTP `depositForBurn` layout (17 accounts per Circle's IDL).
 - `scripts/bridge/derive/wormhole-accounts.ts` — PDA derivations. `wrappedMeta` depends on the mint — keep it in sync with the deployed WETH wrapper.

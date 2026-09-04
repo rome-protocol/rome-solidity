@@ -128,10 +128,6 @@ describe("RomeBridgeWithdraw — generic Wormhole burn", function () {
     );
   });
 
-  // approveWormholeBurn was deleted (direct-call migration — see
-  // tests/bridge/RomeBridgeWithdraw.direct-call.test.ts for the ABI-removal
-  // and asset-guard coverage on its replacement call sites).
-
   it("constructor rejects mismatched wormhole config (fail-closed)", async function () {
     const usdc = await viem.deployContract("MockSplErc20", [PK(40)]);
     // Duplicate/empty allowlists must not silently succeed — keep parity with

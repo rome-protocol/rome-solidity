@@ -45,10 +45,10 @@ library CCTPV2Lib {
     ///         v2 deltas vs v1: + denylist_account (per-owner PDA, index 4);
     ///         remote_token_messenger remains PER DESTINATION DOMAIN.
     struct DepositForBurnAccounts {
-        bytes32 owner;                       // 0  signer, writable — user's Rome PDA
+        bytes32 owner;                       // 0  signer, writable — the calling contract's Rome PDA (RomeBridgeWithdraw: the bridge's own)
         bytes32 eventRentPayer;              // 1  signer, writable
         bytes32 senderAuthorityPda;          // 2  readonly — ["sender_authority"] under TMM v2
-        bytes32 burnTokenAccount;            // 3  writable — user's USDC ATA
+        bytes32 burnTokenAccount;            // 3  writable — owner's USDC ATA
         bytes32 denylistAccount;             // 4  readonly — ["denylist_account", owner] under TMM v2
         bytes32 messageTransmitter;          // 5  writable — MT v2 config
         bytes32 tokenMessenger;              // 6  readonly — TMM v2 config

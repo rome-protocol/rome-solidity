@@ -9,9 +9,7 @@ import {ISystemProgram} from "../interface.sol";
 import {WormholeTokenBridgeLib} from "./IWormholeTokenBridge.sol";
 import {ICrossProgramInvocation, CpiProgram, HelperProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
-import {Convert} from "../convert.sol";
 import {RomeBridgeEvents} from "./RomeBridgeEvents.sol";
-import {SplTokenLib} from "../spl_token/spl_token.sol";
 import {UserPda} from "../cpi/UserPda.sol";
 
 
@@ -143,6 +141,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     error UnsupportedAssetWrapper(address assetWrapper);
     error NotOwner(address caller);
     error ZeroOwner();
+    error SubGranularityAmount(uint256 amount, uint256 granularity);
 
     // -------------------------------------------------------------------------
     // Admin events
@@ -397,17 +396,22 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
 
         // The bridge PDA is now `event_rent_payer`/`owner` — it must hold
         // ≥ ~13M lamports per burn for CCTP's inner System::create_account
-        // on `messageSentEventData` (fronted by the bridge, recouped in gas;
-        // see the ops note below the CPI call).
+        // on `messageSentEventData`, fronted by the bridge and recouped in
+        // gas. Circle's rent IS reclaimable (`reclaimEventAccount`, signed
+        // by `event_rent_payer`), but nothing here calls it — a live drain
+        // until an operator sweep or a reclaim entry point exists. See
+        // contracts/bridge/README.md § "Bridge PDA funding" for the ops
+        // requirements this creates.
 
         // Per-tx message data account derived as a salted PDA under the bridge.
         // Salt includes per-user nonce instead of block.number — block.number on
         // Rome EVM = Solana slot, unstable across emulation/execution.
         uint64 nonce = burnNonce[user];
         burnNonce[user] = nonce + 1;
-        // Include address(this) so redeploys don't collide with previously-used
-        // event-data PDAs under the same user.
-        bytes32 cctpSalt = keccak256(abi.encodePacked("CCTP_MSG", address(this), nonce));
+        // user + address(this) + nonce: user discriminates across accounts (the
+        // nonce alone is per-user, not global), address(this) keeps redeploys
+        // from colliding with previously-used event-data PDAs.
+        bytes32 cctpSalt = keccak256(abi.encodePacked("CCTP_MSG", address(this), user, nonce));
         bytes32 messageSentEventData = RomeEVMAccount.pda_with_salt(address(this), cctpSalt);
 
         bytes memory ixData = CCTPV2Lib.encodeDepositForBurn(CCTPV2Lib.DepositForBurnParams({
@@ -527,7 +531,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         // Per-tx Wormhole message account derived as a salted PDA under the bridge.
         uint64 nonce = burnNonce[user];
         burnNonce[user] = nonce + 1;
-        bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", address(this), nonce));
+        bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", address(this), user, nonce));
         bytes32 messageAccount = RomeEVMAccount.pda_with_salt(address(this), whSalt);
 
         bytes memory ixData = WormholeTokenBridgeLib.encodeTransferTokens(
@@ -676,7 +680,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         // block.number — unstable across emulation/execution on Rome).
         uint64 nonce = burnNonce[user];
         burnNonce[user] = nonce + 1;
-        bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", address(this), nonce));
+        bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", address(this), user, nonce));
         bytes32 messageAccount = RomeEVMAccount.pda_with_salt(address(this), whSalt);
 
         bytes memory ixData = WormholeTokenBridgeLib.encodeTransferTokens(
@@ -776,6 +780,17 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         }
 
         uint8 decimals = wrapper.decimals();
+        // transfer_native normalizes to min(decimals, 8); the pull-first shape
+        // moves the SPL out of the user's ATA before that truncation happens,
+        // so any sub-8-decimal remainder would strand in the bridge's own ATA
+        // (pre-migration it stayed recoverable in the user's own ATA). Reject
+        // up front rather than create unreachable residue.
+        if (decimals > 8) {
+            uint256 granularity = 10 ** (decimals - 8);
+            if (amount % granularity != 0) {
+                revert SubGranularityAmount(amount, granularity);
+            }
+        }
         bytes32 bridgePda = RomeEVMAccount.pda(address(this));
         bytes32 userAta = HelperProgram.ata(user, mint);
         bytes32 bridgeAta = HelperProgram.ata(address(this), mint);
@@ -796,7 +811,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         // block.number — unstable across emulation/execution on Rome).
         uint64 nonce = burnNonce[user];
         burnNonce[user] = nonce + 1;
-        bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", address(this), nonce));
+        bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", address(this), user, nonce));
         bytes32 messageAccount = RomeEVMAccount.pda_with_salt(address(this), whSalt);
 
         bytes memory ixData = WormholeTokenBridgeLib.encodeTransferNative(
@@ -914,6 +929,8 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     /// @notice Idempotently create the recipient's ATA for `mint` on Solana so a
     ///         subsequent transfer-only `bridgeOutToSolana` lands. Separate tx
     ///         by design: one CPI, atomic — never trips the iterative-VM gate.
+    ///         Permissionless with an arbitrary `(recipient, mint)` — the caller
+    ///         pays no Rome-side fee for the operator-funded rent this commits.
     /// @param solanaRecipient Recipient Solana wallet pubkey (bytes32, non-zero).
     /// @param mint            The wrapper's underlying SPL mint.
     function ensureRecipientAta(bytes32 solanaRecipient, bytes32 mint) external {
@@ -924,6 +941,22 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
             abi.encodeWithSignature(
                 "create_ata_for_key(bytes32,bytes32)",
                 solanaRecipient,
+                mint
+            )
+        );
+        if (!ok) revert CpiFailed(result);
+    }
+
+    /// @notice Idempotently create the bridge's own ATA for `mint`.
+    ///         `transfer_spl_from_ata` has no create leg — every mint the
+    ///         bridge egresses needs this run once (deploy-time, per mint)
+    ///         before its first burn.
+    /// @param mint The wrapper's underlying SPL mint.
+    function ensureBridgeAta(bytes32 mint) external {
+        (bool ok, bytes memory result) = address(HelperProgram).delegatecall(
+            abi.encodeWithSignature(
+                "create_ata_for_key(bytes32,bytes32)",
+                RomeEVMAccount.pda(address(this)),
                 mint
             )
         );

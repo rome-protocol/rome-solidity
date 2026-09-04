@@ -1,26 +1,34 @@
 /**
  * WrappedGasFacade — moved off the wrapper's ERC-20 surface.
  *
- * The migrated cached wrapper (`spl-wrappers-direct-call`, PR #338) routes a
- * contract holder's SPL through its own escrow ATA (`ata(external_auth(wrapper),
- * mint)`), while `WithdrawCached.withdraw_to_ata` / `.deposit` always target
+ * The migrated cached wrapper routes a contract holder's SPL through its own
+ * escrow ATA (`ata(external_auth(wrapper), mint)`), while
+ * `WithdrawCached.withdraw_to_ata` / `.deposit` always target
  * `ata(external_auth(context.caller), mint)` — the facade's own ATA when called
  * by direct CALL. Those are two distinct PDAs the wrapper's `_escrow` ledger
- * never reconciles (see facade-status.md), so `wrapper.transfer` /
- * `wrapper.transferFrom` cannot carry the gas legs. This fix stops calling
- * them: the facade moves the underlying SPL straight to/from each caller's own
- * ATA by direct CALL, relying on the fact that an EOA's wrapper balance IS its
- * on-chain ATA balance — no wrapper-side change.
+ * never reconciles, so `wrapper.transfer` / `wrapper.transferFrom` cannot
+ * carry the gas legs. This fix stops calling them: the facade moves the
+ * underlying SPL straight to/from each caller's own ATA by direct CALL,
+ * relying on the fact that an EOA's wrapper balance IS its on-chain ATA
+ * balance — no wrapper-side change.
  *
- * Two layers:
+ * Both legs stay on the cached track (`WithdrawCached` / `SplCached` /
+ * `AssociatedSplCached`) — never `HelperProgram`, whose legacy CPI dispatch
+ * trips the one-track rule against any cached call in the same transaction.
+ *
+ * Three layers:
  *   - structural: read the real source file, assert the ERC-20 `wrapper.transfer`
  *     / `wrapper.transferFrom` calls are gone and the direct-CALL replacements
- *     are present.
+ *     are present, all on the cached track.
  *   - behavioral: drive the real deployed contract through `FacadePrecompileMock`,
  *     installed via `hardhat_setCode` at the real WithdrawCached/SplCached/
  *     AssociatedSplCached/HelperProgram/SystemProgram addresses, and assert the
  *     precompile sees the FACADE as `msg.sender` (proof of a direct CALL) with
  *     the right ATA/amount at each site.
+ *   - one-track: `TxTrackMock` reproduces `verify_call`'s rule (a cached
+ *     dispatch after a legacy CPI in the same tx is refused) across every
+ *     install, so mixing tracks in `withdraw()` fails here exactly as it
+ *     would on-chain.
  */
 
 import { describe, it, before, beforeEach } from "node:test";
@@ -53,11 +61,13 @@ describe("WrappedGasFacade — direct-call migration", () => {
       assert.ok(src.includes("SplCached.transfer(msg.sender, wad / weiPerToken)"));
     });
 
-    it("withdraw's unwrap leg pulls via HelperProgram.transfer_spl, a direct CALL", () => {
+    it("withdraw's unwrap leg pulls via SplCached.transferFrom, staying on the cached track", () => {
       const start = src.indexOf("function withdraw(uint256 wad)");
       assert.ok(start >= 0, "withdraw not found");
-      const body = src.slice(start);
-      assert.ok(body.includes("HelperProgram.transfer_spl("));
+      const next = src.indexOf("\n    function ", start + 1);
+      const body = next === -1 ? src.slice(start) : src.slice(start, next);
+      assert.ok(body.includes("SplCached.transferFrom("));
+      assert.ok(!body.includes("HelperProgram"), "withdraw must not mix in the legacy CPI track");
     });
 
     it("constructor pins the wrapper to the chain's gas mint", () => {
@@ -73,6 +83,7 @@ describe("WrappedGasFacade — direct-call migration", () => {
     let splCached: any;
     let associatedSplCached: any;
     let helper: any;
+    let txTrack: any;
     let wrapperMock: any;
     let facade: any;
     let userWallet: any;
@@ -109,6 +120,14 @@ describe("WrappedGasFacade — direct-call migration", () => {
       helper = await viem.getContractAt("FacadePrecompileMock", HELPER_PROGRAM_ADDRESS);
       mintId = await withdrawCached.read.GAS_MINT();
 
+      // Shared one-track state (see TxTrackMock) — every install points at
+      // the same tracker so a legacy CPI on one address is visible to a
+      // cached dispatch on another, exactly like the real per-tx `found_cpi`.
+      txTrack = await viem.deployContract("TxTrackMock");
+      for (const c of [withdrawCached, splCached, associatedSplCached, helper]) {
+        await c.write.setTxTrack([txTrack.address]);
+      }
+
       const wallets = await viem.getWalletClients();
       userWallet = wallets[1]; // distinct from the deployer (wallets[0])
     });
@@ -120,6 +139,7 @@ describe("WrappedGasFacade — direct-call migration", () => {
       for (const c of [withdrawCached, splCached, associatedSplCached, helper]) {
         await c.write.reset();
       }
+      await txTrack.write.reset();
       wrapperMock = await viem.deployContract("MockSplErc20", [mintId]);
       await wrapperMock.write.setDecimals([DECIMALS]);
       facade = await viem.deployContract("WrappedGasFacade", [wrapperMock.address]);
@@ -158,6 +178,17 @@ describe("WrappedGasFacade — direct-call migration", () => {
       assert.equal(await wrapperMock.read.balanceOf([facade.address]), 0n);
     });
 
+    it("deposit() ensures the caller's own ATA exists before forwarding, so a first-time EOA recipient doesn't revert", async function () {
+      const wad = 1_000_000n * WEI_PER_TOKEN;
+      const user = userWallet.account.address;
+
+      await facade.write.deposit([], { account: userWallet.account, value: wad });
+
+      assert.equal(await associatedSplCached.read.createAtaForCount(), 1n);
+      assert.equal((await associatedSplCached.read.lastCreateAtaForUser()).toLowerCase(), user.toLowerCase());
+      assert.equal(await associatedSplCached.read.lastCreateAtaForMint(), mintId);
+    });
+
     it("deposit() refunds sub-token dust and emits Deposit for the exact whole-token wad", async function () {
       const wad = 3_000_000n * WEI_PER_TOKEN;
       const dust = WEI_PER_TOKEN / 2n;
@@ -187,12 +218,10 @@ describe("WrappedGasFacade — direct-call migration", () => {
       );
     });
 
-    it("withdraw() pulls the caller's own SPL as their delegate into the facade's own ATA, then unwraps and forwards native — no wrapper.approve needed", async function () {
+    it("withdraw() pulls the caller's own SPL as their delegate via SplCached.transferFrom, then unwraps and forwards native — no wrapper.approve needed, both legs cached", async function () {
       const wad = 1_500_000n * WEI_PER_TOKEN;
       const user = userWallet.account.address;
-      const userAta = await helper.read.ata([user, mintId]);
-      const facadeAta = await helper.read.ata([facade.address, mintId]);
-      await helper.write.setAuthorized([userAta, facade.address, true]);
+      await splCached.write.setAuthorizedFrom([user, facade.address, true]);
 
       const pc = await viem.getPublicClient();
       const nativeBefore = await pc.getBalance({ address: user });
@@ -200,11 +229,15 @@ describe("WrappedGasFacade — direct-call migration", () => {
       const receipt = await pc.waitForTransactionReceipt({ hash: txHash });
       assert.equal(receipt.status, "success");
 
-      assert.equal(await helper.read.transferSplCount(), 1n);
-      assert.equal((await helper.read.lastTransferSplCaller()).toLowerCase(), facade.address.toLowerCase());
-      assert.equal(await helper.read.lastTransferSplFromAta(), userAta);
-      assert.equal(await helper.read.lastTransferSplToAta(), facadeAta);
-      assert.equal(await helper.read.lastTransferSplTokens(), wad / WEI_PER_TOKEN);
+      assert.equal(await splCached.read.transferFromCount(), 1n);
+      assert.equal((await splCached.read.lastTransferFromCaller()).toLowerCase(), facade.address.toLowerCase());
+      assert.equal((await splCached.read.lastTransferFromFrom()).toLowerCase(), user.toLowerCase());
+      assert.equal((await splCached.read.lastTransferFromTo()).toLowerCase(), facade.address.toLowerCase());
+      assert.equal(await splCached.read.lastTransferFromAmount(), wad / WEI_PER_TOKEN);
+      assert.equal(await splCached.read.lastTransferFromMint(), mintId);
+
+      // Never the legacy CPI track — the fix this test guards against regressing.
+      assert.equal(await helper.read.transferSplCount(), 0n);
 
       assert.equal(await withdrawCached.read.depositCount(), 1n);
       assert.equal((await withdrawCached.read.lastDepositCaller()).toLowerCase(), facade.address.toLowerCase());
@@ -220,8 +253,8 @@ describe("WrappedGasFacade — direct-call migration", () => {
 
     it("withdraw() reverts when the caller never granted the facade an SPL-level delegate", async function () {
       const wad = 1_000_000n * WEI_PER_TOKEN;
-      // Deliberately no `setAuthorized` call — control varies the world (the
-      // authorization the caller's identity depends on), not the ruler.
+      // Deliberately no `setAuthorizedFrom` call — control varies the world
+      // (the authorization the caller's identity depends on), not the ruler.
       await assert.rejects(
         facade.write.withdraw([wad], { account: userWallet.account }),
         (err: any) => {
