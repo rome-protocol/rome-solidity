@@ -23,9 +23,23 @@ import { readDeployments } from "../scripts/lib/deployments";
 
 const erc20Abi = parseAbi([
     "function balanceOf(address) external view returns (uint256)",
-    "function approve(address spender, uint256 value) external returns (bool)",
     "function decimals() external view returns (uint8)",
+    "function mint_id() external view returns (bytes32)",
 ]);
+
+// SystemProgram.mint_id() — 0xff..07, the chain's own gas mint. The facade's
+// constructor requires wrapper.mint_id() == this, reverting MintMismatch()
+// otherwise (`WrappedGasFacade.sol:47`).
+const systemProgramAbi = parseAbi(["function mint_id() external view returns (bytes32)"]);
+const SYSTEM_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000007" as const;
+
+// approve_spl(address,uint64,bytes32) — 0xff..09. withdraw()'s precondition is
+// an SPL-level delegate grant, not an ERC-20 wrapper.approve: the facade moves
+// the caller's SPL straight from their own ATA, never through the wrapper.
+const helperProgramAbi = parseAbi([
+    "function approve_spl(address spender, uint64 amount, bytes32 mint) external",
+]);
+const HELPER_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000009" as const;
 
 const facadeEventsAbi = parseAbi([
     "event Deposit(address indexed dst, uint256 wad)",
@@ -59,6 +73,28 @@ describe("WrappedGasFacade (Hadrian)", function () {
         const wrapper = (readDeployments("hadrian") as any).SPL_ERC20_USDC?.address;
         if (!wrapper) throw new Error("SPL_ERC20_USDC missing from deployments/hadrian.json");
         wrapperAddr = getAddress(wrapper);
+
+        // Self-diagnosing precondition, not an assumption: SPL_ERC20_USDC is
+        // Hadrian's gas-mint wrapper by convention (see
+        // scripts/activation/deploy-simple-activator.ts), but the local
+        // receipt has gone stale against the registry's live gas-mint
+        // wrapper entry before. Fail with the reason rather than on the
+        // constructor's opaque MintMismatch().
+        const chainGasMint = await pc.readContract({
+            address: SYSTEM_PROGRAM_ADDRESS, abi: systemProgramAbi, functionName: "mint_id", args: [],
+        });
+        const wrapperMint = await pc.readContract({
+            address: wrapperAddr, abi: erc20Abi, functionName: "mint_id", args: [],
+        });
+        if ((wrapperMint as string).toLowerCase() !== (chainGasMint as string).toLowerCase()) {
+            throw new Error(
+                `deployments/hadrian.json's SPL_ERC20_USDC (${wrapperAddr}) does not wrap the chain's ` +
+                `gas mint (wrapper mint_id=${wrapperMint}, gas mint=${chainGasMint}) — the local receipt ` +
+                `is stale against the registry's gas-mint wrapper entry. Refresh the receipt (or redeploy ` +
+                `SPL_ERC20_USDC against the current gas mint) before re-running this suite.`
+            );
+            return;
+        }
 
         facade = await viem.deployContract("WrappedGasFacade", [wrapperAddr]);
         const ensureHash = await facade.write.ensureAta([], { account: deployerAccount });
@@ -109,11 +145,12 @@ describe("WrappedGasFacade (Hadrian)", function () {
     it("withdraw() unwraps back to native gas, emits Withdrawal", async function () {
         const tokens = WRAP_WEI / weiPerToken;
         const [wallet] = await viem.getWalletClients();
+        const mintId = await pc.readContract({ address: wrapperAddr, abi: erc20Abi, functionName: "mint_id", args: [] });
         const approveHash = await wallet.writeContract({
-            address: wrapperAddr,
-            abi: erc20Abi,
-            functionName: "approve",
-            args: [facade.address, tokens],
+            address: HELPER_PROGRAM_ADDRESS,
+            abi: helperProgramAbi,
+            functionName: "approve_spl",
+            args: [facade.address, tokens, mintId],
         });
         await pc.waitForTransactionReceipt({ hash: approveHash });
 

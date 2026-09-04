@@ -242,10 +242,9 @@ contract BenchProbe {
     }
 
     /// A2 OLD: SPL approve via SplTokenLib.approve + CpiProgram.invoke_signed.
-    /// This is the v1 path consumed by RomeBridgeWithdraw.approveBurnETH
-    /// pre-#165. The OLD SPL instruction is the 3-account `approve` (tag 4)
-    /// — no on-chain decimals enforcement. Caller pays mint-read cost
-    /// separately if `approve_checked` semantics are wanted.
+    /// The OLD SPL instruction is the 3-account `approve` (tag 4) — no
+    /// on-chain decimals enforcement. Caller pays mint-read cost separately
+    /// if `approve_checked` semantics are wanted.
     function probe_a2_approveSplRawDelegate_OLD(bytes32 delegate, uint64 amount) external {
         bytes32 mintId = SystemProgram.mint_id();
         bytes32 srcAta = HelperProgram.ata(address(this), mintId);
@@ -264,8 +263,6 @@ contract BenchProbe {
     /// A2 NEW: HelperProgram.approve_spl_raw_delegate — single dispatch
     /// (selector 0x7881d453). Caller passes `decimals` to skip on-chain
     /// mint read (~30-50K CU saving over a decimals-fetching variant).
-    /// Shipped in the Rome EVM program #364, consumed by
-    /// RomeBridgeWithdraw.approveBurnETH in rome-solidity #165.
     function probe_a2_approveSplRawDelegate_NEW(bytes32 delegate, uint64 amount, uint8 decimals) external {
         bytes32 mintId = SystemProgram.mint_id();
         bytes32 srcAta = HelperProgram.ata(address(this), mintId);

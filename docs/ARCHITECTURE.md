@@ -96,7 +96,7 @@ The **on-chain half** of the Rome bridge — the *egress* surface for leaving Ro
 
 | Contract | What | Key surface |
 |---|---|---|
-| `RomeBridgeWithdraw` | The single outbound entrypoint — takes an SPL-wrapper token in on Rome and fires a Solana CPI (signed as the caller's Rome PDA) over one of five rails | see rails below |
+| `RomeBridgeWithdraw` | The single outbound entrypoint — takes an SPL-wrapper token in on Rome and fires a Solana CPI (direct CALL, signed as the bridge's own Rome PDA — a delegatecall into a mutating precompile is refused) over one of five rails | see rails below |
 | `RomeBridgeEvents` | Shared event schema the `rome-bridge-api` indexer watches to attribute each egress | `Withdrawn` / `WormholeBurn` / `BridgedOutToSolana` / … |
 | `ICCTPV2` (`CCTPV2Lib`) | **The live CCTP encoder** — `deposit_for_burn` bytes + 19 account-metas for Circle CCTP **v2** | `encodeDepositForBurn` / `buildDepositForBurnAccounts` |
 | `ICCTP` (`CCTPLib`) | Legacy CCTP **v1** encoder (retained reference; not imported by the live withdraw contract) | `encodeDepositForBurn` (v1, 18 metas) |
@@ -104,8 +104,8 @@ The **on-chain half** of the Rome bridge — the *egress* surface for leaving Ro
 
 **The five egress rails** on `RomeBridgeWithdraw` (all permissionless; network config injected via constructor, so one bytecode works on any chain):
 1. **CCTP (USDC)** — `burnUSDC(amount, recipient[, destinationDomain])` → CCTP **v2** `deposit_for_burn`. Per-call Circle domain (e.g. Monad = domain 15, v2-only).
-2. **Wormhole ETH** — `approveBurnETH` then `burnETH` (two txs — a CPI forces atomic mode, and two CPIs won't fit one Solana tx's ~1.4M CU).
-3. **Generic Wormhole** — `approveWormholeBurn` then `burnToWormhole(assetWrapper, amount, recipient, targetChain)` for any allowlisted wrapper/chain.
+2. **Wormhole ETH** — `burnETH`, single tx: pulls the caller's SPL into the bridge's own ATA, re-grants Wormhole's delegate there, and burns. Precondition (off-contract): the caller grants the bridge an SPL delegate once via `approve_spl(bridge, …)` sent directly to `0xff..09`.
+3. **Generic Wormhole** — `burnToWormhole(assetWrapper, amount, recipient, targetChain)`, single tx, same pull-then-burn shape as `burnETH`, for any allowlisted wrapper/chain.
 4. **Wormhole native** — `transferNativeToWormhole(...)` locks Solana-native mints (wSOL/LSTs) into per-mint custody instead of burning.
 5. **Rome → Solana SPL** — `bridgeOutToSolana(recipient, amount, mint)` + `ensureRecipientAta(...)` (the generic SPL exit for any wrapper).
 
