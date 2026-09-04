@@ -2,14 +2,14 @@ import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import hardhat from "hardhat";
 
-/// FIND-003 (#511) regression suite for the contract-holder escrow (§6.2):
+/// regression suite for the contract-holder escrow (§6.2):
 /// a deployed pool/pool-like contract can never call `approve`, so its SPL
 /// lives in the wrapper's own ATA and its balance is tracked in an EVM
 /// ledger instead. `EscrowLedgerHelper` mirrors the routing + arithmetic;
 /// the actual `code.length` check and SPL CPI need a live chain (a real
 /// deployed `to` contract) and are covered by the production-file
 /// structural test in direct-call-escrow-shape.test.ts instead.
-describe("SPL_ERC20 contract-holder escrow (#511 change 4)", function () {
+describe("SPL_ERC20 contract-holder escrow (the delegatecall gate change 4)", function () {
     let viem: any;
     let helper: any;
     let eoaA: `0x${string}`;

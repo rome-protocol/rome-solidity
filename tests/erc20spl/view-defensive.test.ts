@@ -9,13 +9,13 @@ import hardhat from "hardhat";
 /// predicate + early-exit arithmetic via a mirror helper contract,
 /// identical in shape to FB-1's `ApproveSaturationHelper`.
 ///
-/// #511 note: FB-2a/FB-2b/FB-2e describe the SPL-CPI delegate-comparison
-/// guard that backed `SPL_ERC20.allowance`/`.approve` before #511.
+/// the delegatecall gate note: FB-2a/FB-2b/FB-2e describe the SPL-CPI delegate-comparison
+/// guard that backed `SPL_ERC20.allowance`/`.approve` before the delegatecall gate.
 /// `SPL_ERC20.allowance`/`.approve` are now a plain EVM mapping with no
 /// guard logic at all (see evm-allowance.test.ts) — this arithmetic now
 /// documents `SPL_ERC20_cached`'s `allowance`/`approve` instead
-/// (`erc20spl_cached.sol`, unchanged, still pre-#511 CPI-backed). FB-2c
-/// (totalSupply) and FB-2d (balanceOf, EOA case) are unaffected by #511
+/// (`erc20spl_cached.sol`, unchanged, still pre-the delegatecall gate CPI-backed). FB-2c
+/// (totalSupply) and FB-2d (balanceOf, EOA case) are unaffected by the delegatecall gate
 /// and still describe `SPL_ERC20Base` directly — `balanceOf` gained a
 /// contract-holder branch ahead of this logic, not a change to it.
 ///

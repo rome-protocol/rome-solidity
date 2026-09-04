@@ -88,7 +88,7 @@ describe("SPL_ERC20_Token2022Hooked hot-path dispatch", () => {
     );
   });
 
-  it("no longer exposes mint_to (#511 change 5 / scope §6.1) — minting is a direct creator call to SplCached.mint", () => {
+  it("no longer exposes mint_to (the delegatecall gate change 5 / scope §6.1) — minting is a direct creator call to SplCached.mint", () => {
     assert.doesNotMatch(cachedWrapper, /function mint_to\(/);
   });
 });

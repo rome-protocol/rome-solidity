@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-/// Mirror of SPL_ERC20's post-#511 allowance surface: approve/allowance/
+/// Mirror of SPL_ERC20's post-the delegatecall gate allowance surface: approve/allowance/
 /// transferFrom-decrement are now plain EVM state, no SPL CPI at all (the
 /// on-chain delegate grant moved to a one-time user->0xff..09 approve_spl
 /// call, entirely decoupled from this mapping). Deployable and fully
 /// exercisable on hardhat-network — unlike the rest of SPL_ERC20, none of
 /// this touches a precompile.
 ///
-/// No u64 saturation sentinel here (contrast the pre-#511
+/// No u64 saturation sentinel here (contrast the pre-the delegatecall gate
 /// ApproveSaturationHelper): this mapping is uint256 EVM storage, not u64
 /// SPL delegated_amount storage, so there is nothing to saturate against
 /// and no sentinel value to reconstruct on readback.

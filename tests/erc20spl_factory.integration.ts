@@ -13,7 +13,7 @@ import {
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { readDeployments } from "../scripts/lib/deployments.js";
 
-// #511: `SPL_ERC20.mint_to` is DELETED (a direct CALL would sign as the
+// the delegatecall gate: `SPL_ERC20.mint_to` is DELETED (a direct CALL would sign as the
 // wrapper's own PDA, which is not the on-chain mint authority). Minting is
 // now a creator/operator act sent directly by the mint authority to
 // HelperProgram (0xff..09) — never through the wrapper.
@@ -245,7 +245,7 @@ describe("ERC20SPLFactory integration", { concurrency: false }, function () {
         });
         await waitForSuccess(publicClient, ensureAccountBTxHash, "ensure token account for account B");
 
-        // #511: minting moved off the wrapper — the mint authority (account
+        // the delegatecall gate: minting moved off the wrapper — the mint authority (account
         // A, per create_token_mint) sends mint_spl directly to 0xff..09.
         const mintToTxHash = await mintSpl(accountA, accountA.account, accountBWallet.account.address, mintAmount, mintId);
         await waitForSuccess(publicClient, mintToTxHash, "mint_spl account B");
@@ -293,7 +293,7 @@ describe("ERC20SPLFactory integration", { concurrency: false }, function () {
     });
 
     it("does not allow account B to mint without mint authority", async function () {
-        // #511: minting is a direct precompile call now, not a wrapper
+        // the delegatecall gate: minting is a direct precompile call now, not a wrapper
         // method — the non-authority check moved with it. A direct CALL
         // signs as external_auth(account B); SPL Token's MintToChecked
         // enforces that PDA against the mint's on-chain authority
@@ -346,7 +346,7 @@ describe("ERC20SPLFactory integration", { concurrency: false }, function () {
         );
     });
 
-    // #511 behavior change: mint_to (wrapper-mediated, auto-created the
+    // the delegatecall gate behavior change: mint_to (wrapper-mediated, auto-created the
     // recipient's ATA via ensure_token_account before the SPL CPI) is
     // deleted. Minting now goes straight to HelperProgram — it has no
     // wrapper method to hook an auto-create into, so a mint to a

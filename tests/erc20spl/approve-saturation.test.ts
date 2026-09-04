@@ -8,12 +8,12 @@ import hardhat from "hardhat";
 /// verifies the pure Solidity arithmetic via a mirror helper. The table is
 /// the FB-1 spec.
 ///
-/// #511 note: `SPL_ERC20.approve`/`.allowance` (the legacy/direct-CPI
+/// the delegatecall gate note: `SPL_ERC20.approve`/`.allowance` (the legacy/direct-CPI
 /// wrapper) moved to a plain EVM `uint256` mapping and no longer saturates
 /// at u64::max at all — see EvmAllowanceHelper +
 /// tests/erc20spl/evm-allowance.test.ts for that contract's current
 /// behavior. This arithmetic still describes `SPL_ERC20_cached.approve`/
-/// `.allowance` (`erc20spl_cached.sol`), which is still on the pre-#511
+/// `.allowance` (`erc20spl_cached.sol`), which is still on the pre-the delegatecall gate
 /// CPI path pending its own PR.
 describe("SPL_ERC20 approve saturation + sentinel arithmetic (FB-1)", function () {
     let helper: any;

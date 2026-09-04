@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-/// Mirror of SPL_ERC20's post-#511 contract-holder escrow (§6.2): a
+/// Mirror of SPL_ERC20's post-the delegatecall gate contract-holder escrow (§6.2): a
 /// deployed pool/pool-like contract can never call `approve`, so its SPL
 /// lives in the wrapper's own ATA and its balance is tracked here in EVM
 /// storage instead. The actual SPL CPI + `code.length` check need a live

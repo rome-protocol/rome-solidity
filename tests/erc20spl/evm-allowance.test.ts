@@ -2,14 +2,14 @@ import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import hardhat from "hardhat";
 
-/// FIND-003 (#511) regression suite: SPL_ERC20's approve/allowance/
+/// regression suite: SPL_ERC20's approve/allowance/
 /// transferFrom-decrement move from an SPL CPI (`approve_spl`/
-/// `allowance_of`, refused under the #511 delegatecall gate) to a plain
+/// `allowance_of`, refused under the delegatecall gate) to a plain
 /// EVM mapping. `EvmAllowanceHelper` is the real logic — no precompile
 /// call anywhere in this path, so (unlike the rest of SPL_ERC20) this is
 /// fully exercisable on hardhat-network without a mirror-arithmetic
 /// substitute.
-describe("SPL_ERC20 EVM-only allowance (#511 change 2)", function () {
+describe("SPL_ERC20 EVM-only allowance (the delegatecall gate change 2)", function () {
     let viem: any;
     let publicClient: any;
     let ownerAccount: any;
@@ -42,7 +42,7 @@ describe("SPL_ERC20 EVM-only allowance (#511 change 2)", function () {
         const hash = await helper.write.approve([spenderAccount.account.address, bigValue], { account: ownerAccount.account });
         await publicClient.waitForTransactionReceipt({ hash });
         const result = await helper.read.allowance([ownerAccount.account.address, spenderAccount.account.address]);
-        assert.equal(result, bigValue, "post-#511 allowance is EVM uint256 storage — must not saturate at u64::max");
+        assert.equal(result, bigValue, "post-the delegatecall gate allowance is EVM uint256 storage — must not saturate at u64::max");
     });
 
     it("approve emits Approval with the exact stored value (no sentinel remap)", async function () {

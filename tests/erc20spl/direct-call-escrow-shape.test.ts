@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import hardhat from "hardhat";
 
-/// FIND-003 (#511) structural regression suite, tied 1:1 to the real
+/// structural regression suite, tied 1:1 to the real
 /// `contracts/erc20spl/erc20spl.sol` source and compiled artifact — NOT a
 /// mirror helper. SPL_ERC20Base's constructor calls the live
 /// `HelperProgram.mint_info` precompile, so the real contract cannot be
@@ -18,7 +18,7 @@ import hardhat from "hardhat";
 /// This is the file the mutation step (build-legacy.md §MUTATION) targets:
 /// mutating `_transfer`'s destination-selection ternary breaks the
 /// "escrow destination" assertion below, for real, against the real file.
-describe("SPL_ERC20 dispatch shape (#511 gate) — structural, source-of-truth is the file itself", function () {
+describe("SPL_ERC20 dispatch shape (delegatecall gate) — structural, source-of-truth is the file itself", function () {
     const srcPath = path.join(
         path.dirname(fileURLToPath(import.meta.url)),
         "..", "..", "contracts", "erc20spl", "erc20spl.sol"
@@ -35,7 +35,7 @@ describe("SPL_ERC20 dispatch shape (#511 gate) — structural, source-of-truth i
     }
 
     it("mint_to no longer exists in source", function () {
-        assert.ok(!/function mint_to\(/.test(src), "mint_to must be deleted (#511 change 5 / scope §6.1)");
+        assert.ok(!/function mint_to\(/.test(src), "mint_to must be deleted (the delegatecall gate change 5 / scope §6.1)");
     });
 
     it("mint_to is absent from the compiled ABI", async function () {
@@ -47,7 +47,7 @@ describe("SPL_ERC20 dispatch shape (#511 gate) — structural, source-of-truth i
 
     it("approve() never calls the approve_spl precompile — allowance is pure EVM now", function () {
         const body = bodyOf("function approve(address spender, uint256 value)");
-        assert.ok(!body.includes('"approve_spl'), "approve() must not encode a call to approve_spl (#511 change 2)");
+        assert.ok(!body.includes('"approve_spl'), "approve() must not encode a call to approve_spl (the delegatecall gate change 2)");
         assert.ok(!body.includes(".delegatecall(") && !body.includes(".call(address(HelperProgram")
             && !body.includes("address(HelperProgram).call(") && !body.includes("address(HelperProgram).delegatecall("),
             "approve() must not touch HelperProgram at all — it's pure EVM storage now");
@@ -55,7 +55,7 @@ describe("SPL_ERC20 dispatch shape (#511 gate) — structural, source-of-truth i
 
     it("allowance() never calls the allowance_of precompile — allowance is pure EVM now", function () {
         const body = bodyOf("function allowance(address owner, address spender)");
-        assert.ok(!body.includes("allowance_of"), "allowance() must not read via the allowance_of precompile (#511 change 2)");
+        assert.ok(!body.includes("allowance_of"), "allowance() must not read via the allowance_of precompile (the delegatecall gate change 2)");
         assert.ok(!body.includes("HelperProgram."), "allowance() must not touch HelperProgram at all — it's pure EVM storage now");
     });
 
@@ -70,7 +70,7 @@ describe("SPL_ERC20 dispatch shape (#511 gate) — structural, source-of-truth i
         assert.ok(/return _allowances\[owner\]\[spender\]/.test(body));
     });
 
-    it("_transfer's EOA-side movement is a direct CALL, not a delegatecall (#511 change 1)", function () {
+    it("_transfer's EOA-side movement is a direct CALL, not a delegatecall (the delegatecall gate change 1)", function () {
         const body = bodyOf("function _transfer(");
         assert.ok(
             body.includes('address(HelperProgram).call(') &&
@@ -79,7 +79,7 @@ describe("SPL_ERC20 dispatch shape (#511 gate) — structural, source-of-truth i
         );
         assert.ok(
             !/address\(HelperProgram\)\.delegatecall\(\s*abi\.encodeWithSignature\(\s*"transfer_spl/.test(body),
-            "no transfer_spl variant may be reached via delegatecall from _transfer post-#511"
+            "no transfer_spl variant may be reached via delegatecall from _transfer post-the delegatecall gate"
         );
     });
 
@@ -130,7 +130,7 @@ describe("SPL_ERC20 dispatch shape (#511 gate) — structural, source-of-truth i
         for (const sig of delegatecallBlocks) {
             assert.ok(
                 sig.startsWith("create_ata"),
-                `non-exempt selector reachable via delegatecall post-#511: ${sig}`
+                `non-exempt selector reachable via delegatecall post-the delegatecall gate: ${sig}`
             );
         }
         // The four create_ata-family call sites this file is expected to
@@ -154,7 +154,7 @@ describe("SPL_ERC20 dispatch shape (#511 gate) — structural, source-of-truth i
         );
     });
 
-    /// #511 hooked-wrapper review finding: `_spendAllowance` was extracted
+    /// the delegatecall gate hooked-wrapper review finding: `_spendAllowance` was extracted
     /// (build-hooked.md change 3) specifically so `transferFromWithHookAccounts`
     /// could reuse it — its own doc comment calls it "the only per-spender
     /// access control" now that a direct CALL always signs as

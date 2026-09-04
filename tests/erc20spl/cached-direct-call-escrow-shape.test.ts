@@ -5,14 +5,14 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import hardhat from "hardhat";
 
-/// FIND-003 (#511) structural regression suite for the CACHED wrapper —
+/// structural regression suite for the CACHED wrapper —
 /// same shape as direct-call-escrow-shape.test.ts (SPL_ERC20), tied 1:1 to
 /// the real `contracts/erc20spl/erc20spl_cached.sol` source and compiled
 /// artifact. SPL_ERC20_cached's constructor calls the live SplCached
 /// precompile (mint_info), so it can't be deployed on hardhat-network
 /// either — same constraint as the legacy wrapper, same substitute:
 /// source-tied structural assertions instead of a live deploy.
-describe("SPL_ERC20_cached dispatch shape (#511 gate) — structural, source-of-truth is the file itself", function () {
+describe("SPL_ERC20_cached dispatch shape (delegatecall gate) — structural, source-of-truth is the file itself", function () {
     const srcPath = path.join(
         path.dirname(fileURLToPath(import.meta.url)),
         "..", "..", "contracts", "erc20spl", "erc20spl_cached.sol"
@@ -29,7 +29,7 @@ describe("SPL_ERC20_cached dispatch shape (#511 gate) — structural, source-of-
     }
 
     it("mint_to no longer exists in source", function () {
-        assert.ok(!/function mint_to\(/.test(src), "mint_to must be deleted (#511 change 5 / scope §6.1, cached track)");
+        assert.ok(!/function mint_to\(/.test(src), "mint_to must be deleted (the delegatecall gate change 5 / scope §6.1, cached track)");
     });
 
     it("mint_to is absent from the compiled ABI", async function () {
@@ -41,7 +41,7 @@ describe("SPL_ERC20_cached dispatch shape (#511 gate) — structural, source-of-
 
     it("approve() never touches SplCached — allowance is pure EVM now", function () {
         const body = bodyOf("function approve(address spender, uint256 value)");
-        assert.ok(!body.includes("SplCached"), "approve() must not encode a call to SplCached (#511 change 2)");
+        assert.ok(!body.includes("SplCached"), "approve() must not encode a call to SplCached (the delegatecall gate change 2)");
         assert.ok(!body.includes(".delegatecall(") && !body.includes(".call("),
             "approve() must not touch a precompile at all — it's pure EVM storage now");
     });
@@ -64,7 +64,7 @@ describe("SPL_ERC20_cached dispatch shape (#511 gate) — structural, source-of-
         assert.ok(/currentAllowance - value/.test(body));
     });
 
-    it("_transfer's EOA-side movement is a direct CALL of transferFrom, not a delegatecall (#511 change 1)", function () {
+    it("_transfer's EOA-side movement is a direct CALL of transferFrom, not a delegatecall (the delegatecall gate change 1)", function () {
         const body = bodyOf("function _transfer(");
         assert.ok(
             body.includes("address(SplCached).call(") &&
@@ -73,7 +73,7 @@ describe("SPL_ERC20_cached dispatch shape (#511 gate) — structural, source-of-
         );
         assert.ok(
             !/address\(SplCached\)\.delegatecall\(/.test(body),
-            "no SplCached mutating selector may be reached via delegatecall from _transfer post-#511"
+            "no SplCached mutating selector may be reached via delegatecall from _transfer post-the delegatecall gate"
         );
     });
 
@@ -107,8 +107,8 @@ describe("SPL_ERC20_cached dispatch shape (#511 gate) — structural, source-of-
     it("exactly the exempt AssociatedSplCached.create_ata delegatecall sites remain", function () {
         const delegatecallBlocks = [...src.matchAll(/address\((\w+)\)\.delegatecall\(\s*abi\.encodeWithSignature\(\s*"([^"]+)"/g)];
         for (const [, target, sig] of delegatecallBlocks) {
-            assert.equal(target, "AssociatedSplCached", `non-exempt delegatecall target post-#511: ${target}(${sig})`);
-            assert.ok(sig.startsWith("create_ata"), `non-exempt selector reachable via delegatecall post-#511: ${sig}`);
+            assert.equal(target, "AssociatedSplCached", `non-exempt delegatecall target post-the delegatecall gate: ${target}(${sig})`);
+            assert.ok(sig.startsWith("create_ata"), `non-exempt selector reachable via delegatecall post-the delegatecall gate: ${sig}`);
         }
         assert.equal(delegatecallBlocks.length, 3, `expected exactly 3 exempt delegatecall sites, found: ${delegatecallBlocks.map(m => m[2]).join(", ")}`);
     });

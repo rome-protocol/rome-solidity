@@ -16,7 +16,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 //     via the existing factory's create_token_mint flow before this suite
 //     runs.
 //
-// POST-#511: the wrapper no longer exposes `mint_to` (scope §6.1) — a
+// POST-the delegatecall gate: the wrapper no longer exposes `mint_to` (scope §6.1) — a
 // direct CALL would sign as the wrapper's own PDA, which is never the
 // on-chain mint authority. Minting goes straight to the SplCached
 // precompile (0xff..05) from the authority EOA; see `mintSpl` below.
@@ -64,7 +64,7 @@ describe("SPL_ERC20_cached — behavioral integration", () => {
         wrapperAddress = envAddr as `0x${string}`;
     });
 
-    // Post-#511: the wrapper has no `mint_to` — mint straight to the
+    // Post-the delegatecall gate: the wrapper has no `mint_to` — mint straight to the
     // SplCached precompile from the authority EOA (test wallet must be
     // the on-chain mint authority for `mint_id`).
     async function mintSpl(to: `0x${string}`, amount: bigint) {
@@ -230,7 +230,7 @@ describe("SPL_ERC20_cached — behavioral integration", () => {
         assert.equal(recipAfter - recipBefore, amount);
     });
 
-    it("approve(MaxUint256) round-trips exactly — post-#511 allowance is plain uint256 EVM storage, no u64 sentinel", async () => {
+    it("approve(MaxUint256) round-trips exactly — post-the delegatecall gate allowance is plain uint256 EVM storage, no u64 sentinel", async () => {
         const spender = privateKeyToAccount(generatePrivateKey()).address;
         const max = (1n << 256n) - 1n;
 
@@ -318,7 +318,7 @@ const mintIdAbi = [{
     stateMutability: "view",
 }] as const;
 
-// SplCached precompile (0xff..05) — post-#511, minting bypasses the
+// SplCached precompile (0xff..05) — post-the delegatecall gate, minting bypasses the
 // wrapper entirely (scope §6.1: no ERC20SPL_cached.mint_to).
 const SPL_CACHED_ADDRESS = "0xff00000000000000000000000000000000000005" as const;
 

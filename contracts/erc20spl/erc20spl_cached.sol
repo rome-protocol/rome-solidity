@@ -48,7 +48,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         uint256 requiredAllowance
     );
 
-    // Post-#511 (default-deny at the non-EVM dispatch boundary refuses a
+    // Post-the delegatecall gate (default-deny at the non-EVM dispatch boundary refuses a
     // DELEGATECALL into a mutating precompile selector that isn't exempt):
     // this wrapper can no longer move a user's SPL by borrowing the user's
     // own authority via delegatecall. EOA-side movement below is a direct
@@ -151,7 +151,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         }
     }
 
-    /// @notice ERC-20 allowance, post-#511: a plain EVM mapping, entirely
+    /// @notice ERC-20 allowance, post-the delegatecall gate: a plain EVM mapping, entirely
     ///         decoupled from the SPL-level delegate grant (see
     ///         `isEnabled`). A direct CALL from this wrapper can no longer
     ///         write the owner's SPL-level Approve — SPL Token would
@@ -271,7 +271,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         }
     }
 
-    /// @notice Internal transfer dispatcher. Post-#511, routing is by
+    /// @notice Internal transfer dispatcher. Post-the delegatecall gate, routing is by
     ///         whether an endpoint HOLDS SPL under a PDA it can sign for
     ///         (an EOA, via the wrapper acting as its delegate) or under
     ///         this wrapper's own escrow ATA (a contract, which can never
@@ -332,7 +332,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         bytes memory result;
         if (!fromIsContract) {
             // `from` is an EOA: its SPL sits in `ata(external_auth(from))`.
-            // Post-#511 this wrapper can no longer sign as that PDA via
+            // Post-the delegatecall gate this wrapper can no longer sign as that PDA via
             // delegatecall — it must be `from`'s SPL delegate instead (a
             // one-time user-signed `approve_spl(wrapper, …)` to 0xff..09).
             // Direct CALL so SplCached signs as external_auth(address(this)).
@@ -390,7 +390,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return true;
     }
 
-    /// @notice ERC-20 approve, post-#511: pure EVM storage, no SPL CPI at
+    /// @notice ERC-20 approve, post-the delegatecall gate: pure EVM storage, no SPL CPI at
     ///         all. The SPL-level grant this used to also write is now the
     ///         user's own one-time `approve_spl(wrapper, u64.max, mint)`
     ///         direct to 0xff..09, entirely decoupled (see `isEnabled`).
@@ -406,7 +406,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return true;
     }
 
-    // mint_to DELETED (#511 change 5 / scope §6.1, cached track): a direct
+    // mint_to DELETED (the delegatecall gate change 5 / scope §6.1, cached track): a direct
     // CALL to SplCached.mint would sign as external_auth(address(this)),
     // which is not the on-chain mint authority. Minting is a creator/
     // operator act, not a user act — the creator EOA calls

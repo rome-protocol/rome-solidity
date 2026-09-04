@@ -86,7 +86,7 @@ library Token2022HookedTransfer {
         }
     }
 
-    /// @dev Post-#511 (default-deny at the non-EVM dispatch boundary refuses a
+    /// @dev Post-the delegatecall gate (default-deny at the non-EVM dispatch boundary refuses a
     ///      DELEGATECALL/CALLCODE into a mutating precompile selector that
     ///      isn't exempt): direct CALL, which signs as external_auth(address
     ///      (this)) — the caller must pass `authority` = its own PDA and be

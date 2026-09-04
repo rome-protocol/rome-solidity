@@ -87,7 +87,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     string private _symbol;
     ERC20Users internal _users;
 
-    // Post-#511 (default-deny at the non-EVM dispatch boundary refuses a
+    // Post-the delegatecall gate (default-deny at the non-EVM dispatch boundary refuses a
     // DELEGATECALL/CALLCODE into a mutating precompile selector that isn't
     // exempt): this wrapper can no longer move a user's SPL by borrowing
     // the user's own authority via delegatecall. Every EOA-side movement
@@ -110,7 +110,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     // later deployed to as a contract, those pre-deploy funds are NOT
     // migrated into `_escrow` automatically (this contract has no way to
     // observe a future deploy) — they join the same drain/rescue set as
-    // pre-#511 contract-held balances (§0.2's corollary, §5 PR 0). A
+    // pre-the delegatecall gate contract-held balances (§0.2's corollary, §5 PR 0). A
     // counterfactual address that expects to receive funds after code
     // lands should be funded post-deploy, not pre-deploy.
     mapping(address => uint256) private _escrow;
@@ -300,7 +300,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         // Callers still compute `user` for the `ensure_user` mapping-side-effect.
         user;
 
-        // Post-#511, routing is by whether an endpoint HOLDS SPL under a
+        // Post-the delegatecall gate, routing is by whether an endpoint HOLDS SPL under a
         // PDA it can sign for (an EOA, via the wrapper acting as its
         // delegate) or under this wrapper's own escrow ATA (a contract,
         // which can never call `approve`) — not by who the caller is.
@@ -364,7 +364,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         bytes memory result;
         if (!fromIsContract) {
             // `from` is an EOA: its SPL sits in `ata(external_auth(from))`.
-            // Post-#511 this wrapper can no longer sign as that PDA via
+            // Post-the delegatecall gate this wrapper can no longer sign as that PDA via
             // delegatecall — it must be `from`'s SPL delegate instead (a
             // one-time user-signed `approve_spl(wrapper, …)` to 0xff..09).
             // Direct CALL so the precompile signs as
@@ -446,7 +446,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     }
 
     function allowance(address owner, address spender) public view virtual returns (uint256) {
-        // Post-#511: `approve_spl` (the SPL-level delegate grant) can no
+        // Post-the delegatecall gate: `approve_spl` (the SPL-level delegate grant) can no
         // longer be written by this wrapper on the owner's behalf — a
         // direct CALL would sign as the wrapper, which isn't the ATA
         // owner, so SPL Token's Approve instruction would reject it
@@ -462,7 +462,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     /// @notice Whether `user` has sent the one-time SPL-level delegate
     /// grant (`approve_spl(wrapper, …, mint)` direct to 0xff..09) this
     /// wrapper now needs to move their SPL at all. A precompile read,
-    /// unaffected by the #511 gate. Callers (rome-ui, off-chain scripts)
+    /// unaffected by the delegatecall gate. Callers (rome-ui, off-chain scripts)
     /// use this to decide whether to prompt the user for the one-time
     /// grant before the first transfer.
     function isEnabled(address user) public view returns (bool) {
@@ -491,7 +491,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     /// `SPL_ERC20_Token2022Hooked.transferFromWithHookAccounts`, which needs
     /// its own CPI plan and hook-account tail — reuses this exact check
     /// instead of re-declaring a second `_allowances`-shaped mapping. Post-
-    /// #511 this EVM-side check is the *only* per-spender access control:
+    /// the delegatecall gate this EVM-side check is the *only* per-spender access control:
     /// a direct CALL always signs as external_auth(address(this)), so the
     /// SPL runtime itself no longer distinguishes which caller invoked it.
     function _spendAllowance(address owner, address spender, uint256 value) internal {
@@ -602,7 +602,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         require(ataOk, string(Convert.revert_msg(ataResult)));
 
         // CPI 2 — SPL `transfer_checked` from caller's PDA-owned ATA to
-        // the recipient's ATA. Post-#511 (Tier-1 row #4): the wrapper can
+        // the recipient's ATA. Post-the delegatecall gate (Tier-1 row #4): the wrapper can
         // no longer delegatecall the owner-path selector to borrow the
         // caller's authority — direct CALL the caller-supplied-src_ata
         // delegate overload instead, with `src_ata` explicit
@@ -700,7 +700,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         bytes32 ata
     );
 
-    // mint_to DELETED (#511 change 5 / scope §6.1): a direct CALL would
+    // mint_to DELETED (the delegatecall gate change 5 / scope §6.1): a direct CALL would
     // sign as external_auth(address(this)), which is not the on-chain
     // mint authority (`ERC20SPLFactory` sets it to
     // `HelperProgram.pda(creator)` — erc20spl_factory.sol:216), and this

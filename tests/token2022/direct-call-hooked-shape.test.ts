@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-/// FIND-003 (#511) structural regression suite for the Token-2022 hooked
+/// structural regression suite for the Token-2022 hooked
 /// transfer (scope §4.3), tied 1:1 to the real
 /// `contracts/spl_token/token2022_hooked_transfer.sol` and
 /// `contracts/erc20spl/erc20spl_token2022_hooked.sol` sources — not a
@@ -13,7 +13,7 @@ import path from "node:path";
 /// live `HelperProgram.mint_info` precompile, so it cannot be *deployed* on
 /// hardhat-network. This is the substitute for a behavioral test on the
 /// dispatch-mechanism change itself (DELEGATECALL -> direct CALL).
-describe("Token2022 hooked transfer dispatch shape (#511 gate, scope §4.3)", function () {
+describe("Token2022 hooked transfer dispatch shape (delegatecall gate, scope §4.3)", function () {
     const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
     const libSrc = readFileSync(
         path.join(root, "contracts", "spl_token", "token2022_hooked_transfer.sol"),
@@ -39,7 +39,7 @@ describe("Token2022 hooked transfer dispatch shape (#511 gate, scope §4.3)", fu
         const body = bodyOf(libSrc, "function transferChecked(");
         assert.ok(
             body.includes("address(CpiProgram).call("),
-            "transferChecked must dispatch via a direct CALL post-#511"
+            "transferChecked must dispatch via a direct CALL post-the delegatecall gate"
         );
         assert.ok(
             !body.includes(".delegatecall("),
@@ -50,7 +50,7 @@ describe("Token2022 hooked transfer dispatch shape (#511 gate, scope §4.3)", fu
     it("the stale delegatecall-required rationale is gone", function () {
         assert.ok(
             !/Delegatecall is required/.test(libSrc),
-            "the doc comment claiming delegatecall is required must be removed — the premise is false post-#511"
+            "the doc comment claiming delegatecall is required must be removed — the premise is false post-the delegatecall gate"
         );
     });
 
@@ -93,7 +93,7 @@ describe("Token2022 hooked transfer dispatch shape (#511 gate, scope §4.3)", fu
         const body = bodyOf(wrapperSrc, "function transferFromWithHookAccounts(");
         assert.ok(
             body.includes("_spendAllowance(from, msg.sender, value)"),
-            "post-#511 the CPI authority is always the wrapper's own PDA regardless of msg.sender, so the SPL runtime no longer gates who may call on from's behalf — the inherited EVM _allowances mapping (SPL_ERC20Base, §4.1) must be the one and only access-control gate here, exactly as transferFrom already enforces for the non-hooked path"
+            "post-the delegatecall gate the CPI authority is always the wrapper's own PDA regardless of msg.sender, so the SPL runtime no longer gates who may call on from's behalf — the inherited EVM _allowances mapping (SPL_ERC20Base, §4.1) must be the one and only access-control gate here, exactly as transferFrom already enforces for the non-hooked path"
         );
     });
 
