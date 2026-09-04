@@ -1,6 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { network } from "hardhat";
+import {
+    CPI_PROGRAM_ADDRESS,
+    SYSTEM_PROGRAM_ADDRESS,
+    HELPER_PROGRAM_ADDRESS,
+    SPL_CACHED_ADDRESS,
+} from "../precompile-addresses";
 
 // A Token-2022 mint can carry its own identity, in the mint account itself, under
 // the mint's metadata authority. That identity is what a wrapper must present:
@@ -64,13 +70,13 @@ describe("mint identity is read from the mint", async () => {
 // label stays allowed. Anyone can deploy their own factory and their own wrapper,
 // on any chain; curation is what answers that, not a gate here.
 describe("the factory reads identity from the mint", async () => {
-    const CPI = "0xff00000000000000000000000000000000000008";
-    const SYSTEM = "0xff00000000000000000000000000000000000007";
-    const HELPER = "0xff00000000000000000000000000000000000009";
+    const CPI = CPI_PROGRAM_ADDRESS;
+    const SYSTEM = SYSTEM_PROGRAM_ADDRESS;
+    const HELPER = HELPER_PROGRAM_ADDRESS;
     // The wrapper the factory deploys reads mint_info on its own track, so the
     // cached home has to answer too — otherwise its constructor decodes five words
     // from an empty return and reverts with no reason at all.
-    const SPL_CACHED = "0xff00000000000000000000000000000000000005";
+    const SPL_CACHED = SPL_CACHED_ADDRESS;
 
     const conn = await network.connect();
     const { viem } = conn;

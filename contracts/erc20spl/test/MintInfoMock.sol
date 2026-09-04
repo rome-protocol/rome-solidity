@@ -87,6 +87,13 @@ contract MintInfoMock {
         return (keccak256(abi.encodePacked(program, acc)), uint8(255));
     }
 
+    /// Both wrapper constructors derive their own escrow ATA at
+    /// construction, so anything that deploys them against this mock needs
+    /// this.
+    function ata(address user, bytes32 mint) external pure returns (bytes32) {
+        return keccak256(abi.encodePacked("mock-ata", user, mint));
+    }
+
     function mint_info(bytes32 mint)
         external
         pure
@@ -114,5 +121,16 @@ contract MintInfoMock {
         extensions = 0;
         if (hookProgram != bytes32(0) || mint[5] != 0) extensions |= uint32(1) << 14; // TransferHook
         if (feeBps != 0) extensions |= uint32(1) << 1;                               // TransferFeeConfig
+    }
+}
+
+/// @notice `HelperProgram.ata` without `mint_info`. Blanking HELPER
+///         entirely would also break a cached wrapper's legitimate `ata`
+///         call, so this keeps `ata` working and leaves `mint_info`
+///         unimplemented — a legacy deploy still fails for the right
+///         reason (missing `mint_info`), not "no code at this address".
+contract MintInfoMockAtaOnly {
+    function ata(address user, bytes32 mint) external pure returns (bytes32) {
+        return keccak256(abi.encodePacked("mock-ata", user, mint));
     }
 }

@@ -88,11 +88,7 @@ describe("SPL_ERC20_Token2022Hooked hot-path dispatch", () => {
     );
   });
 
-  it("gates cached mint recipient ATA creation on overlay-aware existence", () => {
-    const mintTo = cachedWrapper.slice(
-      cachedWrapper.indexOf("function mint_to("),
-    );
-    assert.match(mintTo, /try SplCached\.account\(to, mint_id\)/);
-    assert.match(mintTo, /catch \{\s*ensure_token_account\(to\);\s*\}/);
+  it("no longer exposes mint_to — minting is a direct creator call to SplCached.mint", () => {
+    assert.doesNotMatch(cachedWrapper, /function mint_to\(/);
   });
 });

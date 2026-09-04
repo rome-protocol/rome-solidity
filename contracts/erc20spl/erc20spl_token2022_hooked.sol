@@ -60,6 +60,21 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
         validation_account = validation;
     }
 
+    /// @notice This wrapper does not escrow — `_hookedTransfer` moves SPL
+    ///         directly to `ata(external_auth(to))` for every recipient,
+    ///         contract or not. Left un-overridden, the inherited branch
+    ///         would read `_escrow`, which is permanently zero here (also
+    ///         zeroing the fee-armed `delivered` amount) — override to
+    ///         always read the real on-chain balance instead.
+    function balanceOf(address account) public view override returns (uint256) {
+        return uint256(HelperProgram.user_balance(account, mint_id));
+    }
+
+    /// @dev Solidity requires the override; this wrapper does not escrow.
+    function _ensureWrapperAta() internal virtual override returns (bytes32) {
+        revert HookAccountPlanRequired();
+    }
+
     /// @notice Standard ERC-20 transfer cannot carry a dynamic Solana account
     ///         plan. Call transferWithHookAccounts instead.
     function transfer(address, uint256) public pure override returns (bool) {
@@ -93,6 +108,10 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
         ICrossProgramInvocation.AccountMeta[] calldata hookMetas
     ) external returns (bool) {
         _users.ensure_user(msg.sender);
+        // transferChecked's authority is fixed to the wrapper's own PDA
+        // regardless of msg.sender, so the inherited EVM allowance is the
+        // only per-spender gate.
+        _spendAllowance(from, msg.sender, value);
         return _hookedTransfer(from, to, value, hookMetas);
     }
 
@@ -126,11 +145,13 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
 
         bytes32 destination = ensure_token_account(to);
         bytes32 source = HelperProgram.ata(from, mint_id);
+        // Direct CALL signs as external_auth(address(this)), not
+        // external_auth(msg.sender) — the wrapper must be from's SPL delegate.
         Token2022HookedTransfer.transferChecked(
             source,
             mint_id,
             destination,
-            RomeEVMAccount.pda(msg.sender),
+            RomeEVMAccount.pda(address(this)),
             uint64(value),
             decimals,
             hookMetas
@@ -168,11 +189,13 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
 
         bytes32 destination = ensureRecipientAta(solanaRecipient);
         bytes32 source = HelperProgram.ata(msg.sender, mint_id);
+        // Same authority shift as _hookedTransfer — the wrapper must be
+        // msg.sender's SPL delegate.
         Token2022HookedTransfer.transferChecked(
             source,
             mint_id,
             destination,
-            RomeEVMAccount.pda(msg.sender),
+            RomeEVMAccount.pda(address(this)),
             uint64(value),
             decimals,
             hookMetas

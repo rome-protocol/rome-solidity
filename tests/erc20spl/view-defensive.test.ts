@@ -2,12 +2,12 @@ import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import hardhat from "hardhat";
 
-/// FB-2 regression suite for the defensive-guard arithmetic used by the
-/// SPL_ERC20 view methods `allowance` and `totalSupply`. The on-chain SPL
-/// CPI roundtrips that read the SPL Mint + TokenAccount account buffers
-/// cannot run on hardhat-network — this verifies the predicate + early-exit
-/// arithmetic via a mirror helper contract, identical in shape to FB-1's
-/// `ApproveSaturationHelper`.
+/// FB-2 regression suite, pure-arithmetic mirror of the SPL-CPI defensive
+/// guards (predicate + early-exit) once used by `allowance`/`totalSupply`.
+/// FB-2a/FB-2b/FB-2e describe the pre-migration delegate-comparison guard,
+/// kept as a pinned reference now that neither live wrapper's allowance
+/// touches SPL CPI (see `evm-allowance.test.ts`). FB-2c/FB-2d still
+/// describe `SPL_ERC20Base` directly.
 ///
 /// The contract-level arithmetic is the new behavior we're locking in:
 ///   FB-2a: when the spender has never been registered in the wrapper's
