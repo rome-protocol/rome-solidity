@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { network } from "hardhat";
+import { SYSTEM_PROGRAM_ADDRESS, HELPER_PROGRAM_ADDRESS } from "../precompile-addresses";
 
 // The token program is part of the ATA seeds, so an ATA for a Token-2022 mint is
 // at a DIFFERENT address than the same mint under legacy SPL Token. Deriving with
@@ -72,8 +73,8 @@ describe("ATA derivation is program-aware", () => {
 // program they report must therefore derive to different addresses — and an
 // implementation with the program hardcoded returns the same one for both.
 describe("ATA derivation is program-aware, executed", async () => {
-    const SYSTEM = "0xff00000000000000000000000000000000000007";
-    const HELPER = "0xff00000000000000000000000000000000000009";
+    const SYSTEM = SYSTEM_PROGRAM_ADDRESS;
+    const HELPER = HELPER_PROGRAM_ADDRESS;
 
     const conn = await network.connect();
     const { viem } = conn;

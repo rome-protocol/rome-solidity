@@ -2,6 +2,12 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { network } from "hardhat";
+import {
+    HELPER_PROGRAM_ADDRESS,
+    SPL_CACHED_ADDRESS,
+    SYSTEM_PROGRAM_ADDRESS,
+    CPI_PROGRAM_ADDRESS,
+} from "../precompile-addresses";
 
 // Admission is keyed on the ARMED hook at each wrapper constructor. The two
 // fixed-account wrappers refuse it; the factory routes it to the dedicated
@@ -89,8 +95,8 @@ describe("armed-hook admission", () => {
 // them for real. The mock derives its answer from the mint id (byte 0 decimals,
 // byte 1 arms the hook, bytes 2-3 fee bps), so no per-case setup is needed.
 describe("armed-hook admission, executed", async () => {
-    const HELPER = "0xff00000000000000000000000000000000000009";
-    const SPL_CACHED = "0xff00000000000000000000000000000000000005";
+    const HELPER = HELPER_PROGRAM_ADDRESS;
+    const SPL_CACHED = SPL_CACHED_ADDRESS;
 
     const conn = await network.connect();
     const { viem } = conn;
@@ -101,7 +107,7 @@ describe("armed-hook admission, executed", async () => {
     assert.ok(code && code !== "0x", "mock must have deployed code to install");
     // Also the System precompile: the factory's constructor converts a program
     // name through it before any mint is involved.
-    const SYSTEM = "0xff00000000000000000000000000000000000007";
+    const SYSTEM = SYSTEM_PROGRAM_ADDRESS;
     for (const addr of [HELPER, SPL_CACHED, SYSTEM]) {
         await conn.provider.request({ method: "hardhat_setCode", params: [addr, code] });
     }
@@ -135,7 +141,7 @@ describe("armed-hook admission, executed", async () => {
         const users = await viem.deployContract("ERC20Users");
         return viem.deployContract(name, [
             mint,
-            "0xff00000000000000000000000000000000000008",
+            CPI_PROGRAM_ADDRESS,
             "Wrapped",
             "WRAP",
             users.address,
@@ -214,7 +220,7 @@ describe("armed-hook admission, executed", async () => {
 
     it("the factory routes an armed hook to the direct-CPI wrapper", async () => {
         const factory = await viem.deployContract("ERC20SPLFactory", [
-            "0xff00000000000000000000000000000000000008",
+            CPI_PROGRAM_ADDRESS,
         ]);
         const mint = mintId(6, true, 0, 6);
         await factory.write.add_spl_token_no_metadata([mint, "Wrapped", "WRAP"]);
@@ -242,7 +248,7 @@ describe("armed-hook admission, executed", async () => {
     // cached track, so this covers both gates in one call.
     it("the factory registers a wrapper for a present-but-unarmed hook", async () => {
         const factory = await viem.deployContract("ERC20SPLFactory", [
-            "0xff00000000000000000000000000000000000008",
+            CPI_PROGRAM_ADDRESS,
         ]);
         const mint = mintId(6, false, 0, 7, true);
         await factory.write.add_spl_token_no_metadata([mint, "Wrapped2", "WRP2"]);
@@ -266,17 +272,22 @@ describe("armed-hook admission, executed", async () => {
 // Install one home at a time. The wrapper whose track is absent must fail to
 // deploy, which is the source assertion above turned into behaviour.
 describe("each wrapper reads its own track, executed", async () => {
-    const HELPER = "0xff00000000000000000000000000000000000009";
-    const SPL_CACHED = "0xff00000000000000000000000000000000000005";
+    const HELPER = HELPER_PROGRAM_ADDRESS;
+    const SPL_CACHED = SPL_CACHED_ADDRESS;
 
     const conn = await network.connect();
     const { viem } = conn;
     const mock = await viem.deployContract("MintInfoMock");
     const code = await (await viem.getPublicClient()).getCode({ address: mock.address });
+    // `ata` without `mint_info` — see the contract's own header for why HELPER
+    // can't simply be blanked to `0x` any more: both wrapper constructors now
+    // derive their escrow ATA through the track-agnostic `HelperProgram.ata`.
+    const ataOnlyMock = await viem.deployContract("MintInfoMockAtaOnly");
+    const ataOnlyCode = await (await viem.getPublicClient()).getCode({ address: ataOnlyMock.address });
 
-    async function installOnly(present: string, absent: string) {
+    async function installOnly(present: string, absent: string, absentCode = "0x") {
         await conn.provider.request({ method: "hardhat_setCode", params: [present, code] });
-        await conn.provider.request({ method: "hardhat_setCode", params: [absent, "0x"] });
+        await conn.provider.request({ method: "hardhat_setCode", params: [absent, absentCode] });
     }
 
     async function deploy(name: string) {
@@ -284,7 +295,7 @@ describe("each wrapper reads its own track, executed", async () => {
         const mint = `0x06${"00".repeat(31)}` as `0x${string}`; // 6 decimals, nothing armed
         return viem.deployContract(name, [
             mint,
-            "0xff00000000000000000000000000000000000008",
+            CPI_PROGRAM_ADDRESS,
             "Wrapped",
             "WRAP",
             users.address,
@@ -292,11 +303,16 @@ describe("each wrapper reads its own track, executed", async () => {
     }
 
     it("the cached wrapper needs SplCached, not HelperProgram", async () => {
-        await installOnly(SPL_CACHED, HELPER);
+        // HELPER keeps `ata` (both constructors derive their own escrow ATA
+        // through it) but loses `mint_info`, so a legitimate cached deploy
+        // still succeeds while a legacy deploy — which needs
+        // HelperProgram.mint_info specifically — still fails, for the right
+        // reason rather than "no code at this address at all".
+        await installOnly(SPL_CACHED, HELPER, ataOnlyCode);
         await deploy("SPL_ERC20_cached"); // resolves
         await assert.rejects(
             deploy("SPL_ERC20"),
-            "the legacy wrapper must be reading HelperProgram, which is absent here",
+            "the legacy wrapper must be reading HelperProgram.mint_info, which is absent here",
         );
     });
 

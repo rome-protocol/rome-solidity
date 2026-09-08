@@ -57,7 +57,21 @@ jobs:
             tests/cpi/PdaDeriver.test.ts \
             tests/cpi/SolanaConstants.test.ts \
             tests/cpi/UserPda.test.ts \
-            tests/token2022/*.test.ts
+            tests/token2022/*.test.ts \
+            tests/erc20spl/*.test.ts \
+            tests/activation/*.test.ts
+      # `tests/erc20spl/*.test.ts` and `tests/activation/*.test.ts` are the
+      # hermetic halves of the Test Selection Guide rows for these two
+      # families (CLAUDE.md) — every file in both globs deploys against
+      # hardhat-network with no external RPC, funded key or devnet chain.
+      # Deliberately NOT wired in here, because they need a live chain and
+      # would be red on arrival in this job: `tests/erc20spl/cached.integration.ts`,
+      # `tests/erc20spl_factory.integration.ts`, `tests/ensure_ata.integration.ts`,
+      # `tests/wrapped_gas_facade.integration.ts`, `tests/bridge/RomeBridgeWithdraw.integration.ts`,
+      # `tests/erc20spl_factory_hijack.poc.ts`
+      # (none carry a `.test.ts` suffix, so neither glob above matches them —
+      # confirmed by listing the actual files, not by construction) — run
+      # those manually per the guide when touching an on-chain path.
 
   tx-origin-ban:
     # Strict gate per cardo-foundation section 9 + section 7 Task 14.
