@@ -13,7 +13,6 @@ Token nomenclature follows the canonical W-prefix standard.
 - `redeploy-withdraw-devnet-wh.ts` — redeploy only the withdraw contract against devnet Wormhole programs; reuses paymaster + wrappers.
 - `redeploy-withdraw-canonical-weth.ts` — redeploy withdraw + new WETH wrapper bound to the canonical wrapped-ETH mint (used when refreshing on a chain where the WETH wrapper still points at a stale mint).
 - `redeploy-withdraw-only.ts` — redeploy withdraw with mainnet Wormhole programs (production path).
-- `allowlist-approve-selector.ts` — run after any withdraw redeploy; allowlists `approveBurnETH(uint256)` on the paymaster so ERC-2771 sponsorship works for the two-step outbound Wh flow.
 - `deploy-weth-v9.ts`, `deploy-wsol-v9.ts` — minimal SPL_ERC20 wrapper redeploys carrying the v9 outbound surface (`bridgeOutToSolana` + `ensureRecipientAta` + `balanceOf` reads from AUTHORITY_PDA). Use these to refresh wrappers on a chain after the contract upgrade. They do not touch the factory or paymaster.
 - `derive/cctp-accounts.ts` — derives the 6 CCTP PDAs via `PublicKey.findProgramAddressSync`.
 - `derive/wormhole-accounts.ts` — derives the 8 Wormhole PDAs (including `wrappedMeta`, which is per-mint).
@@ -23,8 +22,8 @@ Token nomenclature follows the canonical W-prefix standard.
 ## Flow / test scripts
 
 - `submit-burn.ts` — outbound CCTP: single `burnUSDC(amount, ethRecipient)` tx on Rome.
-- `submit-burnETH.ts` — outbound Wormhole E2E: sends `approveBurnETH(amount)` then `burnETH(amount, ethRecipient)` in sequence. Requires two EVM txs (see `contracts/bridge/README.md` § "Two CPIs in a single Rome EVM transaction exceed Solana's compute budget").
-- `smoke-emulate-all.ts` — quick `rome_emulateTx` health check for `burnUSDC` and `approveBurnETH`. `burnETH` is skipped because it requires a prior on-chain approve to emulate cleanly.
+- `submit-burnETH.ts` — outbound Wormhole E2E: sends `approve_spl(bridge, amount, mint)` direct to `0xff..09` (the bridge's pull-delegate precondition), then `burnETH(amount, ethRecipient)`. `burnETH` itself is single-tx now — it pulls, re-grants Wormhole's delegate, and burns all in one atomic CPI sequence.
+- `smoke-emulate-all.ts` — quick `rome_emulateTx` health check for `burnUSDC` and the `approve_spl` precondition. `burnETH` is skipped because it needs that delegate already live on-chain to emulate cleanly.
 - `inbound/` — scripts for Sepolia → Rome inbound flows (CCTP deposit, Wormhole transfer, manual VAA complete).
 - `do-full-test.ts`, `try-burn.ts`, `smoke-test-canonical.ts` — legacy integration helpers used during initial bring-up; kept for reference.
 

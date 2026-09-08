@@ -12,6 +12,9 @@ import {
   createTransferWrappedInstruction,
   createCompleteTransferWrappedInstruction,
 } from "@wormhole-foundation/sdk-solana-tokenbridge";
+import { base58ToBytes32 } from "../lib/pubkey.js";
+
+const HELPER_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000009" as const;
 
 // --------- constants ----------
 const SEPOLIA_RPC = "https://sepolia.drpc.org";
@@ -221,16 +224,21 @@ async function inboundWh(sepWallet: Wallet, solConn: Connection, solanaPayer: Ke
 
 // ---- Flow 4: Outbound Wh (Rome rETH → Sepolia ETH) ----
 async function outboundWh(romeWallet: Wallet, sepWallet: Wallet) {
-  log("outbound-wh", "submitting approveBurnETH + burnETH on Rome…");
+  log("outbound-wh", "submitting approve_spl (bridge delegate) + burnETH on Rome…");
   const dep = JSON.parse(fs.readFileSync("deployments/rome.json", "utf8"));
   const WITHDRAW = dep.RomeBridgeWithdraw.address as `0x${string}`;
   const amount = (10_000n).toString(16).padStart(64, "0"); // 10k base units
+  const wethMint = base58ToBytes32(dep.SPL_ERC20_WETH.mintId) as `0x${string}`;
 
-  const approveSel = "0x" + keccak256(new TextEncoder().encode("approveBurnETH(uint256)")).slice(2, 10);
+  const approveSplSel = "0x" + keccak256(new TextEncoder().encode("approve_spl(address,uint64,bytes32)")).slice(2, 10);
   const burnEthSel = "0x" + keccak256(new TextEncoder().encode("burnETH(uint256,address)")).slice(2, 10);
   const recipient = sepWallet.address.slice(2).toLowerCase().padStart(64, "0");
 
-  const approveTx = await romeWallet.sendTransaction({ to: WITHDRAW, data: approveSel + amount, gasLimit: 3_000_000n });
+  const approveData = approveSplSel +
+    WITHDRAW.slice(2).toLowerCase().padStart(64, "0") +
+    amount +
+    wethMint.slice(2).padStart(64, "0");
+  const approveTx = await romeWallet.sendTransaction({ to: HELPER_PROGRAM_ADDRESS, data: approveData, gasLimit: 3_000_000n });
   await approveTx.wait();
   log("outbound-wh", "approve tx:", approveTx.hash);
 

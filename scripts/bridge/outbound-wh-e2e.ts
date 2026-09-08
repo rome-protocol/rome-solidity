@@ -2,6 +2,9 @@ import hardhat from "hardhat";
 import { JsonRpcProvider, Wallet, keccak256, toUtf8Bytes, Contract, getBytes } from "ethers";
 import { PublicKey, Connection } from "@solana/web3.js";
 import fs from "node:fs";
+import { base58ToBytes32 } from "../lib/pubkey.js";
+
+const HELPER_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000009" as const;
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -21,6 +24,11 @@ async function main() {
   const sel = (s: string) => "0x" + keccak256(toUtf8Bytes(s)).slice(2, 10);
   const amount = (10_000n).toString(16).padStart(64, "0");
   const recipient = sepWallet.address.slice(2).toLowerCase().padStart(64, "0");
+  const wethMint = base58ToBytes32(dep.SPL_ERC20_WETH.mintId) as `0x${string}`;
+  const approveSplData = sel("approve_spl(address,uint64,bytes32)") +
+    WITHDRAW.slice(2).toLowerCase().padStart(64, "0") +
+    amount +
+    wethMint.slice(2).padStart(64, "0");
 
   // Use a low gasPrice (2 gwei instead of the proxy's default ~10 gwei).
   // The native-balance preflight check on rome rejects tx's whose
@@ -29,8 +37,8 @@ async function main() {
   // 1.5M-gas burn costs 3e15 wei (well within normal deployer balances).
   const GAS_PRICE = 2_000_000_000n;
 
-  console.log("Submitting approveBurnETH…");
-  const app = await romeWallet.sendTransaction({ to: WITHDRAW, data: sel("approveBurnETH(uint256)") + amount, gasLimit: 400_000n, gasPrice: GAS_PRICE });
+  console.log("Submitting approve_spl (bridge delegate) direct to 0xff..09…");
+  const app = await romeWallet.sendTransaction({ to: HELPER_PROGRAM_ADDRESS, data: approveSplData as `0x${string}`, gasLimit: 400_000n, gasPrice: GAS_PRICE });
   await app.wait();
   console.log("  approve:", app.hash);
 

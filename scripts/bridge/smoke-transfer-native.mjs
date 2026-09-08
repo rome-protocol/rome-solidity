@@ -1,8 +1,12 @@
 // Funded smoke: RomeBridgeWithdraw.transferNativeToWormhole (v11+).
 //
 // Proves the Wormhole transfer_native CPI end-to-end for a Solana-native mint
-// (default wSOL). Two txs (the ~1.4M-CU split): approveWormholeBurn (delegate
-// authority_signer) then transferNativeToWormhole. Tx success == the inner
+// (default wSOL). transferNativeToWormhole signs as the bridge itself now —
+// it pulls the sender's SPL into the bridge's own ATA and re-grants
+// authority_signer there in the same tx, so the only off-contract
+// precondition is an SPL-level delegate grant to the bridge
+// (`approve_spl(bridge, amount, mint)` sent directly to 0xff..09; no
+// bridge-mediated approve tx exists any more). Tx success == the inner
 // transfer_native + post_message CPIs succeeded on-chain (Rome atomic DoTx).
 //
 // Proven on Hadrian 2026-07-06 (v11 0x65fc94ba, 0.001 wSOL):
@@ -61,14 +65,19 @@ const pub = createPublicClient({ chain, transport: http(RPC) });
 const wallet = createWalletClient({ account, chain, transport: http(RPC) });
 
 const abi = parseAbi([
-  "function approveWormholeBurn(address assetWrapper, uint256 amount)",
   "function transferNativeToWormhole(address assetWrapper, uint256 amount, bytes32 recipient, uint16 targetChain)",
   "function balanceOf(address) view returns (uint256)",
   "function decimals() view returns (uint8)",
+  "function mint_id() view returns (bytes32)",
   "function wormholeAssetAllowed(address) view returns (bool)",
   "function wormholeTargetChainAllowed(uint16) view returns (bool)",
   "event WormholeNativeTransfer(address indexed user, address indexed assetWrapper, bytes32 mint, uint256 amount, bytes32 recipient, uint16 targetChain)",
 ]);
+
+const helperAbi = parseAbi([
+  "function approve_spl(address spender, uint64 amount, bytes32 mint) external",
+]);
+const HELPER_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000009";
 
 const recipient32 = (process.env.RECIPIENT32 ?? ("0x" + "00".repeat(12) + account.address.slice(2))).toLowerCase();
 
@@ -97,17 +106,20 @@ if (DRY_RUN) {
 }
 
 const gasPrice = await pub.getGasPrice();
+const mintId = await pub.readContract({ address: WRAPPER, abi, functionName: "mint_id" });
 
-// tx1 — approve authority_signer as delegate on the sender's wrapper ATA.
-console.log("\n[tx1] approveWormholeBurn …");
+// tx1 — grant the bridge a pull delegate on the sender's own ATA, direct to
+// 0xff..09 (off-contract precondition; not a bridge tx).
+console.log("\n[tx1] approve_spl (bridge delegate) …");
 const h1 = await wallet.writeContract({
-  address: WITHDRAW, abi, functionName: "approveWormholeBurn", args: [WRAPPER, AMOUNT],
+  address: HELPER_PROGRAM_ADDRESS, abi: helperAbi, functionName: "approve_spl",
+  args: [WITHDRAW, AMOUNT, mintId],
   gas: 30_000_000n, gasPrice,
 });
 console.log(`      ${h1}`);
 const r1 = await pub.waitForTransactionReceipt({ hash: h1 });
 console.log(`      status=${r1.status} gasUsed=${r1.gasUsed}`);
-if (r1.status !== "success") throw new Error("approveWormholeBurn reverted");
+if (r1.status !== "success") throw new Error("approve_spl reverted");
 
 // tx2 — transfer_native CPI to Wormhole (lock in per-mint custody + post VAA).
 console.log("\n[tx2] transferNativeToWormhole …");
