@@ -1,6 +1,6 @@
 {
   "ERC20SPLFactory": {
-    "address": "0x86149124d74ebb3aa41a19641b700e88202b6285",
+    "address": "0x36a9b09dd8a2080330818d1bc917e6af21781f9f",
     "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
   },
   "OracleGatewayV2": {
