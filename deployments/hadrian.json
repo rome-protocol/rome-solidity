@@ -293,30 +293,34 @@
     "address": "0x6ce0e90db2b54b9a433530cd5b3d31573a401c3e"
   },
   "SPL_ERC20_USDC": {
-    "address": "0x9a8B4cB7326033d72cA393c6b4C0d7Fb904Fa900",
+    "address": "0xAe287C434C4Ff5F38953BBd8b3736b2Fc8DA6223",
     "mintId": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
     "name": "Rome USDC",
     "symbol": "wUSDC"
   },
   "SPL_ERC20_WETH": {
-    "address": "0x55e4502D799938582bC2A15771ACC6a4d2928273",
+    "address": "0xd696DBe67F11523f530cFc56f54711B8375c703f",
     "mintId": "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs",
     "name": "Rome ETH",
-    "symbol": "wETH"
+    "symbol": "wETH",
+    "deployedAt": 1788900451,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   },
   "SPL_ERC20_WSOL": {
-    "address": "0x8c965F79b3d9bb95C12687E533FD5490b9c251cC",
+    "address": "0x30aeCc6D453BecF860c4d180DE10E16d1Ada8134",
     "mintId": "So11111111111111111111111111111111111111112",
     "name": "Rome SOL",
-    "symbol": "wSOL"
+    "symbol": "wSOL",
+    "deployedAt": 1788900454,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   },
   "RomeBridgePaymaster": {
     "address": "0xe5b515d69590044a994d88c8bb8a87b36cd7b6d2",
     "deployedAt": 1779081498
   },
   "RomeBridgeWithdraw": {
-    "address": "0x65fc94ba1045b65889f0b27d3d02e5bfbc2aee03",
-    "deployedAt": 1783365618
+    "address": "0x49e5b8d7728472ee9bfeb591d498319d68386b89",
+    "deployedAt": 1788900467
   },
   "SimpleActivator": {
     "address": "0xc478604d116222190750fe9a52dd3d6ae9140212",
