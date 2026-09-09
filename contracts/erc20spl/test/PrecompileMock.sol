@@ -66,7 +66,19 @@ contract PrecompileMock {
         return keccak256(abi.encodePacked("precompile-mock-ata", user, mint));
     }
 
-    function pda(address user) public pure returns (bytes32) {
+    /// Armed by `hooked-hot-path.test.ts` between two transfers: a wrapper
+    /// that still re-derives its own PDA per transfer reverts here. Storage
+    /// lives at the `hardhat_setCode` address like `_userBalance` does.
+    bool public pdaTrapArmed;
+
+    function setPdaTrap(bool armed) external {
+        pdaTrapArmed = armed;
+    }
+
+    function pda(address user) public view returns (bytes32) {
+        if (pdaTrapArmed) {
+            revert("pda fired - the hot path must not re-derive a fixed PDA");
+        }
         return keccak256(abi.encodePacked("precompile-mock-pda", user));
     }
 

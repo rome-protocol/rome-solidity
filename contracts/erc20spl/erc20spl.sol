@@ -56,9 +56,23 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     address public immutable cpi_program;
     bytes32 public immutable mint_id;
     uint8 public immutable decimals;
+    // ExtensionType::TransferFeeConfig discriminant = bit index in `mint_info`'s
+    // `extensions` bitmap. Mint extensions are fixed at InitializeMint, so
+    // whether a mint can EVER charge a transfer fee is a constructor fact.
+    uint32 internal constant TRANSFER_FEE_CONFIG_EXTENSION_BIT = 1;
+    // True iff the mint carries TransferFeeConfig. Only then does a transfer
+    // pay the per-call `mint_info` read for the live bps; a Tokenkeg mint or a
+    // fee-less Token-2022 mint skips it — that read was the single largest
+    // fixed cost on the warm transfer path for nothing.
+    bool public immutable fee_capable;
 
     string private _name;
     string private _symbol;
+    // Legacy address → external_auth PDA registry. Retained for constructor /
+    // deploy-ABI compatibility and for `SimpleActivator`'s explicit
+    // registration; the wrapper itself no longer registers callers — nothing
+    // reads `get_user`, and the CALL + first-touch SSTORE were pure cost on
+    // every transfer.
     ERC20Users internal _users;
 
     // A direct CALL signs as external_auth(address(this)), not the user's own
@@ -93,7 +107,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         // mint_info also reports whether a transfer hook is ARMED; an armed
         // hook needs accounts this wrapper's transfer paths don't supply, so
         // admission refuses armed (not merely present) hooks.
-        (, uint8 mint_decimals, bytes32 hook_program, ,) = HelperProgram.mint_info(_mint_id);
+        (, uint8 mint_decimals, bytes32 hook_program, , uint32 extensions) = HelperProgram.mint_info(_mint_id);
         if (hook_program != bytes32(0) && !supports_armed_transfer_hook) {
             revert ArmedTransferHookUnsupported(_mint_id, hook_program);
         }
@@ -104,18 +118,24 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         _name = name_;
         _symbol = symbol_;
         _users = users_;
+        fee_capable = (extensions & (uint32(1) << TRANSFER_FEE_CONFIG_EXTENSION_BIT)) != 0;
     }
 
     /**
-     * Helper function to create an associated token account for a user if it doesn't exist, and return the associated token account address.
+     * Creates the user's associated token account (idempotent on Solana) and
+     * returns its address. Public entry kept for caller back-compat; `payer`
+     * is ignored — the operator pays ATA rent, reimbursed via gas accounting.
      * @param user EVM address of the user for whom to create the associated token account
-     * @return associated_account_address The address of the associated token account created or existing for the user
+     * @return associated_account_address The address of the associated token account
      */
     function create_token_account(address user, bytes32 /* payer, unused */) public returns(bytes32) {
-        _users.ensure_user(user);
+        _createAta(user);
+        return HelperProgram.ata(user, mint_id);
+    }
 
-        // The operator pays ATA rent (reimbursed via gas accounting); `payer`
-        // is ignored but kept in the signature for caller back-compat.
+    /// @dev The one create site. Sets the created-flag so no later transfer
+    ///      to `user` derives or probes the ATA again.
+    function _createAta(address user) internal {
         (bool success, bytes memory result) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
                 "create_ata(address,bytes32)",
@@ -123,8 +143,31 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
             )
         );
         require(success, string(Convert.revert_msg(result)));
+        _ataCreated[user] = true;
+    }
 
-        return HelperProgram.ata(user, mint_id);
+    /// @dev Hot-path form of `ensure_token_account`: returns `bytes32(0)` on
+    ///      the fast path (flag set → no derivation, no probe, no CPI) and the
+    ///      derived ATA otherwise. `_transfer` needs only the guarantee, not
+    ///      the address, so the fast path pays for neither.
+    ///
+    ///      Cold path: one derivation, one `lamportsOf` probe (skips the create
+    ///      CPI when the ATA already exists on Solana — without this every
+    ///      first transfer would pay 2 CPIs, and pair.burn's 2 outbound
+    ///      transfers would exceed Rome's per-tx CPI budget), one create only
+    ///      when missing. Either way the flag is set: ATAs are never closed on
+    ///      Rome, so existence is monotone once confirmed.
+    function _ensureAta(address user) internal returns (bytes32) {
+        if (_ataCreated[user]) {
+            return bytes32(0);
+        }
+        bytes32 ata = HelperProgram.ata(user, mint_id);
+        if (AccountReader.lamportsOf(ata) != 0) {
+            _ataCreated[user] = true;
+        } else {
+            _createAta(user);
+        }
+        return ata;
     }
 
     /**
@@ -133,24 +176,8 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
      * @return associated_account_address The address of the associated token account created or existing for the user
      */
     function ensure_token_account(address user) public returns (bytes32) {
-        if (_ataCreated[user]) {
-            return HelperProgram.ata(user, mint_id);
-        }
-
-        // Skip the create CPI when the ATA is already initialized on Solana
-        // — without this, every transfer would pay 2 CPIs, and pair.burn's
-        // 2 outbound transfers would exceed Rome's per-tx CPI budget.
-        bytes32 ata = HelperProgram.ata(user, mint_id);
-        uint64 lamports = AccountReader.lamportsOf(ata);
-        if (lamports != 0) {
-            _ataCreated[user] = true;
-            return ata;
-        }
-
-        bytes32 payer = _users.ensure_user(msg.sender);
-        bytes32 result = create_token_account(user, payer);
-        _ataCreated[user] = true;
-        return result;
+        bytes32 ata = _ensureAta(user);
+        return ata == bytes32(0) ? HelperProgram.ata(user, mint_id) : ata;
     }
 
     /// @dev Same ATA that bridge-in deposits land in and balanceOf reads.
@@ -190,20 +217,16 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     }
 
     function transfer(address to, uint256 value) public virtual returns (bool) {
-        return _transfer(_users.ensure_user(msg.sender), msg.sender, to, value);
+        return _transfer(msg.sender, to, value);
     }
-
-    /// @dev `user` is unused: the precompile derives the signer from
-    ///      context.caller itself. Callers still compute it for the
-    ///      `ensure_user` mapping side-effect.
+    /// @dev The precompile derives the signer from context.caller itself; no
+    ///      registry lookup or registration happens on the transfer path.
     function _transfer(
-        bytes32 user,
         address from,
         address to,
         uint256 value
     ) internal virtual returns (bool) {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
-        user;
 
         // Route by whether an endpoint holds SPL under a signable PDA (EOA,
         // via the wrapper's delegate grant) or the wrapper's own escrow ATA
@@ -228,9 +251,14 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         // A transfer-fee mint credits less than requested; mint_info omits
         // maximum_fee (computing the fee here would duplicate SPL's
         // arithmetic and be wrong at the cap), so measure the delta instead,
-        // and only pay for it when a fee is actually armed.
-        (, , , uint16 feeBps, ) = HelperProgram.mint_info(mint_id);
-        bool fee_armed = feeBps > 0;
+        // and only pay for it when a fee is actually armed. Reading the live
+        // bps is itself a mint load + parse, so only a fee-CAPABLE mint (a
+        // constructor fact) pays for it.
+        bool fee_armed = false;
+        if (fee_capable) {
+            (, , , uint16 feeBps, ) = HelperProgram.mint_info(mint_id);
+            fee_armed = feeBps > 0;
+        }
         // Whichever ATA actually receives the SPL on-chain: the wrapper's
         // own when `to` is a contract, `to`'s own otherwise.
         uint256 before = fee_armed
@@ -242,8 +270,9 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
             _ensureWrapperAta();
         } else {
             // Auto-create on first transfer — without it, sending to a fresh
-            // address reverts and MetaMask's simulation greys out Send.
-            ensure_token_account(to);
+            // address reverts and MetaMask's simulation greys out Send. Flag
+            // fast path: a known recipient costs one SLOAD, no derivation.
+            _ensureAta(to);
         }
 
         bool success;
@@ -332,7 +361,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     function transferFrom(address from, address to, uint256 value) public virtual returns (bool) {
         address spender = msg.sender;
         _spendAllowance(from, spender, value);
-        return _transfer(_users.ensure_user(spender), from, to, value);
+        return _transfer(from, to, value);
     }
 
     /// @dev Matches OZ's infinite-approval semantics (`type(uint256).max` is
@@ -373,10 +402,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
         // Idempotent recipient-ATA create; operator pays rent, reimbursed
-        // via Rome's gas accounting. `ensure_user` is preserved because
-        // later bridge-out rails still need the caller registered with a
-        // PDA reserve for their message-account rent.
-        _users.ensure_user(msg.sender);
+        // via Rome's gas accounting.
         (bool ataOk, bytes memory ataResult) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
                 "create_ata_for_key(bytes32,bytes32)",
@@ -423,8 +449,6 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         returns (bytes32)
     {
         require(solana_recipient != bytes32(0), "Solana recipient cannot be zero");
-
-        _users.ensure_user(msg.sender);
 
         // create_ata_for_key returns nothing; the address is deterministic
         // from (wallet, mint, spl_program), with the token program resolved

@@ -55,23 +55,37 @@ describe("Token2022 hooked transfer dispatch shape", function () {
         assert.equal(
             (wrapperSrc.match(/RomeEVMAccount\.pda\(msg\.sender\)/g) ?? []).length,
             0,
-            "no call site may still resolve authority from msg.sender — a direct CALL signs as address(this) regardless of caller"
+            "no call site may sign as msg.sender's PDA — direct CALL cannot"
+        );
+        // The wrapper's own PDA is fixed for the contract's life: derived ONCE
+        // in the constructor into the `self_pda` immutable (a HelperProgram
+        // round-trip per transfer bought nothing) and passed at both sites.
+        assert.equal(
+            (wrapperSrc.match(/self_pda = RomeEVMAccount\.pda\(address\(this\)\);/g) ?? []).length,
+            1,
+            "self_pda must be derived exactly once, in the constructor, from the wrapper's own address"
         );
         assert.equal(
             (wrapperSrc.match(/RomeEVMAccount\.pda\(address\(this\)\)/g) ?? []).length,
+            1,
+            "no per-transfer re-derivation of the wrapper PDA — the constructor is the only site"
+        );
+        assert.equal(
+            (wrapperSrc.match(/^\s+self_pda,$/gm) ?? []).length,
             2,
-            "_hookedTransfer's transferChecked call and bridgeOutToSolanaWithHookAccounts's transferChecked call must both pass the wrapper's own PDA"
+            "_hookedTransfer's transferChecked call and bridgeOutToSolanaWithHookAccounts's transferChecked call must both pass self_pda"
         );
     });
 
     it("_hookedTransfer passes the wrapper's own PDA as authority", function () {
         const body = bodyOf(wrapperSrc, "function _hookedTransfer(");
-        assert.ok(body.includes("RomeEVMAccount.pda(address(this))"));
+        assert.ok(body.includes("self_pda,"));
+        assert.ok(!body.includes("pda(msg.sender)"), "authority must not be msg.sender's PDA");
     });
 
     it("bridgeOutToSolanaWithHookAccounts passes the wrapper's own PDA as authority", function () {
         const body = bodyOf(wrapperSrc, "function bridgeOutToSolanaWithHookAccounts(");
-        assert.ok(body.includes("RomeEVMAccount.pda(address(this))"));
+        assert.ok(body.includes("self_pda,"));
     });
 
     it("SPL_ERC20Base factors its allowance check/decrement into a reusable _spendAllowance", function () {

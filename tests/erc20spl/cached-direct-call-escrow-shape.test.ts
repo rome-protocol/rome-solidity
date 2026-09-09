@@ -109,7 +109,11 @@ describe("SPL_ERC20_cached dispatch shape — structural, source-of-truth is the
             assert.equal(target, "AssociatedSplCached", `non-exempt delegatecall target: ${target}(${sig})`);
             assert.ok(sig.startsWith("create_ata"), `non-exempt selector reachable via delegatecall: ${sig}`);
         }
-        assert.equal(delegatecallBlocks.length, 3, `expected exactly 3 exempt delegatecall sites, found: ${delegatecallBlocks.map(m => m[2]).join(", ")}`);
+        // Two sites: `_createAta` (the single user-ATA create behind
+        // ensure_token_account / create_token_account / the transfer path) and
+        // `_ensureWrapperAta` (the escrow ATA). Consolidated 2026-09 so the
+        // created-flag is set at the one place the create happens.
+        assert.equal(delegatecallBlocks.length, 2, `expected exactly 2 exempt delegatecall sites, found: ${delegatecallBlocks.map(m => m[2]).join(", ")}`);
     });
 
     it("isEnabled(user) reports the one-time SPL-level delegate grant, on this contract's own cached track", function () {

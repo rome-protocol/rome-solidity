@@ -25,6 +25,10 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
 
     bytes32 public immutable hook_program;
     bytes32 public immutable validation_account;
+    /// The wrapper's own external_auth PDA — the transferChecked authority under
+    /// direct CALL. Fixed for the contract's life, so derived once here instead
+    /// of a HelperProgram round-trip on every transfer.
+    bytes32 public immutable self_pda;
 
     error ArmedTransferHookRequired(bytes32 mint);
     error Token2022MintRequired(bytes32 mint, bytes32 tokenProgram);
@@ -58,6 +62,7 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
 
         hook_program = hookProgram;
         validation_account = validation;
+        self_pda = RomeEVMAccount.pda(address(this));
     }
 
     /// @notice This wrapper does not escrow — `_hookedTransfer` moves SPL
@@ -97,7 +102,6 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
         uint256 value,
         ICrossProgramInvocation.AccountMeta[] calldata hookMetas
     ) external returns (bool) {
-        _users.ensure_user(msg.sender);
         return _hookedTransfer(msg.sender, to, value, hookMetas);
     }
 
@@ -107,7 +111,6 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
         uint256 value,
         ICrossProgramInvocation.AccountMeta[] calldata hookMetas
     ) external returns (bool) {
-        _users.ensure_user(msg.sender);
         // transferChecked's authority is fixed to the wrapper's own PDA
         // regardless of msg.sender, so the inherited EVM allowance is the
         // only per-spender gate.
@@ -151,7 +154,7 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
             source,
             mint_id,
             destination,
-            RomeEVMAccount.pda(address(this)),
+            self_pda,
             uint64(value),
             decimals,
             hookMetas
@@ -195,7 +198,7 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
             source,
             mint_id,
             destination,
-            RomeEVMAccount.pda(address(this)),
+            self_pda,
             uint64(value),
             decimals,
             hookMetas
