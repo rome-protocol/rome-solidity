@@ -94,6 +94,13 @@ contract MintInfoMock {
         return keccak256(abi.encodePacked("mock-ata", user, mint));
     }
 
+    /// The hook-aware wrapper fixes its own PDA at construction
+    /// (`self_pda = RomeEVMAccount.pda(address(this))`), so deploying it
+    /// through the factory against this mock needs `pda` served too.
+    function pda(address user) external pure returns (bytes32) {
+        return keccak256(abi.encodePacked("mock-pda", user));
+    }
+
     function mint_info(bytes32 mint)
         external
         pure

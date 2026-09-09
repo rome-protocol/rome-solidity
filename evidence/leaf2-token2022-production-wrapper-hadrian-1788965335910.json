@@ -1,0 +1,28 @@
+{
+  "status": "pass",
+  "scope": "factory-created SPL_ERC20_Token2022Hooked on Hadrian",
+  "mint": "75wP528i7uzEH9NGJa1cpFigDrLE4bnb1kS1MUauRkSz",
+  "hookProgram": "6e52qcdWaHV1DHnafeCWf2FuAH2fqj13nAD1KVoZWTm3",
+  "validation": "3XK9JaBnrEHsXrLK455Vz6hXxtSP2qxMZw8uEJk1QzH6",
+  "factory": "0xb89008202b9fd9e6129dc9d3b5c7c72843f0d9a7",
+  "wrapper": "0x7733B12E6c135804e357d767ee139bF56fa87C3B",
+  "wrapperKind": 2,
+  "transactions": {
+    "factoryDeploy": "0xf701d62dededf4088cb11df968b589c837335dda77e5a28967a038f642aa150e",
+    "register": "0x14c8affcc343f4dabc82b6e6737114ec1defb05653260c898111c2448692ba15",
+    "hookedTransfer": "0xc418eef2687ddc4e61bc8d0c82a17ded53abdb09435808d60d0df534edfd643b"
+  },
+  "standardTransfer": {
+    "rejected": true,
+    "balancesUnchanged": true,
+    "detail": "The contract function \"transfer\" reverted.\n\nError: HookAccountPlanRequired()\n \nContract Call:\n  address:   0x7733B12E6c135804e357d767ee139bF56fa87C3B\n  function:  transfer(address to, uint256 value)\n  args:              (0xa2412f1C7F98a75a7F083c790FEef17326C4823B, 1000)\n  sender:    0x5667b3700b4a021Cc475157cbf3dE2d756Fae597\n\nDocs: https://viem.sh/docs/contract/writeContract\nDetails: execution reverted: \nVersion: viem@2.48.11"
+  },
+  "balances": {
+    "sourceAta": "2gezXfNkX6UiFBxbNy4FRm1kDaPYAPKWbeLfWxVoiEPd",
+    "recipientAta": "3ZsRiSMsrXsLfzcvGmkMUysgUnrxutq4okuA4h3JqDK8",
+    "sourceBefore": "948000",
+    "sourceAfter": "947000",
+    "recipientBefore": "0",
+    "recipientAfter": "1000"
+  }
+}

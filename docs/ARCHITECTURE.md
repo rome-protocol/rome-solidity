@@ -82,7 +82,7 @@ The factory deploys the **cached** wrapper for every token (`new SPL_ERC20_cache
 |---|---|---|
 | `SPL_ERC20_cached` | Cached-track ERC-20 wrapper (default); no CPI Invoke, overlay-aware reads | `transfer`/`transferFrom`/`approve`/`mint_to` → `SplCached` |
 | `SPL_ERC20` | CPI-track ERC-20 wrapper; can push SPL to a raw Solana wallet | `bridgeOutToSolana(bytes32,uint256)`, `transfer`/`approve` via `HelperProgram` |
-| `ERC20Users` | Shared registry: EVM `address` → its `external_auth` Solana PDA | `ensure_user` / `get_user` |
+| `ERC20Users` | Legacy registry: EVM `address` → its `external_auth` Solana PDA. Written only by `SimpleActivator`; the wrappers no longer register callers on transfer (nothing reads it, and the CALL + SSTORE cost every transfer) | `ensure_user` / `get_user` |
 | `ERC20SPLFactory` | Wrap existing SPL mints (with/without metadata) + mint brand-new SPL tokens; deploys the cached wrapper | `add_spl_token_with_metadata` / `add_spl_token_no_metadata` / `create_token_mint` |
 | `cached_revert_demo` | Executable proof of the cached track's revert / iterative / one-track properties | (demos) |
 

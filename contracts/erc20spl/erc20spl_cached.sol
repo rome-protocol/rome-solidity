@@ -25,6 +25,12 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     address public immutable cpi_program;
     bytes32 public immutable mint_id;
     uint8 public immutable decimals;
+    // ExtensionType::TransferFeeConfig discriminant (bit in `mint_info`'s
+    // `extensions`). Mint extensions are fixed at InitializeMint, so fee
+    // capability is a constructor fact; only a fee-capable wrapper pays the
+    // per-transfer `mint_info` read for the live bps.
+    uint32 internal constant TRANSFER_FEE_CONFIG_EXTENSION_BIT = 1;
+    bool public immutable fee_capable;
 
     string private _name;
     string private _symbol;
@@ -73,7 +79,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         // Read on this contract's own track: once a cached invoke has fired,
         // verify_call refuses a legacy cross-state read. An armed hook is
         // refused too — the cached track can't stage one at all.
-        (, uint8 mint_decimals, bytes32 hook_program, ,) = SplCached.mint_info(_mint_id);
+        (, uint8 mint_decimals, bytes32 hook_program, , uint32 extensions) = SplCached.mint_info(_mint_id);
         if (hook_program != bytes32(0)) {
             revert ArmedTransferHookUnsupported(_mint_id, hook_program);
         }
@@ -84,6 +90,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         _symbol = symbol_;
         _users = users_;
         escrow_ata = HelperProgram.ata(address(this), _mint_id);
+        fee_capable = (extensions & (uint32(1) << TRANSFER_FEE_CONFIG_EXTENSION_BIT)) != 0;
     }
 
     function name() external view returns (string memory) {
@@ -148,15 +155,21 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
 
     // ─── Mutating ERC-20 surface — all cache-based Invokes ────────────────
 
-    /// @notice Idempotent ATA bootstrap. Always calls create unconditionally
-    ///         (no existence probe) to keep this wrapper fully on the
-    ///         cached track — a legacy-precompile read here would trip
+    /// @notice Idempotent ATA bootstrap. Flag first (one SLOAD, no derivation
+    ///         on the fast path); the create is unconditional on the cold path
+    ///         (no existence probe here) to keep this wrapper fully on the
+    ///         cached track — a legacy-precompile read would trip
     ///         `verify_call`'s one-track rule.
     function ensure_token_account(address user) public returns (bytes32) {
-        bytes32 ata = HelperProgram.ata(user, mint_id);
-        if (_ataCreated[user]) {
-            return ata;
+        if (!_ataCreated[user]) {
+            _createAta(user);
         }
+        return HelperProgram.ata(user, mint_id);
+    }
+
+    /// @dev The one create site (AssociatedSplCached, one-track rule). Sets
+    ///      the created-flag so no later transfer to `user` probes again.
+    function _createAta(address user) internal {
         (bool ok, bytes memory result) = address(AssociatedSplCached).delegatecall(
             abi.encodeWithSignature(
                 "create_ata(address,bytes32)",
@@ -166,20 +179,11 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         );
         require(ok, string(Convert.revert_msg(result)));
         _ataCreated[user] = true;
-        return ata;
     }
 
     /// @notice Public ATA-create entry; idempotent on repeat.
     function create_token_account(address user) external returns (bytes32) {
-        _users.ensure_user(user);
-        (bool ok, bytes memory result) = address(AssociatedSplCached).delegatecall(
-            abi.encodeWithSignature(
-                "create_ata(address,bytes32)",
-                user,
-                mint_id
-            )
-        );
-        require(ok, string(Convert.revert_msg(result)));
+        _createAta(user);
         return HelperProgram.ata(user, mint_id);
     }
 
@@ -236,7 +240,6 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     ///      escrow ATA (contract) — not by caller identity.
     function _transfer(address from, address to, uint256 value) internal returns (bool) {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
-        _users.ensure_user(msg.sender);
 
         bool fromIsContract = from.code.length > 0;
         bool toIsContract = to.code.length > 0;
@@ -256,9 +259,14 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         }
 
         // Only pay for the destination read when a fee is armed; measured off
-        // whichever ATA actually receives the SPL on-chain.
-        (, , , uint16 feeBps, ) = SplCached.mint_info(mint_id);
-        bool fee_armed = feeBps > 0;
+        // whichever ATA actually receives the SPL on-chain. Reading the live
+        // bps is a mint load + parse, so only a fee-CAPABLE mint (a
+        // constructor fact) pays for it.
+        bool fee_armed = false;
+        if (fee_capable) {
+            (, , , uint16 feeBps, ) = SplCached.mint_info(mint_id);
+            fee_armed = feeBps > 0;
+        }
         uint256 before = fee_armed
             ? (toIsContract ? _wrapperOnChainBalance() : balanceOf(to))
             : 0;
@@ -266,12 +274,16 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         if (toIsContract) {
             // The ATA that matters here is the wrapper's own, not `to`'s.
             _ensureWrapperAta();
-        } else {
-            // Skip the create round-trip when the recipient's ATA already
-            // exists; overlay-aware so an ATA created earlier this tx counts.
+        } else if (!_ataCreated[to]) {
+            // Known recipient: one SLOAD, nothing else. Unknown: probe once
+            // (overlay-aware, so an ATA created earlier this tx counts) and
+            // REMEMBER the answer either way — a pre-existing ATA used to be
+            // re-probed on every transfer because only the create path set
+            // the flag.
             try SplCached.account(to, mint_id) returns (ISplCached.Account memory) {
+                _ataCreated[to] = true;
             } catch {
-                ensure_token_account(to);
+                _createAta(to);
             }
         }
 
