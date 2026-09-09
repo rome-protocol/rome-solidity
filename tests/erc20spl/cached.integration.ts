@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import hardhat from "hardhat";
 import { isAddress } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { HELPER_PROGRAM_ADDRESS } from "../precompile-addresses";
 
 // Behavioral integration test for SPL_ERC20_cached.
 //
@@ -73,6 +74,15 @@ describe("SPL_ERC20_cached — behavioral integration", () => {
             abi: mintIdAbi,
             functionName: "mint_id",
         });
+        // `SplCached.mint` credits an EXISTING token account — a fresh recipient
+        // needs its ATA first (the wrapper's own idempotent bootstrap).
+        const ensureHash = await walletClient.writeContract({
+            address: wrapperAddress,
+            abi: ensureTokenAccountAbi,
+            functionName: "ensure_token_account",
+            args: [to],
+        });
+        await publicClient.waitForTransactionReceipt({ hash: ensureHash });
         const txHash = await walletClient.writeContract({
             address: SPL_CACHED_ADDRESS,
             abi: splCachedMintAbi,
@@ -187,6 +197,21 @@ describe("SPL_ERC20_cached — behavioral integration", () => {
     });
 
     it("transfer moves balance + emits Transfer event", async () => {
+        // Direct-call wrappers (#338) move the caller's SPL as the caller's
+        // delegate: grant this wrapper once via HelperProgram, as every wallet
+        // does before its first transfer. Idempotent.
+        const mintIdForGrant = await publicClient.readContract({
+            address: wrapperAddress,
+            abi: mintIdAbi,
+            functionName: "mint_id",
+        });
+        const grantHash = await walletClient.writeContract({
+            address: HELPER_PROGRAM_ADDRESS,
+            abi: approveSplAbi,
+            functionName: "approve_spl",
+            args: [wrapperAddress, 18446744073709551615n, mintIdForGrant],
+        });
+        await publicClient.waitForTransactionReceipt({ hash: grantHash });
         const recipient = privateKeyToAccount(generatePrivateKey()).address;
         const amount = 100_000n;
 
@@ -330,6 +355,20 @@ const splCachedMintAbi = [{
     stateMutability: "nonpayable",
 }] as const;
 
+const ensureTokenAccountAbi = [{
+    name: "ensure_token_account",
+    type: "function",
+    inputs: [{ name: "user", type: "address" }],
+    outputs: [{ type: "bytes32" }],
+    stateMutability: "nonpayable",
+}] as const;
+const approveSplAbi = [{
+    name: "approve_spl",
+    type: "function",
+    inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint64" }, { name: "mint", type: "bytes32" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+}] as const;
 const transferAbi = [{
     name: "transfer",
     type: "function",

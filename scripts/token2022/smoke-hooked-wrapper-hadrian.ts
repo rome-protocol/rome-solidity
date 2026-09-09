@@ -22,6 +22,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 const HADRIAN_RPC = "https://hadrian.testnet.romeprotocol.xyz/";
 const CPI = "0xff00000000000000000000000000000000000008" as const;
+const HELPER = "0xff00000000000000000000000000000000000009" as const;
 const ZERO = "0x0000000000000000000000000000000000000000" as const;
 const AMOUNT = 1_000n;
 
@@ -34,6 +35,7 @@ const wrapperAbi = [
     { type: "error", name: "HookAccountPlanRequired", inputs: [] },
     { type: "function", name: "get_token_account", stateMutability: "view", inputs: [{ type: "address", name: "user" }], outputs: [{ type: "bytes32" }] },
     { type: "function", name: "hook_program", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
+    { type: "function", name: "isEnabled", stateMutability: "view", inputs: [{ type: "address", name: "user" }], outputs: [{ type: "bool" }] },
     { type: "function", name: "validation_account", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
     { type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ type: "address", name: "to" }, { type: "uint256", name: "value" }], outputs: [{ type: "bool" }] },
     { type: "function", name: "transferWithHookAccounts", stateMutability: "nonpayable", inputs: [
@@ -133,6 +135,19 @@ async function main(): Promise<void> {
     assert.equal(kind, 2);
     assert.equal(await publicClient.readContract({ address: wrapper, abi: wrapperAbi, functionName: "hook_program" }), bytes32(hook));
     assert.equal(await publicClient.readContract({ address: wrapper, abi: wrapperAbi, functionName: "validation_account" }), bytes32(validation));
+
+    // Direct-call wrappers (rome-solidity #338) move the caller's SPL as the
+    // caller's DELEGATE: the issuer grants the wrapper once via HelperProgram
+    // before its first transfer — the same one-time step every wallet does.
+    const grantHash = await walletClient.writeContract({
+        ...options,
+        address: HELPER,
+        abi: [{ type: "function", name: "approve_spl", stateMutability: "nonpayable", inputs: [{ type: "address", name: "spender" }, { type: "uint64", name: "amount" }, { type: "bytes32", name: "mint" }], outputs: [] }] as const,
+        functionName: "approve_spl",
+        args: [wrapper, 18446744073709551615n, bytes32(mint)],
+    });
+    assert.equal((await publicClient.waitForTransactionReceipt({ hash: grantHash })).status, "success");
+    assert.equal(await publicClient.readContract({ address: wrapper, abi: wrapperAbi, functionName: "isEnabled", args: [issuer.address] }), true);
 
     const sourceAta = publicKey(await publicClient.readContract({
         address: wrapper,
