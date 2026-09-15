@@ -30,75 +30,75 @@
     "deployedAt": 1789430428
   },
   "OracleGatewayV2": {
-    "deployedAt": "2026-09-15T00:02:00.499Z",
-    "defaultMaxStaleness": 60,
+    "deployedAt": "2026-09-15T00:36:32.283Z",
+    "defaultMaxStaleness": 3600,
     "pythReceiverProgramId": "0x0cb7fabb52f7a648bb5b317d9a018b9057cb024774fafe01e6c4df98cc385881",
     "switchboardProgramId": "0x068851c68c6832f02fa581b1bf491b77ca41776ba2b988b5a6faba8ee3a2ec90",
-    "PythPullAdapterImpl": "0xcec94eadfdbc78e3189c0717c3a37a65f43b2e50",
-    "SwitchboardV3AdapterImpl": "0x22e0efd86b3a9af5b09e3ac4d9ca77c6e921a917",
-    "CachedPythAdapterImpl": "0x568af2d77d4a81986a448b8ea76283960ca7c318",
-    "CachedFeedAdapterImpl": "0xadcf9975589e202660b3be8636a707ba3e344177",
-    "OracleAdapterFactory": "0x9c85b19bb936b198231a7ffcb3587253819dba67",
-    "BatchReader": "0x44c65e2926f0e0df5cd59f1e974dc967fdb7f2f0",
+    "PythPullAdapterImpl": "0xc9a8eaeb36cf220254efedaeb8823dc0bccc7d76",
+    "SwitchboardV3AdapterImpl": "0x090e6951049c3d2fda615622c6405ea389443534",
+    "CachedPythAdapterImpl": "0xce9b2636765917e19fa34696c01537dbf9bc0463",
+    "CachedFeedAdapterImpl": "0x62aad5e9ebf26b80056df951fd8fbef8dbac1f56",
+    "OracleAdapterFactory": "0x8c92fd70360df63246cd0c8247119c79234b26ae",
+    "BatchReader": "0xab10948dc8b5bdaea0b31266b663022e7492e9cd",
     "feeds": {
       "pyth": [
         {
           "pair": "SOL/USD",
-          "adapter": "0xD999386C0daaa8f692b0E7dc549ce2f50B1B3B31",
+          "adapter": "0xe299a5FCb412138A7D90e131AC17eaFAD36013da",
           "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
           "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
         },
         {
           "pair": "BTC/USD",
-          "adapter": "0xaeC42d27296a5AEdcb3C613766B7900F4FFA3E76",
+          "adapter": "0x949BB86Da28dBF36a8E7F617367F473FdB5a5071",
           "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
           "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
         },
         {
           "pair": "ETH/USD",
-          "adapter": "0xaC2bd4106913a98ac32dD40eA41F3507257CcC4d",
+          "adapter": "0xA3361028c773dCD28c3F999330b8FfB5793EF7F1",
           "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
           "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
         },
         {
           "pair": "USDC/USD",
-          "adapter": "0xf4861A23aFEA83af405D594d067EB6fB3A93e801",
+          "adapter": "0x7298aD90d4AA37792Cad858203889d81c42ACEf6",
           "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
           "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
         },
         {
           "pair": "USDT/USD",
-          "adapter": "0xD9db0aEA580cD13CB81afD45D8e7C2675f318631",
+          "adapter": "0xC6826F528074A868b83f45604a3D850e9CEd43f5",
           "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
           "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
         },
         {
           "pair": "JUP/USD",
-          "adapter": "0x359F037f49A4FD20Fcd7969bEF37a3B0327e4690",
+          "adapter": "0x0802D2bFDc7e51ec205A8bd9fC61e967B75143Df",
           "pubkey": "7dbob1psH1iZBS7qPsm3Kwbf5DzSXK8Jyg31CTgTnxH5",
           "pubkeyBytes32": "0x628661ff844a6d513411aa02952b8bf902e3b2fe282639f9c96d399e52d86468"
         },
         {
           "pair": "JTO/USD",
-          "adapter": "0x1A2fE21ceD82Af54562670e7756092De857F6E2A",
+          "adapter": "0x08903A275b297f205C7b5b8c759B8B4F114D4A2E",
           "pubkey": "7ajR2zA4MGMMTqRAVjghTKqPPn4kbrj3pYkAVRVwTGzP",
           "pubkeyBytes32": "0x61ca3f110915af36104573608c75b56a0758cbef2cb34551cf02cad9a63ed00c"
         },
         {
           "pair": "JITOSOL/USD",
-          "adapter": "0xB8eA7F2248331bf917995DeF68689129acD88689",
+          "adapter": "0x7Abcc9e1783704c1fFB830E303710eD339ed4484",
           "pubkey": "AxaxyeDT8JnWERSaTKvFXvPKkEdxnamKSqpWbsSjYg1g",
           "pubkeyBytes32": "0x93f6880418b35aad10f98e24e374d087058430512df03245e0ada7647385b53b"
         },
         {
           "pair": "MSOL/USD",
-          "adapter": "0x4e87B413F20786c17601D58f9Da355bA98737B54",
+          "adapter": "0x1Aac7a8490ac5d24B50ADA9B4b67196a6333F44E",
           "pubkey": "5CKzb9j4ChgLUt8Gfm5CNGLN6khXKiqMbnGAW4cgXgxK",
           "pubkeyBytes32": "0x3e559ca93e1bf119b0e7c20adf557067caca210c2e1778cef652a1dd4dc84644"
         },
         {
           "pair": "BONK/USD",
-          "adapter": "0x5cF37Ff1BC6359Ae121cebaa7f91e92bea854b09",
+          "adapter": "0x392D9c0E2c5C62A9B8BE8CA7510C9ea0df600822",
           "pubkey": "DBE3N8uNjhKPRHfANdwGvCZghWXyLPdqdSbEW2XFwBiX",
           "pubkeyBytes32": "0xb4eacbe402ae9165c2ab7dfcdbe5044d27f284106f88a90bfddefa5fbff60ca0"
         }
@@ -106,7 +106,7 @@
       "switchboard": [
         {
           "pair": "SOL/USD",
-          "adapter": "0x270d7094d842F588b9aB940Fc09465aB510E3152",
+          "adapter": "0x3b383719a0af1029E7504D4aa0b516A294901B3a",
           "pubkey": "GvDMxPzN1sCj7L26YDK2HnMRXEQmQ2aemov8YBtPS7vR",
           "pubkeyBytes32": "0xec81105112a257d61df4cf5f13ee0a1b019197c8c5343b4f2a7ec8846ae22c1a"
         }
@@ -114,61 +114,61 @@
       "cachedPyth": [
         {
           "pair": "SOL/USD",
-          "adapter": "0xC4db3b31244cAa74D0Ce7B62d2D0064581e960E7",
+          "adapter": "0xb375C444307eba67ae40B72D5f78B917722A25A9",
           "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
           "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
         },
         {
           "pair": "BTC/USD",
-          "adapter": "0xF733e206efDb9cA6c5966560793653fDE6280527",
+          "adapter": "0x0c6B8cbaF5F3C1e8135B4924F83653623a56c8e4",
           "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
           "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
         },
         {
           "pair": "ETH/USD",
-          "adapter": "0xaEc10Ead27676e59958c614A3264148b10BC567C",
+          "adapter": "0x6757780791E06098B0208EfafDb51a1Ada98199F",
           "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
           "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
         },
         {
           "pair": "USDC/USD",
-          "adapter": "0xAe91A6DbC688Be86360B27fa5bCD6771092EFc8c",
+          "adapter": "0x4a8b216Ceb66954e919d7755d24B91273189d56e",
           "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
           "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
         },
         {
           "pair": "USDT/USD",
-          "adapter": "0x177c2a1524CE3716E9F393d4ED86B57e10D85a06",
+          "adapter": "0xF749EE0eA2Fa49279ce43a74fBf43e0b8bb46795",
           "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
           "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
         },
         {
           "pair": "JUP/USD",
-          "adapter": "0xe59832B6dD67f9aAB0b0BC5375378fff721ea769",
+          "adapter": "0x1eA7894Be45a381a0DfED9bad796BAd8e9b8dD61",
           "pubkey": "7dbob1psH1iZBS7qPsm3Kwbf5DzSXK8Jyg31CTgTnxH5",
           "pubkeyBytes32": "0x628661ff844a6d513411aa02952b8bf902e3b2fe282639f9c96d399e52d86468"
         },
         {
           "pair": "JTO/USD",
-          "adapter": "0x1F2dE5408DF5894771e8475562bfc7b66D90bF73",
+          "adapter": "0x16799fAAcbe064c225F34510Cc686773De02Aeb2",
           "pubkey": "7ajR2zA4MGMMTqRAVjghTKqPPn4kbrj3pYkAVRVwTGzP",
           "pubkeyBytes32": "0x61ca3f110915af36104573608c75b56a0758cbef2cb34551cf02cad9a63ed00c"
         },
         {
           "pair": "JITOSOL/USD",
-          "adapter": "0x2B5A17b5791D33FB457d55016BF60AEbe78814bA",
+          "adapter": "0x15bCde6Ac8e2d89D30440752414aC0d5DF70c429",
           "pubkey": "AxaxyeDT8JnWERSaTKvFXvPKkEdxnamKSqpWbsSjYg1g",
           "pubkeyBytes32": "0x93f6880418b35aad10f98e24e374d087058430512df03245e0ada7647385b53b"
         },
         {
           "pair": "MSOL/USD",
-          "adapter": "0x25a79bA17ba42a4e28989A2bE660FFa593f005D7",
+          "adapter": "0x2fF460F9400535edF8d3Ba373E1394dACacaF63b",
           "pubkey": "5CKzb9j4ChgLUt8Gfm5CNGLN6khXKiqMbnGAW4cgXgxK",
           "pubkeyBytes32": "0x3e559ca93e1bf119b0e7c20adf557067caca210c2e1778cef652a1dd4dc84644"
         },
         {
           "pair": "BONK/USD",
-          "adapter": "0x3C3701506A84f4f8a83Ea1dC378B8fB0601eBB60",
+          "adapter": "0x94c528CB6a0Ad8d71182C791693D9C02073A5fC4",
           "pubkey": "DBE3N8uNjhKPRHfANdwGvCZghWXyLPdqdSbEW2XFwBiX",
           "pubkeyBytes32": "0xb4eacbe402ae9165c2ab7dfcdbe5044d27f284106f88a90bfddefa5fbff60ca0"
         }
@@ -176,61 +176,61 @@
       "cachedFeed": [
         {
           "pair": "SOL/USD",
-          "adapter": "0xA1413f10151395Dc8fBD0C47Cd880dcc28eAEaEB",
+          "adapter": "0x765DdBbcB3Ba9093A8492D9ed7130a26D3E29aB2",
           "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
           "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
         },
         {
           "pair": "BTC/USD",
-          "adapter": "0x5Df36Ea8727248847b3675ee9113ac538F1Cc937",
+          "adapter": "0x622e3beac8c55a49CB67Ad7C2d3Fede1955EcE7D",
           "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
           "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
         },
         {
           "pair": "ETH/USD",
-          "adapter": "0x72550A7eD501D09865eb76AA741f346f9cabB142",
+          "adapter": "0x551C45D38e808B04738B3894469C9bCd2c4be2aC",
           "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
           "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
         },
         {
           "pair": "USDC/USD",
-          "adapter": "0x3e636fd69F2d85Fa43180d01f537Cf7472c0bDB7",
+          "adapter": "0x284a2e10610416611168356e7a73b3FeE6CCdCd3",
           "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
           "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
         },
         {
           "pair": "USDT/USD",
-          "adapter": "0x7a5daAfd96A35d406188F90d0921531Bf1538305",
+          "adapter": "0xba49d26D1A137b26A9C9a2105Dc70D3A39Ac712c",
           "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
           "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
         },
         {
           "pair": "JUP/USD",
-          "adapter": "0x949DA8E62e036eDA2293AC90962e8A5fa47127a5",
+          "adapter": "0xf04D06d2FCcf6958E6542736541C74F676dEF45b",
           "pubkey": "7dbob1psH1iZBS7qPsm3Kwbf5DzSXK8Jyg31CTgTnxH5",
           "pubkeyBytes32": "0x628661ff844a6d513411aa02952b8bf902e3b2fe282639f9c96d399e52d86468"
         },
         {
           "pair": "JTO/USD",
-          "adapter": "0x174b98771344AD815B09713688a94724329B62a8",
+          "adapter": "0xB4F384B4dC4dbdcA4d98A870caA9C96BCE5f8280",
           "pubkey": "7ajR2zA4MGMMTqRAVjghTKqPPn4kbrj3pYkAVRVwTGzP",
           "pubkeyBytes32": "0x61ca3f110915af36104573608c75b56a0758cbef2cb34551cf02cad9a63ed00c"
         },
         {
           "pair": "JITOSOL/USD",
-          "adapter": "0x4EeE5DA0ee9440432Ee2e52C1280DD98e578f2be",
+          "adapter": "0x2dc646b87b735c6568Fc158E7C3a72fcc42A28ae",
           "pubkey": "AxaxyeDT8JnWERSaTKvFXvPKkEdxnamKSqpWbsSjYg1g",
           "pubkeyBytes32": "0x93f6880418b35aad10f98e24e374d087058430512df03245e0ada7647385b53b"
         },
         {
           "pair": "MSOL/USD",
-          "adapter": "0xAAf53F7C0CCbf054502c63FAf5922fc347E9cD00",
+          "adapter": "0x9bE6E2392Da1EB98111E0e1d91fF5eBA8d0cc411",
           "pubkey": "5CKzb9j4ChgLUt8Gfm5CNGLN6khXKiqMbnGAW4cgXgxK",
           "pubkeyBytes32": "0x3e559ca93e1bf119b0e7c20adf557067caca210c2e1778cef652a1dd4dc84644"
         },
         {
           "pair": "BONK/USD",
-          "adapter": "0xfD104b706C50514D749639ce7441232c6b75679b",
+          "adapter": "0x32694F81110812BE793d5A8c62eCbDe48191f69F",
           "pubkey": "DBE3N8uNjhKPRHfANdwGvCZghWXyLPdqdSbEW2XFwBiX",
           "pubkeyBytes32": "0xb4eacbe402ae9165c2ab7dfcdbe5044d27f284106f88a90bfddefa5fbff60ca0"
         }
