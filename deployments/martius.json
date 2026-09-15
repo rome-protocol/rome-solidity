@@ -1,106 +1,104 @@
 {
   "ERC20SPLFactory": {
-    "address": "0xd7aeeedca26cdd4d34eb7c21110af2e590a8c58a",
+    "address": "0x405ded76ebae104ebe8345a649c6cbbf37efff00",
     "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
   },
   "SPL_ERC20_USDC": {
-    "address": "0x2fffDfA11A9CeF9210DC34E975649F09119c4eFB",
+    "address": "0xD3201Dc0F6fD1FE12c1FC297fb2B35927aD483B0",
     "mintId": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
     "name": "Rome USDC",
-    "symbol": "wUSDC",
-    "deployedAt": 1782428727,
-    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+    "symbol": "wUSDC"
   },
   "SPL_ERC20_WETH": {
-    "address": "0x03183EE90388C9553fe9C7b019A32ce133b8E58E",
+    "address": "0xEf8D5bf3367cf21E24565751c0A5aAbF54caB598",
     "mintId": "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs",
     "name": "Rome ETH",
     "symbol": "wETH",
-    "deployedAt": 1782428731,
+    "deployedAt": 1789430379,
     "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   },
   "SPL_ERC20_WSOL": {
-    "address": "0xa4DbEcDcC812B9c933967a15fE5D9Af420084b2B",
+    "address": "0xbF378ACfFF005687595b520D3618a93dc3A104F0",
     "mintId": "So11111111111111111111111111111111111111112",
     "name": "Rome SOL",
     "symbol": "wSOL",
-    "deployedAt": 1782428735,
+    "deployedAt": 1789430383,
     "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   },
   "RomeBridgeWithdraw": {
-    "address": "0x60e2b02c454be429b0047a237a57d21a68afb560",
-    "deployedAt": 1783560484
+    "address": "0x0c55dd89a6de9783c18cddb125a81a4e7d53ca99",
+    "deployedAt": 1789430428
   },
   "OracleGatewayV2": {
-    "deployedAt": "2026-06-26T18:17:48.917Z",
-    "defaultMaxStaleness": 3600,
+    "deployedAt": "2026-09-15T00:02:00.499Z",
+    "defaultMaxStaleness": 60,
     "pythReceiverProgramId": "0x0cb7fabb52f7a648bb5b317d9a018b9057cb024774fafe01e6c4df98cc385881",
     "switchboardProgramId": "0x068851c68c6832f02fa581b1bf491b77ca41776ba2b988b5a6faba8ee3a2ec90",
-    "PythPullAdapterImpl": "0x2d51445e31dd5adfdb4da335da437400a783c723",
-    "SwitchboardV3AdapterImpl": "0x330302d325c83088e5257a1b0aa0b64ad7f811d1",
-    "CachedPythAdapterImpl": "0x8af3a8d5918a1154d62ac3cc7d7baa03c986d068",
-    "CachedFeedAdapterImpl": "0x611b80fcc57ca7e61f22ec78e0f1d000d845d05f",
-    "OracleAdapterFactory": "0xbc06fe9603a02ff4aead265c253f5c6303ee5fbb",
-    "BatchReader": "0xc5e6d932bfd2b4da27643848063905f46861fae8",
+    "PythPullAdapterImpl": "0xcec94eadfdbc78e3189c0717c3a37a65f43b2e50",
+    "SwitchboardV3AdapterImpl": "0x22e0efd86b3a9af5b09e3ac4d9ca77c6e921a917",
+    "CachedPythAdapterImpl": "0x568af2d77d4a81986a448b8ea76283960ca7c318",
+    "CachedFeedAdapterImpl": "0xadcf9975589e202660b3be8636a707ba3e344177",
+    "OracleAdapterFactory": "0x9c85b19bb936b198231a7ffcb3587253819dba67",
+    "BatchReader": "0x44c65e2926f0e0df5cd59f1e974dc967fdb7f2f0",
     "feeds": {
       "pyth": [
         {
           "pair": "SOL/USD",
-          "adapter": "0x91A0bEA63E77443dc6508857124b75f4fe96e482",
+          "adapter": "0xD999386C0daaa8f692b0E7dc549ce2f50B1B3B31",
           "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
           "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
         },
         {
           "pair": "BTC/USD",
-          "adapter": "0xA6E9B05E875c4413c644e0Ec9646670C58F06c1D",
+          "adapter": "0xaeC42d27296a5AEdcb3C613766B7900F4FFA3E76",
           "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
           "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
         },
         {
           "pair": "ETH/USD",
-          "adapter": "0x6cad0B6668D23910fe1605Dab1c6EaF3675611c3",
+          "adapter": "0xaC2bd4106913a98ac32dD40eA41F3507257CcC4d",
           "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
           "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
         },
         {
           "pair": "USDC/USD",
-          "adapter": "0x337C96E780f8F0eF9d885A320de71093FaFBd835",
+          "adapter": "0xf4861A23aFEA83af405D594d067EB6fB3A93e801",
           "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
           "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
         },
         {
           "pair": "USDT/USD",
-          "adapter": "0x9a95d834B067B4b52423a1635E567B211246F72d",
+          "adapter": "0xD9db0aEA580cD13CB81afD45D8e7C2675f318631",
           "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
           "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
         },
         {
           "pair": "JUP/USD",
-          "adapter": "0xAeB5EC137d0721CF6A1F80cE5D513F8db410C301",
+          "adapter": "0x359F037f49A4FD20Fcd7969bEF37a3B0327e4690",
           "pubkey": "7dbob1psH1iZBS7qPsm3Kwbf5DzSXK8Jyg31CTgTnxH5",
           "pubkeyBytes32": "0x628661ff844a6d513411aa02952b8bf902e3b2fe282639f9c96d399e52d86468"
         },
         {
           "pair": "JTO/USD",
-          "adapter": "0xf54A700F09c3E24E46118c134441C2a4c2270644",
+          "adapter": "0x1A2fE21ceD82Af54562670e7756092De857F6E2A",
           "pubkey": "7ajR2zA4MGMMTqRAVjghTKqPPn4kbrj3pYkAVRVwTGzP",
           "pubkeyBytes32": "0x61ca3f110915af36104573608c75b56a0758cbef2cb34551cf02cad9a63ed00c"
         },
         {
           "pair": "JITOSOL/USD",
-          "adapter": "0xDBCb1E24a690CC3E2CB21fa4923C7C41e3480696",
+          "adapter": "0xB8eA7F2248331bf917995DeF68689129acD88689",
           "pubkey": "AxaxyeDT8JnWERSaTKvFXvPKkEdxnamKSqpWbsSjYg1g",
           "pubkeyBytes32": "0x93f6880418b35aad10f98e24e374d087058430512df03245e0ada7647385b53b"
         },
         {
           "pair": "MSOL/USD",
-          "adapter": "0xA2Cd26dFe82727033442E74E2491c4c34A4269A2",
+          "adapter": "0x4e87B413F20786c17601D58f9Da355bA98737B54",
           "pubkey": "5CKzb9j4ChgLUt8Gfm5CNGLN6khXKiqMbnGAW4cgXgxK",
           "pubkeyBytes32": "0x3e559ca93e1bf119b0e7c20adf557067caca210c2e1778cef652a1dd4dc84644"
         },
         {
           "pair": "BONK/USD",
-          "adapter": "0x79b2aCC9AFC4B6207Faa53536bED2DfD92b483a0",
+          "adapter": "0x5cF37Ff1BC6359Ae121cebaa7f91e92bea854b09",
           "pubkey": "DBE3N8uNjhKPRHfANdwGvCZghWXyLPdqdSbEW2XFwBiX",
           "pubkeyBytes32": "0xb4eacbe402ae9165c2ab7dfcdbe5044d27f284106f88a90bfddefa5fbff60ca0"
         }
@@ -108,7 +106,7 @@
       "switchboard": [
         {
           "pair": "SOL/USD",
-          "adapter": "0x5527952F0737383e7Ef46a1B16eC8D0149e78C97",
+          "adapter": "0x270d7094d842F588b9aB940Fc09465aB510E3152",
           "pubkey": "GvDMxPzN1sCj7L26YDK2HnMRXEQmQ2aemov8YBtPS7vR",
           "pubkeyBytes32": "0xec81105112a257d61df4cf5f13ee0a1b019197c8c5343b4f2a7ec8846ae22c1a"
         }
@@ -116,61 +114,61 @@
       "cachedPyth": [
         {
           "pair": "SOL/USD",
-          "adapter": "0xeeb0172E815a466aCA394A0c95667b49C035b7Ef",
+          "adapter": "0xC4db3b31244cAa74D0Ce7B62d2D0064581e960E7",
           "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
           "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
         },
         {
           "pair": "BTC/USD",
-          "adapter": "0x6612E7fE6200c3D941c4eE388eC226bAde11EB1D",
+          "adapter": "0xF733e206efDb9cA6c5966560793653fDE6280527",
           "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
           "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
         },
         {
           "pair": "ETH/USD",
-          "adapter": "0xDe1AAB1A538775D680657f33fCB5c96ECC6f89b9",
+          "adapter": "0xaEc10Ead27676e59958c614A3264148b10BC567C",
           "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
           "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
         },
         {
           "pair": "USDC/USD",
-          "adapter": "0x6d54967f3ec59126520fD92B3c5417f4778f6C3B",
+          "adapter": "0xAe91A6DbC688Be86360B27fa5bCD6771092EFc8c",
           "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
           "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
         },
         {
           "pair": "USDT/USD",
-          "adapter": "0xD5315AB7488D0d5da402c70Ca808b68c23b8243F",
+          "adapter": "0x177c2a1524CE3716E9F393d4ED86B57e10D85a06",
           "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
           "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
         },
         {
           "pair": "JUP/USD",
-          "adapter": "0x2F9A54aC49218a6771A329D18a5F3699ef228f5d",
+          "adapter": "0xe59832B6dD67f9aAB0b0BC5375378fff721ea769",
           "pubkey": "7dbob1psH1iZBS7qPsm3Kwbf5DzSXK8Jyg31CTgTnxH5",
           "pubkeyBytes32": "0x628661ff844a6d513411aa02952b8bf902e3b2fe282639f9c96d399e52d86468"
         },
         {
           "pair": "JTO/USD",
-          "adapter": "0x11e4B2688140C29dd45354c841c355Babd4Cd2C5",
+          "adapter": "0x1F2dE5408DF5894771e8475562bfc7b66D90bF73",
           "pubkey": "7ajR2zA4MGMMTqRAVjghTKqPPn4kbrj3pYkAVRVwTGzP",
           "pubkeyBytes32": "0x61ca3f110915af36104573608c75b56a0758cbef2cb34551cf02cad9a63ed00c"
         },
         {
           "pair": "JITOSOL/USD",
-          "adapter": "0xF1C001d3bc2b981f563fd847c92aF0695D547771",
+          "adapter": "0x2B5A17b5791D33FB457d55016BF60AEbe78814bA",
           "pubkey": "AxaxyeDT8JnWERSaTKvFXvPKkEdxnamKSqpWbsSjYg1g",
           "pubkeyBytes32": "0x93f6880418b35aad10f98e24e374d087058430512df03245e0ada7647385b53b"
         },
         {
           "pair": "MSOL/USD",
-          "adapter": "0x41Dbb3b23CE2596744b07576332891064509CD57",
+          "adapter": "0x25a79bA17ba42a4e28989A2bE660FFa593f005D7",
           "pubkey": "5CKzb9j4ChgLUt8Gfm5CNGLN6khXKiqMbnGAW4cgXgxK",
           "pubkeyBytes32": "0x3e559ca93e1bf119b0e7c20adf557067caca210c2e1778cef652a1dd4dc84644"
         },
         {
           "pair": "BONK/USD",
-          "adapter": "0xad6456Bc42F456ECbAd542fab37D59f5e0eC25a7",
+          "adapter": "0x3C3701506A84f4f8a83Ea1dC378B8fB0601eBB60",
           "pubkey": "DBE3N8uNjhKPRHfANdwGvCZghWXyLPdqdSbEW2XFwBiX",
           "pubkeyBytes32": "0xb4eacbe402ae9165c2ab7dfcdbe5044d27f284106f88a90bfddefa5fbff60ca0"
         }
@@ -178,61 +176,61 @@
       "cachedFeed": [
         {
           "pair": "SOL/USD",
-          "adapter": "0x4ea1D613bB5dceD95F708F1646c92C45c8b4a179",
+          "adapter": "0xA1413f10151395Dc8fBD0C47Cd880dcc28eAEaEB",
           "pubkey": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
           "pubkeyBytes32": "0x60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243"
         },
         {
           "pair": "BTC/USD",
-          "adapter": "0x16f73C99d9450670e74C29849C1e9D0A998d2903",
+          "adapter": "0x5Df36Ea8727248847b3675ee9113ac538F1Cc937",
           "pubkey": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo",
           "pubkeyBytes32": "0x35a70c11162fbf5a0e7f7d2f96e19f97b02246a15687ee672794897448e658de"
         },
         {
           "pair": "ETH/USD",
-          "adapter": "0xAC6d0A061f875169E8B674642fce8290dF357958",
+          "adapter": "0x72550A7eD501D09865eb76AA741f346f9cabB142",
           "pubkey": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC",
           "pubkeyBytes32": "0x2cfad277afcaa867c7d7fe26e0d51dc899101335879ab63c2aa84876317135bb"
         },
         {
           "pair": "USDC/USD",
-          "adapter": "0x119fF3d9054a20560DE9EF0E1d59A9149A387037",
+          "adapter": "0x3e636fd69F2d85Fa43180d01f537Cf7472c0bDB7",
           "pubkey": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
           "pubkeyBytes32": "0xbe939a8309f56407187fff30ac54b169498be99f6d8e1bfd4244680cd4f7d1e2"
         },
         {
           "pair": "USDT/USD",
-          "adapter": "0xbe7Ba706a3Ce74BaaB913000f0b77D0063A2A95B",
+          "adapter": "0x7a5daAfd96A35d406188F90d0921531Bf1538305",
           "pubkey": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM",
           "pubkeyBytes32": "0x0436b7dea1e6d6556d85e7981663cccef16234d63541369a0bceaddb5a60e748"
         },
         {
           "pair": "JUP/USD",
-          "adapter": "0xd33F53163d076146A051a641329Bb75E567ec40E",
+          "adapter": "0x949DA8E62e036eDA2293AC90962e8A5fa47127a5",
           "pubkey": "7dbob1psH1iZBS7qPsm3Kwbf5DzSXK8Jyg31CTgTnxH5",
           "pubkeyBytes32": "0x628661ff844a6d513411aa02952b8bf902e3b2fe282639f9c96d399e52d86468"
         },
         {
           "pair": "JTO/USD",
-          "adapter": "0xFA17DcD2e14D293F3EFC239F5e1Ccd904C917C6F",
+          "adapter": "0x174b98771344AD815B09713688a94724329B62a8",
           "pubkey": "7ajR2zA4MGMMTqRAVjghTKqPPn4kbrj3pYkAVRVwTGzP",
           "pubkeyBytes32": "0x61ca3f110915af36104573608c75b56a0758cbef2cb34551cf02cad9a63ed00c"
         },
         {
           "pair": "JITOSOL/USD",
-          "adapter": "0x1824927C559707f5d9570b2a57a149d20c0f19A1",
+          "adapter": "0x4EeE5DA0ee9440432Ee2e52C1280DD98e578f2be",
           "pubkey": "AxaxyeDT8JnWERSaTKvFXvPKkEdxnamKSqpWbsSjYg1g",
           "pubkeyBytes32": "0x93f6880418b35aad10f98e24e374d087058430512df03245e0ada7647385b53b"
         },
         {
           "pair": "MSOL/USD",
-          "adapter": "0xDA5BB8eB07D4294361c25e1F03163bDd481f805d",
+          "adapter": "0xAAf53F7C0CCbf054502c63FAf5922fc347E9cD00",
           "pubkey": "5CKzb9j4ChgLUt8Gfm5CNGLN6khXKiqMbnGAW4cgXgxK",
           "pubkeyBytes32": "0x3e559ca93e1bf119b0e7c20adf557067caca210c2e1778cef652a1dd4dc84644"
         },
         {
           "pair": "BONK/USD",
-          "adapter": "0x6b554C435Bae33dc18907Ab760b0E2e417b6429e",
+          "adapter": "0xfD104b706C50514D749639ce7441232c6b75679b",
           "pubkey": "DBE3N8uNjhKPRHfANdwGvCZghWXyLPdqdSbEW2XFwBiX",
           "pubkeyBytes32": "0xb4eacbe402ae9165c2ab7dfcdbe5044d27f284106f88a90bfddefa5fbff60ca0"
         }
@@ -243,47 +241,59 @@
     "address": "0xdfe655f64325f93abef8b429387928ef16ba4c5d"
   },
   "SimpleActivator": {
-    "address": "0x8b906e46c70d6428d8771eb7acd9d2e9c0119e4c",
+    "address": "0x79127d98d48c91da5e6d6bd790daf6e693717f6a",
     "activationCostWei": "2000000000000000000",
-    "usdcWrapper": "0x2fffDfA11A9CeF9210DC34E975649F09119c4eFB",
-    "wsolWrapper": "0xa4DbEcDcC812B9c933967a15fE5D9Af420084b2B",
-    "users": "0xC9c4D11C53B8158dd0f6Cd85476957dA9c7AD34C",
-    "deployedAt": 1782428918
+    "usdcWrapper": "0xD3201Dc0F6fD1FE12c1FC297fb2B35927aD483B0",
+    "wsolWrapper": "0xbF378ACfFF005687595b520D3618a93dc3A104F0",
+    "users": "0x7175549eF4253C7AeBCe5a242aA0a15975C688cd",
+    "deployedAt": 1789430657
   },
   "SPL_ERC20_WBTC": {
-    "address": "0x34AE37cFA1f41F5E69d8F042F7455A63a4F048B8",
+    "address": "0xc5B8BDC787231aa33397FA5617F565b589ebEa7b",
     "mintId": "2gsErzRCTA7T6hGnYo44EnpP7hP79CHQerDhtmggkZZF",
     "name": "Rome Wrapped BTC",
-    "symbol": "wBTC"
+    "symbol": "wBTC",
+    "deployedAt": 1789430394,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   },
   "SPL_ERC20_WJITOSOL": {
-    "address": "0x8a27E495CEAd6EcBBe25B537DBF666FD6bfE01E3",
+    "address": "0xA6D0B429F567CcBd8633b6240Fd386b98FE8aC8A",
     "mintId": "8Eou1ZHTULFvoaELa9Dnw29puHdckcsj7buQKNqfaZHH",
     "name": "Rome Wrapped JitoSOL",
-    "symbol": "wJitoSOL"
+    "symbol": "wJitoSOL",
+    "deployedAt": 1789430399,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   },
   "SPL_ERC20_WMSOL": {
-    "address": "0xe6fD55A93cAecF0F9cF60FBC4D2CbE0d71b54491",
+    "address": "0x2C7518f07F5B5D617149B3f571a72aC125f014D6",
     "mintId": "jc65vCfDLKm9sW7auJMkNJZuE6jnsqfW9bHHvYp9oYE",
     "name": "Rome Wrapped mSOL",
-    "symbol": "wmSOL"
+    "symbol": "wmSOL",
+    "deployedAt": 1789430402,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   },
   "SPL_ERC20_WJUP": {
-    "address": "0x71dC1C088E17cCD67058c626A358E02F6EbAAc69",
+    "address": "0xcDFD54e034091e094d20896026a75fb1e58Ae96C",
     "mintId": "Aa58JCN8MCDPSAPe6qZiL1ZWtqxVDRdSjH6EGjku5vFe",
     "name": "Rome Wrapped JUP",
-    "symbol": "wJUP"
+    "symbol": "wJUP",
+    "deployedAt": 1789430406,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   },
   "SPL_ERC20_WJTO": {
-    "address": "0xCb1e4CD61704C9fcc196Ce98619E85A241383Fd8",
+    "address": "0xf554e76A156e03d55f733F7De9B2025d2690253F",
     "mintId": "F2Vr2fWpi4quVQSc8SGk2XyVaxmDMLRTvoeDGEMbvUZq",
     "name": "Rome Wrapped JTO",
-    "symbol": "wJTO"
+    "symbol": "wJTO",
+    "deployedAt": 1789430409,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   },
   "SPL_ERC20_WBONK": {
-    "address": "0x2c71373725C59B3F1D47a0D425B7050D02e014b4",
+    "address": "0xaCb1b626369DfE504774F75d8Bf0F27B5766D718",
     "mintId": "HWeLrJqWKK3yDfqkGucGq9RpgfU75W1UE5iVL23BSw4Y",
     "name": "Rome Wrapped BONK",
-    "symbol": "wBONK"
+    "symbol": "wBONK",
+    "deployedAt": 1789430414,
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   }
 }
