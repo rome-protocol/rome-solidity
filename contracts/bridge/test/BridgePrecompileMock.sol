@@ -41,6 +41,25 @@ contract BridgePrecompileMock {
     bytes32 public lastApproveDelegate;
     uint256 public approveCount;
 
+    // swap_gas_to_lamports(uint64) — 0x6e3f24e0. Records the caller (must be
+    // the BRIDGE: the real precompile credits msg.sender's own PDA), the
+    // lamports, and how many CpiProgram invoke_signed calls had landed at
+    // that moment (0 == the swap ran before the outbound CPI).
+    address public lastSwapCaller;
+    uint64  public lastSwapLamports;
+    uint256 public swapCount;
+    uint256 public cpiInvokesAtSwap;
+
+    function swap_gas_to_lamports(uint64 lamports) external {
+        lastSwapCaller = msg.sender;
+        lastSwapLamports = lamports;
+        swapCount += 1;
+        (bool ok, bytes memory ret) = address(0xFF00000000000000000000000000000000000008).staticcall(
+            abi.encodeWithSignature("invokeSignedCount()")
+        );
+        cpiInvokesAtSwap = (ok && ret.length == 32) ? abi.decode(ret, (uint256)) : type(uint256).max;
+    }
+
     function ata(address user, bytes32 mint) external pure returns (bytes32) {
         return keccak256(abi.encodePacked("bridge-mock-ata", user, mint));
     }
@@ -67,6 +86,10 @@ contract BridgePrecompileMock {
         transferCount = 0;
         approveCount = 0;
         invokeSignedCount = 0;
+            lastSwapCaller = address(0);
+        lastSwapLamports = 0;
+        swapCount = 0;
+        cpiInvokesAtSwap = 0;
     }
 
     /// transfer_spl(bytes32,bytes32,uint64,bytes32) — 0x766b362a. Reverts

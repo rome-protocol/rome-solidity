@@ -320,6 +320,41 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
 
     /// @notice Transfer allowlist-admin ownership (cold-ledger handover). Reverts
     ///         on the zero address so admin can't be accidentally burned.
+    // ── Message-account rent, billed to the user ─────────────────────────
+    // Every outbound CPI creates a message account on Solana (CCTP
+    // messageSentEventData, Wormhole message) whose rent-exempt deposit is
+    // paid by the bridge's own PDA (eventRentPayer / payer = bridgePda).
+    // Right before each CPI the bridge calls HelperProgram.swap_gas_to_lamports
+    // for that rent: in the rome-evm program this is a System transfer from the
+    // OPERATOR's payer to the caller's (the bridge's) PDA, executed with
+    // refund_to_signer, so the operator fronts the rent and the user is billed
+    // exactly that in gas, atomically. No float on the bridge PDA is needed.
+    // Measured on Hadrian 2026-09-21: CCTP 2,824,480; Wormhole 2,477,770 message
+    // rent + 10-lamport core fee. Owner-settable so an upstream account-size
+    // change needs no redeploy.
+    uint64 public cctpMessageRentLamports = 2_824_480;
+    uint64 public wormholeMessageRentLamports = 2_477_780;
+
+    error ZeroRent();
+    event MessageRentsSet(uint64 cctpLamports, uint64 wormholeLamports);
+
+    function setMessageRents(uint64 cctpLamports, uint64 wormholeLamports) external onlyOwner {
+        if (cctpLamports == 0 || wormholeLamports == 0) revert ZeroRent();
+        cctpMessageRentLamports = cctpLamports;
+        wormholeMessageRentLamports = wormholeLamports;
+        emit MessageRentsSet(cctpLamports, wormholeLamports);
+    }
+
+    /// @dev Operator -> bridge PDA lamport transfer, billed to the user in gas
+    ///      by the program's refund_to_signer hook. Direct CALL: the precompile
+    ///      credits msg.sender's (this contract's) PDA.
+    function _fundMessageRent(uint64 lamports) private {
+        (bool ok, bytes memory result) = address(HelperProgram).call(
+            abi.encodeWithSignature("swap_gas_to_lamports(uint64)", lamports)
+        );
+        if (!ok) revert CpiFailed(result);
+    }
+
     function transferOwnership(address newOwner) external onlyOwner {
         if (newOwner == address(0)) revert ZeroOwner();
         emit OwnershipTransferred(owner, newOwner);
@@ -395,15 +430,12 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 bridgeAta = HelperProgram.ata(address(this), usdcMint);
         _pullToBridge(userAta, bridgeAta, amount, usdcMint);
 
-        // The bridge PDA is now `event_rent_payer`/`owner` — it must hold
-        // ≥ ~13M lamports per burn for CCTP's inner System::create_account
-        // on `messageSentEventData`, fronted by the bridge and recouped in
-        // gas. Circle's rent IS reclaimable (`reclaimEventAccount`, signed
-        // by `event_rent_payer`), but nothing here calls it — a live drain
-        // until an operator sweep or a reclaim entry point exists. See
-        // contracts/bridge/README.md § "Bridge PDA funding" for the ops
-        // requirements this creates.
-
+        // The bridge PDA is `event_rent_payer`/`owner`. Its rent for the
+        // per-burn messageSentEventData account (cctpMessageRentLamports) is
+        // funded from the operator and billed to the user by _fundMessageRent
+        // right before the CPI below. Circle's rent stays reclaimable
+        // (`reclaimEventAccount`, signed by `event_rent_payer`); nothing here
+        // calls it yet.
         // Per-tx message data account derived as a salted PDA under the bridge.
         // Salt includes per-user nonce instead of block.number — block.number on
         // Rome EVM = Solana slot, unstable across emulation/execution.
@@ -470,6 +502,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32[] memory salts = new bytes32[](1);
         salts[0] = cctpSalt;
 
+        _fundMessageRent(cctpMessageRentLamports);
         (bool ok, bytes memory result) = address(CpiProgram).call(
             abi.encodeWithSignature(
                 "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
@@ -575,6 +608,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32[] memory salts = new bytes32[](1);
         salts[0] = whSalt;
 
+        _fundMessageRent(wormholeMessageRentLamports);
         (bool ok, bytes memory result) = address(CpiProgram).call(
             abi.encodeWithSignature(
                 "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
@@ -721,6 +755,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32[] memory salts = new bytes32[](1);
         salts[0] = whSalt;
 
+        _fundMessageRent(wormholeMessageRentLamports);
         (bool ok, bytes memory result) = address(CpiProgram).call(
             abi.encodeWithSignature(
                 "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
@@ -857,6 +892,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32[] memory salts = new bytes32[](1);
         salts[0] = whSalt;
 
+        _fundMessageRent(wormholeMessageRentLamports);
         (bool ok, bytes memory result) = address(CpiProgram).call(
             abi.encodeWithSignature(
                 "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
