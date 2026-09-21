@@ -1,5 +1,9 @@
 ## 2026-07-09 — WrappedGasFacade: WETH9-shaped wrap/unwrap with canonical events
 
+### Bridge deploy — Wormhole target chain follows the Solana cluster
+
+- `scripts/bridge/deploy.ts` derives `targetChain` from the shared `SOLANA_DEVNET_NETWORKS` set (`lib/wormhole-target-chain.ts`: devnet → Sepolia 10002, mainnet-beta → Ethereum 2) instead of a second hand-kept list that omitted Martius and Nerva; both chains' live bridges read `wormholeTargetChain() = 2` and need a redeploy (rome-solidity #360).
+
 ### Bridge — message-account rent billed to the user (`RomeBridgeWithdraw`)
 
 - Every outbound path (`burnUSDC`, `burnETH`, `burnToWormhole`, `transferNativeToWormhole`) calls `HelperProgram.swap_gas_to_lamports(rent)` right before its CPI, so the operator fronts the CCTP/Wormhole message-account rent onto the bridge PDA and the user pays it in gas, atomically. Closes the post-#339 drain where the bridge PDA paid and nothing billed the user (rome-solidity #361).

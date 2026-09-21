@@ -30,6 +30,7 @@
 import { PublicKey } from "@solana/web3.js";
 import hardhat from "hardhat";
 import { readDeployments, writeDeployments } from "../lib/deployments.js";
+import { SOLANA_DEVNET_NETWORKS, wormholeTargetChainFor } from "./lib/wormhole-target-chain.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
 import { SOLANA_PROGRAM_IDS, SOLANA_PROGRAM_IDS_DEVNET } from "./constants.js";
 import { deriveCctpAccounts } from "./derive/cctp-accounts.js";
@@ -39,13 +40,9 @@ import { deriveWormholeAccounts } from "./derive/wormhole-accounts.js";
 // CPI precompile at 0xff..08 as defined in contracts/interface.sol.
 const CPI_PROGRAM_ADDRESS = "0xFF00000000000000000000000000000000000008" as const;
 
-// Networks that target Solana DEVNET (Wormhole devnet IDs + Sepolia destination).
-// Mainnet networks use the canonical mainnet IDs. Wormhole's program IDs differ
-// per cluster; CCTP's are the same on both. Update this set when bringing up a
-// new chain — adding it here keeps the deploy + sub-PDA derivations consistent.
-const SOLANA_DEVNET_NETWORKS = new Set([
-  "local", "subura", "esquiline", "hadrian", "martius", "nerva",
-]);
+// Networks on Solana DEVNET use the devnet Wormhole/CCTP program ids AND bridge
+// to Sepolia; the ONE set lives in lib/wormhole-target-chain.ts so the two can
+// never disagree again (Martius/Nerva shipped with Ethereum as target).
 
 function programIdsFor(networkName: string) {
   return SOLANA_DEVNET_NETWORKS.has(networkName)
@@ -211,14 +208,9 @@ export async function deployWithdraw(
     emitter:            pdas.wormholeEmitter,
     sequence:           pdas.wormholeSequence,
     wrappedMeta:        pdas.wormholeWrappedMeta,
-    // Wormhole destination chain id — 2 for Ethereum mainnet, 10002 for Sepolia.
-    // All current Rome chains target Sepolia (devnet). When a mainnet Rome
-    // chain is brought up, fold its networkName into the mainnet branch (or
-    // replace this block with a `chain.bridge.sourceEvm.chainId` lookup from
-    // the registry). The earlier `"<chain>"` placeholder was a leftover from
-    // PR #97's marcus-sweep — it never matched any real network and silently
-    // routed Marcus's outbound Wormhole to Ethereum mainnet.
-    targetChain:        ["marcus", "local", "trajan", "hadrian"].includes(networkName) ? 10002 : 2,
+    // Wormhole destination chain id follows the Solana cluster (devnet → Sepolia
+    // 10002, mainnet-beta → Ethereum 2); see lib/wormhole-target-chain.ts.
+    targetChain:        wormholeTargetChainFor(networkName),
   };
 
   // forwarder = address(0): the meta-tx paymaster was removed. ERC2771Context
