@@ -54,7 +54,7 @@ async function getAtaBalanceFromChain(ataBase58: string): Promise<bigint> {
 async function pullSolanaLog(sig: string): Promise<string[]> {
     const conn = new Connection(SOLANA_RPC, "confirmed");
     const tx = await conn.getTransaction(sig, {
-        maxSupportedTransactionVersion: 0,
+        maxSupportedTransactionVersion: 1,
     });
     return tx?.meta?.logMessages ?? [];
 }
@@ -72,7 +72,7 @@ async function resolveSolanaTx(evmHash: string): Promise<string | undefined> {
 async function getSolanaCu(sig: string): Promise<{ cu?: number; heap?: number }> {
     const conn = new Connection(SOLANA_RPC, "confirmed");
     const tx = await conn.getTransaction(sig, {
-        maxSupportedTransactionVersion: 0,
+        maxSupportedTransactionVersion: 1,
     });
     if (!tx?.meta) return {};
     let heap: number | undefined;

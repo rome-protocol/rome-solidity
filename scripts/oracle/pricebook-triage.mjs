@@ -141,8 +141,8 @@ async function newSigsSince(untilSig, t0, t1) {
 }
 async function classify(sig) {
     const [j, b] = await Promise.all([
-        sol("getTransaction", [sig, { encoding: "json", maxSupportedTransactionVersion: 0, commitment: "confirmed" }]),
-        sol("getTransaction", [sig, { encoding: "base64", maxSupportedTransactionVersion: 0, commitment: "confirmed" }]),
+        sol("getTransaction", [sig, { encoding: "json", maxSupportedTransactionVersion: 1, commitment: "confirmed" }]),
+        sol("getTransaction", [sig, { encoding: "base64", maxSupportedTransactionVersion: 1, commitment: "confirmed" }]),
     ]);
     if (!j) return null;
     const msg = j.transaction.message;

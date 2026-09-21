@@ -61,7 +61,7 @@ async function main() {
   let sequence: bigint | null = null;
   let doTxSig = "";
   for (const sig of sigs.reverse()) {
-    const solTx = await solConn.getTransaction(sig, { maxSupportedTransactionVersion: 0 });
+    const solTx = await solConn.getTransaction(sig, { maxSupportedTransactionVersion: 1 });
     const logs = solTx?.meta?.logMessages ?? [];
     const seqLine = logs.find(l => /Sequence: \d+/.test(l));
     if (seqLine) {

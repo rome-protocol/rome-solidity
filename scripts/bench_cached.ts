@@ -99,7 +99,7 @@ async function getSolanaMetrics(
 ): Promise<{ cu?: number; heapBytes?: number; solErr?: string }> {
     const conn = new Connection(SOLANA_RPC, "confirmed");
     const tx = await conn.getTransaction(sig, {
-        maxSupportedTransactionVersion: 0,
+        maxSupportedTransactionVersion: 1,
     });
     if (!tx?.meta) return {};
     const cu = tx.meta.computeUnitsConsumed;
