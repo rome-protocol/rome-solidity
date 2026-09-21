@@ -13,6 +13,7 @@
 // (`factory.token_by_mint(mint) != 0`).
 
 import fs from "node:fs";
+import { isSolanaDevnetNetwork } from "./lib/wormhole-target-chain.js";
 import hardhat from "hardhat";
 import { resolveERC20SPLFactoryAddress } from "../lib/deployments.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
@@ -58,22 +59,18 @@ const COLLATERAL_SET_DEVNET: WrapperSpec[] = [
   { key: "SPL_ERC20_WBONK",    mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BONK_TEST,    name: "Rome Wrapped BONK",    symbol: "wBONK"    },
 ];
 
-// Networks targeting Solana DEVNET use SPL_MINTS_DEVNET; mainnet networks use
-// SPL_MINTS_MAINNET. Update this list whenever a new chain is brought up.
-// Override via `BRIDGED_SET=devnet|mainnet` env var for one-off cases.
-// NOTE: Rome-testnet chains (martius, nerva) also run on the Solana DEVNET
-// substrate — Rome network tier ≠ Solana cluster.
-const DEVNET_NETWORKS = new Set([
-  "marcus", "cassius", "subura", "esquiline", "aventine", "maximus", "augustus", "hadrian", "local",
-  "martius", "nerva",
-]);
+// Which mint set a network gets follows the Solana cluster it settles on — the
+// ONE set in lib/wormhole-target-chain.ts (shared with deploy.ts's program-id
+// and Wormhole target-chain choice). Rome network tier ≠ Solana cluster: the
+// Rome-testnet chains (martius, nerva) run on Solana DEVNET. Override via
+// `BRIDGED_SET=devnet|mainnet` for one-off cases.
 
 function resolveSet(networkName: string): WrapperSpec[] {
   const wrapperSet = process.env.WRAPPER_SET?.toLowerCase();
   if (wrapperSet === "collateral") {
     // Collateral test mints exist only on Solana devnet — refuse a mainnet run.
     const override = process.env.BRIDGED_SET?.toLowerCase();
-    if (override === "mainnet" || (override !== "devnet" && !DEVNET_NETWORKS.has(networkName))) {
+    if (override === "mainnet" || (override !== "devnet" && !isSolanaDevnetNetwork(networkName))) {
       throw new Error(
         `WRAPPER_SET=collateral is devnet-substrate-only (network '${networkName}' resolves to mainnet mints)`,
       );
@@ -83,7 +80,7 @@ function resolveSet(networkName: string): WrapperSpec[] {
   const override = process.env.BRIDGED_SET?.toLowerCase();
   if (override === "devnet")  return DEVNET_SET;
   if (override === "mainnet") return MAINNET_SET;
-  return DEVNET_NETWORKS.has(networkName) ? DEVNET_SET : MAINNET_SET;
+  return isSolanaDevnetNetwork(networkName) ? DEVNET_SET : MAINNET_SET;
 }
 
 type DeploymentsJson = Record<string, unknown>;
