@@ -32,15 +32,24 @@ npx hardhat test nodejs \
   tests/cpi/PdaDeriver.test.ts \
   tests/cpi/SolanaConstants.test.ts \
   tests/cpi/UserPda.test.ts \
-  tests/token2022/*.test.ts
+  tests/token2022/*.test.ts \
+  tests/erc20spl/*.test.ts \
+  tests/activation/*.test.ts
 
 # ABI parity gate — required after compile. Fails the build if a
 # discovery interface drifts from its implementation (either direction).
 node scripts/check-abi-parity.js
 
-# Integration tests (`tests/**/*.integration.ts`) require a LIVE Rome chain
-# (`--network local` for a rome-setup local stack, or a devnet/testnet
-# chain configured in hardhat.config.ts). Not run in CI.
+# Integration tests + POCs never wired into CI (need live Rome chain OR
+# probe an on-chain state that a hermetic run can't reproduce):
+#   tests/erc20spl/cached.integration.ts
+#   tests/erc20spl_factory.integration.ts
+#   tests/erc20spl_factory_hijack.poc.ts   # #326 regression PoC
+#   tests/ensure_ata.integration.ts
+#   tests/wrapped_gas_facade.integration.ts
+#   tests/bridge/RomeBridgeWithdraw.integration.ts
+# Run manually with `--network local` (rome-setup) or a devnet/testnet
+# chain configured in hardhat.config.ts.
 ```
 
 **Per-network deploys.** `hardhat.config.ts` configures: `martius` (121214), `subura` (121213), `trajan` (121302), `nerva` (210000), `hadrian` (200010, canonical devnet benchmark), `rubicon` (7531, mainnet — URL held in `RUBICON_RPC_URL`), `sepolia`, `local` (`http://localhost:9090`). Each network reads its private key via `configVariable("<NAME>_PRIVATE_KEY")` — set via the Hardhat 3 keystore (`npx hardhat keystore set <NAME>_PRIVATE_KEY` for production, `--dev` for local).
@@ -89,7 +98,17 @@ examples/                        worked references
 
 **A contract uses ONE wrapper track, never both** — hard rule enforced by rome-evm's `verify_call` at runtime.
 
-**Bridge — `contracts/bridge/`.** `RomeBridgeWithdraw` — the single outbound entrypoint, five egress rails (CCTP v2 USDC, Wormhole ETH, generic Wormhole `transfer_wrapped`, Wormhole `transfer_native` for Solana-native mints, and direct Rome→Solana SPL). `RomeBridgeEvents` is the canonical event schema for indexers (`rome-bridge-api` is the off-chain orchestrator). `ICCTPV2`/`CCTPV2Lib` is the live encoder; `ICCTP`/`CCTPLib` (v1) is retained-reference only. `IWormholeTokenBridge` covers `transfer_wrapped` (tag 4) and `transfer_native` (tag 5).
+**Direct-CALL migration (#338, #339, 2026-09).** rome-evm now refuses DELEGATECALL/CALLCODE into any mutating non-EVM precompile selector not explicitly exempt, so `SPL_ERC20`, `SPL_ERC20_cached`, `SPL_ERC20_Token2022Hooked`, `RomeBridgeWithdraw`, and `WrappedGasFacade` all sign as their **own** PDA (direct CALL) rather than borrowing the caller's authority. Three consequences downstream consumers must know:
+- **One-time user delegate grant.** Every SPL leg pulls the caller's tokens as that caller's SPL delegate, so an EOA must sign `HelperProgram.approve_spl(wrapper_or_bridge, max, mint)` once per mint before any `transfer` / `transferFrom` / `bridgeOutToSolana` / `burnUSDC` / `burnETH` / `burnToWormhole` / `transferNativeToWormhole` / gas-facade wrap works. Wrappers expose `isEnabled(address)` for the pre-flight check; the app hook lives in `rome-ui/src/lib/wrapperGrant.ts`. SPL allows one delegate slot per token account, so each grant displaces the previous one — that's why the app grants max-uint64 (approve-once UX).
+- **Escrow ledger for contract holders.** A contract can't call `approve_spl` (no EOA behind it), so `SPL_ERC20` and `SPL_ERC20_cached` collapse contract-held balances into the wrapper's own escrow ATA behind an EVM ledger. `balanceOf` reads that ledger for a contract and the SPL account for an EOA. A contract-to-contract transfer is then a plain ledger entry with **zero** SPL CPIs — this is what collapses a two-hop swap from 13 Solana txs to 1. The hooked Token-2022 wrapper does not escrow (its transfer must fire the hook) and overrides `balanceOf` to always read the SPL account.
+- **ABI break on the bridge.** `RomeBridgeWithdraw.approveBurnETH` and `.approveWormholeBurn` were **deleted** — a contract can no longer set an SPL delegate on a user's ATA. Wormhole outbound now needs a preceding user-signed `approve_spl(bridge, amount, mint)` to `0xff..09`; the app's outbound hook lives in `rome-ui/src/features/bridge/hooks/useOutboundWhSend.ts`. The four burns pull the caller's SPL into the bridge's own ATA first, then burn from there as true owner. Wormhole's `authority_signer` delegate is re-granted on the bridge's ATA each call (since that ATA is now shared, not per-user).
+- **Bridge-owned ATAs are one-time.** Each bridged mint's bridge-ATA must exist before its first burn. **`scripts/bridge/ensure-bridge-atas.ts`** (#344) — v10 rollout step 3, OWNER-only — calls `ensureBridgeAta(mint)` once per bridged mint (paid from operator rent). Reads the bridge from `deployments/<network>.json`, the mints from its `SPL_ERC20_*` wrappers (or `BRIDGE_ATA_MINTS`), the bridge PDA from `HelperProgram.pda()`; probes each ATA on Solana first (skip if present) and reads it back. `DRY_RUN=1` reports without writing. Pure helpers + tests: `scripts/bridge/lib/ensure-bridge-atas.ts`.
+- **`mint_to` removed from wrappers.** A direct-CALL signer can never be the mint authority; the authority holder mints through the precompile directly.
+- **The bridge PDA now pays rent.** CCTP `messageSentEventData` + Wormhole message accounts are funded by the bridge's own PDA on every burn (previously each user's PDA). Ops must keep it funded — recouped in gas per the ratified design.
+
+**Factory front-running fix (#326, 2026-08).** `ERC20SPLFactory.create_token_mint` is now **atomic** — it creates AND initializes the mint in a single call (via `HelperProgram.create_and_init_mint`), so there is no uninitialized window a third party can front-run to steal issuance. `init_token_mint(bytes32)` is now an inert `view` (checks `is_initialized`, does nothing) so existing two-step callers keep working. Regression: `tests/erc20spl_factory_hijack.poc.ts`. The currently-deployed factory is immutable; live remediation is redeploy + consumer-migration + orphan-mint sweep (rubicon redeployed in #327; hadrian in #342/#346).
+
+**Bridge — `contracts/bridge/`.** `RomeBridgeWithdraw` — the single outbound entrypoint, five egress rails (CCTP v2 USDC, Wormhole ETH, generic Wormhole `transfer_wrapped`, Wormhole `transfer_native` for Solana-native mints, and direct Rome→Solana SPL). Every mutating call is a **direct CALL** signing as the bridge's own PDA (post-#339); every rail pulls the caller's SPL into the bridge's own ATA first, so a caller-side `approve_spl(bridge, …)` to `0xff..09` is a hard precondition. `RomeBridgeEvents` is the canonical event schema for indexers (`rome-bridge-api` is the off-chain orchestrator). `ICCTPV2`/`CCTPV2Lib` is the live encoder; `ICCTP`/`CCTPLib` (v1) is retained-reference only. `IWormholeTokenBridge` covers `transfer_wrapped` (tag 4) and `transfer_native` (tag 5).
 
 **Oracle — `contracts/oracle/`.** Solana price feeds (Pyth Pull, Switchboard V2) surfaced through the standard Chainlink `AggregatorV3Interface`. Direct adapters (`PythPullAdapter`, `SwitchboardV3Adapter`) read on every call; cached adapters (`CachedPythAdapter`, `CachedFeedAdapter`) do the parse + SSTORE on a keeper `refresh()` tx so `latestRoundData()` is a cheap SLOAD. **`PriceBook`** (#318, 2026-08) is one aggregated write for N feeds — permissionless `refreshAll` with per-feed branch isolation (commit/skip/fault; reverts only when every attempted feed faulted), plus `BookFeedAdapter` view facades that keep the Chainlink read shape unchanged. `PriceBook` + `BookFeedAdapter` **pause fail-closed** (#322): pause flips a served entry's status to `paused` so reads revert immediately (rather than aging out); unpause resumes only with a strictly-newer AND fresh validated update, else stays paused via atomic rollback. `OracleAdapterFactory` deploys all four adapter kinds as EIP-1167 clones and validates the Solana account's owner-program on registration. `BatchReader` fans out reads with per-feed `try/catch` isolation.
 
@@ -121,7 +140,9 @@ The read-shortcut disambiguation matters when reasoning about iterative-VM compo
 - **`.sol` never hardcodes an app-contract address** — only precompile constants in `interface.sol` may. Every other address comes from `rome-protocol/registry` at runtime (TS side) or as a constructor arg (Solidity side).
 - **`tx.origin` is banned in `contracts/`** — CI job `tx-origin-ban` enforces this. Use `UserPda.pda(msg.sender)` or the explicit `address user` argument in the three-layer adapter pattern.
 - **Cached track is the default; a contract uses one track, never both.** Reach for the CPI-track `SPL_ERC20` only when you specifically need `bridgeOutToSolana` / `ensureRecipientAta`.
-- **Wrapper warm-transfer path is one precompile write (2026-09).** No `ERC20Users.ensure_user` on transfer/create/bridge-out (nothing reads `get_user`; the registry stays for `SimpleActivator` and ABI compatibility), `mint_info` only on a `fee_capable` mint (TransferFeeConfig is fixed at InitializeMint → constructor immutable), recipient-ATA flag checked BEFORE any derivation/probe (and a successful probe sets it), hooked wrapper's own PDA is the `self_pda` immutable. Guarded by trap tests `tests/erc20spl/hot-path.test.ts`, `cached-hot-path.test.ts`, `tests/token2022/hooked-hot-path.test.ts` — a change that re-adds a per-transfer read fails them.
+- **Wrapper warm-transfer path is one precompile write (2026-09, #345).** No `ERC20Users.ensure_user` on transfer/create/bridge-out (nothing reads `get_user`; the registry stays for `SimpleActivator` and ABI compatibility), `mint_info` only on a `fee_capable` mint (TransferFeeConfig is fixed at InitializeMint → constructor immutable), recipient-ATA flag checked BEFORE any derivation/probe (and a successful probe sets it), hooked wrapper's own PDA is the `self_pda` immutable, escrow ATA derived once in the constructor and existence-checked only once (an ATA never closes → existence is monotone). Guarded by trap tests `tests/erc20spl/hot-path.test.ts`, `cached-hot-path.test.ts`, `tests/token2022/hooked-hot-path.test.ts` — a change that re-adds a per-transfer read fails them.
+- **Wrappers sign as their own PDA, not the caller's.** Direct CALL only (post-#338). EOAs must grant `approve_spl(wrapper, max, mint)` once per mint via `0xff..09` before any transfer; wrappers expose `isEnabled(address)` for the pre-flight check. Contract holders' balances live in the wrapper's escrow ATA behind an EVM ledger — `balanceOf` reads the ledger for a contract, the SPL account for an EOA. See the "Direct-CALL migration" note in Architecture. `mint_to` is gone from wrappers.
+- **Bridge burns require a caller-side `approve_spl` grant.** `approveBurnETH` / `approveWormholeBurn` were deleted in #339 (contracts can't set an SPL delegate on a user's ATA). Every burn pulls tokens into the bridge's own ATA as the caller's SPL delegate, then acts as the true owner.
 - **`RomeBridgeWithdraw` events live in `RomeBridgeEvents`**, not on the interface. Indexers subscribe to `RomeBridgeEvents`.
 - **Every write from TypeScript goes through the SDK.** On the EVM lane use `submitRomeTx`; on the Solana lane use `submitRomeTxSolanaLane`. Never raw `wagmi`/`ethers`/`viem` `writeContract` — Rome writes have specific fee + submission semantics. This is a repeated finding — see AGENTS.md rule 1.
 - **`eth_estimateGas` over-predicts on Rome.** The proxy charges the exact gas used, so don't size hard budgets off the estimate. A plain native-token transfer costs ~1.48M gas (not 21k) because it materializes the recipient's Balance PDA.
@@ -136,7 +157,7 @@ The read-shortcut disambiguation matters when reasoning about iterative-VM compo
 |-----------------|---------------------|
 | `contracts/interface.sol` precompile signatures | `rome-evm-private/program/src/non_evm/*` dispatch (the source of truth); `rome-sdk-ts/src/{abis,selectors,addresses}.ts`; `compound-on-rome-comet/contracts/lib/RomePrecompiles.sol` (vendored); every app repo mirroring the ABI in TS (cardo, appia, `lib/cpi-precompile.ts`) |
 | A discovery interface (`IRomeBridgeWithdraw`, future additions) | Run `node scripts/check-abi-parity.js` after `hardhat compile`. Add the `{ iface, impl }` pair to `PAIRS` in `scripts/check-abi-parity.js` if introducing a new one. |
-| `RomeBridgeWithdraw` (any rail) | `rome-bridge-api` (orchestrator), `rome-ui`/`appia`/`cardo` outbound flows, `deployments/<network>.json`, `rome-protocol/registry` chain `contracts.json` / `bridge.json` |
+| `RomeBridgeWithdraw` (any rail) | `rome-bridge-api` (orchestrator), `rome-ui`/`appia`/`cardo` outbound flows, `deployments/<network>.json`, `rome-protocol/registry` chain `contracts.json` / `bridge.json`. Every rail requires a preceding user-signed `approve_spl(bridge, amount, mint)` since #339 — verify client callsites grant it. New bridged mints: run `scripts/bridge/ensure-bridge-atas.ts` after a fresh factory deploy. |
 | SPL_ERC20 wrapper family | `ERC20SPLFactory.WrapperKind` enum + factory dispatch; `rome-showcase`, `rome-uniswap-v2/v3`, `compound-on-rome-comet`, `rome-aave-v3` (all trade against the cached wrappers) |
 | Oracle adapters or `PriceBook` | `rome-oracle-gateway` (pointer repo + portal), `rome-oracle-portal` keeper (`refresh()` cadence + `maxStaleness`), `registry/chains/<id>/oracle.json`, downstream consumers (`rome-aave-v3` AaveOracle, `compound-on-rome-comet` price feeds) |
 | CPI toolkit (`contracts/cpi/`) | Every Cardo adapter in `rome-showcase/contracts/<adapter>/`, `contracts/cpi/README.md` |
@@ -148,11 +169,12 @@ The read-shortcut disambiguation matters when reasoning about iterative-VM compo
 | What Changed | Tests to Run |
 |-------------|-------------|
 | `interface.sol` or a precompile ABI | Full unit set + `node scripts/check-abi-parity.js` + `tests/token2022/mint-info.selectors.test.ts` + `tests/erc20spl/cached.selectors.test.ts` |
-| Bridge (`RomeBridgeWithdraw`, CCTP/Wormhole libs) | `tests/bridge/*.test.ts` + parity gate + `tests/bridge/RomeBridgeWithdraw.integration.ts` against a funded devnet chain |
+| Bridge (`RomeBridgeWithdraw`, CCTP/Wormhole libs) | `tests/bridge/*.test.ts` (now includes `RomeBridgeWithdraw.direct-call.test.ts` — the mock-precompile suite that pins the direct-CALL + pull-delegate shape from #339) + parity gate + `tests/bridge/RomeBridgeWithdraw.integration.ts` against a funded devnet chain |
 | Oracle (adapters, `PriceBook`, `BookFeedAdapter`) | `tests/oracle/*.test.ts` (unit) — the full suite exercises the pause fail-closed + rollback invariants |
 | CPI toolkit | `tests/cpi/*.test.ts` |
-| SPL_ERC20 wrappers | `tests/erc20spl/*.test.ts` (`.test.ts` unit + `.integration.ts` on a live chain for the cached ATA-materialization path) |
-| Token-2022 hooked wrapper | `tests/token2022/*.test.ts` + `scripts/token2022/smoke-hooked-wrapper-hadrian.ts` against Hadrian |
-| Simple activator | `tests/activation/simple-activator.test.ts` + `scripts/activation/deploy-simple-activator.ts` on a devnet chain |
-| WrappedGasFacade | `tests/wrapped_gas_facade.integration.ts` (integration only; requires funded chain) |
+| SPL_ERC20 wrappers | `tests/erc20spl/*.test.ts` — now hermetic + wired into CI (#338 added the mocks). Key suites: `hot-path`, `cached-hot-path`, `direct-call-escrow-shape` + `cached-` twin, `escrow-ata-immutable`, `escrow-ledger`, `evm-allowance`, `ensure-token-account-created-flag` + `cached-` twin, `approve-saturation`, `view-defensive`, `bridge-out-collapse`, `cached-transfer-behaviour`, `cached.selectors`. On-chain path: `tests/erc20spl/cached.integration.ts` + `tests/erc20spl_factory.integration.ts` + `tests/erc20spl_factory_hijack.poc.ts` (#326 PoC). |
+| Token-2022 hooked wrapper | `tests/token2022/*.test.ts` (adds `direct-call-hooked-shape`, `hooked-transfer-behaviour` since #338) + `scripts/token2022/smoke-hooked-wrapper-hadrian.ts` against Hadrian |
+| Wrapped-gas facade | `tests/wrap/WrappedGasFacade.direct-call.test.ts` (unit, mocked precompiles; pins the direct-CALL shape from #339) + `tests/wrapped_gas_facade.integration.ts` (integration only; requires funded chain) |
+| Simple activator | `tests/activation/simple-activator.test.ts` (hermetic; wired into CI) + `scripts/activation/deploy-simple-activator.ts` on a devnet chain |
 | Ensure-ATA / factory / cached wrapper on-chain paths | `tests/{ensure_ata,erc20spl_factory,erc20spl/cached}.integration.ts` |
+| Factory front-running fix | `tests/erc20spl_factory_hijack.poc.ts` against a live chain — the two-step create-then-init sequence and the fixed atomic path both exercised. |
