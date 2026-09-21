@@ -2,7 +2,7 @@
 
 ### Bridge deploy — Wormhole target chain follows the Solana cluster
 
-- `scripts/bridge/deploy.ts` derives `targetChain` from the shared `SOLANA_DEVNET_NETWORKS` set (`lib/wormhole-target-chain.ts`: devnet → Sepolia 10002, mainnet-beta → Ethereum 2) instead of a second hand-kept list that omitted Martius and Nerva; both chains' live bridges read `wormholeTargetChain() = 2` and need a redeploy (rome-solidity #360).
+- `scripts/bridge/deploy.ts` derives `targetChain` from the shared `SOLANA_DEVNET_NETWORKS` set (`lib/wormhole-target-chain.ts`: devnet → Sepolia 10002, mainnet-beta → Ethereum 2) instead of a second hand-kept list that omitted Martius and Nerva; `bootstrap-bridged-wrappers.ts` picks its mint set from the same set (the third list is gone); both chains' live bridges read `wormholeTargetChain() = 2` and need a redeploy (rome-solidity #360).
 
 ### Bridge — message-account rent billed to the user (`RomeBridgeWithdraw`)
 

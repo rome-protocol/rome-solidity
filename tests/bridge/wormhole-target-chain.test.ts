@@ -45,4 +45,13 @@ describe("wormholeTargetChainFor", () => {
     assert.doesNotMatch(src, /\["marcus", "local", "trajan", "hadrian"\]/);
     assert.doesNotMatch(src, /const SOLANA_DEVNET_NETWORKS = new Set/);
   });
+
+  it("bootstrap-bridged-wrappers.ts classifies the network with the same set — no third list", () => {
+    const src = readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), "../../scripts/bridge/bootstrap-bridged-wrappers.ts"),
+      "utf8",
+    );
+    assert.match(src, /isSolanaDevnetNetwork\(networkName\)/);
+    assert.doesNotMatch(src, /const DEVNET_NETWORKS = new Set/);
+  });
 });
