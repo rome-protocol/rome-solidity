@@ -101,10 +101,13 @@ interface IRomeBridgeWithdraw {
     // ─── Admin / config ──────────────────────────────────────────────────────
     function setWormholeAssetAllowed(address assetWrapper, bool allowed) external;
     function setWormholeTargetChainAllowed(uint16 targetChain, bool allowed) external;
+    function setMessageRents(uint64 cctpLamports, uint64 wormholeLamports) external;
     function transferOwnership(address newOwner) external;
 
     // ─── Views — preconditions and flow state ────────────────────────────────
     function owner() external view returns (address);
+    function cctpMessageRentLamports() external view returns (uint64);
+    function wormholeMessageRentLamports() external view returns (uint64);
     /// @notice Allow-list check keyed by WRAPPER address (resolves the mint internally).
     function wormholeAssetAllowed(address assetWrapper) external view returns (bool);
     /// @notice Allow-list check keyed by SPL MINT — the storage the egress paths gate on.

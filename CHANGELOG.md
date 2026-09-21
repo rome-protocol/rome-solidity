@@ -1,5 +1,11 @@
 ## 2026-07-09 — WrappedGasFacade: WETH9-shaped wrap/unwrap with canonical events
 
+### Bridge — message-account rent billed to the user (`RomeBridgeWithdraw`)
+
+- Every outbound path (`burnUSDC`, `burnETH`, `burnToWormhole`, `transferNativeToWormhole`) calls `HelperProgram.swap_gas_to_lamports(rent)` right before its CPI, so the operator fronts the CCTP/Wormhole message-account rent onto the bridge PDA and the user pays it in gas, atomically. Closes the post-#339 drain where the bridge PDA paid and nothing billed the user (rome-solidity #361).
+- New owner-settable `cctpMessageRentLamports` (2,824,480) / `wormholeMessageRentLamports` (2,477,780), `setMessageRents`, `ZeroRent`, `MessageRentsSet`. Discovery interface updated; ABI parity holds.
+- `BridgePrecompileMock` records `swap_gas_to_lamports`; `tests/bridge/RomeBridgeWithdraw.message-rent.test.ts` pins call order (swap before CPI), caller (the bridge), amount, and the owner gate.
+
 `contracts/wrap/WrappedGasFacade.sol` — `deposit()` payable (+ `receive()`) wraps native
 gas into the chain's gas-mint wrapper; `withdraw(uint256)` unwraps back (requires prior
 ERC-20 `approve`). Emits canonical WETH9 `Deposit`/`Withdrawal` events, closing the
