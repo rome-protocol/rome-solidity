@@ -259,7 +259,7 @@ async function outboundWh(romeWallet: Wallet, sepWallet: Wallet) {
 
   // Fetch Solana tx logs to get Sequence
   const solConn = new Connection(SOLANA_RPC, "confirmed");
-  const solTxRes = await solConn.getTransaction(solSig, { maxSupportedTransactionVersion: 0 });
+  const solTxRes = await solConn.getTransaction(solSig, { maxSupportedTransactionVersion: 1 });
   const logs = solTxRes?.meta?.logMessages ?? [];
   const seqLine = logs.find((l) => /Sequence: \d+/.test(l));
   if (!seqLine) throw new Error("Sequence not found in Solana logs");

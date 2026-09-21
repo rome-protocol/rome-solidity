@@ -53,7 +53,7 @@ async function getSolanaCU(evmTxHash: `0x${string}`): Promise<number | null> {
     const tx = await rpc<{ meta?: { computeUnitsConsumed?: number } } | null>(
         SOLANA_RPC,
         "getTransaction",
-        [solanaSig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 }],
+        [solanaSig, { commitment: "confirmed", maxSupportedTransactionVersion: 1 }],
     );
     return tx?.meta?.computeUnitsConsumed ?? null;
 }

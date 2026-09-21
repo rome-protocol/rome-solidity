@@ -58,7 +58,7 @@ async function getSolanaCu(solanaRpc: string, sig: string): Promise<number> {
             jsonrpc: "2.0",
             id: 1,
             method: "getTransaction",
-            params: [sig, { maxSupportedTransactionVersion: 0, commitment: "confirmed" }],
+            params: [sig, { maxSupportedTransactionVersion: 1, commitment: "confirmed" }],
         }),
     });
     const body = (await res.json()) as { result?: { meta?: { computeUnitsConsumed?: number } } };

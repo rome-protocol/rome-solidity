@@ -48,7 +48,7 @@ async function getSolanaMetrics(
 ): Promise<{ cu?: number; heap?: number; err?: string }> {
     const conn = new Connection(SOLANA_RPC, "confirmed");
     const tx = await conn.getTransaction(sig, {
-        maxSupportedTransactionVersion: 0,
+        maxSupportedTransactionVersion: 1,
     });
     if (!tx?.meta) return {};
     let heap: number | undefined;
