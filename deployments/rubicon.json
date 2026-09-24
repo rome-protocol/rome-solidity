@@ -32,8 +32,8 @@
     "via": "ERC20SPLFactory.users()"
   },
   "RomeBridgeWithdraw": {
-    "address": "0xbf02eab4d25154f86f11d4ce21af0fdb4c3a5d84",
-    "deployedAt": 1786067358
+    "address": "0xceea191761cdba2fc589996d7dd096e57db29c84",
+    "deployedAt": 1790219940
   },
   "SPL_ERC20_WSOL_V9": {
     "address": "0xe9716ef69e3f86ad3b68d2c63375a32a2d83e378",
