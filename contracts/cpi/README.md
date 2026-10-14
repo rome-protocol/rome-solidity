@@ -33,8 +33,8 @@ owns the token accounts your Solana program spends from.
 
 ## 2. Copy-paste skeleton
 
-Tokens reach the adapter through an SPL delegation. Before the first call the
-user sends `approve_spl(adapter, amount, mint)` as a transaction straight to the
+Tokens reach the adapter through an SPL delegation. Before the call (or each
+run of calls) the user sends `approve_spl(adapter, amount, mint)` as a transaction straight to the
 HelperProgram precompile (`0xFF00000000000000000000000000000000000009`), which
 makes the adapter's authority the SPL delegate on the user's token account. The
 adapter then pulls with the delegate overload of `HelperProgram.transfer_spl`
@@ -111,10 +111,11 @@ Two consequences for the user:
 
 - **A token account has one delegate.** The grant to the adapter replaces the
   grant the SPL wrapper holds on the same account. Until the user grants the
-  wrapper again (`approve_spl(wrapper, amount, mint)` to the HelperProgram), the
+  wrapper again (`approve_spl(wrapper, 2^64-1, mint)` to the HelperProgram, the maximum grant the wrapper is built around), the
   user's `transfer` and `transferFrom` on that wrapper revert with SPL error
   `0x4`. After the flow, check the wrapper's `isEnabled(user)` and prompt the
-  user to re-grant when it is `false`.
+  user to re-grant when it is `false`. The re-grant in turn removes the adapter's
+  delegation, so the next call needs a new `approve_spl(adapter, ...)`.
 - **One track per transaction.** `HelperProgram.transfer_spl` and `Cpi.invoke`
   are both legacy-track, so they share a transaction. Do not call the cached SPL
   wrapper's mutating functions in the same transaction as a legacy CPI.
@@ -159,7 +160,8 @@ deriving the user's ATA to pay out to (`UserPda.ata(user, mint)`), and reading
 balances. Take it from `msg.sender`.
 
 Never derive anything from `tx.origin`. The CI job `tx-origin-ban` fails the
-build on any `\btx\.origin\b` match inside `contracts/`, because a contract
+build on any `tx.origin` on a non-comment line of a `.sol` file under
+`contracts/`, because a contract
 that acts on `tx.origin` can be driven by any contract the user calls.
 
 ---
