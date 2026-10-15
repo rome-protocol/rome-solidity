@@ -23,7 +23,7 @@ library CostEstimator {
     // Solana rent constants (genesis-baked; never change on mainnet-beta)
     // ──────────────────────────────────────────────────────────────────
 
-    /// @dev Rent formula and pre-tabulated values match mainnet today.
+    /// @dev Rent formula and pre-tabulated values use the fixed constants below.
     ///      SIMD-0437 (https://github.com/solana-foundation/solana-improvement-documents/blob/main/proposals/0437-reduce-rent-exemption-lamports-per-byte-year.md)
     ///      proposes a gradual 10× reduction (6960 → 696 lamports/byte-year)
     ///      on a schedule. Post-activation these values will drift.
