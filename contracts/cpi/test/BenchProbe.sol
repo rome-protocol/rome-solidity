@@ -216,14 +216,14 @@ contract BenchProbe {
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // Tier 3 — Universal-delegation (A1-A6 from the Rome EVM program #364)
+    // Tier 3 — Universal-delegation (A1-A6 from the Rome EVM program)
     //           Paired old/new for benchmark side-by-side
     // ─────────────────────────────────────────────────────────────────
 
     /// A3 OLD: salted PDA derivation via 2 syscalls
     ///   (1) SystemProgram.rome_evm_program_id() + (2) find_program_address.
     /// This is the v1 path consumed by `RomeEVMAccount.pda_with_salt`
-    /// pre-#165 (now collapsed to A3).
+    /// before it collapsed to A3.
     function probe_a3_pdaWithSalt_OLD(address user, bytes32 salt) external view returns (bytes32) {
         bytes32 programId = SystemProgram.rome_evm_program_id();
         ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](3);
@@ -235,8 +235,7 @@ contract BenchProbe {
     }
 
     /// A3 NEW: HelperProgram.pda_with_salt — single dispatch (selector 0x5c6d04b3).
-    /// Shipped in the Rome EVM program #364, consumed by RomeEVMAccount.pda_with_salt
-    /// in rome-solidity #165.
+    /// Shipped in the Rome EVM program and consumed by RomeEVMAccount.pda_with_salt.
     function probe_a3_pdaWithSalt_NEW(address user, bytes32 salt) external view returns (bytes32) {
         return HelperProgram.pda_with_salt(user, salt);
     }
@@ -270,7 +269,7 @@ contract BenchProbe {
     }
 
     /// Inline LE-u64 encoder — used by the OLD probes that encode raw SPL
-    /// instructions. Replaces the prior `SplTokenLib._le_u64` (pruned in #169).
+    /// instructions. Replaces the prior `SplTokenLib._le_u64` (since pruned).
     function _u64le(uint64 v) private pure returns (bytes memory) {
         return abi.encodePacked(
             uint8(v),
