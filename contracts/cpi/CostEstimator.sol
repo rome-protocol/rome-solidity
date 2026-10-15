@@ -10,10 +10,8 @@ import {
     ExpectedOutput
 } from "./CostEstimate.sol";
 
-/// @title CostEstimator — rent, USD, and ATA-existence helpers for Cardo quoteCost.
-/// @dev Per cardo-foundation.md §4.3.
-///
-///      USD precision: `uint256 usd8` = 1e8 scale (Chainlink / Oracle
+/// @title CostEstimator — rent, USD, and ATA-existence helpers for CPI adapter quoteCost.
+/// @dev USD precision: `uint256 usd8` = 1e8 scale (Chainlink / Oracle
 ///      Gateway V2 convention). Zero conversion rounding on oracle reads.
 ///
 ///      Audit trail: every oracle-reading helper takes a caller-supplied
@@ -25,7 +23,7 @@ library CostEstimator {
     // Solana rent constants (genesis-baked; never change on mainnet-beta)
     // ──────────────────────────────────────────────────────────────────
 
-    /// @dev Rent formula + pre-tabulated values are canonical as of 2026-04-22.
+    /// @dev Rent formula + pre-tabulated values are the values at the time of writing.
     ///      SIMD-0437 (https://github.com/solana-foundation/solana-improvement-documents/blob/main/proposals/0437-reduce-rent-exemption-lamports-per-byte-year.md)
     ///      proposes a gradual 10× reduction (6960 → 696 lamports/byte-year)
     ///      on a schedule. Post-activation these values will drift.
@@ -41,10 +39,9 @@ library CostEstimator {
     /// each equals `(128 + space) * 6960` per the canonical formula).
     uint64 internal constant SPL_TOKEN_ACCOUNT_RENT = 2_039_280; // space=165
     uint64 internal constant MINT_ACCOUNT_RENT = 1_461_600;      // space=82
-    /// space=355. Spec text (cardo-foundation §4.3) listed 2_477_760; that
-    /// value is inconsistent with (128+355)*6960 = 3_361_680. Constant is
-    /// set to the formula-exact value so the (128+space)*6960 invariant
-    /// holds across every constant in the table.
+    /// space=355. The constant is set to the formula-exact value,
+    /// (128+355)*6960 = 3_361_680, so the (128+space)*6960 invariant holds
+    /// across every constant in the table.
     uint64 internal constant MULTISIG_RENT = 3_361_680;
     uint64 internal constant ZERO_SPACE_RENT = 890_880;          // space=0 stubs
 

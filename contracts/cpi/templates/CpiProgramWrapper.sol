@@ -42,9 +42,7 @@ pragma solidity 0.8.28;
 ///
 ///   This scaffold does not provide inheritance. Copy, adapt, rename. The
 ///   wrapper pattern is mechanical enough that code-gen per adapter outweighs
-///   the LOC savings of a polymorphic base. See rome-showcase's
-///   KaminoLendProgramWrapper.sol + DriftPerpsProgramWrapper.sol for live
-///   references.
+///   the LOC savings of a polymorphic base.
 contract CpiProgramWrapperScaffold {
     // This empty contract exists only to satisfy Solidity's requirement that
     // a .sol file contain a top-level declaration. The scaffold itself is the

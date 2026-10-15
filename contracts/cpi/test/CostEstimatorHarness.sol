@@ -74,8 +74,8 @@ contract CostEstimatorHarness {
 
     // ── Full audit-trail round-trip: simulates a synthetic adapter's quoteCost ──
     /// Calls usdValue, then evmGasUsd, rolls up into a CostEstimate with the
-    /// two adapters appended to oracleReads in call order. Matches the
-    /// "audit trail round-trip" case in cardo-foundation §7 Task 7 step 4.
+    /// two adapters appended to oracleReads in call order. Covers the
+    /// audit-trail round-trip case.
     function quoteCostRoundTrip(
         uint64 lamports,
         uint256 gas,

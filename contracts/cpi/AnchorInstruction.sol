@@ -14,8 +14,7 @@ import {Convert} from "../convert.sol";
 ///   `*DiscFromName()` oracle in tests to verify the constant matches.
 ///
 ///   Borsh LE primitives: u16, u32, i32, i64, bool. `u64` delegates to
-///   `Convert.u64le` in rome-solidity/contracts/convert.sol (do not
-///   re-implement per §7 Task 4).
+///   `Convert.u64le` in contracts/convert.sol (do not re-implement it).
 ///
 ///   `optionSome` / `optionNone` wrap the Anchor `Option<T>` convention:
 ///     - None   : `[0x00]`

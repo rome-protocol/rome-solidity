@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-/// @title CostEstimate — uniform quote shape for every Cardo adapter.
-/// @dev Per cardo-foundation.md §4.1. The struct itself lives at top level so
-///      it can be imported by both `ICostView` and each adapter.
+/// @title CostEstimate — uniform quote shape for every CPI adapter.
+/// @dev The struct itself lives at top level so it can be imported by both
+///      `ICostView` and each adapter.
 ///
 ///      USD precision: `uint256 usd8` throughout = 1e8 scale (Chainlink /
-///      Oracle Gateway V2 convention). See §4.4 for rationale.
+///      Oracle Gateway V2 convention), so oracle reads need no rescaling.
 ///
 ///      `oracleReads` is the audit trail of Oracle Gateway V2 adapter
 ///      addresses consulted to compute the quote. Every oracle-reading
 ///      helper in `CostEstimator` appends its adapter address before
 ///      returning. Adapters never write this field directly. Downstream
-///      consumers (Cardo UI, MCP tools) re-check `getFeedHealth` against
+///      consumers (UIs, MCP tools) re-check `getFeedHealth` against
 ///      each address to surface staleness before the user signs.
 
 /// Solana rent requirement for a single account the capability touches.
@@ -33,7 +33,7 @@ struct ProtocolFee {
 /// Expected output for output-producing capabilities (swap, withdraw, …).
 /// For non-output ops (borrow / repay / deposit / cancel) leave all fields
 /// zero. Adapters MUST populate when there IS an output (enforces the
-/// "zero means none" convention described in §13).
+/// "zero means none" convention).
 struct ExpectedOutput {
     address tokenErc20Spl;       // zero for non-output capabilities
     uint256 expectedAmount;      // best-effort from pool / protocol state
@@ -48,5 +48,5 @@ struct CostEstimate {
     ProtocolFee[] fees;
     ExpectedOutput output;
     uint256 totalUserCostUsd;    // 1e8 scale
-    address[] oracleReads;       // audit trail (§4.4)
+    address[] oracleReads;       // audit trail
 }

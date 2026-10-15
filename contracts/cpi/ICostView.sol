@@ -3,10 +3,8 @@ pragma solidity 0.8.28;
 
 import {CostEstimate} from "./CostEstimate.sol";
 
-/// @title ICostView — quote interface every Cardo adapter implements.
-/// @dev Per cardo-foundation.md §4.2.
-///
-///      Capability multiplexing: for adapters with multiple capabilities
+/// @title ICostView — quote interface every CPI adapter implements.
+/// @dev Capability multiplexing: for adapters with multiple capabilities
 ///      (Kamino deposit/withdraw/borrow/repay, Drift place/cancel/settle) the
 ///      selector is encoded inside `capabilityInputs`:
 ///
@@ -23,12 +21,12 @@ import {CostEstimate} from "./CostEstimate.sol";
 ///
 ///      Single-capability adapters (e.g. Meteora) can ignore the selector
 ///      convention and decode `capabilityInputs` directly. Either way, the
-///      interface is one method across all Cardo apps — Cardo UI can render
-///      the rollup without app-specific code paths.
+///      interface is one method across all adapters, so a UI can render the
+///      rollup without app-specific code paths.
 interface ICostView {
     /// Quote the cost of a capability. `capabilityInputs` is the encoded
     /// tuple the adapter's write method would take. Pure / view; safe to
-    /// call in the Cardo UI before the user signs.
+    /// call in a UI before the user signs.
     function quoteCost(address user, bytes calldata capabilityInputs)
         external
         view

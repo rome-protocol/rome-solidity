@@ -8,12 +8,12 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {CpiError} from "../CpiError.sol";
 
-/// @title CpiAdapterBase — abstract base for every Cardo user-facing adapter.
+/// @title CpiAdapterBase — abstract base for every CPI user-facing adapter.
 /// @notice Rolls Ownable + Pausable + ReentrancyGuard + backend pointer +
 ///         ERC20 rescue + u64 overflow check into one base.
 /// @dev
-///   Per cardo-foundation.md §3.1. Adapters inherit and drop the 50 LOC of
-///   scaffolding each one re-implemented today:
+///   Adapters inherit and drop the 50 LOC of scaffolding each one would
+///   otherwise re-implement:
 ///
 ///     contract MeteoraCpiAdapter is CpiAdapterBase { … }
 ///

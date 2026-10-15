@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 /// @title CpiError
-/// @notice Shared error selectors for Cardo CPI adapters.
+/// @notice Shared error selectors for CPI adapters.
 /// @dev
 ///   Centralises the 4 most-copied error signatures across Meteora / Kamino /
 ///   Drift. Adapters `import {CpiError} from "..."` and `revert

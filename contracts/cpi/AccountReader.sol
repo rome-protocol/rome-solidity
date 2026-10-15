@@ -20,15 +20,13 @@ import {CpiProgram} from "../interface.sol";
 ///   32-byte slice without the caller having to slice + decode by hand.
 ///
 ///   Selector hex was verified via `cast keccak` against the Rome EVM program
-///   const definitions on 2026-05-13 and tracked in `the Rome EVM program/
-///   CLAUDE.md` §"Non-EVM Bridge".
+///   const definitions.
 ///
 /// ## Scope (deliberately thin)
 ///
-///   This library only contains typed-read primitives. Per the audit
-///   red-team (2026-05-14): invariant helpers like `expectDiscriminator`,
-///   `expectOwner`, `expectDataLen` are NOT included — no current consumer
-///   needs them. Add them when a consumer does, not before.
+///   This library only contains typed-read primitives. Invariant helpers like
+///   `expectDiscriminator`, `expectOwner`, `expectDataLen` are NOT included —
+///   no current consumer needs them. Add them when a consumer does, not before.
 ///
 /// ## Live behavior — these are reads, not CPIs
 ///
@@ -55,27 +53,21 @@ import {CpiProgram} from "../interface.sol";
 ///   - **No on-chain side effect.** These are pure cross-state queries —
 ///     equivalent to an `eth_call` against a Solana account.
 ///
-///   Source of truth for the dispatch routing: `the Rome EVM program
-///   src/non_evm/cpi.rs:65` (the `ACCOUNT_DATA_AT => CrossStateEthCall`
-///   match arm; the three v2 selectors `ACCOUNT_U64_AT`, `ACCOUNT_LAMPORTS`,
-///   `PDAS_BATCH_DERIVE` join the same arm on lines 71-73). The full per-
-///   selector dispatch table is in
-///   [`the Rome EVM program`](../../../the Rome EVM program) §
-///   "CpiProgram" — column "Dispatch" labels each selector with its
-///   `NonEvmCall` variant.
+///   Source of truth for the dispatch routing: the `non_evm` module of the
+///   public rome-evm program, where `ACCOUNT_DATA_AT` and the other read
+///   selectors (`ACCOUNT_U64_AT`, `ACCOUNT_LAMPORTS`, `PDAS_BATCH_DERIVE`)
+///   map to a cross-state read.
 ///
-///   The signing path (`invoke_signed` → `EXTERNAL_AUTHORITY(caller)` PDA)
-///   only runs for `ICrossProgramInvocation.invoke_signed`. Reaching for
+///   The signing path (the calling contract's authority PDA) only runs for
+///   `ICrossProgramInvocation.invoke` and `invoke_signed`. Reaching for
 ///   `AccountReader` does not exercise it.
 ///
 /// ## Validation
 ///
 ///   - Selector hex re-verified via `cast keccak <signature>` against
-///     `the Rome EVM program` const block on
-///     2026-05-13 and 2026-05-22 — matches `ACCOUNT_DATA_AT`,
+///     the Rome EVM program const block — matches `ACCOUNT_DATA_AT`,
 ///     `ACCOUNT_U64_AT`, `ACCOUNT_LAMPORTS`.
-///   - Dispatch-variant claim verified against `cpi.rs:65,71-73` —
-///     all three selectors route to `NonEvmCall::CrossStateEthCall`.
+///   - All three selectors route to `NonEvmCall::CrossStateEthCall`.
 library AccountReader {
     /// Lamports balance of `account`. Cheapest read — no data buffer
     /// fetch. Common pattern: gate-check whether an account exists at all

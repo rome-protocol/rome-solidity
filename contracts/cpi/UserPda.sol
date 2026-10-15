@@ -13,13 +13,16 @@ import {PdasBatch} from "./PdasBatch.sol";
 /// @dev
 ///   Single entry point for EVM → Solana user identity. **Takes an explicit
 ///   `address user` argument — no overload reads `tx.origin`.** This closes
-///   the `tx.origin` phishing hole described in cardo-foundation.md §9.
+///   This closes the `tx.origin` phishing hole: a contract that acts on
+///   `tx.origin` can be driven by any contract the user calls.
 ///
-///   Adapters always call `UserPda.pda(msg.sender)` (or for adapters that
+///   Adapters call `UserPda.pda(msg.sender)` (or, for adapters that
 ///   legitimately take a user arg, e.g. Meteora's `to`, after authenticating
-///   it). A future PR that introduces a tx.origin overload fails both the
-///   CI grep and the signature-matches-interface test in
-///   `tests/cpi/UserPda.test.ts`.
+///   it) to name the user's accounts: to key a position, derive the ATA to
+///   pay out to, or read balances. The user's authority is never a signer in
+///   a contract's CPI; the contract signs as itself (see `Cpi`). A future PR
+///   that introduces a tx.origin overload fails both the CI grep and the
+///   signature-matches-interface test in `tests/cpi/UserPda.test.ts`.
 library UserPda {
     /// User's Rome EVM PDA. Wraps `RomeEVMAccount.pda`.
     function pda(address user) internal view returns (bytes32) {
@@ -32,18 +35,10 @@ library UserPda {
     /// the opposite and sent readers to `ataWithProgram`; that is not needed
     /// here, and "fixing" this path would break it.
     ///
-    /// Delegates to `HelperProgram.ata(address, bytes32)` — selector
-    /// `0xfeb1c647` on `0xff…09` (HelperProgram precompile; rome-evm-
-    /// private #348/#349, post-2026-05-12 consolidation). The earlier
-    /// `derive_user_ata` shortcut at `0xc654e119` on `0xff…08` (#319)
-    /// was migrated to HelperProgram and no longer dispatches there.
-    /// Behavior is byte-identical to the prior two-hop path through
-    /// `0xFF…07` — verified on-chain against Marcus 121301 on 2026-05-
-    /// 11 with EVM address `0xC777…2DAc` and USDC mint `4zMMC9sr…ncDU`
-    /// (resulting ATA `FkFYez2a…n8vw`).
-    ///
-    /// Saves ~152K Solana CU per call vs the two-hop path (3-sample
-    /// average on Marcus 121301: 281K → 129K, 54 % reduction).
+    /// Delegates to `HelperProgram.ata(address, bytes32)`, a single call to the
+    /// HelperProgram precompile at `0xFF…09`. It returns the same address as
+    /// deriving the owner PDA and then the ATA in two separate precompile
+    /// calls, and costs fewer Solana CU than that two-hop path.
     function ata(address user, bytes32 mint) internal view returns (bytes32) {
         return HelperProgram.ata(user, mint);
     }

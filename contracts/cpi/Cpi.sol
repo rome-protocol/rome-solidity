@@ -21,36 +21,41 @@ import {
 ///     (uint64 lam, bytes32 owner, , , , bytes memory acctData)
 ///         = Cpi.accountInfo(pubkey);
 ///
-///   `Cpi.invokeSigned` passes a `bytes32[] memory seeds` payload to the
-///   precompile so the CPI is signed by the EVM caller's Rome-EVM PDA. Used
-///   when the Solana program expects the Rome PDA as a signer — e.g. any
-///   instruction that moves tokens out of the user's ATA.
+///   Who signs: the contract that calls the precompile signs as itself, never
+///   as the user. Its signer is its own authority PDA,
+///   `HelperProgram.pda(address(this))`. A contract cannot sign for a user's
+///   authority, and cannot spend a user's token account unless the user first
+///   grants it an SPL delegation (`approve_spl`).
 ///
-///   `Cpi.invoke` skips the signed-seeds path — the precompile derives the
-///   signer automatically from the caller's Rome PDA. Rule of thumb: use
-///   `invoke` for the common case; reach for `invokeSigned` only when the
-///   target instruction requires an explicit salt-derived signer (e.g.
-///   Meteora's payer PDA for pool-creation rent).
+///   `Cpi.invoke` adds the calling contract's authority as a signer when that
+///   account is listed in the account metas with `is_signer = true`. It takes
+///   no salts, so that is its only signer path.
+///
+///   `Cpi.invokeSigned` takes a `bytes32[] memory seeds` payload of salts.
+///   Each salt derives a sub-PDA of the calling contract's authority, and each
+///   one must be listed in the account metas as a signer. Use it when the
+///   target instruction needs a salted sub-PDA as a signer (e.g. a per-user
+///   owner account, or a payer PDA for pool-creation rent). It can still sign
+///   with the bare authority too.
+///
+///   Under `DELEGATECALL` the precompile refuses the bare authority
+///   (`DelegatecallOwnerAuthority`) and namespaces salted sub-PDAs by the
+///   running contract's address, so do not make CPIs from a delegatecalled
+///   library.
 library Cpi {
     /// CPI precompile address — lives at 0xFF00000000000000000000000000000000000008.
     /// Constant kept here (as well as in interface.sol) so adapters don't need
     /// two imports to reach the precompile.
     address internal constant PRECOMPILE = cpi_program_address;
 
-    /// Invoke a Solana program with the CPI precompile as the signer path.
-    /// @dev Solana runtime enforces MAX_INSTRUCTION_STACK_HEIGHT = 5 — i.e. the
-    ///      top-level tx plus up to 4 nested CPIs. Rome's EVM-in-Solana wrapper
-    ///      consumes one frame before Solidity executes, so adapters have at
-    ///      most 3 further nested CPIs before hitting the runtime cap (verify
-    ///      against the Rome EVM program precompile semantics).
-    ///      SIMD-0268 (accepted, not yet activated) raises the limit to
-    ///      stack-9 (8 nested CPIs); code calling `invoke` should not
-    ///      special-case the pre-activation bound.
-    /// @dev CU cost model: ~1000 CU per invoke/invokeSigned call plus
-    ///      ~1 CU per 250 bytes of instruction data. `invokeSigned` is NOT
-    ///      more expensive than `invoke` (invoke wraps invoke_signed with
-    ///      empty seeds). Adapters chaining multiple CPIs under the
-    ///      1,400,000 CU transaction ceiling should budget accordingly.
+    /// Invoke a Solana program through the CPI precompile. The calling
+    /// contract signs as itself: list `HelperProgram.pda(address(this))` as a
+    /// signer in `metas` to have its authority sign.
+    /// @dev The Solana runtime limits how deeply CPIs can nest, and a CPI made
+    ///      here runs inside the Rome EVM program's own frame, so keep call
+    ///      chains shallow. Each CPI also spends compute units from the
+    ///      transaction's budget; adapters that chain several should budget
+    ///      for that.
     function invoke(
         bytes32 program,
         ICrossProgramInvocation.AccountMeta[] memory metas,
@@ -59,10 +64,11 @@ library Cpi {
         CpiProgram.invoke(program, metas, data);
     }
 
-    /// Invoke a Solana program with caller-supplied signer seeds (signed CPI).
-    /// @dev Shares the same stack-height model as `invoke` — see the `invoke`
-    ///      NatSpec for MAX_INSTRUCTION_STACK_HEIGHT = 5 and the SIMD-0268
-    ///      forward-compat note.
+    /// Invoke a Solana program with caller-supplied salts (signed CPI). Each
+    /// salt derives a sub-PDA of the calling contract's authority, and every
+    /// such sub-PDA must be listed in `metas` as a signer, or the call fails
+    /// with `signer account calculated from the provided seed was not found`.
+    /// @dev The same depth and compute-unit notes apply as for `invoke`.
     function invokeSigned(
         bytes32 program,
         ICrossProgramInvocation.AccountMeta[] memory metas,
