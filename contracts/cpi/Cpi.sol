@@ -38,10 +38,12 @@ import {
 ///   owner account, or a payer PDA for pool-creation rent). It can still sign
 ///   with the bare authority too.
 ///
-///   Under `DELEGATECALL` the precompile refuses the bare authority
-///   (`DelegatecallOwnerAuthority`) and namespaces salted sub-PDAs by the
-///   running contract's address, so do not make CPIs from a delegatecalled
-///   library.
+///   If the precompile itself is reached by `DELEGATECALL` or `CALLCODE`
+///   (for example `address(PRECOMPILE).delegatecall(...)`), it refuses the
+///   bare authority (`DelegatecallOwnerAuthority`) and namespaces salted
+///   sub-PDAs by the running contract's address. The functions here make a
+///   normal `CALL`, so code running under a delegatecall still signs as
+///   `address(this)`. Never delegatecall the precompile.
 library Cpi {
     /// CPI precompile address — lives at 0xFF00000000000000000000000000000000000008.
     /// Constant kept here (as well as in interface.sol) so adapters don't need

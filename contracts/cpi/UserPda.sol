@@ -12,7 +12,7 @@ import {PdasBatch} from "./PdasBatch.sol";
 /// @notice EVM address → Solana user PDA + ATA lookup.
 /// @dev
 ///   Single entry point for EVM → Solana user identity. **Takes an explicit
-///   `address user` argument — no overload reads `tx.origin`.** This closes
+///   `address user` argument — no overload reads `tx.origin`.**
 ///   This closes the `tx.origin` phishing hole: a contract that acts on
 ///   `tx.origin` can be driven by any contract the user calls.
 ///

@@ -8,7 +8,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {CpiError} from "../CpiError.sol";
 
-/// @title CpiAdapterBase — abstract base for every CPI user-facing adapter.
+/// @title CpiAdapterBase — abstract base for every user-facing CPI adapter.
 /// @notice Rolls Ownable + Pausable + ReentrancyGuard + backend pointer +
 ///         ERC20 rescue + u64 overflow check into one base.
 /// @dev

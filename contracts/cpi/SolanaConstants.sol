@@ -11,8 +11,9 @@ pragma solidity 0.8.28;
 ///   Maintenance: never hand-derive these. If a new program constant is
 ///   needed, add it here AND add a bs58 cross-check row to the test file.
 ///
-///   Source: values copied verbatim from the Meteora, Kamino and Drift
-///   adapters. Copy the bytes; don't re-derive them.
+///   Source: values copied verbatim from earlier Meteora, Kamino and Drift
+///   adapters and cross-checked in the test file. Copy the bytes; don't
+///   re-derive them.
 library SolanaConstants {
     // ──────────────────────────────────────────────────────────────────
     // System + sysvars
