@@ -1,0 +1,108 @@
+diff --git a/chains/200010-hadrian/oracle.json b/chains/200010-hadrian/oracle.json
+index 39bca83..04f840f 100644
+--- a/chains/200010-hadrian/oracle.json
++++ b/chains/200010-hadrian/oracle.json
+@@ -1,8 +1,8 @@
+ {
+   "factory": "0x52b008771fc95b4674a4f3533570b3d223f27f68",
+   "priceBook": {
+-    "address": "0x3827ce84bdbfb2855948cb2c7fff188508028882",
+-    "implementation": "0xde0e8a38671b34c4a1daa9b6cd92b516b1de3e38"
++    "address": "0xbb8961b840610934140d96f41bc0d38835774550",
++    "implementation": "0xa2d468ca6d177151e3efe96bf0bae7a4c065f360"
+   },
+   "feeds": {
+     "BONK/USD": {
+@@ -11,7 +11,7 @@
+       "underlyingAccount": "DBE3N8uNjhKPRHfANdwGvCZghWXyLPdqdSbEW2XFwBiX"
+     },
+     "BONK/USD-BOOK": {
+-      "address": "0xB592182D08b11569C2dCaB233bE9B845FfFE574A",
++      "address": "0x7E48d3ea045C61b3BF4081e42A699DA4466Af1BC",
+       "source": "book",
+       "underlyingAccount": "DBE3N8uNjhKPRHfANdwGvCZghWXyLPdqdSbEW2XFwBiX"
+     },
+@@ -31,7 +31,7 @@
+       "underlyingAccount": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo"
+     },
+     "BTC/USD-BOOK": {
+-      "address": "0x88F3eDb4c0A1Ef81756e5594Ba46ca55c71Dfe0A",
++      "address": "0x6e748Ed1B228F44Efa6ef44De65ca4D8d789d856",
+       "source": "book",
+       "underlyingAccount": "4cSM2e6rvbGQUFiJbqytoVMi5GgghSMr8LwVrT9VPSPo"
+     },
+@@ -51,7 +51,7 @@
+       "underlyingAccount": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC"
+     },
+     "ETH/USD-BOOK": {
+-      "address": "0x708Da7aC0401cA2DEB74Aa0a87B0BaaC8262040a",
++      "address": "0x03Abaf04882820E0c61DC8182b5e3eBaaC20226d",
+       "source": "book",
+       "underlyingAccount": "42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC"
+     },
+@@ -71,7 +71,7 @@
+       "underlyingAccount": "AxaxyeDT8JnWERSaTKvFXvPKkEdxnamKSqpWbsSjYg1g"
+     },
+     "JITOSOL/USD-BOOK": {
+-      "address": "0x9a4A2b9586902e18f7107D7F4047b898BE235832",
++      "address": "0x2372073F598319EaD87d2207B11a8138d2Ab8A23",
+       "source": "book",
+       "underlyingAccount": "AxaxyeDT8JnWERSaTKvFXvPKkEdxnamKSqpWbsSjYg1g"
+     },
+@@ -90,11 +90,6 @@
+       "source": "pyth",
+       "underlyingAccount": "7ajR2zA4MGMMTqRAVjghTKqPPn4kbrj3pYkAVRVwTGzP"
+     },
+-    "JTO/USD-BOOK": {
+-      "address": "0x7227a15304D25609D322F66244Ff74A451235Ea3",
+-      "source": "book",
+-      "underlyingAccount": "7ajR2zA4MGMMTqRAVjghTKqPPn4kbrj3pYkAVRVwTGzP"
+-    },
+     "JTO/USD-CACHED": {
+       "address": "0x41C221CeC24E4783385985416393D14413d48652",
+       "source": "cached-feed",
+@@ -111,7 +106,7 @@
+       "underlyingAccount": "7dbob1psH1iZBS7qPsm3Kwbf5DzSXK8Jyg31CTgTnxH5"
+     },
+     "JUP/USD-BOOK": {
+-      "address": "0xE922d82F3ecA3093181f173feE1ff5575Ec60c93",
++      "address": "0x13268A433c9c0F075Ba0789524f45D192E090F34",
+       "source": "book",
+       "underlyingAccount": "7dbob1psH1iZBS7qPsm3Kwbf5DzSXK8Jyg31CTgTnxH5"
+     },
+@@ -131,7 +126,7 @@
+       "underlyingAccount": "5CKzb9j4ChgLUt8Gfm5CNGLN6khXKiqMbnGAW4cgXgxK"
+     },
+     "MSOL/USD-BOOK": {
+-      "address": "0x7b3b69c3B6E4C092793473FC727cFE56fbA4576A",
++      "address": "0xA7fc8168bfE6042E17B3135F3b148e95476Bff97",
+       "source": "book",
+       "underlyingAccount": "5CKzb9j4ChgLUt8Gfm5CNGLN6khXKiqMbnGAW4cgXgxK"
+     },
+@@ -151,7 +146,7 @@
+       "underlyingAccount": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE"
+     },
+     "SOL/USD-BOOK": {
+-      "address": "0x10d1ab750883696D1be78F68f361D55D27145FB7",
++      "address": "0xcC9F877aC65521CE952cD784635934C88579bF55",
+       "source": "book",
+       "underlyingAccount": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE"
+     },
+@@ -177,7 +172,7 @@
+       "underlyingAccount": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX"
+     },
+     "USDC/USD-BOOK": {
+-      "address": "0x8552B15784f5cA685b7814f60cA0bBe612F56c60",
++      "address": "0xCE5F78af032489748967c08908ff1E923d223Faf",
+       "source": "book",
+       "underlyingAccount": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX"
+     },
+@@ -197,7 +192,7 @@
+       "underlyingAccount": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM"
+     },
+     "USDT/USD-BOOK": {
+-      "address": "0x22E73aEC0914a2F473ed66bd9502f6fcd6b2C5AE",
++      "address": "0xa71555539FC816dEC5f68038d5B8afb1b884dec4",
+       "source": "book",
+       "underlyingAccount": "HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM"
+     },
