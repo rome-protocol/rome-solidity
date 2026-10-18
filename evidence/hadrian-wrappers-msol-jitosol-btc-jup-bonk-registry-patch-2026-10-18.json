@@ -1,0 +1,99 @@
+{
+  "_comment": "Targeted patch for rome-protocol/registry chains/200010-hadrian/tokens.json: append these five spl_wrapper rows after the wSOL row. Same schema as the wUSDC/wETH/wSOL rows. Created by ERC20SPLFactory 9.0.0 (0x37c13e4ff21fb914eb24014dcbd0f8dbeaa31078). The current registry tokens.json carries no rows for the retired wrappers, so nothing to re-status; the retired addresses are listed for the lead's reference only.",
+  "chainId": 200010,
+  "file": "chains/200010-hadrian/tokens.json",
+  "append": [
+    {
+      "address": "0x34b1ed3a33c522f01faced591dea9e0468e9614a",
+      "mintId": "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
+      "symbol": "msol",
+      "name": "msol",
+      "decimals": 9,
+      "kind": "spl_wrapper",
+      "track": "cached",
+      "assetRef": "msol",
+      "underlying": {
+        "chain": "solana-devnet",
+        "asset": "mSOL"
+      },
+      "factory": "ERC20SPLFactory",
+      "deployedAt": "2026-10-18T08:29:23Z",
+      "deployTx": "0x7fcf38c465c18ce99e5581ceebdbd92007141c4c95adffccd3a2ac35689b9b98"
+    },
+    {
+      "address": "0x8874ce9d11dd54ee0bc8185a05f216f2e7ba1a8d",
+      "mintId": "8uz9RSxeKQxS1q3Cvs8xzNDTapUdJWRZhcHG2GegEtMS",
+      "symbol": "wJitoSOL",
+      "name": "Rome Wrapped JitoSOL",
+      "decimals": 8,
+      "kind": "spl_wrapper",
+      "track": "cached",
+      "assetRef": "jitosol",
+      "underlying": {
+        "chain": "solana-devnet",
+        "asset": "JitoSOL"
+      },
+      "factory": "ERC20SPLFactory",
+      "deployedAt": "2026-10-18T08:29:26Z",
+      "deployTx": "0xa669a58e7a88fec3b259f72e25ce1b9a4e8f8dc1a0a0a08a4c08c1fffd1427a5"
+    },
+    {
+      "address": "0x94834153ea70219d44edfe295697ff0c204ec68c",
+      "mintId": "2gsErzRCTA7T6hGnYo44EnpP7hP79CHQerDhtmggkZZF",
+      "symbol": "wBTC",
+      "name": "Rome Wrapped BTC",
+      "decimals": 9,
+      "kind": "spl_wrapper",
+      "track": "cached",
+      "assetRef": "btc",
+      "underlying": {
+        "chain": "solana-devnet",
+        "asset": "BTC"
+      },
+      "factory": "ERC20SPLFactory",
+      "deployedAt": "2026-10-18T08:29:30Z",
+      "deployTx": "0xb5fbd5dc82190b5651779e4a8152a4646521910aaded6ef99968a651a5e68d27"
+    },
+    {
+      "address": "0x0b04ce26bce2128309956bf2aed03ac7e8d3e3de",
+      "mintId": "Aa58JCN8MCDPSAPe6qZiL1ZWtqxVDRdSjH6EGjku5vFe",
+      "symbol": "wJUP",
+      "name": "Rome Wrapped JUP",
+      "decimals": 9,
+      "kind": "spl_wrapper",
+      "track": "cached",
+      "assetRef": "jup",
+      "underlying": {
+        "chain": "solana-devnet",
+        "asset": "JUP"
+      },
+      "factory": "ERC20SPLFactory",
+      "deployedAt": "2026-10-18T08:29:33Z",
+      "deployTx": "0x5e31c0d002c766e9037a0f7b8466e5e8874877b2aa666e9644804be575c0e0b4"
+    },
+    {
+      "address": "0xe72168524e9de5d654bfe8473ca11a8108cd642b",
+      "mintId": "HWeLrJqWKK3yDfqkGucGq9RpgfU75W1UE5iVL23BSw4Y",
+      "symbol": "wBONK",
+      "name": "Rome Wrapped BONK",
+      "decimals": 9,
+      "kind": "spl_wrapper",
+      "track": "cached",
+      "assetRef": "bonk",
+      "underlying": {
+        "chain": "solana-devnet",
+        "asset": "BONK"
+      },
+      "factory": "ERC20SPLFactory",
+      "deployedAt": "2026-10-18T08:29:36Z",
+      "deployTx": "0x08e5692fcc71a4e99f6d2b6092916eb694d9ed4a458a776fb536cb2074d05ad9"
+    }
+  ],
+  "retiredWrappers": {
+    "msol": "0x0ea6e66d26c5e1f6fd3886a080db837b841c5b89",
+    "wJitoSOL": "0xff2a3460a694119c0d777f37eb983ad970afcaa9",
+    "wBTC": "0xd3200df5e6f5e37fdba0275bb63dca1b22506760",
+    "wJUP": "0x1b3f2b2d67d5ac13bc9c3121eedf15e968e5609a",
+    "wBONK": "0xae4309c91925e1710d725234aa8797631dc3d88a"
+  }
+}
