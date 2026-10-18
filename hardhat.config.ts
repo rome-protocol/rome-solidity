@@ -1,18 +1,43 @@
 import hardhatToolboxViemPlugin from "@nomicfoundation/hardhat-toolbox-viem";
+import { readFileSync } from "node:fs";
 import { configVariable, defineConfig } from "hardhat/config";
+
+// Rome runs one Sourcify per environment: verify.testnet serves the testnets and
+// devnets, verify.mainnet serves Rubicon (chain 7531). Each rejects the other's
+// chains ("Chain 7531 not found" on verify.testnet), so the verifier follows the
+// network. The map lives in sourcify-urls.json so scripts/verify-deployments.sh
+// reads the same one. SOURCIFY_API_URL overrides it for a one-off run.
+const sourcifyUrls: { default: string; networks: Record<string, string> } = JSON.parse(
+  readFileSync(new URL("./sourcify-urls.json", import.meta.url), "utf8"),
+);
+
+// The network the CLI was asked for: `--network x` or `--network=x`.
+function requestedNetwork(): string | undefined {
+  const argv = process.argv;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--network") return argv[i + 1];
+    if (argv[i].startsWith("--network=")) return argv[i].slice("--network=".length);
+  }
+  return undefined;
+}
+
+const net = requestedNetwork() ?? process.env.HARDHAT_NETWORK;
+const sourcifyApiUrl =
+  process.env.SOURCIFY_API_URL ||
+  ((net === undefined ? undefined : sourcifyUrls.networks[net]) ?? sourcifyUrls.default);
 
 export default defineConfig({
   plugins: [hardhatToolboxViemPlugin],
 
-  // Source verification. Rome runs its own Sourcify instance for every non-mainnet
-  // chain; without apiUrl the plugin submits to sourcify.dev, which answers
+  // Source verification. Rome runs its own Sourcify instances (see sourcifyApiUrl
+  // above); without apiUrl the plugin submits to sourcify.dev, which answers
   // "Chain 200010 not found" because it has never heard of these chains. Etherscan
   // and Blockscout are switched off rather than left to fail on every run — no
   // Rome chain is listed on either.
   verify: {
     sourcify: {
       enabled: true,
-      apiUrl: "https://verify.testnet.romeprotocol.xyz",
+      apiUrl: sourcifyApiUrl,
     },
     etherscan: { enabled: false },
     blockscout: { enabled: false },
