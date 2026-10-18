@@ -20,22 +20,38 @@
 # code cannot reproduce it. Verifying AT DEPLOY TIME is the only fix for that, which
 # is the point of calling this from the deploy workflow rather than by hand later.
 #
-# Usage: scripts/verify-deployments.sh <network>        # e.g. hadrian
+# The verifier follows the network: Rubicon (mainnet) is verified on
+# verify.mainnet.romeprotocol.xyz and every testnet/devnet on verify.testnet — each
+# rejects the other's chains. The map is sourcify-urls.json, the same file
+# hardhat.config.ts reads; this script hands the result to hardhat through
+# SOURCIFY_API_URL so the pre-check and `hardhat verify` talk to the same instance.
+#
+# Usage: scripts/verify-deployments.sh <network> [--dry-run]   # e.g. hadrian, rubicon
+#   --dry-run  print the network, chain id, verifier and address count, then stop
+#              before any request is sent.
 set -uo pipefail
 
 NET="${1:-}"
-[[ -n "$NET" ]] || { echo "usage: $0 <network>  (a hardhat network name)"; exit 2; }
+DRY_RUN=0
+[[ "${2:-}" == "--dry-run" ]] && DRY_RUN=1
+[[ -n "$NET" ]] || { echo "usage: $0 <network> [--dry-run]  (a hardhat network name)"; exit 2; }
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST="$ROOT/deployments/$NET.json"
 [[ -f "$MANIFEST" ]] || { echo "no deployments manifest for '$NET' at $MANIFEST"; exit 2; }
 
-# Read the chain id and verifier straight out of hardhat.config.ts, so this script
-# cannot drift from what `hardhat verify` actually talks to. Both are single literals
-# there; a miss is loud rather than silent.
+# Read the chain id straight out of hardhat.config.ts, and the verifier out of
+# sourcify-urls.json (the file the config reads too), so this script cannot drift
+# from what `hardhat verify` actually talks to. A miss is loud rather than silent.
 CHAIN_ID="$(grep -A4 "^    $NET: {" "$ROOT/hardhat.config.ts" | grep -oE 'chainId: [0-9]+' | grep -oE '[0-9]+' | head -1)"
-VERIFIER="$(grep -oE 'apiUrl: "[^"]+"' "$ROOT/hardhat.config.ts" | head -1 | sed 's/.*"\(.*\)"/\1/')"
-[[ -n "$CHAIN_ID" && -n "$VERIFIER" ]] || { echo "could not read chainId/apiUrl for '$NET' from hardhat.config.ts"; exit 2; }
+VERIFIER="$(python3 - "$ROOT/sourcify-urls.json" "$NET" <<'PY'
+import json, sys
+m = json.load(open(sys.argv[1]))
+print(m["networks"].get(sys.argv[2], m["default"]))
+PY
+)"
+[[ -n "$CHAIN_ID" && -n "$VERIFIER" ]] || { echo "could not read chainId for '$NET' from hardhat.config.ts or its verifier from sourcify-urls.json"; exit 2; }
+export SOURCIFY_API_URL="$VERIFIER"
 
 echo "network $NET (chain $CHAIN_ID) → $VERIFIER"
 
@@ -59,6 +75,11 @@ walk(json.load(open(sys.argv[1])))
 print("\n".join(out))
 PY
 )
+
+if (( DRY_RUN )); then
+  echo "dry run: ${#ADDRS[@]} addresses in the manifest, no request sent"
+  exit 0
+fi
 
 already=0; verified=0; needs_help=0; drifted=0; foreign=0
 ATTENTION=()

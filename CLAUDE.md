@@ -49,7 +49,7 @@ node scripts/check-abi-parity.js
 
 **Cold-Ledger deploys.** `scripts/deploy-ledger.ts` signs every deploy tx with a Ledger (Ethereum app, Blind signing ON) via `DEPLOY_VIA_LEDGER=1 ROME_RPC_URL=… ROME_CHAIN_ID=… npx tsx scripts/deploy-ledger.ts`. Used for factory + wrapper + adapter deploys where a hot key is not acceptable.
 
-**Source verification.** `hardhat.config.ts` sets `verify.sourcify.apiUrl` to Rome's own Sourcify instance (`https://verify.testnet.romeprotocol.xyz`) since sourcify.dev doesn't know Rome chain ids. Etherscan + Blockscout are disabled (`enabled: false`) because no Rome chain is listed on either.
+**Source verification.** `hardhat.config.ts` sets `verify.sourcify.apiUrl` to Rome's own Sourcify instance for the network being run, since sourcify.dev doesn't know Rome chain ids: Rubicon (7531) → `https://verify.mainnet.romeprotocol.xyz`, every testnet/devnet → `https://verify.testnet.romeprotocol.xyz` (each rejects the other's chains). The map is `sourcify-urls.json`; `scripts/verify-deployments.sh <network>` reads the same file (`--dry-run` shows the resolved verifier); `SOURCIFY_API_URL` overrides for a one-off. Etherscan + Blockscout are disabled (`enabled: false`) because no Rome chain is listed on either.
 
 Solidity `0.8.28`, `viaIR: true`, `runs: 200`. Two profiles (`default` + `production`) currently mirror the same settings.
 

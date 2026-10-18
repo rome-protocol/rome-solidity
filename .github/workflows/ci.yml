@@ -59,7 +59,8 @@ jobs:
             tests/cpi/UserPda.test.ts \
             tests/token2022/*.test.ts \
             tests/erc20spl/*.test.ts \
-            tests/activation/*.test.ts
+            tests/activation/*.test.ts \
+            tests/verify/*.test.ts
       # `tests/erc20spl/*.test.ts` and `tests/activation/*.test.ts` are the
       # hermetic halves of the Test Selection Guide rows for these two
       # families (CLAUDE.md) — every file in both globs deploys against

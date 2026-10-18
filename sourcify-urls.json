@@ -1,0 +1,6 @@
+{
+  "default": "https://verify.testnet.romeprotocol.xyz",
+  "networks": {
+    "rubicon": "https://verify.mainnet.romeprotocol.xyz"
+  }
+}
