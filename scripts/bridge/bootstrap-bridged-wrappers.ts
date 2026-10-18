@@ -17,7 +17,7 @@ import { isSolanaDevnetNetwork } from "./lib/wormhole-target-chain.js";
 import hardhat from "hardhat";
 import { resolveERC20SPLFactoryAddress } from "../lib/deployments.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
-import { SPL_MINTS_DEVNET, SPL_MINTS_MAINNET, COMPOUND_COLLATERAL_MINTS_DEVNET } from "./constants.js";
+import { SPL_MINTS_DEVNET, SPL_MINTS_MAINNET, COMPOUND_COLLATERAL_MINTS_DEVNET, LST_MINTS_DEVNET } from "./constants.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -59,6 +59,19 @@ const COLLATERAL_SET_DEVNET: WrapperSpec[] = [
   { key: "SPL_ERC20_WBONK",    mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BONK_TEST,    name: "Rome Wrapped BONK",    symbol: "wBONK"    },
 ];
 
+// Hadrian restore set: the wrappers the 2026-09 rotation (factory 9.0.0) did not
+// recreate. Same mints, names and symbols as the retired wrappers, so Solana-side
+// balances and pools still match. The Marinade mint has no Metaplex metadata, and
+// the retired wrapper was named "msol" / "msol". Select with
+// `WRAPPER_SET=hadrian-restore`.
+const HADRIAN_RESTORE_SET: WrapperSpec[] = [
+  { key: "SPL_ERC20_MSOL",     mintBase58: LST_MINTS_DEVNET.MSOL_MARINADE,                name: "msol",                 symbol: "msol"     },
+  { key: "SPL_ERC20_WJITOSOL", mintBase58: LST_MINTS_DEVNET.JITOSOL_WORMHOLE,             name: "Rome Wrapped JitoSOL", symbol: "wJitoSOL" },
+  { key: "SPL_ERC20_WBTC",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BTC_TEST,     name: "Rome Wrapped BTC",     symbol: "wBTC"     },
+  { key: "SPL_ERC20_WJUP",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.JUP_TEST,     name: "Rome Wrapped JUP",     symbol: "wJUP"     },
+  { key: "SPL_ERC20_WBONK",    mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BONK_TEST,    name: "Rome Wrapped BONK",    symbol: "wBONK"    },
+];
+
 // Which mint set a network gets follows the Solana cluster it settles on — the
 // ONE set in lib/wormhole-target-chain.ts (shared with deploy.ts's program-id
 // and Wormhole target-chain choice). Rome network tier ≠ Solana cluster: the
@@ -67,6 +80,16 @@ const COLLATERAL_SET_DEVNET: WrapperSpec[] = [
 
 function resolveSet(networkName: string): WrapperSpec[] {
   const wrapperSet = process.env.WRAPPER_SET?.toLowerCase();
+  if (wrapperSet === "hadrian-restore") {
+    // The LST mints and the collateral test mints exist only on Solana devnet.
+    const override = process.env.BRIDGED_SET?.toLowerCase();
+    if (override === "mainnet" || (override !== "devnet" && !isSolanaDevnetNetwork(networkName))) {
+      throw new Error(
+        `WRAPPER_SET=hadrian-restore is devnet-substrate-only (network '${networkName}' resolves to mainnet mints)`,
+      );
+    }
+    return HADRIAN_RESTORE_SET;
+  }
   if (wrapperSet === "collateral") {
     // Collateral test mints exist only on Solana devnet — refuse a mainnet run.
     const override = process.env.BRIDGED_SET?.toLowerCase();
@@ -105,7 +128,7 @@ async function main() {
 
   console.log(`[${networkName}] deployer: ${deployer.account.address}`);
   console.log(`[${networkName}] factory:  ${factoryAddress}`);
-  const setLabel = set === COLLATERAL_SET_DEVNET ? "collateral (devnet)" : set === DEVNET_SET ? "devnet" : "mainnet";
+  const setLabel = set === HADRIAN_RESTORE_SET ? "hadrian-restore (devnet)" : set === COLLATERAL_SET_DEVNET ? "collateral (devnet)" : set === DEVNET_SET ? "devnet" : "mainnet";
   console.log(`[${networkName}] mint set: ${setLabel} (${set.length} entries)\n`);
 
   const deploymentsPath = `deployments/${networkName}.json`;
@@ -137,8 +160,10 @@ async function main() {
       name,
       symbol,
       deployedAt: Math.floor(Date.now() / 1000),
+      deployTx: txHash,
       via: "ERC20SPLFactory.add_spl_token_no_metadata",
     };
+    saveJson(deploymentsPath, deployments); // keep each wrapper's tx hash if a later one fails
   }
 
   saveJson(deploymentsPath, deployments);

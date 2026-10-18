@@ -403,5 +403,50 @@
     "mint": "0xe129d398fb5bf9c7ffb56bfa0b855b101ea92c6d014be32283817301db843bed",
     "name": "Cached Test Token",
     "symbol": "wTESTc"
+  },
+  "SPL_ERC20_MSOL": {
+    "address": "0x34b1eD3A33C522F01fACED591DEa9E0468E9614A",
+    "mintId": "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
+    "name": "msol",
+    "symbol": "msol",
+    "deployedAt": 1792312163,
+    "deployTx": "0x7fcf38c465c18ce99e5581ceebdbd92007141c4c95adffccd3a2ac35689b9b98",
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+  },
+  "SPL_ERC20_WJITOSOL": {
+    "address": "0x8874ce9D11dd54Ee0Bc8185A05F216f2E7bA1a8D",
+    "mintId": "8uz9RSxeKQxS1q3Cvs8xzNDTapUdJWRZhcHG2GegEtMS",
+    "name": "Rome Wrapped JitoSOL",
+    "symbol": "wJitoSOL",
+    "deployedAt": 1792312166,
+    "deployTx": "0xa669a58e7a88fec3b259f72e25ce1b9a4e8f8dc1a0a0a08a4c08c1fffd1427a5",
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+  },
+  "SPL_ERC20_WBTC": {
+    "address": "0x94834153eA70219D44edFE295697fF0c204Ec68c",
+    "mintId": "2gsErzRCTA7T6hGnYo44EnpP7hP79CHQerDhtmggkZZF",
+    "name": "Rome Wrapped BTC",
+    "symbol": "wBTC",
+    "deployedAt": 1792312170,
+    "deployTx": "0xb5fbd5dc82190b5651779e4a8152a4646521910aaded6ef99968a651a5e68d27",
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+  },
+  "SPL_ERC20_WJUP": {
+    "address": "0x0B04Ce26bce2128309956bf2aeD03ac7e8d3E3De",
+    "mintId": "Aa58JCN8MCDPSAPe6qZiL1ZWtqxVDRdSjH6EGjku5vFe",
+    "name": "Rome Wrapped JUP",
+    "symbol": "wJUP",
+    "deployedAt": 1792312173,
+    "deployTx": "0x5e31c0d002c766e9037a0f7b8466e5e8874877b2aa666e9644804be575c0e0b4",
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+  },
+  "SPL_ERC20_WBONK": {
+    "address": "0xE72168524e9DE5d654BFe8473CA11a8108Cd642b",
+    "mintId": "HWeLrJqWKK3yDfqkGucGq9RpgfU75W1UE5iVL23BSw4Y",
+    "name": "Rome Wrapped BONK",
+    "symbol": "wBONK",
+    "deployedAt": 1792312176,
+    "deployTx": "0x08e5692fcc71a4e99f6d2b6092916eb694d9ed4a458a776fb536cb2074d05ad9",
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   }
 }

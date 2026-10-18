@@ -73,6 +73,14 @@ export const COMPOUND_COLLATERAL_MINTS_DEVNET = {
   BONK_TEST: "HWeLrJqWKK3yDfqkGucGq9RpgfU75W1UE5iVL23BSw4Y",
 } as const;
 
+// LST mints that Cardo's Meteora pools sit on (Solana devnet): the real devnet
+// Marinade mSOL, and the Wormhole-wrapped JitoSOL (8 decimals, Sepolia origin).
+// Read from the retired Hadrian wrappers' mint_id() (2026-10-18).
+export const LST_MINTS_DEVNET = {
+  MSOL_MARINADE: "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
+  JITOSOL_WORMHOLE: "8uz9RSxeKQxS1q3Cvs8xzNDTapUdJWRZhcHG2GegEtMS",
+} as const;
+
 // Default export — points at devnet for now since active deploys target
 // rome/rome. Switch to SPL_MINTS_MAINNET for mainnet.
 export const SPL_MINTS = SPL_MINTS_DEVNET;
