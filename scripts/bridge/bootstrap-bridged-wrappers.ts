@@ -26,7 +26,6 @@ type WrapperSpec = {
   mintBase58: string;   // SPL mint
   name: string;         // ERC20 name
   symbol: string;       // ERC20 symbol — must be unique within the factory
-  fromMetadata?: boolean; // register with the mint's own metadata (name/symbol above are ignored)
 };
 
 // Canonical bridged set. Symbols match the Rome app's gas-wrapper-split
@@ -61,12 +60,12 @@ const COLLATERAL_SET_DEVNET: WrapperSpec[] = [
 ];
 
 // Hadrian restore set: the wrappers the 2026-09 rotation (factory 9.0.0) did not
-// recreate. Same mints as the retired wrappers, so Solana-side balances and pools
-// still match. mSOL takes its name and symbol from the mint's own Metaplex
-// metadata, as the retired wrapper did (`fromMetadata`). Select with
+// recreate. Same mints, names and symbols as the retired wrappers, so Solana-side
+// balances and pools still match. The Marinade mint has no Metaplex metadata, and
+// the retired wrapper was named "msol" / "msol". Select with
 // `WRAPPER_SET=hadrian-restore`.
 const HADRIAN_RESTORE_SET: WrapperSpec[] = [
-  { key: "SPL_ERC20_MSOL",     mintBase58: LST_MINTS_DEVNET.MSOL_MARINADE,                name: "", symbol: "", fromMetadata: true },
+  { key: "SPL_ERC20_MSOL",     mintBase58: LST_MINTS_DEVNET.MSOL_MARINADE,                name: "msol",                 symbol: "msol"     },
   { key: "SPL_ERC20_WJITOSOL", mintBase58: LST_MINTS_DEVNET.JITOSOL_WORMHOLE,             name: "Rome Wrapped JitoSOL", symbol: "wJitoSOL" },
   { key: "SPL_ERC20_WBTC",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BTC_TEST,     name: "Rome Wrapped BTC",     symbol: "wBTC"     },
   { key: "SPL_ERC20_WJUP",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.JUP_TEST,     name: "Rome Wrapped JUP",     symbol: "wJUP"     },
@@ -82,7 +81,7 @@ const HADRIAN_RESTORE_SET: WrapperSpec[] = [
 function resolveSet(networkName: string): WrapperSpec[] {
   const wrapperSet = process.env.WRAPPER_SET?.toLowerCase();
   if (wrapperSet === "hadrian-restore") {
-    // Both LST mints and the collateral test mints exist only on Solana devnet.
+    // The LST mints and the collateral test mints exist only on Solana devnet.
     const override = process.env.BRIDGED_SET?.toLowerCase();
     if (override === "mainnet" || (override !== "devnet" && !isSolanaDevnetNetwork(networkName))) {
       throw new Error(
@@ -135,34 +134,22 @@ async function main() {
   const deploymentsPath = `deployments/${networkName}.json`;
   const deployments = loadJson(deploymentsPath);
 
-  for (const { key, mintBase58, name: specName, symbol: specSymbol, fromMetadata } of set) {
-    let name = specName;
-    let symbol = specSymbol;
+  for (const { key, mintBase58, name, symbol } of set) {
     const mint = base58ToBytes32(mintBase58);
     const existing = (await factory.read.token_by_mint([mint])) as `0x${string}`;
 
     if (existing.toLowerCase() !== ZERO_ADDRESS) {
-      console.log(`  ${symbol || key}: already registered → ${existing}`);
-      // A metadata-named wrapper keeps the entry already recorded for it.
-      if (!fromMetadata || !deployments[key]) {
-        deployments[key] = { address: existing, mintId: mintBase58, name, symbol };
-      }
+      console.log(`  ${symbol}: already registered → ${existing}`);
+      deployments[key] = { address: existing, mintId: mintBase58, name, symbol };
       continue;
     }
 
-    console.log(`  ${symbol || key}: registering mint ${mintBase58} ...`);
-    const txHash = fromMetadata
-      ? await factory.write.add_spl_token_with_metadata([mint])
-      : await factory.write.add_spl_token_no_metadata([mint, name, symbol]);
+    console.log(`  ${symbol}: registering mint ${mintBase58} ...`);
+    const txHash = await factory.write.add_spl_token_no_metadata([mint, name, symbol]);
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     const wrapperAddress = (await factory.read.token_by_mint([mint])) as `0x${string}`;
     if (wrapperAddress.toLowerCase() === ZERO_ADDRESS) {
       throw new Error(`add_spl_token_no_metadata for ${symbol} landed but token_by_mint is still zero`);
-    }
-    if (fromMetadata) {
-      const wrapper = await viem.getContractAt("SPL_ERC20_cached", wrapperAddress);
-      name = (await wrapper.read.name()) as string;
-      symbol = (await wrapper.read.symbol()) as string;
     }
     console.log(`           tx: ${txHash}`);
     console.log(`           wrapper: ${wrapperAddress}`);
@@ -174,8 +161,9 @@ async function main() {
       symbol,
       deployedAt: Math.floor(Date.now() / 1000),
       deployTx: txHash,
-      via: fromMetadata ? "ERC20SPLFactory.add_spl_token_with_metadata" : "ERC20SPLFactory.add_spl_token_no_metadata",
+      via: "ERC20SPLFactory.add_spl_token_no_metadata",
     };
+    saveJson(deploymentsPath, deployments); // keep each wrapper's tx hash if a later one fails
   }
 
   saveJson(deploymentsPath, deployments);
