@@ -21,11 +21,10 @@ function requestedNetwork(): string | undefined {
   return undefined;
 }
 
-const net = requestedNetwork();
+const net = requestedNetwork() ?? process.env.HARDHAT_NETWORK;
 const sourcifyApiUrl =
-  process.env.SOURCIFY_API_URL ??
-  (net === undefined ? undefined : sourcifyUrls.networks[net]) ??
-  sourcifyUrls.default;
+  process.env.SOURCIFY_API_URL ||
+  ((net === undefined ? undefined : sourcifyUrls.networks[net]) ?? sourcifyUrls.default);
 
 export default defineConfig({
   plugins: [hardhatToolboxViemPlugin],

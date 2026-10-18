@@ -51,7 +51,7 @@ print(m["networks"].get(sys.argv[2], m["default"]))
 PY
 )"
 [[ -n "$CHAIN_ID" && -n "$VERIFIER" ]] || { echo "could not read chainId for '$NET' from hardhat.config.ts or its verifier from sourcify-urls.json"; exit 2; }
-export SOURCIFY_API_URL="$VERIFIER"
+export SOURCIFY_API_URL="${SOURCIFY_API_URL:-$VERIFIER}"
 
 echo "network $NET (chain $CHAIN_ID) → $VERIFIER"
 
