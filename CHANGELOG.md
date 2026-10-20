@@ -1,3 +1,27 @@
+## 2026-10-20 — Rubicon deploy path for RomeBridgeWithdraw 13.0.0 (owner = the cold Ledger from construction)
+
+Nothing in the repo could deploy v13 on Rubicon: `deploy.ts` refuses chain 7531 and v12 had been deployed by a
+hot key that then transferred ownership (#368). This adds the path. Source only: nothing is deployed by this change.
+
+- `scripts/bridge/deploy-rubicon-v13.ts` (logic in `lib/rubicon-v13.ts`): the constructor sets the owner (the cold
+  Ledger, `--owner`) and the guardian (the ops key, `--guardian`); both are required, no defaults, and the call is
+  refused when either is zero, they are equal, or either is the deploy key. `--dry-run` estimates gas and prints the
+  deploy and the constructor arguments, sending nothing. A real run reads back VERSION, owner, pendingOwner,
+  guardian, the empty CCTP list, the unpaused rails, the USDC wrapper and mint, the empty Wormhole lists and the
+  deploy key's lack of any role, and fails loudly (recording nothing) on any mismatch. It records the address under
+  `RomeBridgeWithdrawV13` in `deployments/<network>.json` without touching the v12 record, then PRINTS, never
+  sends, the Ledger's two calls: `enableCctpDomain(0, 1)` and `ensureBridgeAta(<Rubicon USDC mint>)`.
+- Testnet guard: ONE narrow exception, `assertRubiconV13DeploySend`. Chain 7531 passes only for that script (it
+  passes its own path) and only with `--i-understand-mainnet`, a dry run included. Every other script still
+  refuses 7531; a test scans `scripts/`, `tests/` and `.github/` and fails if any other file uses the exception.
+- `lib/withdraw-ctor-args.ts`: the constructor arguments, moved out of `deploy.ts` so the testnet and Rubicon
+  deploys build them the same way (`deploy.ts` behaves as before and still exports `universalFor`).
+- Docs: `scripts/bridge/README.md` ("Rubicon deploy of 13.0.0") and `contracts/bridge/README.md` replace the
+  "follow-up PR" note from #390.
+- Tests: `tests/bridge/deploy-rubicon-v13.test.ts` on local Hardhat only (argument validation, read-back including
+  a mock deploy with a wrong owner, the printed calldata, dry run sends nothing, the record) and new cases in
+  `tests/bridge/testnet-guard.test.ts`.
+
 ## 2026-10-20 — RomeBridgeWithdraw 13.0.0: CCTP destinations configurable without a redeploy
 
 Until v12 the list of allowed CCTP destination chains was written once, in the constructor, and
@@ -58,8 +82,8 @@ owner-managed state. Source only: nothing is deployed by this change.
   genesis hash, the inbound Solana scripts. A local Rome stack is allowed by listing its id in
   `ROME_EXTRA_TESTNET_CHAIN_IDS`; mainnet ids are refused even there. **Nothing in this repo deploys
   v13 on Rubicon** (`deploy.ts` refuses it; `scripts/deploy-ledger.ts` only deploys `ERC20SPLFactory`). The
-  Rubicon deploy is a separate follow-up PR, required before the Rubicon step: a Ledger-signed deploy of v13
-  with owner = the cold Ledger, guardian = the ops key, domains `[0]`, empty Wormhole lists. `submit-burn.ts` and `try-burn.ts` no longer burn to
+  Rubicon deploy is `scripts/bridge/deploy-rubicon-v13.ts` (added on the same date): owner = the cold Ledger,
+  guardian = the ops key, domains `[0]` by an owner call, empty Wormhole lists. `submit-burn.ts` and `try-burn.ts` no longer burn to
   `0x...0001`: the recipient is the signer by default (`BURN_RECIPIENT` to override) and burn-like addresses
   are refused. The registry reader merges `sourceEvm` and `sourceEvms[]` (one chain once, by `chainId`; a live entry wins over a retired
   duplicate of the same chain), so a file that carries both, like Hadrian's, no longer plans `disableCctpDomain(0)`.
@@ -79,8 +103,8 @@ owner-managed state. Source only: nothing is deployed by this change.
      `burnUSDC(amount, addr, 0)` on v12 and v13 side by side, recorded in the PR before the Rubicon deploy.
      The burn reads two more storage slots, and the atomic CPI path is capped at 1.4M CU (about 950K was
      recorded for v6); the Hardhat gas figure says nothing about either.
-  4. The Rubicon deploy itself: a separate follow-up PR (a Ledger-signed deploy of v13, owner = the cold Ledger,
-     guardian = the ops key, domains `[0]`, empty Wormhole lists). Nothing in this PR can deploy on Rubicon.
+  4. The Rubicon deploy itself: `scripts/bridge/deploy-rubicon-v13.ts` (owner = the cold Ledger, guardian = the ops
+     key, domains `[0]` by an owner call, empty Wormhole lists). Nothing in #390 could deploy on Rubicon.
 - **Tests.** `tests/bridge/rome_bridge_withdraw_v13.test.ts` and `tests/bridge/enable-cctp-domains.test.ts`,
   with `BridgePrecompileMock` extended to serve `account_info`. Existing bridge tests adapted only for the new
   constructor and the removed `burnETH`.
