@@ -5,15 +5,23 @@ hot key that then transferred ownership (#368). This adds the path. Source only:
 
 - `scripts/bridge/deploy-rubicon-v13.ts` (logic in `lib/rubicon-v13.ts`): the constructor sets the owner (the cold
   Ledger, `--owner`) and the guardian (the ops key, `--guardian`); both are required, no defaults, and the call is
-  refused when either is zero, they are equal, or either is the deploy key. `--dry-run` estimates gas and prints the
-  deploy and the constructor arguments, sending nothing. A real run reads back VERSION, owner, pendingOwner,
-  guardian, the empty CCTP list, the unpaused rails, the USDC wrapper and mint, the empty Wormhole lists and the
-  deploy key's lack of any role, and fails loudly (recording nothing) on any mismatch. It records the address under
-  `RomeBridgeWithdrawV13` in `deployments/<network>.json` without touching the v12 record, then PRINTS, never
-  sends, the Ledger's two calls: `enableCctpDomain(0, 1)` and `ensureBridgeAta(<Rubicon USDC mint>)`.
+  refused when either is zero, they are equal, or either is the deploy key. On Rubicon both must also be EIP-55
+  checksummed accounts with no code, the owner must hold gas, `contracts/` must be clean in git, and
+  `RUBICON_GAS_PRICE` must be set. On Rubicon a run is a DRY RUN unless it is given `--deploy <digest>`: the dry
+  run estimates gas at the pinned price and prints the deploy, the constructor arguments, the commit, the bytecode
+  hash, v12's owner next to the new owner, and a digest of the exact bytes (plus chain and deploy key); the real
+  run refuses any other digest. A real run reads back VERSION, owner, pendingOwner, guardian, the empty CCTP
+  list, the unpaused rails, the USDC wrapper and mint, the empty Wormhole lists and the deploy key's lack of any
+  role (retried for RPC lag), and fails loudly (recording nothing) on any mismatch. It records the address, the
+  commit and the bytecode hash under `RomeBridgeWithdrawV13` in `deployments/<network>.json` without touching the
+  v12 record, then PRINTS, never sends, the Ledger's two calls in order: `ensureBridgeAta(<Rubicon USDC mint>)`
+  first, then `enableCctpDomain(0, 1)`. `--verify-existing <address> --deploy-tx <hash>` reads back and records a
+  contract that already landed (after a transient failure) without sending anything.
 - Testnet guard: ONE narrow exception, `assertRubiconV13DeploySend`. Chain 7531 passes only for that script (it
-  passes its own path) and only with `--i-understand-mainnet`, a dry run included. Every other script still
-  refuses 7531; a test scans `scripts/`, `tests/` and `.github/` and fails if any other file uses the exception.
+  passes its own path), only when the process was started as that file (the guard reads `argv[1]`), and only with
+  `--i-understand-mainnet`, a dry run included. The script's send step calls the guard itself. Every other script
+  still refuses 7531; tests scan `scripts/`, `tests/` and `.github/` and fail if any other file uses the
+  exception or imports the script or its library.
 - `lib/withdraw-ctor-args.ts`: the constructor arguments, moved out of `deploy.ts` so the testnet and Rubicon
   deploys build them the same way (`deploy.ts` behaves as before and still exports `universalFor`).
 - Docs: `scripts/bridge/README.md` ("Rubicon deploy of 13.0.0") and `contracts/bridge/README.md` replace the
