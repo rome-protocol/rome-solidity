@@ -23,6 +23,7 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { readDeployments } from "../lib/deployments.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
 import { associatedTokenAddress, bridgedMintsFrom } from "./lib/ensure-bridge-atas.js";
+import { assertTestnetSend } from "./lib/testnet-guard.js";
 
 const HELPER_PROGRAM = "0xff00000000000000000000000000000000000009" as const;
 const HELPER_PDA_ABI = [
@@ -53,6 +54,9 @@ async function main() {
   console.log(`[${networkName}] RomeBridgeWithdraw ${withdrawAddr}`);
   console.log(`[${networkName}] owner=${owner} signer=${me}`);
   const dryRun = process.env.DRY_RUN === "1";
+  // A dry run writes nothing, so any chain may be read. A real run sends, so it
+  // is testnet only, judged on the RPC's real chain id.
+  if (!dryRun) await assertTestnetSend(publicClient, `${networkName} ensure-bridge-atas`);
   if (!dryRun && owner.toLowerCase() !== me.toLowerCase()) {
     throw new Error(`signer ${me} is not the owner ${owner} — ensureBridgeAta is onlyOwner.`);
   }

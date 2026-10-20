@@ -1,4 +1,5 @@
 import hardhat from "hardhat";
+import { assertTestnetSend } from "./lib/testnet-guard.js";
 import { readDeployments } from "../lib/deployments.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
 const CPI = "0xFF00000000000000000000000000000000000008" as const;
@@ -10,6 +11,7 @@ async function main() {
   };
   const [admin] = await viem.getWalletClients();
   if (!admin?.account) throw new Error("no deployer");
+  await assertTestnetSend(await (viem as any).getPublicClient(), `${networkName} deploy-wsol-v9`);
   const d = readDeployments(networkName) as Record<string, { address?: `0x${string}` }>;
   const usersAddr = d["ERC20Users"]?.address;
   if (!usersAddr) throw new Error("ERC20Users missing");

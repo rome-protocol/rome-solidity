@@ -1,4 +1,5 @@
 import hardhat from "hardhat";
+import { assertTestnetSend } from "./lib/testnet-guard.js";
 
 // Step 1: deployer calls ERC20Users.ensure_user(deployer) -> creates payer PDA
 // Step 2: deployer calls SPL_ERC20.ensure_token_account(deployer) -> creates ATA, caches _accounts[deployer]
@@ -10,6 +11,7 @@ async function main() {
   const { viem, networkName } = conn;
   const [admin] = await viem.getWalletClients();
   const pc = await viem.getPublicClient();
+  await assertTestnetSend(pc, `${networkName} fund-deployer-rusdc`);
   const deployer = admin.account!.address;
 
   console.log(`[${networkName}] deployer:`, deployer);

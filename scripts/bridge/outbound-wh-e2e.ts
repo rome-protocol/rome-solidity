@@ -3,12 +3,15 @@ import { JsonRpcProvider, Wallet, keccak256, toUtf8Bytes, Contract, getBytes } f
 import { PublicKey, Connection } from "@solana/web3.js";
 import fs from "node:fs";
 import { base58ToBytes32 } from "../lib/pubkey.js";
+import { assertTestnetRpc } from "./lib/testnet-guard.js";
 
 const HELPER_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000009" as const;
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 async function main() {
+  // Testnet only: the RPC's own chain id must be on the allowlist before any key is loaded.
+  await assertTestnetRpc("https://rome.devnet.romeprotocol.xyz/", "outbound-wh-e2e");
   const { networkConfig } = await hardhat.network.connect();
   const romePk = await (networkConfig as any).accounts[0].get();
   const sepKey = fs.readFileSync(".secrets/sepolia-key.txt", "utf8").trim();

@@ -13,6 +13,7 @@ import {
   createCompleteTransferWrappedInstruction,
 } from "@wormhole-foundation/sdk-solana-tokenbridge";
 import { base58ToBytes32 } from "../lib/pubkey.js";
+import { assertTestnetRpc } from "./lib/testnet-guard.js";
 
 const HELPER_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000009" as const;
 
@@ -293,6 +294,8 @@ async function outboundWh(romeWallet: Wallet, sepWallet: Wallet) {
 }
 
 async function main() {
+  // Testnet only: the RPC's own chain id must be on the allowlist before any key is loaded.
+  await assertTestnetRpc(ROME_RPC, "e2e-all-four");
   const { networkConfig } = await hardhat.network.connect();
   const romePk = await (networkConfig as any).accounts[0].get();
   const sepKey = fs.readFileSync(".secrets/sepolia-key.txt", "utf8").trim();

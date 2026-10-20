@@ -36,6 +36,7 @@ import { base58ToBytes32 } from "../lib/pubkey.js";
 import { SOLANA_PROGRAM_IDS, SOLANA_PROGRAM_IDS_DEVNET } from "./constants.js";
 import { deriveCctpAccounts } from "./derive/cctp-accounts.js";
 import { resolveRoles } from "./lib/deploy-roles.js";
+import { assertTestnetSend } from "./lib/testnet-guard.js";
 import { deriveWormholeGlobalAccounts } from "./derive/wormhole-accounts.js";
 
 // CPI precompile at 0xff..08 as defined in contracts/interface.sol.
@@ -122,6 +123,8 @@ function loadSolanaPdas(usdcMintBase58: string, networkName: string): SolanaPdaA
 
 export async function ensureErc20Users(): Promise<`0x${string}`> {
   const { viem, networkName } = await hardhat.network.connect();
+  // Fail closed on the RPC's real chain id, before anything is sent (see lib/testnet-guard.ts).
+  await assertTestnetSend(await viem.getPublicClient(), `${networkName} deploy ERC20Users`);
   const d = readDeployments(networkName) as Record<string, any>;
   if (d["ERC20Users"]?.address) {
     console.log(`[${networkName}] ERC20Users already deployed at ${d["ERC20Users"].address}`);
@@ -178,6 +181,10 @@ export async function deployWithdraw(
   usdcMintBase58: string,
 ) {
   const { viem, networkName } = await hardhat.network.connect();
+  // This script never deploys to mainnet: it refuses unless the RPC reports a
+  // testnet chain id (lib/testnet-guard.ts). A Rubicon deploy is a separate,
+  // Ledger-signed step that this script does not perform.
+  await assertTestnetSend(await viem.getPublicClient(), `${networkName} deploy RomeBridgeWithdraw`);
   const pdas = loadSolanaPdas(usdcMintBase58, networkName);
   const UNIVERSAL = universalFor(networkName);
 

@@ -23,6 +23,7 @@
 // salts: [cctpSalt] only — no PAYER salt (unified-PDA model)
 
 import hardhat from "hardhat";
+import { assertTestnetSend } from "../lib/testnet-guard.js";
 import { encodeFunctionData, parseAbi, parseGwei } from "viem";
 import { PublicKey } from "@solana/web3.js";
 
@@ -89,6 +90,7 @@ async function main() {
   const { viem } = await hardhat.network.connect();
   const [walletClient] = await viem.getWalletClients();
   const publicClient = await viem.getPublicClient();
+  await assertTestnetSend(publicClient, "portal-cctp-test");
   const user = walletClient.account!.address;
   const userPda = deriveAuthorityPda(user);
   const userAta = deriveAta(userPda, USDC_MINT);

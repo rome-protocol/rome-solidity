@@ -10,6 +10,8 @@
 //   WORMHOLE_TARGET_CHAINS   comma-separated uint16 Wormhole chain ids
 //
 // Safety:
+//   - Sends only on a testnet chain id the RPC itself reports (lib/testnet-guard.ts);
+//     on Rubicon or any unlisted chain it refuses before reading anything else.
 //   - Asserts the signer == owner() BEFORE any tx (setters are onlyOwner; this
 //     turns a would-be revert into a clear early error).
 //   - Idempotent: skips entries already allowed.
@@ -22,6 +24,7 @@
 
 import hardhat from "hardhat";
 import { readDeployments } from "../lib/deployments.js";
+import { assertTestnetSend } from "./lib/testnet-guard.js";
 
 function parseList(v: string | undefined): string[] {
   return (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -31,6 +34,8 @@ async function main() {
   const { viem, networkName } = await hardhat.network.connect();
   const [signer] = await viem.getWalletClients();
   const publicClient = await viem.getPublicClient();
+  // Testnet only, judged on the RPC's real chain id; never sends on mainnet.
+  await assertTestnetSend(publicClient, `${networkName} set-wormhole-allowlist`);
 
   const d = readDeployments(networkName) as Record<string, { address?: string }>;
   const withdrawAddr = d["RomeBridgeWithdraw"]?.address as `0x${string}` | undefined;

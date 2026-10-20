@@ -2,6 +2,7 @@
 // Uses wrapper.ensureRecipientAta (idempotent ATA-create) then bridgeOutToSolana.
 
 import hardhat from "hardhat";
+import { assertTestnetSend } from "../lib/testnet-guard.js";
 import { encodeFunctionData, parseAbi, parseGwei } from "viem";
 import { PublicKey } from "@solana/web3.js";
 import { readDeployments } from "../lib/deployments.js";
@@ -14,6 +15,7 @@ async function main() {
   const { viem, networkName } = await hardhat.network.connect();
   const [walletClient] = await viem.getWalletClients();
   const publicClient = await viem.getPublicClient();
+  await assertTestnetSend(publicClient, `${networkName} test-bridgeOutToSolana`);
   const d = readDeployments(networkName) as Record<string, any>;
   const wusdc = d["SPL_ERC20_USDC"]?.address as `0x${string}`;
 

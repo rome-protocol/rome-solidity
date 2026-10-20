@@ -5,6 +5,9 @@
 // owner calls that would close the gap. No network, no keys.
 
 import { encodeFunctionData, parseAbi, type Hex } from "viem";
+import { MAINNET_CHAIN_IDS, judgeChain } from "./testnet-guard.js";
+
+export { MAINNET_CHAIN_IDS };
 
 /** Mirrors RomeBridgeWithdraw.RECIPIENT_EVM / RECIPIENT_RAW32. */
 export const KIND_EVM = 1;
@@ -13,6 +16,17 @@ export type RecipientKind = typeof KIND_EVM | typeof KIND_RAW32;
 
 /** Circle's domain id for Solana; the contract refuses it. */
 export const DOMAIN_SOLANA = 5;
+
+/**
+ * Domains the contract refuses to enable whatever Circle's record says (see the
+ * DOMAIN_* constants in RomeBridgeWithdraw.sol). Kept in step with the contract by
+ * a test that reads the Solidity source.
+ */
+export const REFUSED_DOMAINS: ReadonlyMap<number, string> = new Map([
+  [5, "Solana: an address-typed burn there is unredeemable"],
+  [17, "BNB Smart Chain: Circle moves USYC there, not USDC"],
+  [27, "Stellar: Circle requires its CctpForwarder as recipient and destination caller, with hook data, which this contract does not send"],
+]);
 
 export const KIND_NAME: Record<number, string> = { 1: "EVM", 2: "RAW32" };
 
@@ -35,8 +49,8 @@ export const CCTP_ADMIN_ABI = parseAbi([
 
 /**
  * Parses "0,1,3,6:evm,8:raw32". A bare number means an EVM recipient. Rejects an
- * empty list, duplicates, anything that is not a uint32, and domain 5 (Solana,
- * which the contract refuses).
+ * empty list, duplicates, anything that is not a uint32, and the domains the
+ * contract refuses (5 Solana, 17 BNB, 27 Stellar).
  */
 export function parseDomainSpec(spec: string): DomainEntry[] {
   const parts = spec.split(",").map((p) => p.trim()).filter((p) => p.length > 0);
@@ -49,7 +63,8 @@ export function parseDomainSpec(spec: string): DomainEntry[] {
     if (!/^\d+$/.test(num)) throw new Error(`bad domain "${num}": not a whole number`);
     const domain = Number(num);
     if (!Number.isSafeInteger(domain) || domain > 0xffffffff) throw new Error(`domain ${num} does not fit a uint32`);
-    if (domain === DOMAIN_SOLANA) throw new Error("domain 5 is Solana: an address-typed burn there is unredeemable, the contract refuses it");
+    const refused = REFUSED_DOMAINS.get(domain);
+    if (refused) throw new Error(`domain ${domain} is refused by the contract (${refused})`);
     let kind: RecipientKind = KIND_EVM;
     if (kindRaw !== undefined) {
       const k = kindRaw.toLowerCase();
@@ -119,19 +134,35 @@ export function planDomainChanges(wanted: DomainEntry[], onChain: DomainEntry[])
 // ── Wanted list from the bridge registry ───────────────────────────────────
 
 /**
- * The wanted CCTP domains in a registry `bridge.json`. Reads `sourceEvms[]` (or
- * the older single `sourceEvm`), and takes every entry that has a `cctpDomain`
- * and is `preparing` or `live` (no status counts as live): a chain is enabled
- * on chain while it is still `preparing`, before the route is shown. Any other
- * status is left out, so the chain would be disabled. An entry may carry
- * `cctpRecipientKind: "raw32"` for a non-EVM chain; the default is EVM.
- * Domain 5 (Solana) is refused.
+ * The wanted CCTP domains in a registry `bridge.json`. Reads BOTH the older single
+ * `sourceEvm` and the `sourceEvms[]` list and merges them: a live file can carry
+ * both (Hadrian's has Sepolia in `sourceEvm` and the other five in `sourceEvms[]`),
+ * and reading only one would plan to disable the other's domain. The same chain in
+ * both fields counts once, keyed on `chainId` (like the bridge-api's catalog), the
+ * first occurrence winning. It then takes every entry that has a `cctpDomain` and
+ * is `preparing` or `live` (no status counts as live): a chain is enabled on chain
+ * while it is still `preparing`, before the route is shown. Any other status is
+ * left out, so the chain would be disabled. An entry may carry
+ * `cctpRecipientKind: "raw32"` for a non-EVM chain; the default is EVM. A domain
+ * the contract refuses (5, 17, 27) is an error.
  */
 export function domainsFromRegistry(registry: unknown): DomainEntry[] {
   const root = registry as { sourceEvms?: unknown; sourceEvm?: unknown };
-  const entries: unknown[] = Array.isArray(root?.sourceEvms)
-    ? root.sourceEvms
-    : root?.sourceEvm ? [root.sourceEvm] : [];
+  const candidates: unknown[] = [root?.sourceEvm, ...(Array.isArray(root?.sourceEvms) ? root.sourceEvms : [])];
+  const entries: unknown[] = [];
+  const chains = new Set<string>();
+  for (const c of candidates) {
+    if (c === undefined || c === null || typeof c !== "object") continue;
+    const ent = c as { chainId?: unknown; cctpDomain?: unknown };
+    // Only an entry with a chainId can be recognised as a repeat. Without one it is
+    // kept, so a domain listed twice still fails loudly below.
+    if (ent.chainId !== undefined && ent.chainId !== null) {
+      const key = String(ent.chainId);
+      if (chains.has(key)) continue;
+      chains.add(key);
+    }
+    entries.push(c);
+  }
   const out: DomainEntry[] = [];
   const seen = new Set<number>();
   for (const raw of entries) {
@@ -143,7 +174,8 @@ export function domainsFromRegistry(registry: unknown): DomainEntry[] {
     if (typeof domain !== "number" || !Number.isSafeInteger(domain) || domain < 0 || domain > 0xffffffff) {
       throw new Error(`registry entry ${String(e.name ?? "?")} has a bad cctpDomain: ${String(domain)}`);
     }
-    if (domain === DOMAIN_SOLANA) throw new Error("registry lists CCTP domain 5 (Solana) as a destination: the contract refuses it");
+    const refused = REFUSED_DOMAINS.get(domain);
+    if (refused) throw new Error(`registry lists CCTP domain ${domain} as a destination, but the contract refuses it (${refused})`);
     if (seen.has(domain)) throw new Error(`registry lists CCTP domain ${domain} twice`);
     seen.add(domain);
     const kindRaw = typeof e.cctpRecipientKind === "string" ? e.cctpRecipientKind.toLowerCase() : "evm";
@@ -155,9 +187,6 @@ export function domainsFromRegistry(registry: unknown): DomainEntry[] {
 }
 
 // ── Send decision ──────────────────────────────────────────────────────────
-
-/** Chains where the script must never send, whatever the network is called. */
-export const MAINNET_CHAIN_IDS: ReadonlySet<number> = new Set([7531]);
 
 export interface SendInput {
   /** A network name this script knows (so its chain id could be checked). */
@@ -187,8 +216,11 @@ export interface SendDecision {
  */
 export function canSend(i: SendInput): SendDecision {
   if (!i.wantSend) return { send: false, reason: "--send was not given (print mode)" };
-  if (i.declaredMainnet || MAINNET_CHAIN_IDS.has(i.chainId)) {
-    return { send: false, reason: `chain ${i.chainId} is mainnet: print-only, sign the calldata with the cold Ledger` };
+  // Fail closed on the chain id the RPC reported (shared with every other script):
+  // mainnet and any id nobody listed as a testnet are print-only.
+  const chain = judgeChain(i.chainId);
+  if (i.declaredMainnet || !chain.allowed) {
+    return { send: false, reason: i.declaredMainnet ? `chain ${i.chainId} is declared mainnet: print-only, sign the calldata with the cold Ledger` : `${chain.reason}; print only` };
   }
   if (!i.knownNetwork) return { send: false, reason: "the network is not one this script knows, so --send is refused (print only)" };
   if (!i.signer) return { send: false, reason: "no signer key in the environment (print mode only)" };
@@ -212,7 +244,8 @@ export interface SolanaAccount {
  * Checks Circle's live RemoteTokenMessenger record for an enabled domain, the
  * same facts `enableCctpDomain` checked on the day it was enabled: owned by the
  * v2 Token Messenger Minter, Circle's discriminator, the stored domain, and for
- * an EVM-kind domain a messenger with 12 leading zero bytes. Returns a problem
+ * an EVM-kind domain a messenger with 12 leading zero bytes, and for a RAW32-kind
+ * domain one that is NOT address-shaped. Returns a problem
  * text, or null when the record still holds. A domain Circle removed or changed
  * after Rome enabled it shows up here, not in a burn.
  */
@@ -229,6 +262,9 @@ export function checkCircleRecord(
   if (stored !== domain) return `domain ${domain}: the account records domain ${stored}`;
   if (kind === KIND_EVM && d.subarray(12, 24).some((b) => b !== 0)) {
     return `domain ${domain}: Circle's messenger is no longer EVM-shaped (${Buffer.from(d.subarray(12, 44)).toString("hex")}), but Rome has it as an EVM destination`;
+  }
+  if (kind === KIND_RAW32 && d.subarray(12, 24).every((b) => b === 0)) {
+    return `domain ${domain}: Circle's messenger is address-shaped (an EVM chain: ${Buffer.from(d.subarray(12, 44)).toString("hex")}), but Rome has it as RAW32, so a 32-byte recipient could be truncated by the destination`;
   }
   return null;
 }

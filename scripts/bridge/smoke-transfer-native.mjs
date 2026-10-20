@@ -38,6 +38,8 @@ import {
   createWalletClient, createPublicClient, http, defineChain, parseAbi, decodeEventLog, formatUnits,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+// Needs Node 22.18+ (imports the .ts guard directly). If it cannot load, the script does not run.
+import { assertTestnetSend } from "./lib/testnet-guard.ts";
 
 const NETWORK = process.env.NETWORK ?? "hadrian";
 const RPC = process.env.RPC_URL ?? "https://hadrian.testnet.romeprotocol.xyz/";
@@ -63,6 +65,8 @@ const chain = defineChain({
 });
 const pub = createPublicClient({ chain, transport: http(RPC) });
 const wallet = createWalletClient({ account, chain, transport: http(RPC) });
+// The chain id the RPC reports must be a testnet before anything is sent (CHAIN_ID is only a label).
+if (!DRY_RUN) await assertTestnetSend(pub, `smoke-transfer-native ${NETWORK}`);
 
 const abi = parseAbi([
   "function transferNativeToWormhole(address assetWrapper, uint256 amount, bytes32 recipient, uint16 targetChain)",

@@ -10,6 +10,8 @@ import {
   SYSVAR_RENT_PUBKEY, Transaction, TransactionInstruction, ComputeBudgetProgram,
 } from "@solana/web3.js";
 import { keccak256 } from "ethers";
+// Needs Node 22.18+ (imports the .ts guard directly). If it cannot load, the script does not run.
+import { assertSolanaTestnetRpc } from "../lib/testnet-guard.ts";
 
 const VAA_BASE64 = "AQAAAAABAH//Dnc/Ckj3wotIPaeG74M2BOPZq1J4qEaYuviF5/fBZxsovZ865yhXYeprG91Abw66pfYgAjizO5cnk515ajMBaeb/cBmg6BAnEgAAAAAAAAAAAAAAANtUkiZfYDiDHon0lWcP+Qmt6UvZAAAAAAAFP2sBAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYagAAAAAAAAAAAAAAAA7vEqg+5bcWHThzMXyODnt24LXZwnEreqqFggb5aY8MLMGgqBUIiEYIfztgBuIll6SzF4iGVPAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
 
@@ -44,6 +46,9 @@ async function main() {
   console.log("Payer:", payer.publicKey.toBase58());
 
   // Use public Solana devnet for post_vaa (Rome RPC lacks WS); Rome RPC for complete_transfer
+  // Sends on Solana devnet/testnet only: the genesis hash of each RPC must say so.
+  await assertSolanaTestnetRpc("https://api.devnet.solana.com", "05-wh-manual-complete");
+  await assertSolanaTestnetRpc(process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com", "05-wh-manual-complete");
   const vaaConn = new Connection("https://api.devnet.solana.com", "confirmed");
   const solConn = new Connection((process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com"), "confirmed");
 

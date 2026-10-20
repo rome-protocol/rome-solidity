@@ -7,7 +7,7 @@ import { decodeFunctionData, toFunctionSelector } from "viem";
 import hardhat from "hardhat";
 import {
   CCTP_ADMIN_ABI, KIND_EVM, KIND_RAW32, REMOTE_TOKEN_MESSENGER_DISCRIMINATOR, canSend, checkCircleRecord,
-  domainsFromRegistry, encodeDisable, encodeEnable, parseDomainSpec, planDomainChanges,
+  REFUSED_DOMAINS, domainsFromRegistry, encodeDisable, encodeEnable, parseDomainSpec, planDomainChanges,
 } from "../../scripts/bridge/lib/cctp-domain-plan.js";
 import { resolveRoles } from "../../scripts/bridge/lib/deploy-roles.js";
 import { SOLANA_PROGRAM_IDS } from "../../scripts/bridge/constants.js";
@@ -39,8 +39,17 @@ describe("parseDomainSpec", () => {
     assert.throws(() => parseDomainSpec("6:evm:x"), /bad domain entry/);
     assert.throws(() => parseDomainSpec("4294967296"), /uint32/);
   });
-  it("refuses domain 5 (Solana) up front, as the contract does", () => {
+  it("refuses domains 5 (Solana), 17 (BNB) and 27 (Stellar) up front, as the contract does", () => {
     assert.throws(() => parseDomainSpec("0,5"), /Solana/);
+    assert.throws(() => parseDomainSpec("17"), /BNB/);
+    assert.throws(() => parseDomainSpec("27:raw32"), /Stellar/);
+  });
+  it("the refused list matches the contract's DOMAIN_* constants", () => {
+    const src = readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), "../../contracts/bridge/RomeBridgeWithdraw.sol"), "utf8");
+    const onChain = [...src.matchAll(/uint32 public constant DOMAIN_\w+ = (\d+);/g)].map((m) => Number(m[1])).sort((a, b) => a - b);
+    assert.deepEqual([...REFUSED_DOMAINS.keys()].sort((a, b) => a - b), onChain);
+    assert.deepEqual(onChain, [5, 17, 27]);
   });
 });
 
@@ -154,6 +163,12 @@ describe("canSend: when the script may send", () => {
     // Even a name the table thinks is a testnet, if the RPC says 7531:
     assert.match(canSend({ ...base, chainId: 7531 }).reason, /mainnet/);
   });
+  it("fails closed on a chain id nobody listed as a testnet, even for a known network name", () => {
+    const d = canSend({ ...base, chainId: 424242 });
+    assert.equal(d.send, false);
+    assert.match(d.reason, /not on the testnet allowlist/);
+    assert.equal(canSend({ ...base, chainId: Number.NaN }).send, false);
+  });
   it("refuses --send on a network the script does not know", () => {
     const d = canSend({ ...base, knownNetwork: false });
     assert.equal(d.send, false);
@@ -192,6 +207,57 @@ describe("domainsFromRegistry", () => {
     assert.throws(() => domainsFromRegistry({ sourceEvms: [e(6, { status: "retired" })] }), /no CCTP destination/);
     assert.throws(() => domainsFromRegistry({}), /no CCTP destination/);
   });
+  // Real shape of rome-protocol/registry chains/200010-hadrian/bridge.json: the legacy
+  // `sourceEvm` (Sepolia, domain 0) AND `sourceEvms[]` (the other five).
+  const hadrian = () => ({
+    sourceEvm: { name: "Sepolia", chainId: 11155111, cctpDomain: 0, status: "live" },
+    sourceEvms: [
+      { name: "Monad Testnet", chainId: 10143, cctpDomain: 15, status: "live" },
+      { name: "Polygon Amoy", chainId: 80002, cctpDomain: 7, status: "live" },
+      { name: "Arbitrum Sepolia", chainId: 421614, cctpDomain: 3, status: "live" },
+      { name: "Base Sepolia", chainId: 84532, cctpDomain: 6, status: "live" },
+      { name: "Avalanche Fuji", chainId: 43113, cctpDomain: 1, status: "live" },
+    ],
+  });
+  it("merges sourceEvm and sourceEvms[]: Hadrian's file wants all six domains, Sepolia (0) included", () => {
+    const got = domainsFromRegistry(hadrian()).map((e) => e.domain).sort((a, b) => a - b);
+    assert.deepEqual(got, [0, 1, 3, 6, 7, 15]);
+  });
+  it("on a v13 Hadrian with the six domains enabled, the plan has no disable call and is in sync", () => {
+    const six = [0, 1, 3, 6, 7, 15].map((domain) => ({ domain, kind: KIND_EVM as 1 }));
+    const plan = planDomainChanges(domainsFromRegistry(hadrian()), six);
+    assert.equal(plan.calls.length, 0, "no call of any kind, so no disableCctpDomain(0)");
+  });
+  it("Rubicon's add-a-chain step: a first sourceEvms[] entry next to Ethereum's sourceEvm does not disable Ethereum", () => {
+    const rubicon = {
+      sourceEvm: { name: "Ethereum", chainId: 1, cctpDomain: 0 },
+      sourceEvms: [{ name: "Base", chainId: 8453, cctpDomain: 6, status: "preparing" }],
+    };
+    const plan = planDomainChanges(domainsFromRegistry(rubicon), [{ domain: 0, kind: KIND_EVM }]);
+    assert.deepEqual(plan.calls.map((c) => `${c.fn}:${c.domain}`), ["enableCctpDomain:6"]);
+  });
+  it("the same chain in both fields counts once, by chainId (the first entry wins)", () => {
+    const both = {
+      sourceEvm: { name: "Sepolia", chainId: 11155111, cctpDomain: 0 },
+      sourceEvms: [{ name: "Sepolia again", chainId: 11155111, cctpDomain: 0 }, { name: "Base", chainId: 84532, cctpDomain: 6 }],
+    };
+    assert.deepEqual(domainsFromRegistry(both).map((e) => e.domain), [0, 6]);
+    // The first occurrence decides the status: a retired legacy entry is not revived by a live duplicate.
+    const retiredFirst = {
+      sourceEvm: { chainId: 1, cctpDomain: 0, status: "retired" },
+      sourceEvms: [{ chainId: 1, cctpDomain: 0, status: "live" }, { chainId: 2, cctpDomain: 6 }],
+    };
+    assert.deepEqual(domainsFromRegistry(retiredFirst).map((e) => e.domain), [6]);
+  });
+  it("two different chains on one CCTP domain is still an error", () => {
+    assert.throws(() => domainsFromRegistry({
+      sourceEvm: { chainId: 1, cctpDomain: 0 }, sourceEvms: [{ chainId: 2, cctpDomain: 0 }],
+    }), /twice/);
+  });
+  it("refuses BNB (17) and Stellar (27) entries like Solana", () => {
+    assert.throws(() => domainsFromRegistry({ sourceEvms: [e(17)] }), /BNB/);
+    assert.throws(() => domainsFromRegistry({ sourceEvms: [e(27, { cctpRecipientKind: "raw32" })] }), /Stellar/);
+  });
   it("feeds the planner: a preparing entry is a wanted domain, so its enable call is printed", () => {
     const wanted = domainsFromRegistry({ sourceEvms: [e(0), e(6, { status: "preparing" })] });
     const plan = planDomainChanges(wanted, [{ domain: 0, kind: KIND_EVM }]);
@@ -218,6 +284,9 @@ describe("checkCircleRecord (--check re-reads Circle's account)", () => {
   it("flags a messenger that stopped being EVM-shaped on an EVM-kind domain, but not on RAW32", () => {
     assert.match(checkCircleRecord(6, KIND_EVM, record(6, sui), TMM)!, /no longer EVM-shaped/);
     assert.equal(checkCircleRecord(6, KIND_RAW32, record(6, sui), TMM), null);
+  });
+  it("flags a RAW32 domain whose messenger is address-shaped (an EVM chain: the destination would truncate a 32-byte recipient)", () => {
+    assert.match(checkCircleRecord(0, KIND_RAW32, record(0, evm), TMM)!, /address-shaped.*RAW32/);
   });
   it("flags a missing account, a wrong owner, a wrong discriminator, a domain mismatch and a short account", () => {
     assert.match(checkCircleRecord(6, KIND_EVM, null, TMM)!, /no RemoteTokenMessenger account/);
