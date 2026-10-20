@@ -301,6 +301,11 @@ export interface DeploymentStore {
    * renamed over the destination), so a failed or concurrent write never costs the v12 record.
    */
   update?(change: (current: Record<string, any>) => Record<string, any>): void;
+  /**
+   * Throws when the file's writer lock is already held. The flow calls it before anything is sent, so
+   * a leftover lock is found while "run again" is still safe, not at the record write after a deploy landed.
+   */
+  assertUnlocked?(): void;
 }
 
 export interface V13Record {
@@ -451,8 +456,9 @@ const READBACK_ATTEMPTS = 4;
 const READBACK_PAUSE_MS = 2000;
 
 /** The recovery command a failure message points at (the deploy landed; do not send it again). */
-function recoverArgs(address: string, txHash: string, commit: string): string {
-  return `--verify-existing ${address} --deploy-tx ${txHash} --source-commit ${commit}`;
+function recoverArgs(address: string, txHash: string, commit: string, ownerDiffersFromV12 = false): string {
+  // The recovery run applies the same owner rule as this one, so a run that needed the flag needs it again.
+  return `--verify-existing ${address} --deploy-tx ${txHash} --source-commit ${commit}${ownerDiffersFromV12 ? ` ${OWNER_DIFFERS_FLAG}` : ""}`;
 }
 
 const sleeper = (deps: DeployDeps) => deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
@@ -530,6 +536,8 @@ export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions)
   }
 
   // 3. Inputs and constructor arguments.
+  // A leftover lock is refused here, before anything is sent: "run again" is safe only until the send.
+  deps.store.assertUnlocked?.();
   const existing = deps.store.read();
   if (existing[RECORD_KEY]) throw new Error(`${tag} ${RECORD_KEY} is already recorded (${existing[RECORD_KEY].address}): this deploy was done; refusing to run it again`);
   const usdc = usdcFromDeployments(existing, deps.networkName);
@@ -682,13 +690,13 @@ export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions)
         `${tag} the mined deploy ${deployed.txHash} created ${deployed.address}, not the approved ${predicted} (deploy key nonce ${nonce}), so it is NOT recorded. ` +
         "Do not use that contract and do not enable anything on it, and do NOT deploy again yet. Something else was sent from the deploy key: look the transaction up " +
         `(\`cast tx ${deployed.txHash}\`, \`cast nonce ${roles.deployer}\`, \`cast code ${predicted}\`). Only if you confirm ${deployed.address} is the creation of exactly these bytes by the deploy key and you accept it, ` +
-        `record it with ${recoverArgs(deployed.address, deployed.txHash, commit)}; otherwise run the dry run again and start over with the new digest.`,
+        `record it with ${recoverArgs(deployed.address, deployed.txHash, commit, opts.ownerDiffersFromV12)}; otherwise run the dry run again and start over with the new digest.`,
       );
     }
   }
 
   // 5b. Read everything back.
-  const recover = recoverArgs(deployed.address, deployed.txHash, commit);
+  const recover = recoverArgs(deployed.address, deployed.txHash, commit, opts.ownerDiffersFromV12);
   const checked = await verifyWithRetry(deps, deployed.address, deployed.txHash, {
     owner: roles.owner, guardian: roles.guardian, deployer: roles.deployer,
     usdcWrapper: usdc.wrapper, usdcMintBase58: usdc.mintBase58,

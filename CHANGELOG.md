@@ -27,7 +27,10 @@ hot key that then transferred ownership (#368). This adds the path. Source only:
   read-back), `deployInputHash` (keccak256 of the deploy transaction input) and `deployedAt` (the deploy block's
   time, retried; never the local clock) under `RomeBridgeWithdrawV13` in `deployments/<network>.json` without
   touching the v12 record. The file is replaced atomically (a temp file, flushed, renamed over it, under a lock), so
-  a failed write leaves v12 whole. Then it PRINTS, never sends, the Ledger's two calls in order:
+  a failed write leaves v12 whole. A leftover lock file is refused BEFORE anything is sent (a dry run included), with
+  "nothing was sent, remove it by hand and run again"; a lock that appears only at the record write names
+  `--verify-existing` instead (the lock token is written in full, short writes included). The recovery command printed
+  after a landed deploy carries `--owner-differs-from-v12` when the run used it. Then it PRINTS, never sends, the Ledger's two calls in order:
   `ensureBridgeAta(<Rubicon USDC mint>)` first, then `enableCctpDomain(0, 1)`. `--verify-existing <address>
   --deploy-tx <hash> --source-commit <sha>` reads back and records a contract that already landed (after a transient
   failure) without sending anything; it records the commit the operator names, after checking that commit's

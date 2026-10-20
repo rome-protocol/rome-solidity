@@ -791,6 +791,78 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
     assert.equal(await pc.getTransactionCount({ address: A(0) }), nonce + 1, "no second contract");
   });
 
+  it("a lock file that exists before the run refuses it BEFORE anything is sent, a dry run and a deploy alike: the deploy key's nonce does not move", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "store-prelock-"));
+    try {
+      const good = await digestFor(memStore(STORE()));
+      const file = path.join(dir, "rubicon.json");
+      writeFileSync(file, JSON.stringify(STORE(), null, 2) + "\n");
+      writeFileSync(`${file}.lock`, "4242:left-by-a-dead-run");
+      const nonce = await pc.getTransactionCount({ address: A(0) });
+      const block = await pc.getBlockNumber();
+      const lines: string[] = [];
+      const { deps, counters } = await mainDeps(fileStore(file), lines);
+      for (const o of [opts(), opts({ dryRun: true }), opts({ deployDigest: good }), opts({ verifyExisting: verifyOf({ address: A(5), txHash: "0x" + "11".repeat(32) }) })]) {
+        await assert.rejects(runRubiconV13Deploy(deps, o), (e: Error) => {
+          assert.match(e.message, /is locked.*nothing was sent.*run again/s);
+          return true;
+        });
+      }
+      assert.equal(counters.deploys, 0);
+      assert.equal(counters.estimates, 0, "refused before the estimate");
+      assert.equal(await pc.getTransactionCount({ address: A(0) }), nonce, "the deploy key's nonce did not move");
+      assert.equal(await pc.getBlockNumber(), block, "no block was mined");
+      assert.equal(readFileSync(`${file}.lock`, "utf8"), "4242:left-by-a-dead-run", "the lock is as it was");
+      assert.equal(JSON.parse(readFileSync(file, "utf8"))[RECORD_KEY], undefined);
+      // with the lock removed by hand, the same deploy goes through and releases its own lock
+      fs.rmSync(`${file}.lock`);
+      const ok = await mainDeps(fileStore(file), []);
+      assert.equal((await runRubiconV13Deploy(ok.deps, opts({ deployDigest: good }))).dryRun, false);
+      assert.equal(ok.counters.deploys, 1);
+      assert.deepEqual(fs.readdirSync(dir), ["rubicon.json"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a lock that appears after the send is reported with the --verify-existing recovery command, never 'run again'", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "store-latelock-"));
+    try {
+      const good = await digestFor(memStore(STORE()));
+      const file = path.join(dir, "rubicon.json");
+      writeFileSync(file, JSON.stringify(STORE(), null, 2) + "\n");
+      const { deps, d } = await mainDeps(fileStore(file), []);
+      // the lock is created while the deploy runs, after the run's own pre-send check passed
+      const late: DeployDeps = { ...deps, deploy: async (args, flag, dg) => { const r = await deps.deploy(args, flag, dg); writeFileSync(`${file}.lock`, "4242:another-run"); return r; } };
+      await assert.rejects(runRubiconV13Deploy(late, opts({ deployDigest: good })), (e: Error) => {
+        assert.match(e.message, /could not be written.*Do NOT deploy again.*--verify-existing 0x[0-9a-fA-F]{40} --deploy-tx 0x[0-9a-f]{64} --source-commit a{40}/s);
+        assert.doesNotMatch(e.message, /run again/i);
+        return true;
+      });
+      assert.equal(JSON.parse(readFileSync(file, "utf8"))[RECORD_KEY], undefined);
+      assert.ok(d);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("the recovery command printed after a landed deploy carries --owner-differs-from-v12 exactly when the run was given it", async () => {
+    const otherOwner = { owner: A(3), ownerDiffersFromV12: true };
+    for (const [over, expectFlag] of [[otherOwner, true], [{}, false]] as const) {
+      const dryStore = memStore(STORE());
+      const good = await digestFor(dryStore, over);
+      const store = memStore(STORE());
+      const { deps, d } = await mainDeps(store, []);
+      const never: DeployDeps = { ...deps, getDeployTx: async (h) => ({ ...(await d.getDeployTx(h))!, blockTimestamp: undefined }) };
+      await assert.rejects(runRubiconV13Deploy(never, opts({ ...over, deployDigest: good })), (e: Error) => {
+        const m = e.message.match(/--verify-existing 0x[0-9a-fA-F]{40} --deploy-tx 0x[0-9a-f]{64} --source-commit a{40}( --owner-differs-from-v12)?/);
+        assert.ok(m, e.message);
+        assert.equal(m![1] !== undefined, expectFlag);
+        return true;
+      });
+    }
+  });
+
   it("the send passes the approved nonce explicitly to the wallet, and the mined address and nonce must be the approved ones", async () => {
     const seen: any[] = [];
     const spy = {
@@ -965,6 +1037,29 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
       const bad = await d.sourceAt("0".repeat(40));
       assert.equal(bad.sameSources, false);
       assert.match(bad.problem!, /not a commit/);
+    }
+  });
+
+  it("sourceAt's negative case keeps git's own 'fatal:' line off stderr (the problem is reported in the result)", () => {
+    // The probe sits in the repo (so `hardhat` resolves) under a unique name, and is removed in the finally.
+    const probe = path.join(here, `.sourceat-probe-${process.pid}.mts`);
+    try {
+      writeFileSync(probe, [
+        `import hardhat from "hardhat";`,
+        `import { depsFromConnection } from ${JSON.stringify(path.join(repo, "scripts/bridge/deploy-rubicon-v13.ts"))};`,
+        `const c = await hardhat.network.connect();`,
+        `const d = await depsFromConnection(c, { read: () => ({}), write: () => {} }, () => {});`,
+        `console.log(JSON.stringify(await d.sourceAt("0".repeat(40))));`,
+        `process.exit(0);`,
+      ].join("\n"));
+      const env = { ...process.env };
+      for (const k of Object.keys(env)) if (/^RUBICON_|^HARDHAT_/.test(k)) delete env[k];
+      const r = spawnSync(path.join(repo, "node_modules/.bin/tsx"), [probe], { cwd: repo, env, encoding: "utf8", timeout: 180_000 });
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(JSON.parse(r.stdout.trim().split("\n").pop()!).sameSources, false);
+      assert.doesNotMatch(r.stderr, /fatal|Needed a single revision/);
+    } finally {
+      rmSync(probe, { force: true });
     }
   });
 
@@ -1236,14 +1331,46 @@ describe("the deployments file store replaces the file atomically and serializes
       const dead = spawnSync(process.execPath, ["-e", "0"]);
       for (const content of [String(process.pid), String(dead.pid), `${dead.pid}:some-token`, ""]) {
         writeFileSync(`${file}.lock`, content);
-        assert.throws(() => fileStore(file).update!((cur) => withV13Record(cur, rec as any)), /is locked.*never takes a lock over.*Confirm that no other deploy run is active.*remove the lock file by hand/s, content);
+        // before anything is sent: "run again" is advised, and nothing was sent
+        assert.throws(() => fileStore(file).assertUnlocked!(), (e: Error) => {
+          assert.match(e.message, /is locked.*never takes a lock over, and nothing was sent.*Confirm that no other deploy run is active.*remove the lock file by hand and run again/s, content);
+          return true;
+        });
+        // at the record write (the lock appeared after the run began): never "run again", it names --verify-existing
+        assert.throws(() => fileStore(file).update!((cur) => withV13Record(cur, rec as any)), (e: Error) => {
+          assert.match(e.message, /is locked.*appeared during this run.*never takes a lock over.*do NOT run it again.*--verify-existing/s, content);
+          assert.doesNotMatch(e.message, /and run again/);
+          return true;
+        });
         assert.equal(readFileSync(file, "utf8"), raw);
         assert.equal(readFileSync(`${file}.lock`, "utf8"), content, "the lock is exactly as it was");
       }
       fs.rmSync(`${file}.lock`);
+      fileStore(file).assertUnlocked!(); // no lock: passes
       fileStore(file).update!((cur) => withV13Record(cur, rec as any));
       assert.equal(JSON.parse(readFileSync(file, "utf8"))[RECORD_KEY].address, rec.address);
       assert.deepEqual(left(dir), ["rubicon.json"]);
+    });
+  });
+
+  it("a short write of the lock token does not leave the run's own lock behind, and a write with no progress fails cleanly", () => {
+    withTmp((dir, file, raw) => {
+      const lock = `${file}.lock`;
+      // every write takes at most 3 bytes (a short write), for the lock token and for the file text alike
+      const writes: number[] = [];
+      const short = { ...fs, writeSync: ((fd: number, buf: Buffer, off: number, len: number) => { const n = fs.writeSync(fd, buf, off, Math.min(3, len)); writes.push(n); return n; }) as unknown as typeof fs.writeSync };
+      let tokenInLock = "";
+      fileStore(file, short).update!((cur) => { tokenInLock = readFileSync(lock, "utf8"); return withV13Record(cur, rec as any); });
+      assert.match(tokenInLock, /^\d+:[0-9a-f-]{36}$/, "the whole token reached the lock file, not its first 3 bytes");
+      assert.ok(writes.length > 10);
+      assert.deepEqual(left(dir), ["rubicon.json"], "no lock and no temp file after the run");
+      assert.equal(JSON.parse(readFileSync(file, "utf8"))[RECORD_KEY].address, rec.address);
+    });
+    withTmp((dir, file, raw) => {
+      const stuck = { ...fs, writeSync: (() => 0) as unknown as typeof fs.writeSync };
+      assert.throws(() => fileStore(file, stuck).update!((cur) => ({ ...cur, x: 1 })), /no progress/);
+      assert.equal(readFileSync(file, "utf8"), raw);
+      assert.deepEqual(left(dir), ["rubicon.json"], "the run's own lock is released");
     });
   });
 

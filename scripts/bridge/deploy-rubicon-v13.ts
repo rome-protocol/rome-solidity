@@ -43,11 +43,12 @@
 // It writes the address, the commit, the build, the code hash and the deploy input hash to
 // deployments/rubicon.json under RomeBridgeWithdrawV13, next to the live v12 record, which it
 // does not touch; the file is replaced atomically (a temp file renamed over it), so a failed write
-// leaves v12 as it was. Then it PRINTS the two owner calls the Ledger signs (ensureBridgeAta(<Rubicon
+// leaves v12 as it was. A lock file that already exists is refused before anything is sent. Then it PRINTS the two owner calls the Ledger signs (ensureBridgeAta(<Rubicon
 // USDC mint>) first, then enableCctpDomain(0, 1)); it never sends them.
 //
 // If the deploy landed but the read-back or the file write failed, do not deploy again:
 //   ... --i-understand-mainnet --verify-existing <address> --deploy-tx <hash> --source-commit <sha>
+//   [--owner-differs-from-v12, if the deploy run used it]
 // checks that the transaction is the deploy key's creation of that address with exactly these
 // bytes and that <sha> (the commit the deploy was run from) has the same sources as this
 // checkout, reads it back, records it and prints the owner calls. It sends nothing. If the send
@@ -92,11 +93,27 @@ export type FileIo = Pick<typeof fs, "existsSync" | "readFileSync" | "mkdirSync"
  * temp file. Writers are serialized by a lock file (`<file>.lock`, created exclusively, holding a token
  * only this run knows). A lock that already exists is NEVER taken over, not even one left by a dead
  * process: the run refuses and tells the operator to confirm that nothing else is running and to remove
- * the file by hand. A run releases only the lock it created (the token in the file is checked before
- * the unlink). `update` does the read, the change and the write under one lock, so two runs cannot
+ * the file by hand. The run looks for the lock BEFORE anything is sent (`assertUnlocked`, a dry run
+ * included), so a leftover lock is found while "run again" is still safe; a lock that appears later,
+ * at the record write after a deploy landed, names --verify-existing instead. A run releases only the
+ * lock it created (the token in the file is checked before the unlink). `update` does the read, the change and the write under one lock, so two runs cannot
  * lose each other's change.
  */
 export function fileStore(file: string, io: FileIo = fs): DeploymentStore {
+  /** Writes every byte (a write may be short); a write that makes no progress is an error, never a spin. */
+  function writeAll(fd: number, bytes: Buffer): void {
+    for (let off = 0; off < bytes.length; ) {
+      const n = io.writeSync(fd, bytes, off, bytes.length - off);
+      if (!(n > 0)) throw new Error(`a write made no progress (${off} of ${bytes.length} bytes written)`);
+      off += n;
+    }
+  }
+
+  const lockPath = (): string => `${io.existsSync(file) ? (io.realpathSync(file) as string) : file}.lock`;
+  const holderOf = (lock: string): string => {
+    try { return String(io.readFileSync(lock, "utf8")).trim().split(":")[0]; } catch { return ""; /* it may be gone already */ }
+  };
+
   const read = (): Record<string, any> => (io.existsSync(file) ? JSON.parse(io.readFileSync(file, "utf8") as string) : {});
 
   function writeAtomic(data: Record<string, any>): void {
@@ -110,7 +127,7 @@ export function fileStore(file: string, io: FileIo = fs): DeploymentStore {
     let fd: number | undefined;
     try {
       fd = io.openSync(tmp, "wx", mode);
-      for (let off = 0; off < bytes.length; ) off += io.writeSync(fd, bytes, off, bytes.length - off);
+      writeAll(fd, bytes);
       io.fsyncSync(fd);
       io.closeSync(fd);
       fd = undefined;
@@ -129,8 +146,8 @@ export function fileStore(file: string, io: FileIo = fs): DeploymentStore {
   }
 
   function locked<T>(fn: () => T): T {
-    const target = io.existsSync(file) ? (io.realpathSync(file) as string) : file;
-    const lock = `${target}.lock`;
+    const lock = lockPath();
+    const target = lock.slice(0, -".lock".length);
     io.mkdirSync(path.dirname(lock), { recursive: true });
     const token = `${process.pid}:${randomUUID()}`;
     let fd: number;
@@ -138,16 +155,16 @@ export function fileStore(file: string, io: FileIo = fs): DeploymentStore {
       fd = io.openSync(lock, "wx", 0o644);
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
-      let holder = "";
-      try { holder = String(io.readFileSync(lock, "utf8")).trim(); } catch { /* it may be gone already */ }
+      const holder = holderOf(lock);
+      // This is the late case: the run already passed assertUnlocked, so something created the lock since.
       throw new Error(
-        `${path.basename(target)} is locked: ${lock} exists${holder ? ` (written by ${holder.split(":")[0]})` : ""}. This script never takes a lock over. ` +
-        "Confirm that no other deploy run is active (ps, and the deploy key's transactions), then remove the lock file by hand and run again.",
+        `${path.basename(target)} is locked: ${lock} appeared during this run${holder ? ` (written by ${holder})` : ""}. This script never takes a lock over. ` +
+        "If this run already sent the deploy, do NOT run it again: confirm that no other deploy run is active (ps), remove the lock file by hand, and record the contract with --verify-existing (the recovery command is printed with this error).",
       );
     }
     let wrote = false;
     try {
-      io.writeSync(fd, token);
+      writeAll(fd, Buffer.from(token, "utf8"));
       wrote = true;
       return fn();
     } finally {
@@ -163,6 +180,15 @@ export function fileStore(file: string, io: FileIo = fs): DeploymentStore {
 
   return {
     read,
+    assertUnlocked: () => {
+      const lock = lockPath();
+      if (!io.existsSync(lock)) return;
+      const holder = holderOf(lock);
+      throw new Error(
+        `${path.basename(lock.slice(0, -".lock".length))} is locked: ${lock} exists${holder ? ` (written by ${holder})` : ""}. This script never takes a lock over, and nothing was sent. ` +
+        "Confirm that no other deploy run is active (ps, and `cast nonce <deploy key>`), remove the lock file by hand and run again.",
+      );
+    },
     write: (data) => locked(() => writeAtomic(data)),
     update: (change) => locked(() => writeAtomic(change(read()))),
   };
@@ -175,7 +201,8 @@ function pinnedGasPrice(config: any): bigint | undefined {
 }
 
 function git(args: string[]): string {
-  return execFileSync("git", args, { cwd: REPO, encoding: "utf8" }).trim();
+  // stderr is dropped: a failing probe (an unknown revision) is reported by the caller, not by git's own "fatal:" line.
+  return execFileSync("git", args, { cwd: REPO, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
 }
 
 /** The error for a send that answered with an error: the transaction may still have landed. */
@@ -184,7 +211,7 @@ function sendFailed(networkName: string, deployer: string, nonce: number, predic
     `[${networkName}] sending the deploy transaction failed (${(cause as Error)?.message?.split("\n")[0] ?? String(cause)}), but the transaction MAY have landed anyway. ` +
     `Do NOT deploy again and do not reuse the old digest. Deploy key ${deployer} used nonce ${nonce}: check \`cast nonce ${deployer}\` (nonce ${nonce + 1} means it landed) and ` +
     `\`cast code ${predicted}\` (code there means the contract exists). If it landed, find its transaction hash (the creation of ${predicted}) and run ` +
-    "--verify-existing <address> --deploy-tx <hash> --source-commit <the commit you deployed from>. If it did not land, run the dry run again.",
+    "--verify-existing <address> --deploy-tx <hash> --source-commit <the commit you deployed from> (plus --owner-differs-from-v12 if this run used it). If it did not land, run the dry run again.",
   );
 }
 
@@ -253,7 +280,7 @@ export async function depsFromConnection(
       } catch (e) {
         throw new Error(
           `[${networkName}] the deploy transaction ${txHash} was sent, but its receipt could not be read (${(e as Error).message.split("\n")[0]}). ` +
-          `Do NOT deploy again: check the transaction (and \`cast code ${predicted}\`), then re-run with --verify-existing <the address it created> --deploy-tx ${txHash} --source-commit <the commit you deployed from>`,
+          `Do NOT deploy again: check the transaction (and \`cast code ${predicted}\`), then re-run with --verify-existing <the address it created> --deploy-tx ${txHash} --source-commit <the commit you deployed from> (plus --owner-differs-from-v12 if this run used it)`,
         );
       }
       if (receipt.status !== "success" || !receipt.contractAddress) {
@@ -317,7 +344,7 @@ export async function depsFromConnection(
       try {
         const full = git(["rev-parse", "--verify", `${commit}^{commit}`]);
         try {
-          execFileSync("git", ["diff", "--quiet", full, "HEAD", "--", ...BUILD_PATHS], { cwd: REPO });
+          execFileSync("git", ["diff", "--quiet", full, "HEAD", "--", ...BUILD_PATHS], { cwd: REPO, stdio: ["ignore", "pipe", "ignore"] });
         } catch {
           return { commit: full, sameSources: false, problem: `${commit} has different contracts/, hardhat.config.ts or package-lock.json from this checkout's HEAD` };
         }
