@@ -6,7 +6,7 @@
  * Scope: validates guard conditions in RomeBridgeWithdraw:
  *   1. AmountExceedsUint64 — fires before any external call when amount > 2^64-1.
  *   2. InsufficientBalance — fires when user balance < amount.
- *   3. Immutables (usdcMint, wethMint) are wired correctly from mock wrappers.
+ *   3. The usdcMint immutable is wired correctly from the mock wrapper.
  *
  * Phase 1.4 refactor: all Solana pubkeys are now constructor params (no more
  * internal constant sentinels). The sysvar-sentinel guard tests are removed —
@@ -20,11 +20,13 @@ import { before, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import hardhat from "hardhat";
 import type { Address } from "viem";
+import { installMock, plantCircleAccount, GUARDIAN } from "./helpers/v13.js";
 
 describe("RomeBridgeWithdraw — error paths", () => {
   let viem: Awaited<ReturnType<typeof hardhat.network.connect>>["viem"];
   let withdraw: any;
   let user: Address;
+  let cpi: any;
 
   // Zero bytes32 — used as dummy PDA values for CCTP/Wormhole constructor params.
   const ZERO_BYTES32 =
@@ -43,12 +45,14 @@ describe("RomeBridgeWithdraw — error paths", () => {
     viem = conn.viem;
     const [userClient] = await viem.getWalletClients();
     user = userClient.account.address;
+    // enableCctpDomain reads Circle's account and derives a PDA through the
+    // precompiles, so the simulated EVM needs the mock at those addresses.
+    ({ cpi } = await installMock(conn));
   });
 
   beforeEach(async () => {
     // Deploy two MockSplErc20 instances (no CPI precompile needed).
     const mockUsdc = await viem.deployContract("MockSplErc20", [MOCK_MINT]);
-    const mockWeth = await viem.deployContract("MockSplErc20", [MOCK_MINT]);
 
     // Deploy RomeBridgeWithdraw with a zero-address forwarder (ERC2771Context
     // accepts any address) and non-zero bytes32 for all new program ID fields.
@@ -56,7 +60,6 @@ describe("RomeBridgeWithdraw — error paths", () => {
     withdraw = await viem.deployContract("RomeBridgeWithdraw", [
       "0x0000000000000000000000000000000000000000", // forwarder
       mockUsdc.address, // _usdc (cast to SPL_ERC20 by Solidity)
-      mockWeth.address, // _weth (cast to SPL_ERC20 by Solidity)
       // CctpParams — all fields now required including program IDs.
       // messageTransmitterEventAuthority added for the post-#266 emulator's
       // ix_store filter on the inner send_message_with_caller CPI.
@@ -67,11 +70,6 @@ describe("RomeBridgeWithdraw — error paths", () => {
         systemProgram: ZERO_BYTES32,
         messageTransmitterConfig: ZERO_BYTES32,
         tokenMessengerConfig: ZERO_BYTES32,
-        // v6: per-destination allowlist replaces the single remote. Domain 0
-        // listed so the legacy 2-arg burnUSDC path (routes to domain 0)
-        // reaches the amount/balance guards these tests exercise.
-        domains: [0],
-        remoteTokenMessengers: ["0x" + "aa".repeat(32)],
         tokenMinter: ZERO_BYTES32,
         localTokenUsdc: ZERO_BYTES32,
         senderAuthorityPda: ZERO_BYTES32,
@@ -87,41 +85,31 @@ describe("RomeBridgeWithdraw — error paths", () => {
         clockSysvar: DUMMY_PROGRAM,
         rentSysvar: DUMMY_PROGRAM,
         config: ZERO_BYTES32,
-        custody: ZERO_BYTES32,
         authoritySigner: ZERO_BYTES32,
         custodySigner: ZERO_BYTES32,
         bridgeConfig: ZERO_BYTES32,
         feeCollector: ZERO_BYTES32,
         emitter: ZERO_BYTES32,
         sequence: ZERO_BYTES32,
-        wrappedMeta: ZERO_BYTES32,
-        targetChain: 2,
       },
-      { admin: "0x00000000000000000000000000000000000000a1", targetChains: [], assetWrappers: [] }, // generic-Wormhole config (unused by these guard tests; admin non-zero to satisfy ctor)
+      { admin: user, targetChains: [], assetWrappers: [] }, // generic-Wormhole config (unused by these guard tests); the deployer is the owner
+      GUARDIAN,
     ]);
+    // The legacy 2-arg burnUSDC routes to domain 0, so enable it (the way the
+    // owner does on a live chain) to let these tests reach the amount/balance guards.
+    await plantCircleAccount(cpi, 0, { owner: DUMMY_PROGRAM, program: DUMMY_PROGRAM });
+    await withdraw.write.enableCctpDomain([0, 1]);
   });
 
   // ── Test 1: AmountExceedsUint64 fires when amount > 2^64-1 ──────────────────
   //
   // amount = 2^64 exceeds type(uint64).max (= 2^64 - 1).
-  // The range check is the FIRST guard in burnUSDC / burnETH (Phase 1.4 removed
-  // the sysvar-sentinel guard, so AmountExceedsUint64 now fires first).
+  // The range check is the first guard after the destination checks in burnUSDC.
 
   it("reverts with AmountExceedsUint64 for burnUSDC when amount exceeds uint64", async () => {
     const tooLarge = 2n ** 64n; // = type(uint64).max + 1
     await assert.rejects(
       () => withdraw.write.burnUSDC([tooLarge, user]),
-      (err: any) => {
-        const msg: string = err?.message ?? "";
-        return msg.includes("AmountExceedsUint64");
-      }
-    );
-  });
-
-  it("reverts with AmountExceedsUint64 for burnETH when amount exceeds uint64", async () => {
-    const tooLarge = 2n ** 64n;
-    await assert.rejects(
-      () => withdraw.write.burnETH([tooLarge, user]),
       (err: any) => {
         const msg: string = err?.message ?? "";
         return msg.includes("AmountExceedsUint64");
@@ -139,16 +127,6 @@ describe("RomeBridgeWithdraw — error paths", () => {
   it("reverts with InsufficientBalance for burnUSDC when user has zero balance", async () => {
     await assert.rejects(
       () => withdraw.write.burnUSDC([1_000_000n, user]),
-      (err: any) => {
-        const msg: string = err?.message ?? "";
-        return msg.includes("InsufficientBalance");
-      }
-    );
-  });
-
-  it("reverts with InsufficientBalance for burnETH when user has zero balance", async () => {
-    await assert.rejects(
-      () => withdraw.write.burnETH([1_000_000n, user]),
       (err: any) => {
         const msg: string = err?.message ?? "";
         return msg.includes("InsufficientBalance");
@@ -179,11 +157,9 @@ describe("RomeBridgeWithdraw — error paths", () => {
 
   // ── Test 4: Immutables are set correctly ─────────────────────────────────────
 
-  it("stores usdcMint and wethMint immutables from mock wrappers", async () => {
+  it("stores the usdcMint immutable from the mock wrapper", async () => {
     const usdcMint = await withdraw.read.usdcMint();
-    const wethMint = await withdraw.read.wethMint();
     assert.strictEqual(usdcMint.toLowerCase(), MOCK_MINT.toLowerCase());
-    assert.strictEqual(wethMint.toLowerCase(), MOCK_MINT.toLowerCase());
   });
 
   // ── Solana SPL egress (flow B: EVM/MetaMask → arbitrary Solana recipient) ──
@@ -209,67 +185,18 @@ describe("RomeBridgeWithdraw — error paths", () => {
     );
   });
 
-  it("burnETH reverts ZeroRecipient when recipient is address(0)", async () => {
-    // The guard must fire BEFORE the amount/balance checks (mirrors _burnUSDC /
-    // burnToWormhole), otherwise InsufficientBalance masks a zero-address burn
-    // whose Wormhole VAA (targetAddress = 0) would be permanently unredeemable.
-    await assert.rejects(
-      () => withdraw.write.burnETH([1n, "0x0000000000000000000000000000000000000000"]),
-      (err: any) => ((err?.message ?? "") as string).includes("ZeroRecipient")
-    );
-  });
-
-  it("burnUSDC reverts UnsupportedDestinationDomain for Solana domain 5 even when it is allowlisted", async () => {
+  it("burnUSDC reverts UnsupportedDestinationDomain for Solana domain 5, even when Circle has an account for it", async () => {
     // Domain 5 = Solana. burnUSDC's address-typed API left-pads an EVM address
-    // into mintRecipient, which is not a valid Solana token account — a burn to
-    // domain 5 would carry an unredeemable mintRecipient. Even a deployment that
-    // mistakenly maps domain 5 must fail closed. The default fixture maps only
-    // domain 0, so deploy a dedicated instance with domain 5 mapped to
-    // discriminate the new guard from the pre-existing unmapped-domain revert.
-    const mockUsdc = await viem.deployContract("MockSplErc20", [MOCK_MINT]);
-    const mockWeth = await viem.deployContract("MockSplErc20", [MOCK_MINT]);
-    const w: any = await viem.deployContract("RomeBridgeWithdraw", [
-      "0x0000000000000000000000000000000000000000",
-      mockUsdc.address,
-      mockWeth.address,
-      {
-        tokenMessengerProgram: DUMMY_PROGRAM,
-        messageTransmitterProgram: DUMMY_PROGRAM,
-        splTokenProgram: DUMMY_PROGRAM,
-        systemProgram: ZERO_BYTES32,
-        messageTransmitterConfig: ZERO_BYTES32,
-        tokenMessengerConfig: ZERO_BYTES32,
-        // Domain 5 (Solana) mapped ON PURPOSE — the guard must still reject it.
-        domains: [0, 5],
-        remoteTokenMessengers: ["0x" + "aa".repeat(32), "0x" + "bb".repeat(32)],
-        tokenMinter: ZERO_BYTES32,
-        localTokenUsdc: ZERO_BYTES32,
-        senderAuthorityPda: ZERO_BYTES32,
-        eventAuthority: ZERO_BYTES32,
-        messageTransmitterEventAuthority: ZERO_BYTES32,
-      },
-      {
-        tokenBridgeProgram: DUMMY_PROGRAM,
-        coreProgram: DUMMY_PROGRAM,
-        splTokenProgram: DUMMY_PROGRAM,
-        systemProgram: ZERO_BYTES32,
-        clockSysvar: DUMMY_PROGRAM,
-        rentSysvar: DUMMY_PROGRAM,
-        config: ZERO_BYTES32,
-        custody: ZERO_BYTES32,
-        authoritySigner: ZERO_BYTES32,
-        custodySigner: ZERO_BYTES32,
-        bridgeConfig: ZERO_BYTES32,
-        feeCollector: ZERO_BYTES32,
-        emitter: ZERO_BYTES32,
-        sequence: ZERO_BYTES32,
-        wrappedMeta: ZERO_BYTES32,
-        targetChain: 2,
-      },
-      { admin: "0x00000000000000000000000000000000000000a1", targetChains: [], assetWrappers: [] },
-    ]);
+    // into mintRecipient, which is not a valid Solana token account, so a burn to
+    // domain 5 would be unredeemable. enableCctpDomain refuses 5 even when
+    // Circle's record exists, and the burn then fails as an unlisted domain.
+    await plantCircleAccount(cpi, 5, { owner: DUMMY_PROGRAM, program: DUMMY_PROGRAM });
     await assert.rejects(
-      () => w.write.burnUSDC([1n, user, 5]),
+      () => withdraw.write.enableCctpDomain([5, 1]),
+      (err: any) => ((err?.message ?? "") as string).includes("UnsupportedDestinationDomain")
+    );
+    await assert.rejects(
+      () => withdraw.write.burnUSDC([1n, user, 5]),
       (err: any) => ((err?.message ?? "") as string).includes("UnsupportedDestinationDomain")
     );
   });

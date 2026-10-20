@@ -9,7 +9,7 @@
 // The 17-account deposit_for_burn layout needs:
 //   - message_transmitter_config  (seeds ["message_transmitter"] under MessageTransmitter)
 //   - token_messenger             (seeds ["token_messenger"] under TokenMessengerMinter)
-//   - remote_token_messenger      (seeds ["remote_token_messenger", u32le(domain)] under TokenMessengerMinter)
+//   - remote_token_messenger      (seeds ["remote_token_messenger", ascii(domain)] under TokenMessengerMinter)
 //     domain="0" for Ethereum, encoded as the ASCII STRING "0" (not a u32 LE!)
 //   - token_minter                (seeds ["token_minter"] under TokenMessengerMinter)
 //   - local_token                 (seeds ["local_token", mint] under TokenMessengerMinter)
@@ -42,7 +42,7 @@ function u32Le(n: number): Buffer {
 export interface CctpPdas {
   cctpMessageTransmitterConfig: `0x${string}`;
   cctpTokenMessengerConfig: `0x${string}`;
-  /** Destination allowlist, parallel arrays (v6 multi-destination). */
+  /** The domains asked for, with their PDAs (parallel arrays); empty for a deploy. */
   cctpDomains: number[];
   cctpRemoteTokenMessengers: `0x${string}`[];
   cctpTokenMinter: `0x${string}`;
@@ -52,7 +52,25 @@ export interface CctpPdas {
   cctpMessageTransmitterEventAuthority: `0x${string}`;
 }
 
-export function deriveCctpAccounts(usdcMint: PublicKey, domains: number[]): CctpPdas {
+/// `domains` is optional: RomeBridgeWithdraw v13 takes no destination list at
+/// deploy time. enable-cctp-domains.ts passes the domains it is about to enable
+/// so it can print the PDA the contract will derive for each, as a cross-check.
+/**
+ * The RemoteTokenMessenger PDA Circle keeps for `domain`. NB: Circle's seed
+ * encoding — the domain is the ASCII STRING form of the number ("0", "15"), not
+ * a LE u32. Verified against the circlefin/solana-cctp-contracts source AND a
+ * landed v2 burn:
+ *   seeds = [b"remote_token_messenger", destination_domain.to_string().as_bytes()]
+ * RomeBridgeWithdraw v13 derives the same PDA on chain in `enableCctpDomain`.
+ */
+export function deriveRemoteTokenMessenger(domain: number): PublicKey {
+  return pda(
+    [Buffer.from("remote_token_messenger"), Buffer.from(String(domain))],
+    CCTP_TOKEN_MESSENGER_ID,
+  );
+}
+
+export function deriveCctpAccounts(usdcMint: PublicKey, domains: number[] = []): CctpPdas {
   const messageTransmitterConfig = pda(
     [Buffer.from("message_transmitter")],
     CCTP_MESSAGE_TRANSMITTER_ID
@@ -61,16 +79,7 @@ export function deriveCctpAccounts(usdcMint: PublicKey, domains: number[]): Cctp
     [Buffer.from("token_messenger")],
     CCTP_TOKEN_MESSENGER_ID
   );
-  // NB: Circle CCTP seed encoding — domain is the ASCII STRING form of the
-  // destination domain number, not a LE u32 ("0", "15", …). Verified against
-  // the circlefin/solana-cctp-contracts source AND a landed v2 burn:
-  //   seeds = [b"remote_token_messenger", destination_domain.to_string().as_bytes()]
-  const remoteTokenMessengers = domains.map((d) =>
-    pda(
-      [Buffer.from("remote_token_messenger"), Buffer.from(String(d))],
-      CCTP_TOKEN_MESSENGER_ID
-    )
-  );
+  const remoteTokenMessengers = domains.map(deriveRemoteTokenMessenger);
   const tokenMinter = pda([Buffer.from("token_minter")], CCTP_TOKEN_MESSENGER_ID);
   const localTokenUsdc = pda(
     [Buffer.from("local_token"), usdcMint.toBuffer()],

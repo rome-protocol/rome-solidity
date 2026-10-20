@@ -26,44 +26,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import hardhat from "hardhat";
+import { ADDR, CCTP, FORWARDER, GUARDIAN, PK, WH, enableDomain, installMock } from "./helpers/v13.js";
 
-const HELPER_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000009" as const;
-const CPI_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000008" as const;
-const SYSTEM_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000007" as const;
-
-const ZERO = "0x" + "00".repeat(32);
-const PK = (n: number) => ("0x" + n.toString(16).padStart(2, "0").repeat(32)) as `0x${string}`;
-const ADDR = (n: number) => ("0x" + n.toString(16).padStart(40, "0")) as `0x${string}`;
 const ETH_RECIPIENT = ADDR(0xaaa);
-const FORWARDER = "0x0000000000000000000000000000000000000000" as const;
 
 // Measured on Hadrian (Solana devnet), 2026-09-21: CCTP messageSentEventData
 // rent per burn; Wormhole message rent (2,477,770) + the 10-lamport core fee.
 const CCTP_RENT = 2_824_480n;
 const WORMHOLE_RENT = 2_477_780n;
-
-const CCTP = {
-  tokenMessengerProgram: PK(1),
-  messageTransmitterProgram: PK(2),
-  splTokenProgram: PK(3),
-  systemProgram: ZERO,
-  messageTransmitterConfig: PK(4),
-  tokenMessengerConfig: PK(5),
-  tokenMinter: PK(6),
-  localTokenUsdc: PK(7),
-  domains: [0],
-  remoteTokenMessengers: [PK(8)],
-  senderAuthorityPda: PK(10),
-  eventAuthority: PK(11),
-  messageTransmitterEventAuthority: PK(12),
-};
-const WH = {
-  tokenBridgeProgram: PK(20), coreProgram: PK(21), splTokenProgram: PK(3),
-  systemProgram: ZERO, clockSysvar: PK(22), rentSysvar: PK(23),
-  config: PK(24), custody: PK(25), authoritySigner: PK(26), custodySigner: PK(27),
-  bridgeConfig: PK(28), feeCollector: PK(29), emitter: PK(30), sequence: PK(31),
-  wrappedMeta: PK(32), targetChain: 10002,
-};
 
 const SOURCE = readFileSync(
   path.join(path.dirname(fileURLToPath(import.meta.url)), "../../contracts/bridge/RomeBridgeWithdraw.sol"),
@@ -83,7 +53,6 @@ describe("RomeBridgeWithdraw — message-account rent billed to the user", () =>
   describe("structural — source is ground truth", () => {
     for (const fn of [
       "function _burnUSDC(",
-      "function burnETH(",
       "function burnToWormhole(",
       "function transferNativeToWormhole(",
     ]) {
@@ -120,14 +89,7 @@ describe("RomeBridgeWithdraw — message-account rent billed to the user", () =>
     before(async function () {
       conn = await hardhat.network.connect();
       viem = conn.viem;
-      const mockProto = await viem.deployContract("BridgePrecompileMock");
-      const client = await viem.getPublicClient();
-      const code = await client.getCode({ address: mockProto.address });
-      for (const addr of [HELPER_PROGRAM_ADDRESS, CPI_PROGRAM_ADDRESS, SYSTEM_PROGRAM_ADDRESS]) {
-        await conn.provider.request({ method: "hardhat_setCode", params: [addr, code] });
-      }
-      helper = await viem.getContractAt("BridgePrecompileMock", HELPER_PROGRAM_ADDRESS);
-      cpi = await viem.getContractAt("BridgePrecompileMock", CPI_PROGRAM_ADDRESS);
+      ({ helper, cpi } = await installMock(conn));
       const wallets = await viem.getWalletClients();
       ownerWallet = wallets[0];
       userWallet = wallets[1];
@@ -139,7 +101,8 @@ describe("RomeBridgeWithdraw — message-account rent billed to the user", () =>
       usdc = await viem.deployContract("MockSplErc20", [PK(40)]);
       weth = await viem.deployContract("MockSplErc20", [PK(41)]);
       const whg = { admin: ownerWallet.account.address, targetChains: [10002], assetWrappers: [weth.address] };
-      bridge = await viem.deployContract("RomeBridgeWithdraw", [FORWARDER, usdc.address, weth.address, CCTP, WH, whg]);
+      bridge = await viem.deployContract("RomeBridgeWithdraw", [FORWARDER, usdc.address, CCTP, WH, whg, GUARDIAN]);
+      await enableDomain(bridge, cpi, 0, 1, {}, { account: ownerWallet.account });
     });
 
     async function authorizePull(wrapper: any, mint: `0x${string}`, amount: bigint) {
@@ -166,12 +129,6 @@ describe("RomeBridgeWithdraw — message-account rent billed to the user", () =>
       await authorizePull(usdc, PK(40), 1_000_000n);
       await bridge.write.burnUSDC([1_000_000n, ETH_RECIPIENT], { account: userWallet.account });
       await assertSwappedBeforeCpi(CCTP_RENT);
-    });
-
-    it("burnETH swaps the Wormhole rent onto the bridge PDA before transfer_wrapped", async function () {
-      await authorizePull(weth, PK(41), 5_000_000n);
-      await bridge.write.burnETH([5_000_000n, ETH_RECIPIENT], { account: userWallet.account });
-      await assertSwappedBeforeCpi(WORMHOLE_RENT);
     });
 
     it("burnToWormhole swaps the Wormhole rent onto the bridge PDA before the CPI", async function () {

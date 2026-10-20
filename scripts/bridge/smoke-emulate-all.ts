@@ -29,7 +29,6 @@ async function main() {
   const sel = (sig: string) => "0x" + keccak256(toUtf8Bytes(sig)).slice(2, 10);
   const burnUsdcSel  = sel("burnUSDC(uint256,address)");
   const approveSplSel = sel("approve_spl(address,uint64,bytes32)");
-  const burnEthSel   = sel("burnETH(uint256,address)");
   const HELPER_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000009" as `0x${string}`;
 
   const recipient = wallet.address.slice(2).toLowerCase().padStart(64, "0");
@@ -53,10 +52,10 @@ async function main() {
     "approve_spl (bridge delegate)",
     await mk(HELPER_PROGRAM_ADDRESS, approveSplSel + WITHDRAW.slice(2).toLowerCase().padStart(64, "0") + amountHex + wethMint.slice(2).padStart(64, "0"))
   );
-  // burnETH cannot be emulated standalone: it pulls the caller's wETH into
-  // the bridge's own ATA, which needs the delegate grant above to already be
-  // live on-chain (a fresh emulation doesn't persist it). Real E2E:
-  // scripts/bridge/submit-burnETH.ts (sends both txs).
-  console.log(`  burnETH (Wh out)       SKIP — requires prior approve_spl, see submit-burnETH.ts`);
+  // burnToWormhole cannot be emulated standalone: it pulls the caller's wETH
+  // into the bridge's own ATA, which needs the delegate grant above to already
+  // be live on-chain (a fresh emulation doesn't persist it). Real E2E:
+  // scripts/bridge/outbound-wh-e2e.ts (sends both txs).
+  console.log(`  burnToWormhole (Wh out) SKIP — requires prior approve_spl, see outbound-wh-e2e.ts`);
 }
 main().catch(e => console.error(e.message || e));

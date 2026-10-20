@@ -295,7 +295,7 @@ interface IHelperProgram {
     // Collapses the Solidity-side 2-call composition
     // (rome_evm_program_id() + find_program_address(seeds)). Used by
     // RomeEVMAccount.pda_with_salt (called by RomeBridgeWithdraw.burnUSDC /
-    // burnETH for the CCTP messageSentEventData / Wormhole messageAccount
+    // burnToWormhole for the CCTP messageSentEventData / Wormhole messageAccount
     // PDA derivations). Shipped in PR #364.
     function pda_with_salt(address user, bytes32 salt) external view returns (bytes32);
     // ata owned by external pda. Gas token mint is used.

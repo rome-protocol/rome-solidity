@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {ERC2771Context} from "@openzeppelin/contracts/metatx/ERC2771Context.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {SPL_ERC20} from "../erc20spl/erc20spl.sol";
 import {CCTPV2Lib} from "./ICCTPV2.sol";
 import {PdaDeriver} from "../cpi/PdaDeriver.sol";
@@ -17,24 +18,31 @@ import {UserPda} from "../cpi/UserPda.sol";
 /// @notice Accepts rToken input on Rome EVM, emits outbound CCTP or Wormhole
 ///         message via CPI signed as the user's Rome-derived PDA.
 /// @dev CCTP path:     burnUSDC → CCTP **v2** deposit_for_burn CPI (path=0),
-///                     per-call destination domain (v6). v2 is required for
+///                     per-call destination domain. v2 is required for
 ///                     v2-only destinations (Monad = 15) and is the
 ///                     go-forward protocol for every destination.
-///      Wormhole path: burnETH  → transfer_tokens CPI  (path=1)
+///      Wormhole path: burnToWormhole / transferNativeToWormhole (path=1)
+///
+///      v13 (13.0.0): the CCTP destination list is owner-managed after
+///      deployment (`enableCctpDomain` / `disableCctpDomain`), so a new CCTP
+///      chain never needs a redeploy. The legacy ETH-only `burnETH` path is
+///      gone; `burnToWormhole` covers wETH like any other asset.
 ///
 ///      All Solana program IDs, sysvars, and PDAs are supplied at construction
 ///      from the deploy script. No pubkeys are hardcoded in this contract —
 ///      it is fully network-agnostic.
+///
+///      The constructor refuses a non-zero ERC-2771 forwarder: a forwarder
+///      could append any user's address and burn that user's balance (every
+///      user keeps a standing delegate to this contract). With a zero
+///      forwarder `_msgSender()` is `msg.sender`. Admin authority uses
+///      `msg.sender` directly anyway, so it never depends on that.
 contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
+    /// @notice Contract version, bumped with every behaviour change.
+    string public constant VERSION = "13.0.0";
+
     SPL_ERC20 public immutable usdcWrapper;
-    SPL_ERC20 public immutable wethWrapper;
     bytes32 public immutable usdcMint;
-    bytes32 public immutable wethMint;
-    // wethDecimals cached at construction (read from `_weth.decimals()` which
-    // is set as immutable on the SPL_ERC20 wrapper). Used by `burnETH` to
-    // feed SPL approve_checked through HelperProgram.approve_spl_raw_delegate
-    // without an on-chain mint read at each call.
-    uint8 public immutable wethDecimals;
 
     // -------------------------------------------------------------------------
     // CCTP Solana-side immutables (set at construction from deploy script)
@@ -61,32 +69,73 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     bytes32 public immutable whClockSysvar;
     bytes32 public immutable whRentSysvar;
     bytes32 public immutable wormholeConfig;
-    bytes32 public immutable wormholeCustody;
     bytes32 public immutable wormholeAuthoritySigner;
     bytes32 public immutable wormholeCustodySigner;
     bytes32 public immutable wormholeBridgeConfig;
     bytes32 public immutable wormholeFeeCollector;
     bytes32 public immutable wormholeEmitter;
     bytes32 public immutable wormholeSequence;
-    bytes32 public immutable wormholeWrappedMeta;
-    /// @notice Wormhole destination chain id for outbound ETH transfers.
-    /// @dev Set at construction per deploy-network. Wormhole chain ids are
-    ///      distinct on mainnet and testnet: Ethereum mainnet = 2, Sepolia =
-    ///      10002. Keeping this as a constructor param lets the same contract
-    ///      bytecode deploy to testnet or mainnet without touching the source.
-    uint16 public immutable wormholeTargetChain;
 
     // -------------------------------------------------------------------------
-    // Per-user nonce for transient message PDAs
+    // CCTP destinations (owner-managed since v13)
     // -------------------------------------------------------------------------
 
-    /// @notice CCTP destination allowlist: Circle domain → remote_token_messenger
-    ///         PDA (["remote_token_messenger", dec(domain)] under the v2 TMM).
-    ///         Populated once at construction from registry-fed deploy config —
-    ///         doubling as the per-destination account CCTP requires AND the
-    ///         fat-finger guard (unlisted domain burns revert instead of
-    ///         producing an unredeemable message).
-    mapping(uint32 => bytes32) public cctpRemoteTokenMessengers;
+    /// @notice Recipient encodings a CCTP destination can use.
+    ///         NONE (0) is the value of a domain that is not enabled.
+    ///         EVM (1): the recipient is a 20-byte address, left-padded to 32 bytes.
+    ///         RAW32 (2): the recipient is a full 32-byte value (Sui, Aptos and the
+    ///         like). Only `burnUSDCToBytes32` can burn to these.
+    uint8 public constant RECIPIENT_NONE = 0;
+    uint8 public constant RECIPIENT_EVM = 1;
+    uint8 public constant RECIPIENT_RAW32 = 2;
+
+    /// @dev Circle domains this contract's burn format cannot serve, so
+    ///      `enableCctpDomain` refuses them even though Circle has a
+    ///      RemoteTokenMessenger for them. A real messenger proves Circle
+    ///      registered the chain, not that this burn is compatible with it.
+    ///      5  Solana: an address-typed burn there is unredeemable.
+    ///      17 BNB Smart Chain: Circle moves USYC there, not USDC, and this
+    ///         contract burns USDC only.
+    ///      27 Stellar: Circle requires its CctpForwarder as both mint recipient
+    ///         and destination caller, with the user's address in hook data; this
+    ///         contract sends the user's key as recipient with no destination
+    ///         caller and no hook data, so funds could be stuck for good.
+    ///      Supporting any of them needs a dedicated, tested encoding path in a
+    ///      later version.
+    uint32 public constant DOMAIN_SOLANA = 5;
+    uint32 public constant DOMAIN_BNB = 17;
+    uint32 public constant DOMAIN_STELLAR = 27;
+
+    /// @notice CCTP destination allowlist: Circle domain → RemoteTokenMessenger
+    ///         PDA (["remote_token_messenger", ascii(domain)] under the v2 TMM).
+    ///         Filled by `enableCctpDomain` after the contract has read Circle's
+    ///         own record of that domain. It is both the per-destination account
+    ///         CCTP requires and the guard that stops a burn to a domain Rome has
+    ///         not switched on. Zero = not enabled.
+    /// @dev The PDA and the recipient kind live in one struct on purpose: a
+    ///      burn reads both, and on Rome every distinct storage slot a call
+    ///      touches can pull another storage account into the transaction. In
+    ///      one struct the two values sit in consecutive slots. The two public
+    ///      views below keep the ABI of the separate mappings.
+    struct CctpDest {
+        bytes32 remoteTokenMessenger; // zero = not enabled
+        uint8 kind;                   // RECIPIENT_*
+    }
+    mapping(uint32 => CctpDest) private _cctpDest;
+
+    /// @notice The RemoteTokenMessenger PDA of an enabled domain (zero if none).
+    function cctpRemoteTokenMessengers(uint32 domain) external view returns (bytes32) {
+        return _cctpDest[domain].remoteTokenMessenger;
+    }
+
+    /// @notice How the recipient of an enabled domain is encoded (RECIPIENT_*).
+    function cctpRecipientKind(uint32 domain) external view returns (uint8) {
+        return _cctpDest[domain].kind;
+    }
+
+    // Enumerable set of enabled domains: array plus 1-based index (0 = absent).
+    uint32[] private _cctpDomains;
+    mapping(uint32 => uint256) private _cctpDomainIndex;
 
     /// @notice Per-user burn counter used to derive unique message PDAs per tx.
     /// @dev We can't use block.number in the salt — on Rome EVM, block.number
@@ -101,8 +150,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
 
     /// @notice Generic-Wormhole target-chain allowlist: Wormhole chain id →
     ///         allowed. Fail-closed — `burnToWormhole` to an unlisted chain
-    ///         reverts. Populated once at construction from deploy config;
-    ///         mirrors `cctpRemoteTokenMessengers`' dual role (config + guard).
+    ///         reverts. Seeded at construction and managed by the owner.
     mapping(uint16 => bool) public wormholeTargetChainAllowed;
 
     /// @notice Generic-Wormhole asset allowlist, keyed on the SPL MINT (not the
@@ -113,19 +161,43 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ///         `wormholeAssetAllowed(address)` view below — callers are unchanged.
     mapping(bytes32 => bool) public wormholeMintAllowed;
 
-    /// @notice Admin of the Wormhole allowlist setters. Seeded at construction
-    ///         from `WormholeGenericConfig.admin`; transferable (cold-ledger
-    ///         handover, matching this repo's mainnet admin pattern). The ctor
-    ///         allowlist is a SEED — the owner enables further assets/chains on
-    ///         the live contract (no redeploy per addition). Only gates the two
-    ///         allowlist setters, ensureBridgeAta and ownership transfer;
-    ///         every value path
-    ///         (burnUSDC/burnETH/burnToWormhole/bridgeOutToSolana) is
-    ///         permissionless and unaffected.
+    // -------------------------------------------------------------------------
+    // Roles and pause state
+    // -------------------------------------------------------------------------
+
+    /// @notice Admin: enables CCTP domains, manages the Wormhole allowlists and
+    ///         message rents, unpauses, sets the guardian, creates bridge ATAs and
+    ///         hands ownership on (two steps). Set in the constructor, so there is
+    ///         no hand-over gap. Every value path (burnUSDC, burnToWormhole,
+    ///         transferNativeToWormhole, bridgeOutToSolana) is permissionless.
     address public owner;
 
+    /// @notice Owner-to-be, set by `transferOwnership`, cleared when accepted.
+    address public pendingOwner;
+
+    /// @notice Stop-only key (a hot ops key). It can pause a rail and disable a
+    ///         CCTP domain. It cannot unpause, enable anything or move funds.
+    ///         address(0) means no guardian.
+    address public guardian;
+
+    /// @notice The three outbound rails that can be paused one at a time.
+    enum Rail {
+        CCTP,       // burnUSDC (both overloads), burnUSDCToBytes32
+        WORMHOLE,   // burnToWormhole, transferNativeToWormhole
+        TO_SOLANA   // bridgeOutToSolana, ensureRecipientAta
+    }
+
+    /// @dev Bit `1 << uint8(rail)` is set while that rail is paused.
+    uint8 private _pausedMask;
+
+    /// @dev Admin checks use msg.sender on purpose, see the contract notes.
     modifier onlyOwner() {
-        if (_msgSender() != owner) revert NotOwner(_msgSender());
+        if (msg.sender != owner) revert NotOwner(msg.sender);
+        _;
+    }
+
+    modifier whenNotPaused(Rail rail) {
+        if (_pausedMask & (1 << uint8(rail)) != 0) revert RailPaused(rail);
         _;
     }
 
@@ -136,20 +208,51 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     error InsufficientBalance(address user, uint256 requested, uint256 available);
     error CpiFailed(bytes reason);
     error UnsupportedDestinationDomain(uint32 domain);
-    error DomainConfigLengthMismatch();
     error ZeroRecipient();
     error UnsupportedTargetChain(uint16 targetChain);
     error UnsupportedAssetWrapper(address assetWrapper);
     error NotOwner(address caller);
+    error NotOwnerOrGuardian(address caller);
+    error NotPendingOwner(address caller);
     error ZeroOwner();
+    error ForwarderNotAllowed(address forwarder);
     error SubGranularityAmount(uint256 amount, uint256 granularity);
+    error RailPaused(Rail rail);
+    error RailNotPaused(Rail rail);
+    error InvalidRecipientKind(uint8 kind);
+    error RecipientKindMismatch(uint32 domain, uint8 domainKind, uint8 requiredKind);
+    error CctpDomainNotEnabled(uint32 domain);
+    /// @dev Circle's RemoteTokenMessenger account for the domain is missing,
+    ///      owned by another program, has the wrong discriminator or length,
+    ///      or records a different domain.
+    error InvalidCctpAccount(uint32 domain, bytes32 account);
+    /// @dev An EVM-kind domain whose Circle messenger is not a 20-byte address
+    ///      (for example Sui or Aptos): a burn there would be unrecoverable.
+    error MessengerNotEvmShaped(uint32 domain, bytes32 messenger);
+    /// @dev A RAW32-kind domain whose Circle messenger IS a 20-byte address
+    ///      (12 leading zero bytes): an EVM chain. Its receiver keeps only the
+    ///      low 20 bytes of the recipient, so a 32-byte recipient can truncate to
+    ///      a different address or to zero, and the burned USDC could not be
+    ///      redeemed. EVM chains stay on the address entry points.
+    error MessengerNotRaw32Shaped(uint32 domain, bytes32 messenger);
 
     // -------------------------------------------------------------------------
     // Admin events
     // -------------------------------------------------------------------------
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferStarted(address indexed owner, address indexed pendingOwner);
+    event GuardianSet(address indexed previousGuardian, address indexed newGuardian);
     event WormholeAssetAllowedSet(address indexed assetWrapper, bool allowed);
     event WormholeTargetChainAllowedSet(uint16 indexed targetChain, bool allowed);
+    event CctpDomainEnabled(
+        uint32 indexed domain,
+        uint8 recipientKind,
+        bytes32 remoteTokenMessengerPda,
+        bytes32 circleMessenger
+    );
+    event CctpDomainDisabled(uint32 indexed domain, address indexed by);
+    event RailPausedSet(Rail indexed rail, address indexed by);
+    event RailUnpausedSet(Rail indexed rail, address indexed by);
 
     // -------------------------------------------------------------------------
     // Constructor params structs (avoids stack-too-deep with many constructor args)
@@ -157,6 +260,8 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
 
     /// @notice CCTP-path Solana accounts. Includes all program IDs and PDAs needed
     ///         for the deposit_for_burn CPI. All fields come from the deploy script.
+    ///         Destination domains are NOT part of the constructor: the owner
+    ///         enables them afterwards with `enableCctpDomain`.
     struct CctpParams {
         /// @dev CCTP **v2** Token Messenger Minter Solana program ID
         ///      (CCTPV2vPZJS2u2BBsUoscuikbYjnpFmbFsvVuJdgUMQe)
@@ -168,16 +273,11 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 splTokenProgram;
         /// @dev Solana System Program (11111111111111111111111111111111 → zero bytes)
         bytes32 systemProgram;
-        // PDAs — derived per-deployment in Phase 1.5
+        // PDAs — derived per-deployment
         bytes32 messageTransmitterConfig;
         bytes32 tokenMessengerConfig;
         bytes32 tokenMinter;
         bytes32 localTokenUsdc;
-        /// @dev Destination allowlist, parallel arrays: Circle domain ids and
-        ///      their ["remote_token_messenger", dec(domain)] PDAs under the
-        ///      v2 TMM. Derived by the deploy script per network.
-        uint32[] domains;
-        bytes32[] remoteTokenMessengers;
         /// @dev ["sender_authority"] PDA under Token Messenger Minter program
         bytes32 senderAuthorityPda;
         /// @dev TMM's __event_authority — for outer event_cpi
@@ -189,7 +289,8 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     }
 
     /// @notice Wormhole-path Solana accounts. Includes all program IDs, sysvars, and
-    ///         PDAs needed for the transfer_tokens CPI. All fields come from the deploy script.
+    ///         PDAs needed for the transfer CPIs. All fields come from the deploy script.
+    ///         Per-mint accounts (wrapped_meta, custody) are derived at call time.
     struct WormholeParams {
         /// @dev Wormhole Token Bridge program ID (wormDTUJ6AWPNvk59vGQbDvGJmqbDTdgWgAqcLBCgUb)
         bytes32 tokenBridgeProgram;
@@ -203,27 +304,23 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 clockSysvar;
         /// @dev Rent sysvar (SysvarRent111111111111111111111111111111111)
         bytes32 rentSysvar;
-        // PDAs — derived per-deployment in Phase 1.5
+        // PDAs — derived per-deployment
         bytes32 config;
-        bytes32 custody;          // kept for back-compat; not used by TransferWrapped path
         bytes32 authoritySigner;
-        bytes32 custodySigner;    // kept for back-compat; not used by TransferWrapped path
+        bytes32 custodySigner;
         bytes32 bridgeConfig;
         bytes32 feeCollector;
         bytes32 emitter;
         bytes32 sequence;
-        bytes32 wrappedMeta;      // NEW: [b"meta", wethMint] PDA under Token Bridge
-        uint16 targetChain;       // Wormhole destination chain id: 2 mainnet ETH, 10002 Sepolia
     }
 
-    /// @notice Generic-Wormhole config: per-call target-chain allowlist +
-    ///         registered asset wrappers. Enables asset-agnostic +
-    ///         multi-destination Wormhole egress (`burnToWormhole`), closing
-    ///         the inbound⇒outbound symmetry for non-ETH assets (LSTs etc.).
-    ///         Independent of the legacy ETH-only `burnETH` path (which keeps
-    ///         its own immutables); nothing is allowed unless listed here.
+    /// @notice Generic-Wormhole config and the owner: per-call target-chain
+    ///         allowlist + registered asset wrappers (`burnToWormhole`,
+    ///         `transferNativeToWormhole`). Both lists are only a SEED; the owner
+    ///         manages them afterwards. Pass empty lists to start with Wormhole
+    ///         switched off.
     struct WormholeGenericConfig {
-        address admin;            // owner of the post-deploy allowlist setters (see `owner`)
+        address admin;            // the owner (see `owner`)
         uint16[] targetChains;    // Wormhole chain ids allowed as burnToWormhole destinations
         address[] assetWrappers;  // SPL_ERC20 wrappers allowed as burnToWormhole assets
     }
@@ -234,16 +331,17 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     constructor(
         address forwarder,
         SPL_ERC20 _usdc,
-        SPL_ERC20 _weth,
         CctpParams memory cctp,
         WormholeParams memory wh,
-        WormholeGenericConfig memory whg
+        WormholeGenericConfig memory whg,
+        address _guardian
     ) ERC2771Context(forwarder) {
+        // A forwarder could append any address to calldata and burn that user's
+        // balance (users keep a standing delegate to this contract), so none is
+        // accepted. The parameter stays so the constructor ABI is unchanged.
+        if (forwarder != address(0)) revert ForwarderNotAllowed(forwarder);
         usdcWrapper = _usdc;
-        wethWrapper = _weth;
         usdcMint = _usdc.mint_id();
-        wethMint = _weth.mint_id();
-        wethDecimals = _weth.decimals();
         // CCTP
         cctpTokenMessengerProgram     = cctp.tokenMessengerProgram;
         cctpMessageTransmitterProgram = cctp.messageTransmitterProgram;
@@ -252,12 +350,6 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         cctpMessageTransmitterConfig  = cctp.messageTransmitterConfig;
         cctpTokenMessengerConfig      = cctp.tokenMessengerConfig;
         cctpTokenMinter               = cctp.tokenMinter;
-        if (cctp.domains.length != cctp.remoteTokenMessengers.length) {
-            revert DomainConfigLengthMismatch();
-        }
-        for (uint256 i = 0; i < cctp.domains.length; i++) {
-            cctpRemoteTokenMessengers[cctp.domains[i]] = cctp.remoteTokenMessengers[i];
-        }
         cctpLocalTokenUsdc            = cctp.localTokenUsdc;
         cctpSenderAuthorityPda        = cctp.senderAuthorityPda;
         cctpEventAuthority            = cctp.eventAuthority;
@@ -270,21 +362,21 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         whClockSysvar              = wh.clockSysvar;
         whRentSysvar               = wh.rentSysvar;
         wormholeConfig             = wh.config;
-        wormholeCustody            = wh.custody;
         wormholeAuthoritySigner    = wh.authoritySigner;
         wormholeCustodySigner      = wh.custodySigner;
         wormholeBridgeConfig       = wh.bridgeConfig;
         wormholeFeeCollector       = wh.feeCollector;
         wormholeEmitter            = wh.emitter;
         wormholeSequence           = wh.sequence;
-        wormholeWrappedMeta        = wh.wrappedMeta;
-        wormholeTargetChain        = wh.targetChain;
-        // Generic-Wormhole allowlists (asset-agnostic + multi-destination egress).
-        // Fail-closed SEED: only chains/wrappers listed here can burnToWormhole
-        // until `owner` lists more via the setters below.
+        // Owner and guardian are set here, so there is no hand-over gap.
         if (whg.admin == address(0)) revert ZeroOwner();
         owner = whg.admin;
         emit OwnershipTransferred(address(0), whg.admin);
+        guardian = _guardian;
+        emit GuardianSet(address(0), _guardian);
+        // Generic-Wormhole allowlists (asset-agnostic + multi-destination egress).
+        // Fail-closed SEED: only chains/wrappers listed here can burnToWormhole
+        // until `owner` lists more via the setters below.
         for (uint256 i = 0; i < whg.targetChains.length; i++) {
             wormholeTargetChainAllowed[whg.targetChains[i]] = true;
         }
@@ -294,12 +386,167 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     }
 
     // -------------------------------------------------------------------------
+    // Admin: CCTP destinations
+    // -------------------------------------------------------------------------
+
+    /// @notice Enables a CCTP destination domain, or re-checks and updates one
+    ///         that is already enabled (idempotent: the domain is listed once, and
+    ///         the recipient kind may be changed). Owner only.
+    /// @dev The contract derives Circle's RemoteTokenMessenger PDA itself
+    ///      (["remote_token_messenger", ascii(domain)] under the v2 Token
+    ///      Messenger Minter), so the signer only types a domain number. It then
+    ///      reads that account through the account-read precompile and requires:
+    ///        - owner == the CCTP v2 Token Messenger Minter program,
+    ///        - the RemoteTokenMessenger discriminator,
+    ///        - the stored domain == `domain`,
+    ///        - domain not 5 (Solana), 17 (BNB: USYC only) or 27 (Stellar: needs
+    ///          Circle's CctpForwarder), see DOMAIN_* above,
+    ///        - for RECIPIENT_EVM, a messenger whose first 12 bytes are zero,
+    ///        - for RECIPIENT_RAW32, a messenger that is NOT address-shaped.
+    ///      A domain Circle has not registered cannot be enabled, a non-EVM
+    ///      chain cannot be enabled as an EVM destination, and an EVM chain
+    ///      cannot be enabled as RAW32 (its receiver would truncate the 32 bytes).
+    /// @param domain        Circle CCTP domain id.
+    /// @param recipientKind RECIPIENT_EVM (1) or RECIPIENT_RAW32 (2).
+    function enableCctpDomain(uint32 domain, uint8 recipientKind) external onlyOwner {
+        if (recipientKind != RECIPIENT_EVM && recipientKind != RECIPIENT_RAW32) {
+            revert InvalidRecipientKind(recipientKind);
+        }
+        if (domain == DOMAIN_SOLANA || domain == DOMAIN_BNB || domain == DOMAIN_STELLAR) {
+            revert UnsupportedDestinationDomain(domain);
+        }
+
+        ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](2);
+        seeds[0] = ISystemProgram.Seed(bytes("remote_token_messenger"));
+        seeds[1] = ISystemProgram.Seed(bytes(Strings.toString(domain)));
+        (bytes32 pda, ) = PdaDeriver.derive(cctpTokenMessengerProgram, seeds);
+
+        bytes32 circleMessenger = _readRemoteTokenMessenger(domain, pda);
+        // The recipient format is bound to what Circle's record shows: an
+        // address-shaped messenger is an EVM chain (EVM kind only), a full
+        // 32-byte messenger is a non-EVM chain (RAW32 kind only).
+        bool evmShaped = (circleMessenger >> 160) == bytes32(0);
+        if (recipientKind == RECIPIENT_EVM && !evmShaped) {
+            revert MessengerNotEvmShaped(domain, circleMessenger);
+        }
+        if (recipientKind == RECIPIENT_RAW32 && evmShaped) {
+            revert MessengerNotRaw32Shaped(domain, circleMessenger);
+        }
+
+        _cctpDest[domain] = CctpDest(pda, recipientKind);
+        if (_cctpDomainIndex[domain] == 0) {
+            _cctpDomains.push(domain);
+            _cctpDomainIndex[domain] = _cctpDomains.length;
+        }
+        emit CctpDomainEnabled(domain, recipientKind, pda, circleMessenger);
+    }
+
+    /// @notice Disables a CCTP destination domain at once. Owner or guardian.
+    ///         Reverts if the domain is not enabled.
+    function disableCctpDomain(uint32 domain) external {
+        if (msg.sender != owner && msg.sender != guardian) revert NotOwnerOrGuardian(msg.sender);
+        uint256 index = _cctpDomainIndex[domain];
+        if (index == 0) revert CctpDomainNotEnabled(domain);
+
+        uint256 last = _cctpDomains.length;
+        if (index != last) {
+            uint32 moved = _cctpDomains[last - 1];
+            _cctpDomains[index - 1] = moved;
+            _cctpDomainIndex[moved] = index;
+        }
+        _cctpDomains.pop();
+        delete _cctpDomainIndex[domain];
+        delete _cctpDest[domain];
+        emit CctpDomainDisabled(domain, msg.sender);
+    }
+
+    /// @notice Every enabled CCTP domain, in no particular order. Lets drift
+    ///         checks read the live list without scanning logs.
+    function cctpDomains() external view returns (uint32[] memory) {
+        return _cctpDomains;
+    }
+
+    /// @dev Reads Circle's RemoteTokenMessenger account and returns its
+    ///      `token_messenger` field (the destination's messenger, 32 bytes).
+    ///      Layout (Anchor): 8-byte discriminator, u32 LE domain, 32-byte pubkey.
+    function _readRemoteTokenMessenger(uint32 domain, bytes32 pda) private view returns (bytes32 messenger) {
+        bytes32 programOwner;
+        bytes memory data;
+        try CpiProgram.account_info(pda) returns (uint64, bytes32 o, bool, bool, bool, bytes memory d) {
+            programOwner = o;
+            data = d;
+        } catch {
+            revert InvalidCctpAccount(domain, pda);
+        }
+        if (programOwner != cctpTokenMessengerProgram || data.length < 44) {
+            revert InvalidCctpAccount(domain, pda);
+        }
+        // RemoteTokenMessenger discriminator: sha256("account:RemoteTokenMessenger")[..8]
+        if (bytes8(data) != bytes8(0x6973ae225fe98afc)) {
+            revert InvalidCctpAccount(domain, pda);
+        }
+        uint32 stored = uint32(uint8(data[8])) | (uint32(uint8(data[9])) << 8)
+            | (uint32(uint8(data[10])) << 16) | (uint32(uint8(data[11])) << 24);
+        if (stored != domain) revert InvalidCctpAccount(domain, pda);
+        assembly {
+            messenger := mload(add(data, 44)) // 32 + 12
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Admin: pause, guardian, ownership
+    // -------------------------------------------------------------------------
+
+    /// @notice Stops one outbound rail. Owner or guardian. Reverts if it is
+    ///         already paused, so every pause is a real state change.
+    function pauseRail(Rail rail) external {
+        if (msg.sender != owner && msg.sender != guardian) revert NotOwnerOrGuardian(msg.sender);
+        uint8 bit = uint8(1) << uint8(rail);
+        if (_pausedMask & bit != 0) revert RailPaused(rail);
+        _pausedMask |= bit;
+        emit RailPausedSet(rail, msg.sender);
+    }
+
+    /// @notice Restarts a paused rail. Owner only.
+    function unpauseRail(Rail rail) external onlyOwner {
+        uint8 bit = uint8(1) << uint8(rail);
+        if (_pausedMask & bit == 0) revert RailNotPaused(rail);
+        _pausedMask &= ~bit;
+        emit RailUnpausedSet(rail, msg.sender);
+    }
+
+    /// @notice Whether a rail is currently paused.
+    function railPaused(Rail rail) external view returns (bool) {
+        return _pausedMask & (1 << uint8(rail)) != 0;
+    }
+
+    /// @notice Sets the guardian (address(0) removes it). Owner only.
+    function setGuardian(address newGuardian) external onlyOwner {
+        emit GuardianSet(guardian, newGuardian);
+        guardian = newGuardian;
+    }
+
+    /// @notice Step 1 of 2: names the next owner. Nothing changes until that
+    ///         address calls `acceptOwnership`. Calling it again replaces the
+    ///         pending owner; passing address(0) cancels it. Owner only.
+    function transferOwnership(address newOwner) external onlyOwner {
+        pendingOwner = newOwner;
+        emit OwnershipTransferStarted(owner, newOwner);
+    }
+
+    /// @notice Step 2 of 2: the pending owner takes over.
+    function acceptOwnership() external {
+        if (msg.sender != pendingOwner) revert NotPendingOwner(msg.sender);
+        emit OwnershipTransferred(owner, msg.sender);
+        owner = msg.sender;
+        delete pendingOwner;
+    }
+
+    // -------------------------------------------------------------------------
     // Admin: post-deploy Wormhole allowlist management
     // -------------------------------------------------------------------------
 
     /// @notice Enable/disable an SPL_ERC20 wrapper as a `burnToWormhole` asset.
-    ///         Lets the owner add wmSOL / arb / avax (etc.) on the LIVE contract
-    ///         — the reason v8 exists (v7's allowlist was constructor-frozen).
     function setWormholeAssetAllowed(address assetWrapper, bool allowed) external onlyOwner {
         wormholeMintAllowed[SPL_ERC20(assetWrapper).mint_id()] = allowed;
         emit WormholeAssetAllowedSet(assetWrapper, allowed);
@@ -318,8 +565,6 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         emit WormholeTargetChainAllowedSet(targetChain, allowed);
     }
 
-    /// @notice Transfer allowlist-admin ownership (cold-ledger handover). Reverts
-    ///         on the zero address so admin can't be accidentally burned.
     // ── Message-account rent, billed to the user ─────────────────────────
     // Every outbound CPI creates a message account on Solana (CCTP
     // messageSentEventData, Wormhole message) whose rent-exempt deposit is
@@ -355,50 +600,60 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         if (!ok) revert CpiFailed(result);
     }
 
-    function transferOwnership(address newOwner) external onlyOwner {
-        if (newOwner == address(0)) revert ZeroOwner();
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
-    }
-
     // -------------------------------------------------------------------------
     // CCTP path — path=0
     // -------------------------------------------------------------------------
 
     /// @notice Back-compat overload: burns to the Ethereum-family domain (0).
     ///         Same ABI the Rome app's live hook calls today; routes through the
-    ///         v2 path like every other destination.
-    function burnUSDC(uint256 amount, address ethereumRecipient) external {
-        _burnUSDC(amount, ethereumRecipient, 0);
+    ///         v2 path like every other destination. Domain 0 must be enabled
+    ///         with the EVM recipient kind.
+    function burnUSDC(uint256 amount, address ethereumRecipient) external whenNotPaused(Rail.CCTP) {
+        _burnUSDC(amount, bytes32(uint256(uint160(ethereumRecipient))), 0, RECIPIENT_EVM);
     }
 
     /// @notice Burns wUSDC on the Rome EVM and initiates a CCTP **v2**
     ///         deposit_for_burn CPI on Solana, bridging to `recipient` on the
     ///         EVM chain identified by `destinationDomain` (Circle domain id:
     ///         Ethereum/Sepolia 0, Avalanche 1, Arbitrum 3, Base 6, Polygon 7,
-    ///         Monad 15). The domain must be in the constructor allowlist.
+    ///         Monad 15). The domain must be enabled with the EVM recipient kind.
     /// @param amount            Token amount in SPL decimals (must fit uint64).
     /// @param recipient         Destination address on the target EVM chain.
     /// @param destinationDomain Circle CCTP domain of the destination chain.
-    function burnUSDC(uint256 amount, address recipient, uint32 destinationDomain) external {
-        _burnUSDC(amount, recipient, destinationDomain);
+    function burnUSDC(uint256 amount, address recipient, uint32 destinationDomain)
+        external
+        whenNotPaused(Rail.CCTP)
+    {
+        _burnUSDC(amount, bytes32(uint256(uint160(recipient))), destinationDomain, RECIPIENT_EVM);
     }
 
-    function _burnUSDC(uint256 amount, address ethereumRecipient, uint32 destinationDomain) internal {
-        // Ordered before any balance/precompile touch so both guards are
+    /// @notice Same burn for a destination whose recipients are full 32-byte
+    ///         values (Sui, Aptos and the like). Works only for domains the owner
+    ///         enabled with the RAW32 recipient kind; no such domain exists until
+    ///         the owner enables one. Nothing checks the 32 bytes beyond
+    ///         non-zero, so the caller must give the destination's own format.
+    function burnUSDCToBytes32(uint256 amount, bytes32 recipient, uint32 destinationDomain)
+        external
+        whenNotPaused(Rail.CCTP)
+    {
+        _burnUSDC(amount, recipient, destinationDomain, RECIPIENT_RAW32);
+    }
+
+    function _burnUSDC(uint256 amount, bytes32 mintRecipient, uint32 destinationDomain, uint8 requiredKind) internal {
+        // Ordered before any balance/precompile touch so the guards are
         // exact-revert-testable on a simulated EVM (no Rome precompiles).
-        bytes32 remoteTokenMessenger = cctpRemoteTokenMessengers[destinationDomain];
+        // An enabled domain is never 5 (`enableCctpDomain` refuses it), so a
+        // burn to Solana's domain fails here as an unsupported domain.
+        CctpDest memory dest = _cctpDest[destinationDomain];
+        bytes32 remoteTokenMessenger = dest.remoteTokenMessenger;
         if (remoteTokenMessenger == bytes32(0)) {
             revert UnsupportedDestinationDomain(destinationDomain);
         }
-        // Domain 5 (Solana) is structurally unsupported by this address-typed
-        // API: mintRecipient is a left-padded EVM address, not a valid Solana
-        // token account, so a burn to domain 5 would be unredeemable. Fail
-        // closed even if a deployment mistakenly maps domain 5.
-        if (destinationDomain == CCTPV2Lib.DOMAIN_SOLANA) {
-            revert UnsupportedDestinationDomain(destinationDomain);
+        uint8 domainKind = dest.kind;
+        if (domainKind != requiredKind) {
+            revert RecipientKindMismatch(destinationDomain, domainKind, requiredKind);
         }
-        if (ethereumRecipient == address(0)) {
+        if (mintRecipient == bytes32(0)) {
             revert ZeroRecipient();
         }
         if (amount > type(uint64).max) {
@@ -450,7 +705,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes memory ixData = CCTPV2Lib.encodeDepositForBurn(CCTPV2Lib.DepositForBurnParams({
             amount:              uint64(amount),
             destinationDomain:   destinationDomain,
-            mintRecipient:       bytes32(uint256(uint160(ethereumRecipient))),
+            mintRecipient:       mintRecipient,
             // bytes32(0) = permissionless delivery — anyone (incl. the user
             // via Circle's portal) can submit the destination mint; matches
             // the inbound leg's choice and keeps stuck-transfer rescue open.
@@ -514,119 +769,36 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         );
         if (!ok) revert CpiFailed(result);
 
-        // Legacy event kept byte-compatible for existing indexers; the
-        // domain-carrying variant is the multi-destination source of truth.
-        emit Withdrawn(user, usdcMint, amount, ethereumRecipient, 0);
-        emit WithdrawnToDomain(user, usdcMint, amount, ethereumRecipient, 0, destinationDomain);
+        if (requiredKind == RECIPIENT_EVM) {
+            // Legacy event kept byte-compatible for existing indexers; the
+            // domain-carrying variant is the multi-destination source of truth.
+            address evmRecipient = address(uint160(uint256(mintRecipient)));
+            emit Withdrawn(user, usdcMint, amount, evmRecipient, 0);
+            emit WithdrawnToDomain(user, usdcMint, amount, evmRecipient, 0, destinationDomain);
+        } else {
+            // A 32-byte recipient does not fit the address-typed events above.
+            emit WithdrawnToDomainRaw(user, usdcMint, amount, mintRecipient, 0, destinationDomain);
+        }
     }
 
     // -------------------------------------------------------------------------
     // Wormhole path — path=1
     // -------------------------------------------------------------------------
 
-    /// @notice Burns rWETH on the Rome EVM and initiates a Wormhole transfer_tokens
-    ///         CPI on Solana, bridging funds to `ethereumRecipient` on Ethereum.
-    /// @param amount           Token amount in SPL decimals (must fit uint64).
-    /// @param ethereumRecipient Destination address on Ethereum.
-    /// @dev A direct CALL into a mutating precompile signs as the bridge
-    ///      itself, never the user, so the bridge can no longer read straight
-    ///      from the user's ATA as its true owner. The user grants the bridge
-    ///      an SPL delegate once, off-contract (`approve_spl(bridge, …)` sent
-    ///      directly to 0xff..09); this pulls exactly `amount` into the
-    ///      bridge's own ATA and burns from there as its actual owner, which
-    ///      holds regardless of whether Wormhole would also have tolerated a
-    ///      delegate at `from_owner`. Wormhole's own transfer moves tokens via
-    ///      its `authority_signer` PDA, not `from_owner` — that delegation is
-    ///      re-granted on the bridge's ATA on every call, since it now backs a
-    ///      shared account rather than a per-user one.
-    function burnETH(uint256 amount, address ethereumRecipient) external {
-        // Fail closed on a zero destination, before amount/balance — a
-        // bytes32(0) targetAddress produces an unredeemable Wormhole VAA
-        // (permanent loss). Mirrors _burnUSDC / burnToWormhole / bridgeOutToSolana.
-        if (ethereumRecipient == address(0)) {
-            revert ZeroRecipient();
-        }
-        if (amount > type(uint64).max) {
-            revert AmountExceedsUint64(amount);
-        }
-        address user = _msgSender();
-        uint256 balance = wethWrapper.balanceOf(user);
-        if (balance < amount) {
-            revert InsufficientBalance(user, amount, balance);
-        }
-
-        bytes32 bridgePda = RomeEVMAccount.pda(address(this));
-        bytes32 userAta = HelperProgram.ata(user, wethMint);
-        bytes32 bridgeAta = HelperProgram.ata(address(this), wethMint);
-
-        _pullToBridge(userAta, bridgeAta, amount, wethMint);
-        _approveWormholeDelegate(bridgeAta, amount, wethMint, wethDecimals);
-
-        // Per-tx Wormhole message account derived as a salted PDA under the bridge.
-        uint64 nonce = burnNonce[user];
-        burnNonce[user] = nonce + 1;
-        bytes32 whSalt = keccak256(abi.encodePacked("WH_MSG", address(this), user, nonce));
-        bytes32 messageAccount = RomeEVMAccount.pda_with_salt(address(this), whSalt);
-
-        bytes memory ixData = WormholeTokenBridgeLib.encodeTransferTokens(
-            WormholeTokenBridgeLib.TransferParams({
-                amount:        uint64(amount),
-                fee:           0,
-                targetAddress: bytes32(uint256(uint160(ethereumRecipient))),
-                targetChain:   wormholeTargetChain,
-                nonce:         uint32(block.timestamp)
-            })
-        );
-
-        ICrossProgramInvocation.AccountMeta[] memory metas =
-            WormholeTokenBridgeLib.buildTransferWrappedAccounts(
-                WormholeTokenBridgeLib.TransferWrappedAccounts({
-                    payer:            bridgePda,
-                    config:           wormholeConfig,
-                    from:             bridgeAta,
-                    from_owner:       bridgePda,
-                    mint:             wethMint,
-                    wrapped_meta:     wormholeWrappedMeta,
-                    authority_signer: wormholeAuthoritySigner,
-                    bridge_config:    wormholeBridgeConfig,
-                    message:          messageAccount,
-                    emitter:          wormholeEmitter,
-                    sequence:         wormholeSequence,
-                    fee_collector:    wormholeFeeCollector,
-                    clock:            whClockSysvar,
-                    rent:             whRentSysvar,
-                    system:           whSystemProgram,
-                    wormhole_core:    wormholeCoreProgram,
-                    token:            whSplTokenProgram,
-                    token_bridge_program: wormholeTokenBridgeProgram
-                })
-            );
-
-        // [0] = whSalt, signing the per-tx messageAccount PDA. The bridge's
-        // own PDA at `payer`/`from_owner` is auto-signed by the precompile
-        // from the tx caller (now the bridge itself, under a direct CALL).
-        bytes32[] memory salts = new bytes32[](1);
-        salts[0] = whSalt;
-
-        _fundMessageRent(wormholeMessageRentLamports);
-        (bool ok, bytes memory result) = address(CpiProgram).call(
-            abi.encodeWithSignature(
-                "invoke_signed(bytes32,(bytes32,bool,bool)[],bytes,bytes32[])",
-                wormholeTokenBridgeProgram,
-                metas,
-                ixData,
-                salts
-            )
-        );
-        if (!ok) revert CpiFailed(result);
-
-        emit Withdrawn(user, wethMint, amount, ethereumRecipient, 1);
-    }
+    // `burnETH` (v1-v12) is gone: it sent one hard-wired wETH route to one
+    // fixed Wormhole chain. `burnToWormhole` does the same for wETH, and for any
+    // other allowed asset and chain.
 
     /// @notice Pulls `amount` of `mint` from `fromAta` into the bridge's own
     ///         `toAta`, signing as the bridge's own PDA. Succeeds only if the
     ///         bridge is `fromAta`'s owner or SPL delegate — the latter is
     ///         what an EOA's prior `approve_spl(bridge, …)` grants.
+    /// @dev A direct CALL into a mutating precompile signs as the bridge
+    ///      itself, never the user, so the bridge cannot burn straight from
+    ///      the user's ATA as its owner. The user grants the bridge an SPL
+    ///      delegate once, off-contract (`approve_spl(bridge, …)` sent directly
+    ///      to 0xff..09); every egress rail pulls exactly `amount` into the
+    ///      bridge's own ATA first and acts from there as its true owner.
     function _pullToBridge(bytes32 fromAta, bytes32 toAta, uint256 amount, bytes32 mint) private {
         (bool ok, bytes memory result) = address(HelperProgram).call(
             abi.encodeWithSignature(
@@ -653,14 +825,13 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     }
 
     /// @notice Generic (asset-agnostic, multi-destination) Wormhole burn —
-    ///         the per-asset + per-call-target counterpart of `burnETH`.
+    ///         the per-asset + per-call-target Wormhole egress (it replaces `burnETH`).
     ///         Burns `amount` of the asset behind `assetWrapper` and initiates
     ///         a Wormhole `transfer_wrapped` CPI to (`targetChain`, `recipient`).
     ///         The mint + `wrapped_meta` are derived from the wrapper at runtime
-    ///         (replacing the wethMint/wormholeWrappedMeta/wormholeTargetChain
-    ///         immutables). The caller must have granted the bridge an SPL
+    ///         (no per-asset immutables). The caller must have granted the bridge an SPL
     ///         delegate on their ATA beforehand (`approve_spl(bridge, …)` sent
-    ///         directly to 0xff..09) — see `burnETH` for why.
+    ///         directly to 0xff..09) — see `_pullToBridge` for why.
     ///         Destination claim is Wormhole-native (user redeems the VAA).
     /// @param assetWrapper Registered SPL_ERC20 wrapper for the asset.
     /// @param amount       Token amount in the wrapper's SPL decimals (uint64-bounded).
@@ -671,7 +842,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         uint256 amount,
         bytes32 recipient,
         uint16 targetChain
-    ) external {
+    ) external whenNotPaused(Rail.WORMHOLE) {
         // Guards ordered BEFORE any Rome precompile touch, so their exact
         // reverts are assertable on a simulated EVM (parity with _burnUSDC).
         if (!wormholeMintAllowed[SPL_ERC20(assetWrapper).mint_id()]) {
@@ -704,7 +875,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         _approveWormholeDelegate(bridgeAta, amount, mint, decimals);
 
         // wrapped_meta = ["meta", mint] PDA under the Token Bridge — derived
-        // per-asset at runtime (was the wethMint-specific immutable). Same
+        // per-asset at runtime (v12 had a wethMint-specific immutable). Same
         // runtime-derivation pattern as _burnUSDC's denylist PDA.
         ISystemProgram.Seed[] memory metaSeeds = new ISystemProgram.Seed[](2);
         metaSeeds[0] = ISystemProgram.Seed(bytes("meta"));
@@ -782,7 +953,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ///         VAA is posted; the recipient redeems on the target chain.
     /// @dev The caller must have granted the bridge an SPL delegate on their
     ///      ATA beforehand (`approve_spl(bridge, …)` sent directly to
-    ///      0xff..09) — see `burnETH` for why.
+    ///      0xff..09) — see `_pullToBridge` for why.
     /// @param assetWrapper Registered SPL_ERC20 wrapper for a Solana-native mint.
     /// @param amount       Token amount in the wrapper's SPL decimals (uint64-bounded).
     /// @param recipient    32-byte recipient on the target chain (non-zero).
@@ -792,7 +963,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         uint256 amount,
         bytes32 recipient,
         uint16 targetChain
-    ) external {
+    ) external whenNotPaused(Rail.WORMHOLE) {
         // Guards ordered BEFORE any Rome precompile touch (parity with burnToWormhole).
         if (!wormholeMintAllowed[SPL_ERC20(assetWrapper).mint_id()]) {
             revert UnsupportedAssetWrapper(assetWrapper);
@@ -835,7 +1006,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         _approveWormholeDelegate(bridgeAta, amount, mint, decimals);
 
         // custody = ["<mint>"] PDA under the Token Bridge — PER-MINT, derived at
-        // runtime. THE crux: v10's single stored `wormholeCustody` serves ONE mint
+        // runtime. THE crux: v10's single stored custody account served ONE mint
         // only; native egress of multiple mints requires per-mint custody. Matches
         // @wormhole-foundation/sdk-solana-tokenbridge deriveCustodyKey =
         // deriveAddress([mint], tokenBridge). custody_signer is global (stored).
@@ -915,7 +1086,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     // DoTx within the 1.4M-CU budget AND avoid the iterative-VM
     // `CpiProhibitedInIterativeTx` gate that the old combined 2-CPI
     // bridge-out tripped. Legacy track (HelperProgram), consistent with
-    // burnUSDC/burnETH. See contracts/bridge/SOLANA_EGRESS_DESIGN.md.
+    // burnUSDC. See contracts/bridge/SOLANA_EGRESS_DESIGN.md.
     // -------------------------------------------------------------------------
 
     /// @notice Transfer-only Rome → Solana egress of any held SPL wrapper to a
@@ -932,7 +1103,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         bytes32 solanaRecipient,
         uint256 amount,
         bytes32 mint
-    ) external {
+    ) external whenNotPaused(Rail.TO_SOLANA) {
         if (amount > type(uint64).max) {
             revert AmountExceedsUint64(amount);
         }
@@ -968,9 +1139,11 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ///         by design: one CPI, atomic — never trips the iterative-VM gate.
     ///         Permissionless with an arbitrary `(recipient, mint)` — the caller
     ///         pays no Rome-side fee for the operator-funded rent this commits.
+    ///         Since it spends operator rent for anyone, it sits behind the
+    ///         to-Solana pause: pausing that rail stops a rent-drain loop.
     /// @param solanaRecipient Recipient Solana wallet pubkey (bytes32, non-zero).
     /// @param mint            The wrapper's underlying SPL mint.
-    function ensureRecipientAta(bytes32 solanaRecipient, bytes32 mint) external {
+    function ensureRecipientAta(bytes32 solanaRecipient, bytes32 mint) external whenNotPaused(Rail.TO_SOLANA) {
         if (solanaRecipient == bytes32(0)) {
             revert ZeroRecipient();
         }

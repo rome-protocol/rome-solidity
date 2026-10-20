@@ -73,25 +73,4 @@ describe("RomeBridgeWithdraw — integration (requires local Rome stack)", () =>
     assert.strictEqual(events[0].args.path, 0);
     assert.strictEqual(events[0].args.amount, 1_000_000n);
   });
-
-  it("emits Withdrawn(path=1) when burnETH succeeds", async () => {
-    const publicClient = await viem.getPublicClient();
-    const initial = await wethWrapper.read.balanceOf([user]);
-    if (initial < 10_000_000n) {
-      console.warn("Skipping burnETH happy-path test — user needs >= 0.1 wETH seeded in PDA ATA");
-      return;
-    }
-    const txHash = await withdraw.write.burnETH([10_000_000n, user]);
-    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-
-    const final = await wethWrapper.read.balanceOf([user]);
-    assert.strictEqual(final, initial - 10_000_000n);
-
-    const events = await withdraw.getEvents.Withdrawn(
-      { user },
-      { fromBlock: receipt.blockNumber, toBlock: receipt.blockNumber }
-    );
-    assert.strictEqual(events.length, 1);
-    assert.strictEqual(events[0].args.path, 1);
-  });
 });

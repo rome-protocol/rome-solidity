@@ -15,6 +15,8 @@ import {
   Connection, PublicKey, Keypair, Transaction, TransactionInstruction,
   SystemProgram, ComputeBudgetProgram,
 } from "@solana/web3.js";
+// Needs Node 22.18+ (imports the .ts guard directly). If it cannot load, the script does not run.
+import { assertSolanaTestnetRpc } from "../lib/testnet-guard.ts";
 
 // Program IDs — Circle CCTP v1 on Solana (same pubkeys mainnet + devnet)
 const MESSAGE_TRANSMITTER_PID      = new PublicKey("CCTPmbSD7gX1bxKPAmg77w8oFzNFpaQiQUWD43TKaecd");
@@ -104,6 +106,8 @@ const main = async () => {
   const payer = Keypair.fromSecretKey(Buffer.from(secret));
   console.log("Payer:", payer.publicKey.toBase58());
 
+  // Sends on Solana devnet/testnet only: the RPC's genesis hash must say so (SOLANA_RPC_URL cannot point this at mainnet).
+  await assertSolanaTestnetRpc(SOL_RPC, "03-submit-receive");
   const conn = new Connection(SOL_RPC, "confirmed");
 
   const parsed = parseMessage(att.message);

@@ -1,3 +1,90 @@
+## 2026-10-20 — RomeBridgeWithdraw 13.0.0: CCTP destinations configurable without a redeploy
+
+Until v12 the list of allowed CCTP destination chains was written once, in the constructor, and
+could not be changed, so every new CCTP chain meant a new contract. v13 moves that list into
+owner-managed state. Source only: nothing is deployed by this change.
+
+- **Owner-managed CCTP destinations.** `enableCctpDomain(uint32 domain, uint8 recipientKind)` (owner only)
+  derives Circle's `RemoteTokenMessenger` PDA itself, reads the account through the account-read
+  precompile, and requires: owner = the CCTP v2 Token Messenger Minter program, Circle's account
+  discriminator, stored domain == `domain`, and a domain that is not 5 (Solana), 17 (BNB Smart Chain: Circle
+  moves USYC there, not USDC) or 27 (Stellar: Circle requires its CctpForwarder as recipient and destination
+  caller, with hook data, which this contract does not send). A genuine messenger proves Circle registered
+  the chain, not that this burn format works for it, so those three are refused whatever Circle's record says.
+  The recipient kind is bound to the messenger's shape: the EVM kind needs a messenger whose first 12 bytes are
+  zero (so Sui and Aptos cannot be enabled as address destinations), and the RAW32 kind needs one that is NOT
+  address-shaped (an EVM chain cannot be enabled as RAW32: its receiver keeps only the low 20 bytes of a
+  32-byte recipient, so a burn could truncate to the zero address or to someone else's).
+  `disableCctpDomain(uint32)` (owner or guardian) takes effect at once. `cctpDomains()` lists the enabled
+  domains; `cctpRecipientKind(domain)` and `cctpRemoteTokenMessengers(domain)` are views over one
+  `{remoteTokenMessenger, kind}` struct per domain, so a burn reads two consecutive storage slots (on Rome a
+  separate mapping would be a second hashed slot, and possibly one more storage account in the transaction).
+  Re-enabling an enabled domain re-checks Circle's record and may change the kind; it never lists a domain twice.
+- **Recipient kinds.** EVM (existing `burnUSDC(uint256,address,uint32)` and `burnUSDC(uint256,address)`, which
+  targets domain 0) and RAW32 (new `burnUSDCToBytes32(uint256,bytes32,uint32)`, only for domains enabled as RAW32;
+  emits the new `WithdrawnToDomainRaw`). The RAW32 entry has its own name on purpose: a second `burnUSDC` with
+  the same number of arguments makes a hand-written ABI (viem picks by order) encode every EVM burn wrongly.
+  No RAW32 domain is enabled at launch.
+- **Pause per rail** (CCTP, Wormhole, to-Solana). Guardian or owner pauses; only the owner unpauses, enables
+  domains or sets the guardian. `ensureRecipientAta` spends operator rent for anyone, so it sits behind the
+  to-Solana pause.
+- **Two-step ownership** (`transferOwnership` names, `acceptOwnership` completes; a second call replaces the
+  pending owner, address(0) cancels). Owner and guardian are set in the constructor, so there is no hand-over gap.
+- **Admin checks use `msg.sender`**, not `_msgSender()`, and **the constructor refuses a non-zero ERC-2771
+  forwarder** (`ForwarderNotAllowed`; the parameter stays so the constructor ABI is unchanged). A forwarder
+  could append any user's address and burn that user's balance, since every user keeps a standing delegate
+  to the bridge. Every deployment already passed zero, so nothing changes today.
+- **`burnETH` removed**, with everything only it used: the `wethWrapper`, `wethMint`, `wethDecimals`,
+  `wormholeTargetChain`, `wormholeCustody` and `wormholeWrappedMeta` values and their constructor fields.
+  `burnToWormhole` carries wETH like any other asset. The constructor no longer takes a CCTP domain list.
+- **Unchanged:** ABI and behaviour of `burnUSDC` (both address overloads), `burnToWormhole`,
+  `transferNativeToWormhole`, `bridgeOutToSolana`, `ensureRecipientAta`, `ensureBridgeAta`, the Wormhole setters,
+  `setMessageRents`, and the `Withdrawn` / `WithdrawnToDomain` events.
+- **Scripts.** `deploy.ts` deploys, on testnets only, with no domain list and empty Wormhole lists (owner and
+  guardian from `BRIDGE_OWNER` / `BRIDGE_GUARDIAN`; the owner defaults to `WORMHOLE_ADMIN`, then the deployer,
+  the guardian defaults to none and must differ from the owner, and the script reads back `VERSION`, `owner`,
+  `guardian` and an empty `cctpDomains()` before it records the address). It has no mainnet branch: it refuses
+  chain id 7531. New
+  `enable-cctp-domains.ts` diffs a wanted list (`--domains`, or `--registry bridge.json`) against `cctpDomains()`
+  and prints the exact owner calldata; it only sends on a testnet, with `--send`, as the owner, and never when
+  the RPC reports Rubicon's chain id, whatever the network is called. `--check` also re-reads Circle's account of
+  every enabled domain. `CCTP_V2_DOMAINS_*` are gone from `constants.ts`. `submit-burnETH.ts` and
+  `do-full-test.ts` are deleted; the outbound-Wormhole e2e scripts use `burnToWormhole`.
+  **No script in `scripts/bridge` sends on mainnet.** One shared gate (`lib/testnet-guard.ts`) reads the chain
+  id the RPC reports and lets a send through only for a listed testnet (Hadrian, Martius, Subura, Trajan,
+  Nerva, the in-process Hardhat chain); Rubicon (7531), an unlisted id and an RPC that does not answer are
+  refused, whatever the network is called. It guards `deploy.ts`, `set-wormhole-allowlist.ts`,
+  `ensure-bridge-atas.ts` (a dry run still reads anywhere), the e2e, smoke and wrapper scripts and, by Solana
+  genesis hash, the inbound Solana scripts. A local Rome stack is allowed by listing its id in
+  `ROME_EXTRA_TESTNET_CHAIN_IDS`; mainnet ids are refused even there. **Nothing in this repo deploys
+  v13 on Rubicon** (`deploy.ts` refuses it; `scripts/deploy-ledger.ts` only deploys `ERC20SPLFactory`). The
+  Rubicon deploy is a separate follow-up PR, required before the Rubicon step: a Ledger-signed deploy of v13
+  with owner = the cold Ledger, guardian = the ops key, domains `[0]`, empty Wormhole lists. `submit-burn.ts` and `try-burn.ts` no longer burn to
+  `0x...0001`: the recipient is the signer by default (`BURN_RECIPIENT` to override) and burn-like addresses
+  are refused. The registry reader merges `sourceEvm` and `sourceEvms[]` (one chain once, by `chainId`; a live entry wins over a retired
+  duplicate of the same chain), so a file that carries both, like Hadrian's, no longer plans `disableCctpDomain(0)`.
+- **Deploy gates (outside this repo).** All of these must be done before the registry is bumped to a v13
+  address on any chain, with the new feature switch OFF until a real 1 USDC send is seen:
+  1. `rome-bridge-api`'s `eth-wormhole-outbound` route (it builds `burnETH`, selector `0xc150c88d`, which v13
+     does not have, so the user would sign the `approve_spl` grant and the burn would then revert) must be
+     retired or ported to `burnToWormhole(wethWrapper, amount, pad32(recipient), targetChain)`, shown only
+     when `wormholeMintAllowed(wethMint)` and `wormholeTargetChainAllowed(chain)` read true (hidden on
+     Rubicon, where both lists deploy empty).
+  2. Claim discovery (`src/claims/discover.ts`) scans only the live `RomeBridgeWithdraw`; it must scan every
+     version in the registry, or a v12 burn missing from the stored records disappears from the Claim tab
+     although the Circle message is still claimable. The CCTP route itself is unaffected (`0x7ed19660`,
+     `0x259acd3b`, `Withdrawn` and `WithdrawnToDomain` are unchanged).
+  3. On Hadrian: the first real `enableCctpDomain(0, 1)` from the owner key (the account read inside a mined
+     transaction is only proven in `eth_call`), then `rome_emulateCallAccounts` and a landed CU reading for
+     `burnUSDC(amount, addr, 0)` on v12 and v13 side by side, recorded in the PR before the Rubicon deploy.
+     The burn reads two more storage slots, and the atomic CPI path is capped at 1.4M CU (about 950K was
+     recorded for v6); the Hardhat gas figure says nothing about either.
+  4. The Rubicon deploy itself: a separate follow-up PR (a Ledger-signed deploy of v13, owner = the cold Ledger,
+     guardian = the ops key, domains `[0]`, empty Wormhole lists). Nothing in this PR can deploy on Rubicon.
+- **Tests.** `tests/bridge/rome_bridge_withdraw_v13.test.ts` and `tests/bridge/enable-cctp-domains.test.ts`,
+  with `BridgePrecompileMock` extended to serve `account_info`. Existing bridge tests adapted only for the new
+  constructor and the removed `burnETH`.
+
 ## 2026-07-09 — WrappedGasFacade: WETH9-shaped wrap/unwrap with canonical events
 
 ### Bridge deploy — Wormhole target chain follows the Solana cluster

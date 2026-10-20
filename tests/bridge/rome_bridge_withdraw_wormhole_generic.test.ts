@@ -1,6 +1,7 @@
 import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import hardhat from "hardhat";
+import { GUARDIAN } from "./helpers/v13.js";
 
 /**
  * RomeBridgeWithdraw — generic Wormhole burn (burnToWormhole).
@@ -27,8 +28,6 @@ const CCTP = {
   tokenMessengerConfig: PK(5),
   tokenMinter: PK(6),
   localTokenUsdc: PK(7),
-  domains: [0, 15],
-  remoteTokenMessengers: [PK(8), PK(9)],
   senderAuthorityPda: PK(10),
   eventAuthority: PK(11),
   messageTransmitterEventAuthority: PK(12),
@@ -36,9 +35,8 @@ const CCTP = {
 const WH = {
   tokenBridgeProgram: PK(20), coreProgram: PK(21), splTokenProgram: PK(3),
   systemProgram: ZERO, clockSysvar: PK(22), rentSysvar: PK(23),
-  config: PK(24), custody: PK(25), authoritySigner: PK(26), custodySigner: PK(27),
+  config: PK(24), authoritySigner: PK(26), custodySigner: PK(27),
   bridgeConfig: PK(28), feeCollector: PK(29), emitter: PK(30), sequence: PK(31),
-  wrappedMeta: PK(32), targetChain: 10002,
 };
 const FORWARDER = "0x0000000000000000000000000000000000000000";
 
@@ -67,7 +65,7 @@ describe("RomeBridgeWithdraw — generic Wormhole burn", function () {
       assetWrappers: [weth.address, jitosol.address],
     };
     bridge = await viem.deployContract("RomeBridgeWithdraw", [
-      FORWARDER, usdc.address, weth.address, CCTP, WH, WHG,
+      FORWARDER, usdc.address, CCTP, WH, WHG, GUARDIAN,
     ]);
   });
 
@@ -130,11 +128,10 @@ describe("RomeBridgeWithdraw — generic Wormhole burn", function () {
 
   it("constructor rejects mismatched wormhole config (fail-closed)", async function () {
     const usdc = await viem.deployContract("MockSplErc20", [PK(40)]);
-    // Duplicate/empty allowlists must not silently succeed — keep parity with
-    // CCTP's DomainConfigLengthMismatch guard family (asserts the ctor validates).
+    // Empty allowlists must start Wormhole fully OFF, not open.
     const emptyWhg = { admin: ownerAddr, targetChains: [] as number[], assetWrappers: [] as `0x${string}`[] };
     const b = await viem.deployContract("RomeBridgeWithdraw", [
-      FORWARDER, usdc.address, weth.address, CCTP, WH, emptyWhg,
+      FORWARDER, usdc.address, CCTP, WH, emptyWhg, GUARDIAN,
     ]);
     // With no chains allowlisted, every burnToWormhole target is rejected.
     await assert.rejects(
@@ -180,14 +177,18 @@ describe("RomeBridgeWithdraw — generic Wormhole burn", function () {
     );
   });
 
-  it("transferOwnership hands admin to a new owner; old owner loses rights", async function () {
+  it("ownership moves in two steps: transferOwnership names, acceptOwnership completes; the old owner then loses rights", async function () {
     // Fresh instance so the transfer doesn't bleed into the shared `bridge`.
     const usdc = await viem.deployContract("MockSplErc20", [PK(40)]);
     const b = await viem.deployContract("RomeBridgeWithdraw", [
-      FORWARDER, usdc.address, weth.address, CCTP, WH,
+      FORWARDER, usdc.address, CCTP, WH,
       { admin: ownerAddr, targetChains: [10002], assetWrappers: [weth.address] },
+      GUARDIAN,
     ]);
     await b.write.transferOwnership([otherAddr]);
+    // Nothing has changed yet: the old owner still administers.
+    assert.equal((await b.read.owner()).toLowerCase(), ownerAddr.toLowerCase());
+    await b.write.acceptOwnership({ account: otherAddr });
     assert.equal((await b.read.owner()).toLowerCase(), otherAddr.toLowerCase());
     // Old owner is now powerless; new owner can administer.
     await assert.rejects(b.write.setWormholeTargetChainAllowed([23, true]), /NotOwner/);
@@ -195,7 +196,11 @@ describe("RomeBridgeWithdraw — generic Wormhole burn", function () {
     assert.equal(await b.read.wormholeTargetChainAllowed([23]), true);
   });
 
-  it("transferOwnership to the zero address reverts (no accidental burn of admin)", async function () {
-    await assert.rejects(bridge.write.transferOwnership([ZERO_ADDR]), /ZeroOwner|NotOwner/);
+  it("transferOwnership(0) cannot burn the admin: it only clears a pending transfer", async function () {
+    await bridge.write.transferOwnership([ZERO_ADDR]);
+    assert.equal((await bridge.read.owner()).toLowerCase(), ownerAddr.toLowerCase());
+    assert.equal(await bridge.read.pendingOwner(), ZERO_ADDR);
+    // No one can accept a zero pending owner.
+    await assert.rejects(bridge.write.acceptOwnership({ account: otherAddr }), /NotPendingOwner/);
   });
 });

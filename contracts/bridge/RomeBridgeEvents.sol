@@ -32,6 +32,19 @@ interface RomeBridgeEvents {
         uint32 destinationDomain
     );
 
+    /// @notice Variant of `WithdrawnToDomain` for a CCTP destination whose
+    ///         recipients are full 32-byte values (RAW32 domains, v13). Emitted
+    ///         INSTEAD of `Withdrawn` / `WithdrawnToDomain`, which are
+    ///         address-typed and unchanged.
+    event WithdrawnToDomainRaw(
+        address indexed user,
+        bytes32 indexed mint,
+        uint256 amount,
+        bytes32 recipient,
+        uint8 path,
+        uint32 destinationDomain
+    );
+
     /// @notice Emitted on a Rome → Solana SPL egress of a wrapper token to a
     ///         raw Solana recipient. Distinct from `Withdrawn` (EVM-chain
     ///         egress via CCTP/Wormhole, address recipient) — here the

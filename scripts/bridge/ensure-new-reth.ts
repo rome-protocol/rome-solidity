@@ -1,8 +1,10 @@
 import hardhat from "hardhat";
+import { assertTestnetSend } from "./lib/testnet-guard.js";
 async function main() {
   const { viem } = await hardhat.network.connect();
   const [a] = await viem.getWalletClients();
   const pc = await viem.getPublicClient();
+  await assertTestnetSend(pc, "ensure-new-reth");
   const deployer = a.account!.address;
   const NEW_RETH = "0xf36ad574687dfc25d0ca63f8fd27271a85ca9550";
   const users = await viem.getContractAt("ERC20Users", "0x803f6923bcc776db1d0aa6fcdbd8ceddf35ad6f3");

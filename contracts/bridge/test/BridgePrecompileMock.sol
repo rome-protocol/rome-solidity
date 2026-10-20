@@ -174,6 +174,35 @@ contract BridgePrecompileMock {
         }
     }
 
+    // account_info(bytes32) — the account-read precompile on the CpiProgram
+    // track. `enableCctpDomain` reads Circle's RemoteTokenMessenger record
+    // through it. Test-controlled: `setAccount` plants an account. An unset
+    // key returns what Rome returns for a missing account (all zero, empty
+    // data), which was confirmed live on Hadrian.
+    struct MockAccount {
+        uint64 lamports;
+        bytes32 owner;
+        bytes data;
+    }
+    mapping(bytes32 => MockAccount) private _accounts;
+
+    function setAccount(bytes32 key, bytes32 owner_, bytes calldata data) external {
+        _accounts[key] = MockAccount(1, owner_, data);
+    }
+
+    function clearAccount(bytes32 key) external {
+        delete _accounts[key];
+    }
+
+    function account_info(bytes32 key)
+        external
+        view
+        returns (uint64, bytes32, bool, bool, bool, bytes memory)
+    {
+        MockAccount storage a = _accounts[key];
+        return (a.lamports, a.owner, false, false, false, a.data);
+    }
+
     function lastAccountsLength() external view returns (uint256) {
         return _lastAccounts.length;
     }

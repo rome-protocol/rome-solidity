@@ -15,6 +15,7 @@
 import fs from "node:fs";
 import { isSolanaDevnetNetwork } from "./lib/wormhole-target-chain.js";
 import hardhat from "hardhat";
+import { assertTestnetSend } from "./lib/testnet-guard.js";
 import { resolveERC20SPLFactoryAddress } from "../lib/deployments.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
 import { SPL_MINTS_DEVNET, SPL_MINTS_MAINNET, COMPOUND_COLLATERAL_MINTS_DEVNET, LST_MINTS_DEVNET } from "./constants.js";
@@ -124,6 +125,7 @@ async function main() {
   const factoryAddress = resolveERC20SPLFactoryAddress(networkName);
   const factory = await viem.getContractAt("ERC20SPLFactory", factoryAddress);
   const publicClient = await viem.getPublicClient();
+  await assertTestnetSend(publicClient, `${networkName} bootstrap-bridged-wrappers`);
   const set = resolveSet(networkName);
 
   console.log(`[${networkName}] deployer: ${deployer.account.address}`);
