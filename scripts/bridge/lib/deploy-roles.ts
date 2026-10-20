@@ -2,8 +2,8 @@
 //
 // Pure decision for who owns and who guards a new RomeBridgeWithdraw 13.x on a testnet.
 // No network, no keys. Used by scripts/bridge/deploy.ts and tested on its own.
-// There is no mainnet rule here: deploy.ts cannot send on Rubicon, and the Ledger-signed
-// Rubicon deploy (a follow-up PR) brings its own role checks (owner = cold Ledger, guardian =
+// There is no mainnet rule here: deploy.ts cannot send on Rubicon, and the Rubicon deploy
+// (deploy-rubicon-v13.ts) brings its own role checks (owner = cold Ledger, guardian =
 // ops key, owner != deploy key).
 
 const ZERO = "0x0000000000000000000000000000000000000000";

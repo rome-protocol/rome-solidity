@@ -1,3 +1,62 @@
+## 2026-10-20 — Rubicon deploy path for RomeBridgeWithdraw 13.0.0 (owner = the cold Ledger from construction)
+
+Nothing in the repo could deploy v13 on Rubicon: `deploy.ts` refuses chain 7531 and v12 had been deployed by a
+hot key that then transferred ownership (#368). This adds the path. Source only: nothing is deployed by this change.
+
+- `scripts/bridge/deploy-rubicon-v13.ts` (logic in `lib/rubicon-v13.ts`): the constructor sets the owner (the cold
+  Ledger, `--owner`) and the guardian (the ops key, `--guardian`); both are required, no defaults, and the call is
+  refused when either is zero, they are equal, or either is the deploy key. On Rubicon both must also be EIP-55
+  checksummed accounts with no code, the owner must hold gas, `contracts/`, `hardhat.config.ts` and
+  `package-lock.json` must be clean in git, and `RUBICON_GAS_PRICE` must be set. The script compiles first on every
+  run and then checks the artifact's build-info against the files on disk (`lib/build-provenance.ts`: every source
+  text, the npm dependency versions, the settings, the solc version and the compiler output), so a stale artifact
+  cannot be deployed under the reviewed commit. On Rubicon the owner must also be the live v12 contract's `owner()`
+  (the chain's contract admin) and the guardian must not be (the swap of the two): otherwise a real deploy is
+  refused unless `--owner-differs-from-v12` says it is on purpose. On Rubicon a run is a DRY RUN unless it is given
+  `--deploy <digest>`: the dry run estimates gas at the pinned price and prints the deploy, the constructor
+  arguments, the commit, the deploy key's nonce and the address the deploy will create, the deploy input hash,
+  v12's owner next to the new owner, and a digest of the exact bytes plus chain, deploy key and nonce; the real
+  run refuses any other digest, so a deploy that landed (even one whose answer was lost) makes the old digest stale
+  and cannot deploy a second contract. A send that errors says the transaction MAY have landed, with the nonce, the
+  predicted address and the `cast nonce` / `cast code` checks. A real run reads back VERSION, owner, pendingOwner,
+  guardian, the empty CCTP list, the unpaused rails, the USDC wrapper and mint, the empty Wormhole lists and the
+  deploy key's lack of any role (retried for RPC lag), and fails loudly (recording nothing) on any mismatch. It
+  then checks that the transaction that was MINED (the receipt's hash, which differs from the sent one after a
+  reprice) is the approved deploy: success, a creation by the deploy key, this address, these bytes. It records the
+  address, the commit, the build (build-info id and solc version), `codeHash` (keccak256 of `eth_getCode` after the
+  read-back), `deployInputHash` (keccak256 of the deploy transaction input) and `deployedAt` (the deploy block's
+  time, retried; never the local clock) under `RomeBridgeWithdrawV13` in `deployments/<network>.json` without
+  touching the v12 record. Step 3 reads the file once as raw text (the snapshot); the new file is the snapshot plus
+  that one entry, so v12's bytes are kept verbatim. The file is replaced atomically (a temp file in the same
+  directory, written in full and flushed, then renamed over it); before the temp file is created and again right
+  before the rename, the file must still be byte for byte the snapshot, or the write is refused, the file is left
+  as it is and the record is printed for a hand merge. Threat model: one operator runs this once, in a fresh clone
+  only they use, and the record reaches the team through a reviewed PR; a second writer in the instant between the
+  last check and the rename is out of scope, and there is no lock file by design. A run refuses before it sends
+  anything (a dry run included) if the file is not in the canonical 2-space JSON layout or if `RomeBridgeWithdrawV13`
+  is present with any value, and every refusal before the
+  send says it is about THIS run only and that, if an earlier run may have sent a deploy, the operator checks the
+  deploy key's transactions (`cast nonce`, the explorer) and uses `--verify-existing`, never a second deploy. The recovery command printed
+  after a landed deploy carries `--owner-differs-from-v12` when the run used it. Then it PRINTS, never sends, the Ledger's two calls in order:
+  `ensureBridgeAta(<Rubicon USDC mint>)` first, then `enableCctpDomain(0, 1)`. `--verify-existing <address>
+  --deploy-tx <hash> --source-commit <sha>` reads back and records a contract that already landed (after a transient
+  failure) without sending anything; it records the commit the operator names, after checking that commit's
+  contracts, config and lockfile equal this checkout's, never its own HEAD.
+- Testnet guard: ONE narrow exception, `assertRubiconV13DeploySend`. Chain 7531 passes only for that script (it
+  passes its own path), only when the process was started as that file (the guard reads `argv[1]` itself, and no
+  parameter can name another entry point), and only with `--i-understand-mainnet`, a dry run included. A send also
+  needs the digest to match: the script's send step recomputes the digest from the bytes and the nonce it is about to
+  send and passes the result to the guard (`phase: "send"`). Every other script
+  still refuses 7531; tests scan `scripts/`, `tests/` and `.github/` and fail if any other file uses the
+  exception or imports the script or its library.
+- `lib/withdraw-ctor-args.ts`: the constructor arguments, moved out of `deploy.ts` so the testnet and Rubicon
+  deploys build them the same way (`deploy.ts` behaves as before and still exports `universalFor`).
+- Docs: `scripts/bridge/README.md` ("Rubicon deploy of 13.0.0") and `contracts/bridge/README.md` replace the
+  "follow-up PR" note from #390.
+- Tests: `tests/bridge/deploy-rubicon-v13.test.ts` on local Hardhat only (argument validation, read-back including
+  a mock deploy with a wrong owner, the printed calldata, dry run sends nothing, the record) and new cases in
+  `tests/bridge/testnet-guard.test.ts`.
+
 ## 2026-10-20 — RomeBridgeWithdraw 13.0.0: CCTP destinations configurable without a redeploy
 
 Until v12 the list of allowed CCTP destination chains was written once, in the constructor, and
@@ -58,8 +117,8 @@ owner-managed state. Source only: nothing is deployed by this change.
   genesis hash, the inbound Solana scripts. A local Rome stack is allowed by listing its id in
   `ROME_EXTRA_TESTNET_CHAIN_IDS`; mainnet ids are refused even there. **Nothing in this repo deploys
   v13 on Rubicon** (`deploy.ts` refuses it; `scripts/deploy-ledger.ts` only deploys `ERC20SPLFactory`). The
-  Rubicon deploy is a separate follow-up PR, required before the Rubicon step: a Ledger-signed deploy of v13
-  with owner = the cold Ledger, guardian = the ops key, domains `[0]`, empty Wormhole lists. `submit-burn.ts` and `try-burn.ts` no longer burn to
+  Rubicon deploy is `scripts/bridge/deploy-rubicon-v13.ts` (added on the same date): owner = the cold Ledger,
+  guardian = the ops key, domains `[0]` by an owner call, empty Wormhole lists. `submit-burn.ts` and `try-burn.ts` no longer burn to
   `0x...0001`: the recipient is the signer by default (`BURN_RECIPIENT` to override) and burn-like addresses
   are refused. The registry reader merges `sourceEvm` and `sourceEvms[]` (one chain once, by `chainId`; a live entry wins over a retired
   duplicate of the same chain), so a file that carries both, like Hadrian's, no longer plans `disableCctpDomain(0)`.
@@ -79,8 +138,8 @@ owner-managed state. Source only: nothing is deployed by this change.
      `burnUSDC(amount, addr, 0)` on v12 and v13 side by side, recorded in the PR before the Rubicon deploy.
      The burn reads two more storage slots, and the atomic CPI path is capped at 1.4M CU (about 950K was
      recorded for v6); the Hardhat gas figure says nothing about either.
-  4. The Rubicon deploy itself: a separate follow-up PR (a Ledger-signed deploy of v13, owner = the cold Ledger,
-     guardian = the ops key, domains `[0]`, empty Wormhole lists). Nothing in this PR can deploy on Rubicon.
+  4. The Rubicon deploy itself: `scripts/bridge/deploy-rubicon-v13.ts` (owner = the cold Ledger, guardian = the ops
+     key, domains `[0]` by an owner call, empty Wormhole lists). Nothing in #390 could deploy on Rubicon.
 - **Tests.** `tests/bridge/rome_bridge_withdraw_v13.test.ts` and `tests/bridge/enable-cctp-domains.test.ts`,
   with `BridgePrecompileMock` extended to serve `account_info`. Existing bridge tests adapted only for the new
   constructor and the removed `burnETH`.
