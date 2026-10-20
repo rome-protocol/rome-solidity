@@ -194,6 +194,13 @@ describe("every script that sends is behind the guard", () => {
     assert.ok(src.lastIndexOf("assertTestnetSend(") < src.indexOf("viem.deployContract(\"RomeBridgeWithdraw\""));
     assert.equal(src.split("assertTestnetSend(").length - 1 >= 2, true);
   });
+  it("deploy.ts carries no unreachable mainnet branch and says the Rubicon deploy is a separate follow-up", () => {
+    for (const f of ["deploy.ts", "lib/deploy-roles.ts"]) {
+      const src = readFileSync(path.join(repo, "scripts/bridge", f), "utf8");
+      assert.doesNotMatch(src, /MAINNET_NETWORKS|isMainnet|Required on Rubicon|required on mainnet/, `${f}: dead mainnet rules`);
+      assert.match(src, /follow-up/, `${f}: names the Rubicon deploy as a follow-up`);
+    }
+  });
   it("ensure-bridge-atas only skips the guard in a dry run", () => {
     const src = readFileSync(path.join(repo, "scripts/bridge/ensure-bridge-atas.ts"), "utf8");
     assert.match(src, /if \(!dryRun\) await assertTestnetSend\(/);

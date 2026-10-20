@@ -12,10 +12,15 @@
 // are switched on afterwards by the owner (scripts/bridge/enable-cctp-domains.ts,
 // scripts/bridge/set-wormhole-allowlist.ts). The owner and guardian are set here.
 //
-//   BRIDGE_OWNER     owner address (admin). Required on Rubicon (the cold Ledger);
-//                    elsewhere defaults to WORMHOLE_ADMIN, then the deployer.
-//   BRIDGE_GUARDIAN  stop-only ops key (pause, disable a domain). Required on
-//                    Rubicon; elsewhere defaults to none (zero address).
+//   BRIDGE_OWNER     owner address (admin). Defaults to WORMHOLE_ADMIN, then the deployer.
+//   BRIDGE_GUARDIAN  stop-only ops key (pause, disable a domain). Defaults to none
+//                    (zero address). Must differ from the owner.
+//
+// TESTNETS ONLY. This script refuses to send unless the RPC reports a listed testnet
+// chain id (lib/testnet-guard.ts), so it cannot deploy on Rubicon. A Rubicon deploy of
+// 13.0.0 does not exist in this repo yet: it is a separate follow-up PR (a Ledger-signed
+// deploy with owner = the cold Ledger, guardian = the ops key, domains [0], empty
+// Wormhole lists) and is required before the Rubicon step.
 //
 // Mint configuration is per-chain via env vars; constants no longer hard-code
 // Rome's mints. Operators always pass the USDC mint explicitly:
@@ -165,10 +170,6 @@ function requireExistingWrapper(
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
-/// Mainnet networks need an explicit owner and guardian: the deployer is a hot
-/// key and must never end up as the owner by default.
-const MAINNET_NETWORKS: ReadonlySet<string> = new Set(["rubicon"]);
-
 function envAddress(name: string): `0x${string}` | undefined {
   const v = (process.env[name] ?? "").trim();
   if (!v) return undefined;
@@ -182,8 +183,8 @@ export async function deployWithdraw(
 ) {
   const { viem, networkName } = await hardhat.network.connect();
   // This script never deploys to mainnet: it refuses unless the RPC reports a
-  // testnet chain id (lib/testnet-guard.ts). A Rubicon deploy is a separate,
-  // Ledger-signed step that this script does not perform.
+  // testnet chain id (lib/testnet-guard.ts). A Rubicon deploy is a separate follow-up
+  // PR (Ledger-signed); there is no mainnet path in this file.
   await assertTestnetSend(await viem.getPublicClient(), `${networkName} deploy RomeBridgeWithdraw`);
   const pdas = loadSolanaPdas(usdcMintBase58, networkName);
   const UNIVERSAL = universalFor(networkName);
@@ -229,13 +230,11 @@ export async function deployWithdraw(
   //
   // Owner and guardian are fixed in the constructor, so there is no hand-over gap.
   const [deployerWallet] = await viem.getWalletClients();
-  const isMainnet = MAINNET_NETWORKS.has(networkName);
-  // Owner and guardian rules live in lib/deploy-roles.ts (tested): on mainnet
-  // BRIDGE_OWNER only, never WORMHOLE_ADMIN; owner != deploy key; guardian != owner.
+  // Owner and guardian rules live in lib/deploy-roles.ts (tested): BRIDGE_OWNER, then
+  // WORMHOLE_ADMIN, then the deployer; the guardian must differ from the owner.
   const deployerAddress = deployerWallet.account.address as `0x${string}`;
   const roles = resolveRoles({
     network: networkName,
-    isMainnet,
     deployer: deployerAddress,
     bridgeOwner: envAddress("BRIDGE_OWNER"),
     wormholeAdmin: envAddress("WORMHOLE_ADMIN"),

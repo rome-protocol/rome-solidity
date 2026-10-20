@@ -324,28 +324,14 @@ describe("checkCircleRecord (--check re-reads Circle's account)", () => {
   });
 });
 
-describe("resolveRoles (deploy.ts owner and guardian rules)", () => {
+describe("resolveRoles (deploy.ts owner and guardian rules, testnets only)", () => {
   const DEPLOYER = "0x00000000000000000000000000000000000000d0";
   const LEDGER = "0x00000000000000000000000000000000000001ed";
   const OPS = "0x00000000000000000000000000000000000000c5";
   const HOT = "0x00000000000000000000000000000000000000fa";
-  const mainnet = { network: "rubicon", isMainnet: true, deployer: DEPLOYER };
 
-  it("mainnet needs BRIDGE_OWNER itself: a leftover WORMHOLE_ADMIN does not stand in", () => {
-    assert.throws(() => resolveRoles({ ...mainnet, wormholeAdmin: HOT, bridgeGuardian: OPS }), /BRIDGE_OWNER is required/);
-  });
-  it("mainnet needs BRIDGE_GUARDIAN", () => {
-    assert.throws(() => resolveRoles({ ...mainnet, bridgeOwner: LEDGER }), /BRIDGE_GUARDIAN is required/);
-  });
-  it("mainnet: the owner is BRIDGE_OWNER even if WORMHOLE_ADMIN is set", () => {
-    assert.deepEqual(resolveRoles({ ...mainnet, bridgeOwner: LEDGER, wormholeAdmin: HOT, bridgeGuardian: OPS }), { owner: LEDGER, guardian: OPS });
-  });
-  it("mainnet: the owner may not be the deploy key, and the guardian may not be the owner", () => {
-    assert.throws(() => resolveRoles({ ...mainnet, bridgeOwner: DEPLOYER, bridgeGuardian: OPS }), /must not be the deploy key/);
-    assert.throws(() => resolveRoles({ ...mainnet, bridgeOwner: LEDGER, bridgeGuardian: LEDGER.toUpperCase().replace("0X", "0x") }), /guardian must differ/);
-  });
   it("testnet: falls back to WORMHOLE_ADMIN, then the deployer, with no guardian", () => {
-    const t = { network: "hadrian", isMainnet: false, deployer: DEPLOYER };
+    const t = { network: "hadrian", deployer: DEPLOYER };
     assert.deepEqual(resolveRoles({ ...t, wormholeAdmin: HOT }), { owner: HOT, guardian: "0x0000000000000000000000000000000000000000" });
     assert.deepEqual(resolveRoles(t).owner, DEPLOYER);
     assert.deepEqual(resolveRoles({ ...t, bridgeOwner: LEDGER, bridgeGuardian: OPS }), { owner: LEDGER, guardian: OPS });
