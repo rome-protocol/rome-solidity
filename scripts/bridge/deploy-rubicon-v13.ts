@@ -29,13 +29,17 @@
 // create and the digest. It sends nothing. On Rubicon the owner and guardian must be EIP-55
 // checksummed accounts with no code, the owner must hold gas, contracts/, hardhat.config.ts and
 // package-lock.json must be clean, the artifact must have been compiled from exactly those
-// sources, RUBICON_GAS_PRICE must be set, and the owner must be the live v12 contract's owner()
-// (and the guardian must not be) unless --owner-differs-from-v12 says it is on purpose. A real run
+// sources, the npm packages the compiler read must be the lockfile's own published packages (the
+// script downloads each locked tarball, checks its sha512 against the lockfile and compares every
+// compiler-input file with it: run it from a fresh clone after `npm ci`), RUBICON_GAS_PRICE must be
+// set, and the owner must be the live v12 contract's owner() (and the guardian must not be), with a
+// valid v12 address recorded and its owner readable, unless --owner-differs-from-v12 says it is on purpose. A real run
 // deploys, reads back VERSION, owner, pendingOwner, guardian, the empty CCTP list, the unpaused
 // rails, the USDC wrapper and mint, the empty Wormhole lists and the deploy key's lack of any
 // role (with retries for RPC lag), checks that the transaction that was MINED is the approved
-// deploy (success, a creation by the deploy key, this address, these bytes: a repriced replacement
-// is recorded under its own hash), and fails loudly on any mismatch (and then writes nothing).
+// deploy (success, a creation by the deploy key at the approved nonce, the predicted address, these
+// bytes: a repriced replacement is recorded under its own hash; the send itself passes the approved
+// nonce to the wallet), and fails loudly on any mismatch (and then writes nothing).
 // It writes the address, the commit, the build, the code hash and the deploy input hash to
 // deployments/rubicon.json under RomeBridgeWithdrawV13, next to the live v12 record, which it
 // does not touch; the file is replaced atomically (a temp file renamed over it), so a failed write
@@ -61,11 +65,12 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs, { realpathSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import hardhat from "hardhat";
 import { encodeDeployData } from "viem";
-import { checkBuildProvenance } from "./lib/build-provenance.js";
+import { checkBuildProvenance, checkDependencySources, fetchTarballFromRegistry } from "./lib/build-provenance.js";
 import {
-  READ_ABI, USAGE, deployDigest, parseArgs, predictedAddress, runRubiconV13Deploy,
+  READ_ABI, RUBICON_NETWORK, USAGE, deployDigest, parseArgs, predictedAddress, runRubiconV13Deploy,
   type DeployDeps, type DeployOptions, type DeploymentStore,
 } from "./lib/rubicon-v13.js";
 import { assertRubiconV13DeploySend } from "./lib/testnet-guard.js";
@@ -80,22 +85,16 @@ const BUILD_PATHS = ["contracts/", "hardhat.config.ts", "package-lock.json"];
 /** The file operations the store uses; tests pass a faulty one to prove a failed write leaves the file alone. */
 export type FileIo = Pick<typeof fs, "existsSync" | "readFileSync" | "mkdirSync" | "openSync" | "writeSync" | "fsyncSync" | "closeSync" | "renameSync" | "unlinkSync" | "statSync" | "realpathSync">;
 
-const processAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === "EPERM";
-  }
-};
-
 /**
  * A deployments file, read the way scripts/lib/deployments.ts does, and written ATOMICALLY: the new
  * text goes to a temp file in the same directory, is flushed, and is renamed over the destination, so a
  * full disk or a dying process leaves the old file whole (the v12 record included) and removes the
- * temp file. Writers are serialized by a lock file (`<file>.lock`, created exclusively, holding the
- * owner's pid; a lock whose process is gone is taken over). `update` does the read, the change and the
- * write under one lock, so two runs cannot lose each other's change.
+ * temp file. Writers are serialized by a lock file (`<file>.lock`, created exclusively, holding a token
+ * only this run knows). A lock that already exists is NEVER taken over, not even one left by a dead
+ * process: the run refuses and tells the operator to confirm that nothing else is running and to remove
+ * the file by hand. A run releases only the lock it created (the token in the file is checked before
+ * the unlink). `update` does the read, the change and the write under one lock, so two runs cannot
+ * lose each other's change.
  */
 export function fileStore(file: string, io: FileIo = fs): DeploymentStore {
   const read = (): Record<string, any> => (io.existsSync(file) ? JSON.parse(io.readFileSync(file, "utf8") as string) : {});
@@ -133,26 +132,32 @@ export function fileStore(file: string, io: FileIo = fs): DeploymentStore {
     const target = io.existsSync(file) ? (io.realpathSync(file) as string) : file;
     const lock = `${target}.lock`;
     io.mkdirSync(path.dirname(lock), { recursive: true });
-    let fd: number | undefined;
-    for (let attempt = 0; fd === undefined; attempt++) {
-      try {
-        fd = io.openSync(lock, "wx", 0o644);
-      } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
-        const holder = Number.parseInt(String(io.readFileSync(lock, "utf8")).trim(), 10);
-        if (attempt === 0 && Number.isInteger(holder) && holder > 0 && !processAlive(holder)) {
-          try { io.unlinkSync(lock); } catch { /* another run took it over first; the retry will see it */ }
-          continue;
-        }
-        throw new Error(`${path.basename(target)} is being written by another run (lock ${lock}${Number.isInteger(holder) ? `, pid ${holder}` : ""}). If no other run is active, remove the lock file and try again.`);
-      }
-    }
+    const token = `${process.pid}:${randomUUID()}`;
+    let fd: number;
     try {
-      io.writeSync(fd, String(process.pid));
+      fd = io.openSync(lock, "wx", 0o644);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      let holder = "";
+      try { holder = String(io.readFileSync(lock, "utf8")).trim(); } catch { /* it may be gone already */ }
+      throw new Error(
+        `${path.basename(target)} is locked: ${lock} exists${holder ? ` (written by ${holder.split(":")[0]})` : ""}. This script never takes a lock over. ` +
+        "Confirm that no other deploy run is active (ps, and the deploy key's transactions), then remove the lock file by hand and run again.",
+      );
+    }
+    let wrote = false;
+    try {
+      io.writeSync(fd, token);
+      wrote = true;
       return fn();
     } finally {
       try { io.closeSync(fd); } catch { /* released below */ }
-      try { io.unlinkSync(lock); } catch { /* already gone */ }
+      // Only the lock this run created: the file must still hold this run's token.
+      let mine = !wrote; // a token that never got written: the file is the empty one this run just created
+      if (wrote) {
+        try { mine = String(io.readFileSync(lock, "utf8")) === token; } catch { /* gone: nothing to release */ }
+      }
+      if (mine) { try { io.unlinkSync(lock); } catch { /* already gone */ } }
     }
   }
 
@@ -195,6 +200,7 @@ export async function depsFromConnection(
   connection: { viem: any; networkName: string; networkConfig?: any },
   store: DeploymentStore,
   log: (line: string) => void = console.log,
+  options: { fetchTarball?: (url: string) => Promise<Buffer> } = {},
 ): Promise<DeployDeps> {
   const { viem, networkName } = connection;
   const publicClient = await viem.getPublicClient();
@@ -237,7 +243,7 @@ export async function depsFromConnection(
       const predicted = predictedAddress(deployer, nonce);
       let txHash: `0x${string}`;
       try {
-        txHash = (await wallet.deployContract({ abi, bytecode, args: [...args] })) as `0x${string}`;
+        txHash = (await wallet.deployContract({ abi, bytecode, args: [...args], nonce })) as `0x${string}`;
       } catch (e) {
         throw sendFailed(networkName, deployer, nonce, predicted, e);
       }
@@ -293,6 +299,18 @@ export async function depsFromConnection(
             expectedSolcVersion: compiler.version,
             expectedSettings: compiler.settings ?? {},
           });
+      // On Rubicon the dependencies the compiler read must also be the locked packages' own files (a
+      // patched node_modules with an unchanged lockfile is refused). It needs the npm registry, so
+      // rehearsals on other networks skip it.
+      if (networkName === RUBICON_NETWORK && compiler && (artifact as any).buildInfoId) {
+        const depProblems = await checkDependencySources({
+          root: cfg.paths?.root ?? REPO,
+          artifactsDir: cfg.paths?.artifacts ?? path.join(REPO, "artifacts"),
+          buildInfoId: (artifact as any).buildInfoId,
+          fetchTarball: options.fetchTarball ?? fetchTarballFromRegistry,
+        });
+        if (depProblems.length > 0) return { commit, contractsClean, build: { ...build, ok: false, problems: [...build.problems, ...depProblems] } };
+      }
       return { commit, contractsClean, build };
     },
     sourceAt: async (commit) => {
@@ -318,7 +336,7 @@ export async function depsFromConnection(
         const block = await publicClient.getBlock({ blockHash: receipt.blockHash }).catch(() => undefined);
         if (block) blockTimestamp = Number(block.timestamp);
       }
-      return { from: tx.from, input: tx.input, to: tx.to, status: receipt?.status ?? "pending", contractAddress: receipt?.contractAddress, blockTimestamp };
+      return { from: tx.from, input: tx.input, to: tx.to, nonce: tx.nonce === undefined ? undefined : Number(tx.nonce), status: receipt?.status ?? "pending", contractAddress: receipt?.contractAddress, blockTimestamp };
     },
     simulate: async (from, call) => {
       await publicClient.call({ account: from, to: call.to, data: call.data });

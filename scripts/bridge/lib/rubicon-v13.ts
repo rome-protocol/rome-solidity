@@ -393,7 +393,7 @@ export interface DeployDeps {
    * timestamp (seconds). Undefined when the node does not know it. The block is the one the
    * receipt names (by hash).
    */
-  getDeployTx(hash: Hex): Promise<{ from: string; input: Hex; to: string | null | undefined; status: string; contractAddress: string | null | undefined; blockTimestamp?: number } | undefined>;
+  getDeployTx(hash: Hex): Promise<{ from: string; input: Hex; to: string | null | undefined; nonce?: number; status: string; contractAddress: string | null | undefined; blockTimestamp?: number } | undefined>;
   /** eth_call of an owner call from the owner's address; the answer is printed, never fatal. */
   simulate?(from: Address, call: OwnerCall): Promise<void>;
   log(line: string): void;
@@ -434,14 +434,16 @@ export function predictedAddress(deployer: string, nonce: number | bigint): Addr
   return getContractAddress({ from: getAddress(deployer), nonce: BigInt(nonce) });
 }
 
-/** What a mined deploy transaction must be for the record: success, a creation, by the deploy key, of this address, with these bytes. */
-export function deployTxProblems(tx: { from: string; input: Hex; to: string | null | undefined; status: string; contractAddress: string | null | undefined }, address: string, data: Hex, deployer: string): string[] {
+/** What a mined deploy transaction must be for the record: success, a creation, by the deploy key, of this address, with these bytes (and, for a fresh deploy, the approved nonce). */
+export function deployTxProblems(tx: { from: string; input: Hex; to: string | null | undefined; status: string; contractAddress: string | null | undefined; nonce?: number }, address: string, data: Hex, deployer: string, approvedNonce?: number): string[] {
   const problems: string[] = [];
   if (tx.status !== "success") problems.push(`the transaction status is ${tx.status}`);
   if (tx.to) problems.push(`the transaction is a call to ${tx.to}, not a contract creation`);
   if (!eq(tx.from, deployer)) problems.push(`the transaction was sent by ${tx.from}, not by the deploy key ${deployer}`);
   if (!tx.contractAddress || !eq(tx.contractAddress, address)) problems.push(`the transaction created ${tx.contractAddress ?? "no contract"}, not ${address}`);
   if (tx.input.toLowerCase() !== data.toLowerCase()) problems.push("the transaction data is not this artifact's bytecode with these constructor arguments");
+  // A fresh deploy knows the nonce it approved; a recovery (--verify-existing) does not, and skips this.
+  if (approvedNonce !== undefined && tx.nonce !== approvedNonce) problems.push(`the transaction used nonce ${tx.nonce ?? "(unknown)"}, not the approved nonce ${approvedNonce}`);
   return problems;
 }
 
@@ -582,14 +584,18 @@ export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions)
       log(`${tag} v12 owner() could not be read; compare --owner with the Ledger's own screen`);
     }
   }
-  if (mainnet && typeof v12 === "string") {
+  if (mainnet) {
     if (v12Owner && eq(roles.guardian, v12Owner)) {
       throw new Error(`${tag} --guardian ${roles.guardian} is v12's owner(): the live owner is the intended v13 OWNER, so --owner and --guardian look swapped (the ops key would end as owner). Refusing, a dry run included.`);
     }
     if (!opts.ownerDiffersFromV12 && !(v12Owner && eq(v12Owner, roles.owner))) {
+      // A missing or malformed v12 record counts as an unreadable owner: the safeguard never turns itself off.
+      const v12Valid = typeof v12 === "string" && isAddress(v12);
       const why = v12Owner
         ? `--owner ${roles.owner} is not v12's owner() ${v12Owner}`
-        : "v12's owner() could not be read as an account, so --owner cannot be compared with it";
+        : v12Valid
+          ? "v12's owner() could not be read as an account, so --owner cannot be compared with it"
+          : `deployments/${deps.networkName}.json has no valid RomeBridgeWithdraw (v12) address, so --owner cannot be compared with v12's owner()`;
       if (dryRun) {
         log(`${tag} WARNING: ${why}. A real deploy will be refused unless it is on purpose: then add ${OWNER_DIFFERS_FLAG}.`);
       } else {
@@ -671,7 +677,14 @@ export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions)
     log(`${tag} sending: deploy key nonce ${nonce}, the contract will be created at ${predicted}. If this run stops without a receipt, check \`cast nonce ${roles.deployer}\` and \`cast code ${predicted}\` before anything else: do NOT deploy again.`);
     deployed = await deps.deploy(args, opts.mainnetFlag, opts.deployDigest as Hex | undefined);
     log(`${tag} RomeBridgeWithdraw ${EXPECTED_VERSION} deployed at ${deployed.address} (tx ${deployed.txHash})`);
-    if (!eq(deployed.address, predicted!)) log(`${tag} NOTE: the contract is at ${deployed.address}, not the predicted ${predicted}: the deploy key sent another transaction in between`);
+    if (!eq(deployed.address, predicted!)) {
+      throw new Error(
+        `${tag} the mined deploy ${deployed.txHash} created ${deployed.address}, not the approved ${predicted} (deploy key nonce ${nonce}), so it is NOT recorded. ` +
+        "Do not use that contract and do not enable anything on it, and do NOT deploy again yet. Something else was sent from the deploy key: look the transaction up " +
+        `(\`cast tx ${deployed.txHash}\`, \`cast nonce ${roles.deployer}\`, \`cast code ${predicted}\`). Only if you confirm ${deployed.address} is the creation of exactly these bytes by the deploy key and you accept it, ` +
+        `record it with ${recoverArgs(deployed.address, deployed.txHash, commit)}; otherwise run the dry run again and start over with the new digest.`,
+      );
+    }
   }
 
   // 5b. Read everything back.
@@ -694,9 +707,9 @@ export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions)
   if (!mined) {
     // A fresh deploy: the transaction that was MINED must be the approved one (it can be a replacement of the one sent).
     mined = await fetchMinedDeploy(deps, deployed.txHash, `Do NOT deploy again: re-run with ${recover}.`);
-    const problems = deployTxProblems(mined, deployed.address, data, roles.deployer);
+    const problems = deployTxProblems(mined, deployed.address, data, roles.deployer, nonce);
     if (problems.length > 0) {
-      throw new Error(`${tag} the mined transaction ${deployed.txHash} is not the approved deploy, so ${deployed.address} is NOT recorded. Do not use it:\n  - ${problems.join("\n  - ")}`);
+      throw new Error(`${tag} the mined transaction ${deployed.txHash} is not the approved deploy, so ${deployed.address} is NOT recorded. Do not use it, and do NOT deploy again yet (check \`cast tx ${deployed.txHash}\` and \`cast nonce ${roles.deployer}\`; to start over, run the dry run again):\n  - ${problems.join("\n  - ")}`);
     }
   }
   // deployedAt is the deploy block's time, never the clock of this run.

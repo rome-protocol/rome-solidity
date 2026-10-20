@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs, { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os, { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import { decodeFunctionData, getAddress, keccak256, parseAbi, toFunctionSelector } from "viem";
@@ -14,7 +15,7 @@ import {
 import { assertRubiconV13DeploySend } from "../../scripts/bridge/lib/testnet-guard.js";
 import { buildWithdrawConstructorArgs, universalFor } from "../../scripts/bridge/lib/withdraw-ctor-args.js";
 import { compileProject, depsFromConnection, fileStore, isEntryPoint } from "../../scripts/bridge/deploy-rubicon-v13.js";
-import { checkBuildProvenance } from "../../scripts/bridge/lib/build-provenance.js";
+import { checkBuildProvenance, checkDependencySources } from "../../scripts/bridge/lib/build-provenance.js";
 import { SOLANA_PROGRAM_IDS } from "../../scripts/bridge/constants.js";
 import { base58ToBytes32 } from "../../scripts/lib/pubkey.js";
 import { ADDR } from "./helpers/v13.js";
@@ -790,6 +791,57 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
     assert.equal(await pc.getTransactionCount({ address: A(0) }), nonce + 1, "no second contract");
   });
 
+  it("the send passes the approved nonce explicitly to the wallet, and the mined address and nonce must be the approved ones", async () => {
+    const seen: any[] = [];
+    const spy = {
+      getPublicClient: () => viem.getPublicClient(),
+      getWalletClients: async () => {
+        const [w, ...rest] = await viem.getWalletClients();
+        return [{ account: w.account, deployContract: async (a: any) => { seen.push(a); return w.deployContract(a); } }, ...rest];
+      },
+    };
+    const d = await depsFromConnection({ viem: spy, networkName: conn.networkName }, memStore(STORE()), () => {});
+    const nonce = await pc.getTransactionCount({ address: A(0), blockTag: "pending" });
+    const out = await d.deploy(ctorFor(A(1)), false);
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].nonce, nonce, "the validated nonce is handed to the wallet, not left to it");
+    assert.equal(getAddress(out.address), predictedAddress(A(0), nonce));
+  });
+
+  it("a deploy that was mined at another address or under another nonce than the approved ones is refused and not recorded, with what to do next", async () => {
+    // another address than the predicted one
+    const s1 = memStore(STORE());
+    const good = await digestFor(memStore(STORE()));
+    const m1 = await mainDeps(s1, [], {});
+    const other: DeployDeps = { ...m1.deps, deploy: async (args) => { const r = await m1.d.deploy(args, false); return { ...r, address: A(7) as `0x${string}` }; } };
+    await assert.rejects(runRubiconV13Deploy(other, opts({ deployDigest: good })), (e: Error) => {
+      assert.match(e.message, /created 0x[0-9a-fA-F]{40}, not the approved 0x[0-9a-fA-F]{40} \(deploy key nonce \d+\), so it is NOT recorded/);
+      assert.match(e.message, /do NOT deploy again yet/);
+      assert.match(e.message, /--verify-existing/);
+      return true;
+    });
+    assert.equal(s1.peek()[RECORD_KEY], undefined);
+    // the mined transaction carries another nonce
+    const s2 = memStore(STORE());
+    const good2 = await digestFor(memStore(STORE()));
+    const m2 = await mainDeps(s2, []);
+    const wrapped: DeployDeps = { ...m2.deps, getDeployTx: async (h) => { const t = (await m2.d.getDeployTx(h))!; return { ...t, nonce: (t.nonce ?? 0) + 1 }; } };
+    await assert.rejects(runRubiconV13Deploy(wrapped, opts({ deployDigest: good2 })), (e: Error) => {
+      assert.match(e.message, /is not the approved deploy/);
+      assert.match(e.message, /used nonce \d+, not the approved nonce \d+/);
+      assert.match(e.message, /NOT recorded/);
+      return true;
+    });
+    assert.equal(s2.peek()[RECORD_KEY], undefined);
+    // a mined transaction that does not report its nonce at all is refused too
+    const s3 = memStore(STORE());
+    const good3 = await digestFor(memStore(STORE()));
+    const m3 = await mainDeps(s3, []);
+    const blind: DeployDeps = { ...m3.deps, getDeployTx: async (h) => ({ ...(await m3.d.getDeployTx(h))!, nonce: undefined }) };
+    await assert.rejects(runRubiconV13Deploy(blind, opts({ deployDigest: good3 })), /used nonce \(unknown\), not the approved nonce/);
+    assert.equal(s3.peek()[RECORD_KEY], undefined);
+  });
+
   it("the real send boundary recomputes the digest from the bytes and nonce it sends; on a local chain no digest is needed (the 7531 rule is the guard's, tested in testnet-guard.test.ts)", async () => {
     const d = await depsFromConnection(conn, memStore(STORE()), () => {});
     const args = ctorFor(A(1));
@@ -958,19 +1010,36 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
     assert.equal((await runRubiconV13Deploy(m3.deps, opts({ deployDigest: d3.digest }))).dryRun, false);
   });
 
-  it("when v12's owner() cannot be read on Rubicon, a real deploy needs the opt-out too; a chain with no v12 record, and a testnet, are not checked", async () => {
+  it("when v12's owner() cannot be read on Rubicon, a real deploy needs the opt-out too; and a testnet is not checked", async () => {
     const m = await mainDeps(memStore(STORE()), []);
     const blind: DeployDeps = { ...m.deps, reader: (a) => ({ ...m.deps.reader(a), read: async (fn, args) => { if (fn === "owner" && a.toLowerCase() === v12.address.toLowerCase()) throw new Error("boom"); return m.deps.reader(a).read(fn, args); } }) };
     const dry = await runRubiconV13Deploy(blind, opts());
     await assert.rejects(runRubiconV13Deploy(blind, opts({ deployDigest: dry.digest })), /could not be read as an account.*--owner-differs-from-v12/s);
     assert.equal((await runRubiconV13Deploy(blind, opts({ deployDigest: dry.digest, ownerDiffersFromV12: true }))).dryRun, false);
-    // no v12 record at all: nothing to compare with
+    // no v12 record at all: the dry run still runs (it warns); the real deploy is refused in the next test
     const noV12 = { SPL_ERC20_USDC: STORE().SPL_ERC20_USDC };
     const m2 = await mainDeps(memStore(noV12), []);
     assert.equal((await runRubiconV13Deploy(m2.deps, opts({ owner: A(3) }))).dryRun, true);
     // off Rubicon the local chain's v12 has another owner than wallets[1], and the deploy goes ahead
     const local = await depsFromConnection(conn, memStore(STORE()), () => {});
     assert.equal((await runRubiconV13Deploy(local, { ...opts({ network: "hardhatMainnet", mainnetFlag: false, dryRun: true }), owner: A(4) })).dryRun, true);
+  });
+
+  it("a missing or malformed v12 record does not switch the owner safeguard off: a real deploy on Rubicon refuses unless the exception flag is given", async () => {
+    const usdc = STORE().SPL_ERC20_USDC;
+    for (const [name, store] of [
+      ["no v12 record", { SPL_ERC20_USDC: usdc }],
+      ["a v12 record with no address", { SPL_ERC20_USDC: usdc, RomeBridgeWithdraw: { deployedAt: 1790219940 } }],
+      ["a v12 record with a malformed address", { SPL_ERC20_USDC: usdc, RomeBridgeWithdraw: { address: "0x1234" } }],
+    ] as const) {
+      const lines: string[] = [];
+      const m = await mainDeps(memStore(store), lines);
+      const dry = await runRubiconV13Deploy(m.deps, opts());
+      assert.match(lines.join("\n"), /WARNING: .*no valid RomeBridgeWithdraw \(v12\) address.*A real deploy will be refused/, name);
+      await assert.rejects(runRubiconV13Deploy(m.deps, opts({ deployDigest: dry.digest })), /no valid RomeBridgeWithdraw \(v12\) address.*--owner-differs-from-v12/s, name);
+      assert.equal(m.counters.deploys, 0, name);
+      assert.equal((await runRubiconV13Deploy(m.deps, opts({ deployDigest: dry.digest, ownerDiffersFromV12: true }))).dryRun, false, name);
+    }
   });
 
   it("a record file that cannot be written prints the record and says to use --verify-existing, not to deploy again", async () => {
@@ -1162,18 +1231,39 @@ describe("the deployments file store replaces the file atomically and serializes
     });
   });
 
-  it("a second writer is refused while the first holds the lock, and the file is untouched; a lock of a dead process is taken over", () => {
+  it("an existing lock is never taken over, not even a dead process's: the run refuses with instructions, and leaves the lock and the file alone", () => {
     withTmp((dir, file, raw) => {
-      writeFileSync(`${file}.lock`, String(process.pid));          // this process is alive
-      assert.throws(() => fileStore(file).update!((cur) => withV13Record(cur, rec as any)), /being written by another run.*remove the lock file/);
-      assert.equal(readFileSync(file, "utf8"), raw);
-      assert.equal(fs.existsSync(`${file}.lock`), true, "another writer's lock is not removed");
-      // a pid nobody has
       const dead = spawnSync(process.execPath, ["-e", "0"]);
-      writeFileSync(`${file}.lock`, String(dead.pid));
+      for (const content of [String(process.pid), String(dead.pid), `${dead.pid}:some-token`, ""]) {
+        writeFileSync(`${file}.lock`, content);
+        assert.throws(() => fileStore(file).update!((cur) => withV13Record(cur, rec as any)), /is locked.*never takes a lock over.*Confirm that no other deploy run is active.*remove the lock file by hand/s, content);
+        assert.equal(readFileSync(file, "utf8"), raw);
+        assert.equal(readFileSync(`${file}.lock`, "utf8"), content, "the lock is exactly as it was");
+      }
+      fs.rmSync(`${file}.lock`);
       fileStore(file).update!((cur) => withV13Record(cur, rec as any));
       assert.equal(JSON.parse(readFileSync(file, "utf8"))[RECORD_KEY].address, rec.address);
       assert.deepEqual(left(dir), ["rubicon.json"]);
+    });
+  });
+
+  it("a run releases only the lock it created: if the lock was removed and another writer took it meanwhile, that writer's lock stays", () => {
+    withTmp((dir, file) => {
+      const lock = `${file}.lock`;
+      // while this run holds the lock (inside update), the file is removed by hand and another run creates its own
+      fileStore(file).update!((cur) => {
+        fs.rmSync(lock);
+        writeFileSync(lock, "4242:the-other-writers-token", { flag: "wx" });
+        return { ...cur, A: 1 };
+      });
+      assert.equal(readFileSync(lock, "utf8"), "4242:the-other-writers-token", "the other writer's live lock is not deleted");
+      // and the lock the run did create is gone after a normal update
+      fs.rmSync(lock);
+      fileStore(file).update!((cur) => ({ ...cur, B: 2 }));
+      assert.equal(fs.existsSync(lock), false);
+      // a failing update also releases its own lock, and only its own
+      assert.throws(() => fileStore(file).update!(() => { throw new Error("boom"); }), /boom/);
+      assert.equal(fs.existsSync(lock), false);
     });
   });
 
@@ -1287,6 +1377,107 @@ describe("the artifact must come from the sources on disk (build-info provenance
       assert.match(checkBuildProvenance(f.input).problems.join("\n"), /cannot be read: compile again/);
       assert.match(checkBuildProvenance({ ...f.input, buildInfoId: "../../etc/passwd" }).problems.join("\n"), /not a plain file name/);
     } finally { f.clean(); }
+  });
+
+  describe("dependency contents against the lockfile (a patched node_modules with an unchanged lockfile)", () => {
+    const PUBLISHED = "library B {}";
+    const LOCKED_URL = "https://registry.npmjs.org/@oz/contracts/-/contracts-5.6.1.tgz";
+
+    /** The real published tarball of the fixture package, made with tar, and its sha512 integrity. */
+    function publishedTarball(text: string = PUBLISHED) {
+      const tmp = mkdtempSync(path.join(tmpdir(), "prov-tgz-"));
+      try {
+        fs.mkdirSync(path.join(tmp, "package/utils"), { recursive: true });
+        writeFileSync(path.join(tmp, "package/utils/B.sol"), text);
+        writeFileSync(path.join(tmp, "package/package.json"), JSON.stringify({ name: "@oz/contracts", version: "5.6.1" }));
+        const r = spawnSync("tar", ["-czf", "p.tgz", "package"], { cwd: tmp });
+        assert.equal(r.status, 0);
+        const buf = readFileSync(path.join(tmp, "p.tgz"));
+        return { buf, integrity: `sha512-${createHash("sha512").update(buf).digest("base64")}` };
+      } finally { rmSync(tmp, { recursive: true, force: true }); }
+    }
+    const lockWith = (entry: any) => JSON.stringify({ lockfileVersion: 3, packages: { "": {}, ...(entry ? { "node_modules/@oz/contracts": entry } : {}) } });
+    function lockedFixture(entry?: any | null) {
+      const f = fixture();
+      const published = publishedTarball();
+      const good = { version: "5.6.1", resolved: LOCKED_URL, integrity: published.integrity };
+      writeFileSync(path.join(f.root, "package-lock.json"), lockWith(entry === null ? undefined : (entry ?? good)));
+      const dep = { root: f.root, artifactsDir: f.input.artifactsDir, buildInfoId: f.input.buildInfoId };
+      return { f, published, dep, fetched: [] as string[] };
+    }
+
+    it("accepts a node_modules whose compiler-input files are the locked package's own", async () => {
+      const { f, published, dep, fetched } = lockedFixture();
+      try {
+        const problems = await checkDependencySources({ ...dep, fetchTarball: async (u) => { fetched.push(u); return published.buf; } });
+        assert.deepEqual(problems, []);
+        assert.deepEqual(fetched, [LOCKED_URL], "one download, from the lockfile's own registry URL");
+      } finally { f.clean(); }
+    });
+
+    it("refuses a locally patched dependency that the lockfile and the on-disk check both pass (patched, then compiled)", async () => {
+      const { f, published, dep } = lockedFixture();
+      try {
+        // the patch: same version, same lockfile, node_modules edited, then compiled, so the build-info holds the patched text
+        const patched = "library B { /* backdoor */ }";
+        writeFileSync(path.join(f.root, "node_modules/@oz/contracts/utils/B.sol"), patched);
+        const infoFile = path.join(f.root, "artifacts/build-info", `${f.input.buildInfoId}.json`);
+        const info = JSON.parse(readFileSync(infoFile, "utf8"));
+        info.input.sources["npm/@oz/contracts@5.6.1/utils/B.sol"].content = patched;
+        writeFileSync(infoFile, JSON.stringify(info));
+        // the existing check has nothing to say: the disk equals what the compiler saw
+        assert.deepEqual(checkBuildProvenance(f.input).problems, []);
+        // this one does
+        const problems = await checkDependencySources({ ...dep, fetchTarball: async () => published.buf });
+        assert.equal(problems.length, 1);
+        assert.match(problems[0], /npm\/@oz\/contracts@5\.6\.1\/utils\/B\.sol: the compiler read text that is not in the locked @oz\/contracts@5\.6\.1 package \(a patched or replaced dependency\)/);
+      } finally { f.clean(); }
+    });
+
+    it("refuses what the lockfile cannot vouch for: a tarball that does not match its integrity, a non-registry URL, a missing entry, another version, no sha512", async () => {
+      const cases: Array<[string, any, RegExp, "good" | "other"]> = [
+        ["a tarball of other bytes", undefined, /downloaded tarball does not match the lockfile's integrity/, "other"],
+        ["a URL outside the npm registry", { version: "5.6.1", resolved: "https://evil.example/c.tgz", integrity: "sha512-x" }, /does not resolve it to the npm registry/, "good"],
+        ["a git dependency", { version: "5.6.1", resolved: "git+ssh://git@github.com/x/y.git#abc", integrity: "sha512-x" }, /does not resolve it to the npm registry/, "good"],
+        ["no entry", null, /package-lock\.json has no entry for it/, "good"],
+        ["another locked version", { version: "5.7.0", resolved: LOCKED_URL, integrity: "sha512-x" }, /package-lock\.json locks @oz\/contracts@5\.7\.0/, "good"],
+        ["no integrity", { version: "5.6.1", resolved: LOCKED_URL }, /no sha512 integrity/, "good"],
+        ["sha1 only", { version: "5.6.1", resolved: LOCKED_URL, integrity: "sha1-abc" }, /no sha512 integrity/, "good"],
+      ];
+      for (const [name, entry, re, bytes] of cases) {
+        const { f, published, dep } = lockedFixture(entry);
+        try {
+          const served = bytes === "other" ? publishedTarball("library B { /* other */ }").buf : published.buf;
+          const problems = await checkDependencySources({ ...dep, fetchTarball: async () => served });
+          assert.match(problems.join("\n"), re, name);
+        } finally { f.clean(); }
+      }
+    });
+
+    it("refuses when the tarball cannot be downloaded or the lockfile cannot be read; nothing is skipped silently", async () => {
+      const { f, dep } = lockedFixture();
+      try {
+        assert.match((await checkDependencySources({ ...dep, fetchTarball: async () => { throw new Error("HTTP 503"); } })).join("\n"), /could not be downloaded for the check \(HTTP 503\)/);
+        assert.match((await checkDependencySources({ ...dep, fetchTarball: async () => Buffer.from("not a tarball") })).join("\n"), /does not match the lockfile's integrity/);
+        fs.rmSync(path.join(f.root, "package-lock.json"));
+        assert.match((await checkDependencySources({ ...dep, fetchTarball: async () => Buffer.alloc(0) })).join("\n"), /package-lock\.json cannot be read/);
+      } finally { f.clean(); }
+    });
+
+    it("the real source() runs this check on Rubicon only, and without --network rubicon it needs no network", async () => {
+      const calls: string[] = [];
+      const offCalls: string[] = [];
+      const store = { read: () => ({}), write: () => {} };
+      const off = await depsFromConnection(await hardhat.network.connect(), store, () => {}, { fetchTarball: async (u) => { offCalls.push(u); throw new Error("no network in tests"); } });
+      assert.equal((await off.source()).build.ok, true);
+      assert.equal(offCalls.length, 0, "a rehearsal network does not download");
+      const c = await hardhat.network.connect();
+      const on = await depsFromConnection({ viem: c.viem, networkName: "rubicon" }, store, () => {}, { fetchTarball: async (u) => { calls.push(u); throw new Error("no network in tests"); } });
+      const src = await on.source();
+      assert.equal(src.build.ok, false, "a download that fails refuses the run");
+      assert.match(src.build.problems.join("\n"), /locked tarball could not be downloaded for the check \(no network in tests\)/);
+      assert.ok(calls.length >= 1 && calls.every((u) => u.startsWith("https://registry.npmjs.org/")));
+    });
   });
 
   it("the script compiles before it reads the artifact, on every run, and the compile has a watchdog", () => {
