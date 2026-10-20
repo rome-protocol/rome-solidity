@@ -62,6 +62,7 @@ interface IRomeBridgeWithdraw {
     error CctpDomainNotEnabled(uint32 domain);
     error InvalidCctpAccount(uint32 domain, bytes32 account);
     error MessengerNotEvmShaped(uint32 domain, bytes32 messenger);
+    error MessengerNotRaw32Shaped(uint32 domain, bytes32 messenger);
     error ZeroOwner();
     error ForwarderNotAllowed(address forwarder);
     error SubGranularityAmount(uint256 amount, uint256 granularity);

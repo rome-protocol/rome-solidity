@@ -239,6 +239,36 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
       assert.deepEqual(await domains(), []);
     });
 
+    it("domain 27 (Stellar) is refused for both kinds even when Circle has a genuine account for it: it needs Circle's CctpForwarder", async () => {
+      await plant(27, { messenger: suiMessenger });
+      await assert.rejects(bridge.write.enableCctpDomain([27, RAW32]), /UnsupportedDestinationDomain/);
+      await assert.rejects(bridge.write.enableCctpDomain([27, EVM]), /UnsupportedDestinationDomain/);
+      await plant(27, { messenger: evmMessenger(0x27) });
+      await assert.rejects(bridge.write.enableCctpDomain([27, RAW32]), /UnsupportedDestinationDomain/);
+      await assert.rejects(bridge.write.enableCctpDomain([27, EVM]), /UnsupportedDestinationDomain/);
+      assert.deepEqual(await domains(), []);
+      // And it can never be burned to: not enabled, so an unsupported domain.
+      await assert.rejects(
+        bridge.write.burnUSDCToBytes32([1000n, RECIPIENT32, 27], { account: user.account }),
+        /UnsupportedDestinationDomain/,
+      );
+    });
+
+    it("domain 17 (BNB Smart Chain, USYC only on Circle) is refused for both kinds even with a genuine account", async () => {
+      await plant(17, { messenger: evmMessenger(0x17) });
+      await assert.rejects(bridge.write.enableCctpDomain([17, EVM]), /UnsupportedDestinationDomain/);
+      await assert.rejects(bridge.write.enableCctpDomain([17, RAW32]), /UnsupportedDestinationDomain/);
+      assert.deepEqual(await domains(), []);
+    });
+
+    it("the refusal is the contract's own, not owner-tunable: the neighbours of 17 and 27 enable normally", async () => {
+      await enable(16);
+      await enable(18);
+      await enable(26);
+      await enable(28);
+      assert.deepEqual((await domains()).sort((a, b) => a - b), [16, 18, 26, 28]);
+    });
+
     it("a domain Circle has not registered (no account) is refused", async () => {
       await assert.rejects(bridge.write.enableCctpDomain([9, EVM]), /InvalidCctpAccount/);
       assert.deepEqual(await domains(), []);
@@ -299,13 +329,48 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
       assert.equal((await logsOf(hash, "CctpDomainEnabled")).length, 1);
     });
 
-    it("the kind can be changed by enabling again: EVM to RAW32 and back", async () => {
+    it("an EVM-shaped messenger (an EVM chain) is refused for the RAW32 kind: its receiver would truncate the 32 bytes", async () => {
+      await plant(0, { messenger: evmMessenger(0xc0de00) });
+      await assert.rejects(bridge.write.enableCctpDomain([0, RAW32]), /MessengerNotRaw32Shaped/);
+      assert.deepEqual(await domains(), []);
+      assert.equal(await bridge.read.cctpRecipientKind([0]), 0);
+    });
+
+    it("an EVM domain cannot be flipped to RAW32 by enabling it again, and stays as it was", async () => {
       await enable(6);
-      await bridge.write.enableCctpDomain([6, RAW32]); // EVM-shaped is fine for RAW32
-      assert.equal(await bridge.read.cctpRecipientKind([6]), RAW32);
-      await bridge.write.enableCctpDomain([6, EVM]);
+      await assert.rejects(bridge.write.enableCctpDomain([6, RAW32]), /MessengerNotRaw32Shaped/);
       assert.equal(await bridge.read.cctpRecipientKind([6]), EVM);
       assert.deepEqual(await domains(), [6]);
+    });
+
+    it("the bytes32 recipient that truncates to the zero address cannot be burned to an EVM domain", async () => {
+      // 1 << 160 passes a non-zero check but an EVM receiver keeps only the low 20 bytes (zero).
+      // The only way to reach it was an EVM domain enabled as RAW32, which is now refused;
+      // on the EVM domain the bytes32 entry point is refused by kind.
+      await enable(0, EVM);
+      const truncatesToZero = ("0x" + (1n << 160n).toString(16).padStart(64, "0")) as `0x${string}`;
+      await assert.rejects(
+        bridge.write.burnUSDCToBytes32([1000n, truncatesToZero, 0], { account: user.account }),
+        /RecipientKindMismatch/,
+      );
+      await assert.rejects(bridge.write.enableCctpDomain([0, RAW32]), /MessengerNotRaw32Shaped/);
+    });
+
+    it("a RAW32 domain can be re-enabled as RAW32 when Circle's record still fits (clean, listed once)", async () => {
+      await enable(8, RAW32);
+      await bridge.write.enableCctpDomain([8, RAW32]);
+      assert.equal(await bridge.read.cctpRecipientKind([8]), RAW32);
+      assert.deepEqual(await domains(), [8]);
+    });
+
+    it("re-enabling a RAW32 domain re-reads Circle's record: a messenger Circle changed to EVM-shaped is caught, and EVM then works", async () => {
+      await enable(8, RAW32);
+      await plant(8, { messenger: evmMessenger(0x88) });
+      await assert.rejects(bridge.write.enableCctpDomain([8, RAW32]), /MessengerNotRaw32Shaped/);
+      assert.equal(await bridge.read.cctpRecipientKind([8]), RAW32); // unchanged until the owner acts
+      await bridge.write.enableCctpDomain([8, EVM]);
+      assert.equal(await bridge.read.cctpRecipientKind([8]), EVM);
+      assert.deepEqual(await domains(), [8]);
     });
 
     it("switching a RAW32 domain to EVM re-checks the messenger and leaves state unchanged when it fails", async () => {
@@ -414,9 +479,7 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
     it("the 2-argument burnUSDC targets domain 0 and needs it enabled as EVM", async () => {
       await assert.rejects(bridge.write.burnUSDC([1000n, EVM_RECIPIENT], { account: user.account }), /UnsupportedDestinationDomain/);
       await enable(0, EVM);
-      await bridge.write.enableCctpDomain([0, RAW32]); // an EVM-shaped record is fine for RAW32
-      await assert.rejects(bridge.write.burnUSDC([1000n, EVM_RECIPIENT], { account: user.account }), /RecipientKindMismatch/);
-      await bridge.write.enableCctpDomain([0, EVM]);
+      await assert.rejects(bridge.write.enableCctpDomain([0, RAW32]), /MessengerNotRaw32Shaped/);
       await assert.rejects(bridge.write.burnUSDC([1000n, ZERO_ADDR], { account: user.account }), /ZeroRecipient/);
     });
 

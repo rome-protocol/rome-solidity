@@ -89,6 +89,23 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     uint8 public constant RECIPIENT_EVM = 1;
     uint8 public constant RECIPIENT_RAW32 = 2;
 
+    /// @dev Circle domains this contract's burn format cannot serve, so
+    ///      `enableCctpDomain` refuses them even though Circle has a
+    ///      RemoteTokenMessenger for them. A real messenger proves Circle
+    ///      registered the chain, not that this burn is compatible with it.
+    ///      5  Solana: an address-typed burn there is unredeemable.
+    ///      17 BNB Smart Chain: Circle moves USYC there, not USDC, and this
+    ///         contract burns USDC only.
+    ///      27 Stellar: Circle requires its CctpForwarder as both mint recipient
+    ///         and destination caller, with the user's address in hook data; this
+    ///         contract sends the user's key as recipient with no destination
+    ///         caller and no hook data, so funds could be stuck for good.
+    ///      Supporting any of them needs a dedicated, tested encoding path in a
+    ///      later version.
+    uint32 public constant DOMAIN_SOLANA = 5;
+    uint32 public constant DOMAIN_BNB = 17;
+    uint32 public constant DOMAIN_STELLAR = 27;
+
     /// @notice CCTP destination allowlist: Circle domain → RemoteTokenMessenger
     ///         PDA (["remote_token_messenger", ascii(domain)] under the v2 TMM).
     ///         Filled by `enableCctpDomain` after the contract has read Circle's
@@ -212,6 +229,12 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     /// @dev An EVM-kind domain whose Circle messenger is not a 20-byte address
     ///      (for example Sui or Aptos): a burn there would be unrecoverable.
     error MessengerNotEvmShaped(uint32 domain, bytes32 messenger);
+    /// @dev A RAW32-kind domain whose Circle messenger IS a 20-byte address
+    ///      (12 leading zero bytes): an EVM chain. Its receiver keeps only the
+    ///      low 20 bytes of the recipient, so a 32-byte recipient can truncate to
+    ///      a different address or to zero, and the burned USDC could not be
+    ///      redeemed. EVM chains stay on the address entry points.
+    error MessengerNotRaw32Shaped(uint32 domain, bytes32 messenger);
 
     // -------------------------------------------------------------------------
     // Admin events
@@ -376,17 +399,20 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ///        - owner == the CCTP v2 Token Messenger Minter program,
     ///        - the RemoteTokenMessenger discriminator,
     ///        - the stored domain == `domain`,
-    ///        - domain != 5 (Solana: an address-typed burn there is unredeemable),
-    ///        - for RECIPIENT_EVM, a messenger whose first 12 bytes are zero.
-    ///      A domain Circle has not registered, or one belonging to a non-EVM
-    ///      chain, therefore cannot be enabled as an EVM destination.
+    ///        - domain not 5 (Solana), 17 (BNB: USYC only) or 27 (Stellar: needs
+    ///          Circle's CctpForwarder), see DOMAIN_* above,
+    ///        - for RECIPIENT_EVM, a messenger whose first 12 bytes are zero,
+    ///        - for RECIPIENT_RAW32, a messenger that is NOT address-shaped.
+    ///      A domain Circle has not registered cannot be enabled, a non-EVM
+    ///      chain cannot be enabled as an EVM destination, and an EVM chain
+    ///      cannot be enabled as RAW32 (its receiver would truncate the 32 bytes).
     /// @param domain        Circle CCTP domain id.
     /// @param recipientKind RECIPIENT_EVM (1) or RECIPIENT_RAW32 (2).
     function enableCctpDomain(uint32 domain, uint8 recipientKind) external onlyOwner {
         if (recipientKind != RECIPIENT_EVM && recipientKind != RECIPIENT_RAW32) {
             revert InvalidRecipientKind(recipientKind);
         }
-        if (domain == CCTPV2Lib.DOMAIN_SOLANA) {
+        if (domain == DOMAIN_SOLANA || domain == DOMAIN_BNB || domain == DOMAIN_STELLAR) {
             revert UnsupportedDestinationDomain(domain);
         }
 
@@ -396,8 +422,15 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         (bytes32 pda, ) = PdaDeriver.derive(cctpTokenMessengerProgram, seeds);
 
         bytes32 circleMessenger = _readRemoteTokenMessenger(domain, pda);
-        if (recipientKind == RECIPIENT_EVM && (circleMessenger >> 160) != bytes32(0)) {
+        // The recipient format is bound to what Circle's record shows: an
+        // address-shaped messenger is an EVM chain (EVM kind only), a full
+        // 32-byte messenger is a non-EVM chain (RAW32 kind only).
+        bool evmShaped = (circleMessenger >> 160) == bytes32(0);
+        if (recipientKind == RECIPIENT_EVM && !evmShaped) {
             revert MessengerNotEvmShaped(domain, circleMessenger);
+        }
+        if (recipientKind == RECIPIENT_RAW32 && evmShaped) {
+            revert MessengerNotRaw32Shaped(domain, circleMessenger);
         }
 
         _cctpDest[domain] = CctpDest(pda, recipientKind);
