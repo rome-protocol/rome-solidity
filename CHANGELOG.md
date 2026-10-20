@@ -40,10 +40,11 @@ owner-managed state. Source only: nothing is deployed by this change.
 - **Unchanged:** ABI and behaviour of `burnUSDC` (both address overloads), `burnToWormhole`,
   `transferNativeToWormhole`, `bridgeOutToSolana`, `ensureRecipientAta`, `ensureBridgeAta`, the Wormhole setters,
   `setMessageRents`, and the `Withdrawn` / `WithdrawnToDomain` events.
-- **Scripts.** `deploy.ts` deploys with no domain list and empty Wormhole lists (owner and guardian from
-  `BRIDGE_OWNER` / `BRIDGE_GUARDIAN`, both required on Rubicon, where `WORMHOLE_ADMIN` no longer stands in;
-  the owner must not be the deploy key, the guardian must differ from the owner, and the script reads back
-  `VERSION`, `owner`, `guardian` and an empty `cctpDomains()` before it records the address). New
+- **Scripts.** `deploy.ts` deploys, on testnets only, with no domain list and empty Wormhole lists (owner and
+  guardian from `BRIDGE_OWNER` / `BRIDGE_GUARDIAN`; the owner defaults to `WORMHOLE_ADMIN`, then the deployer,
+  the guardian defaults to none and must differ from the owner, and the script reads back `VERSION`, `owner`,
+  `guardian` and an empty `cctpDomains()` before it records the address). It has no mainnet branch: it refuses
+  chain id 7531. New
   `enable-cctp-domains.ts` diffs a wanted list (`--domains`, or `--registry bridge.json`) against `cctpDomains()`
   and prints the exact owner calldata; it only sends on a testnet, with `--send`, as the owner, and never when
   the RPC reports Rubicon's chain id, whatever the network is called. `--check` also re-reads Circle's account of
@@ -55,11 +56,13 @@ owner-managed state. Source only: nothing is deployed by this change.
   refused, whatever the network is called. It guards `deploy.ts`, `set-wormhole-allowlist.ts`,
   `ensure-bridge-atas.ts` (a dry run still reads anywhere), the e2e, smoke and wrapper scripts and, by Solana
   genesis hash, the inbound Solana scripts. A local Rome stack is allowed by listing its id in
-  `ROME_EXTRA_TESTNET_CHAIN_IDS`; mainnet ids are refused even there. A Rubicon deploy is a separate,
-  Ledger-signed step that `deploy.ts` does not perform. `submit-burn.ts` and `try-burn.ts` no longer burn to
+  `ROME_EXTRA_TESTNET_CHAIN_IDS`; mainnet ids are refused even there. **Nothing in this repo deploys
+  v13 on Rubicon** (`deploy.ts` refuses it; `scripts/deploy-ledger.ts` only deploys `ERC20SPLFactory`). The
+  Rubicon deploy is a separate follow-up PR, required before the Rubicon step: a Ledger-signed deploy of v13
+  with owner = the cold Ledger, guardian = the ops key, domains `[0]`, empty Wormhole lists. `submit-burn.ts` and `try-burn.ts` no longer burn to
   `0x...0001`: the recipient is the signer by default (`BURN_RECIPIENT` to override) and burn-like addresses
-  are refused. The registry reader merges `sourceEvm` and `sourceEvms[]` (one chain once, by `chainId`), so
-  a file that carries both, like Hadrian's, no longer plans `disableCctpDomain(0)`.
+  are refused. The registry reader merges `sourceEvm` and `sourceEvms[]` (one chain once, by `chainId`; a live entry wins over a retired
+  duplicate of the same chain), so a file that carries both, like Hadrian's, no longer plans `disableCctpDomain(0)`.
 - **Deploy gates (outside this repo).** All of these must be done before the registry is bumped to a v13
   address on any chain, with the new feature switch OFF until a real 1 USDC send is seen:
   1. `rome-bridge-api`'s `eth-wormhole-outbound` route (it builds `burnETH`, selector `0xc150c88d`, which v13
@@ -76,6 +79,8 @@ owner-managed state. Source only: nothing is deployed by this change.
      `burnUSDC(amount, addr, 0)` on v12 and v13 side by side, recorded in the PR before the Rubicon deploy.
      The burn reads two more storage slots, and the atomic CPI path is capped at 1.4M CU (about 950K was
      recorded for v6); the Hardhat gas figure says nothing about either.
+  4. The Rubicon deploy itself: a separate follow-up PR (a Ledger-signed deploy of v13, owner = the cold Ledger,
+     guardian = the ops key, domains `[0]`, empty Wormhole lists). Nothing in this PR can deploy on Rubicon.
 - **Tests.** `tests/bridge/rome_bridge_withdraw_v13.test.ts` and `tests/bridge/enable-cctp-domains.test.ts`,
   with `BridgePrecompileMock` extended to serve `account_info`. Existing bridge tests adapted only for the new
   constructor and the removed `burnETH`.
