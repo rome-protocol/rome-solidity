@@ -224,14 +224,18 @@ async function inboundWh(sepWallet: Wallet, solConn: Connection, solanaPayer: Ke
 
 // ---- Flow 4: Outbound Wh (Rome rETH → Sepolia ETH) ----
 async function outboundWh(romeWallet: Wallet, sepWallet: Wallet) {
-  log("outbound-wh", "submitting approve_spl (bridge delegate) + burnETH on Rome…");
+  log("outbound-wh", "submitting approve_spl (bridge delegate) + burnToWormhole on Rome…");
   const dep = JSON.parse(fs.readFileSync("deployments/rome.json", "utf8"));
   const WITHDRAW = dep.RomeBridgeWithdraw.address as `0x${string}`;
   const amount = (10_000n).toString(16).padStart(64, "0"); // 10k base units
   const wethMint = base58ToBytes32(dep.SPL_ERC20_WETH.mintId) as `0x${string}`;
 
   const approveSplSel = "0x" + keccak256(new TextEncoder().encode("approve_spl(address,uint64,bytes32)")).slice(2, 10);
-  const burnEthSel = "0x" + keccak256(new TextEncoder().encode("burnETH(uint256,address)")).slice(2, 10);
+  // 13.0.0 removed burnETH: wETH goes out through burnToWormhole (the owner must
+  // have allowed the wETH mint and Sepolia's Wormhole id, see set-wormhole-allowlist.ts).
+  const burnSel = "0x" + keccak256(new TextEncoder().encode("burnToWormhole(address,uint256,bytes32,uint16)")).slice(2, 10);
+  const wrapperWord = dep.SPL_ERC20_WETH.address.slice(2).toLowerCase().padStart(64, "0");
+  const targetChainWord = (10002).toString(16).padStart(64, "0");
   const recipient = sepWallet.address.slice(2).toLowerCase().padStart(64, "0");
 
   const approveData = approveSplSel +
@@ -242,9 +246,9 @@ async function outboundWh(romeWallet: Wallet, sepWallet: Wallet) {
   await approveTx.wait();
   log("outbound-wh", "approve tx:", approveTx.hash);
 
-  const burnTx = await romeWallet.sendTransaction({ to: WITHDRAW, data: burnEthSel + amount + recipient, gasLimit: 3_000_000n });
+  const burnTx = await romeWallet.sendTransaction({ to: WITHDRAW, data: burnSel + wrapperWord + amount + recipient + targetChainWord, gasLimit: 3_000_000n });
   const burnRcpt = await burnTx.wait();
-  if (!burnRcpt || burnRcpt.status !== 1) throw new Error("burnETH reverted");
+  if (!burnRcpt || burnRcpt.status !== 1) throw new Error("burnToWormhole reverted");
   log("outbound-wh", "burn tx:", burnTx.hash);
 
   // Solana sig + extract sequence from logs
@@ -254,7 +258,7 @@ async function outboundWh(romeWallet: Wallet, sepWallet: Wallet) {
   });
   const body = await res.json() as { result?: string[] };
   const solSig = body.result?.[0];
-  if (!solSig) throw new Error("no Solana sig for burnETH");
+  if (!solSig) throw new Error("no Solana sig for burnToWormhole");
   log("outbound-wh", "Solana sig:", solSig);
 
   // Fetch Solana tx logs to get Sequence

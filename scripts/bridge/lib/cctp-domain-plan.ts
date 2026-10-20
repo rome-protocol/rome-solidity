@@ -115,3 +115,120 @@ export function planDomainChanges(wanted: DomainEntry[], onChain: DomainEntry[])
   }
   return { calls, unchanged };
 }
+
+// ── Wanted list from the bridge registry ───────────────────────────────────
+
+/**
+ * The wanted CCTP domains in a registry `bridge.json`. Reads `sourceEvms[]` (or
+ * the older single `sourceEvm`), and takes every entry that has a `cctpDomain`
+ * and is `preparing` or `live` (no status counts as live): a chain is enabled
+ * on chain while it is still `preparing`, before the route is shown. Any other
+ * status is left out, so the chain would be disabled. An entry may carry
+ * `cctpRecipientKind: "raw32"` for a non-EVM chain; the default is EVM.
+ * Domain 5 (Solana) is refused.
+ */
+export function domainsFromRegistry(registry: unknown): DomainEntry[] {
+  const root = registry as { sourceEvms?: unknown; sourceEvm?: unknown };
+  const entries: unknown[] = Array.isArray(root?.sourceEvms)
+    ? root.sourceEvms
+    : root?.sourceEvm ? [root.sourceEvm] : [];
+  const out: DomainEntry[] = [];
+  const seen = new Set<number>();
+  for (const raw of entries) {
+    const e = raw as { cctpDomain?: unknown; status?: unknown; cctpRecipientKind?: unknown; name?: unknown };
+    if (e.cctpDomain === undefined || e.cctpDomain === null) continue;
+    const status = e.status === undefined ? "live" : e.status;
+    if (status !== "live" && status !== "preparing") continue;
+    const domain = e.cctpDomain;
+    if (typeof domain !== "number" || !Number.isSafeInteger(domain) || domain < 0 || domain > 0xffffffff) {
+      throw new Error(`registry entry ${String(e.name ?? "?")} has a bad cctpDomain: ${String(domain)}`);
+    }
+    if (domain === DOMAIN_SOLANA) throw new Error("registry lists CCTP domain 5 (Solana) as a destination: the contract refuses it");
+    if (seen.has(domain)) throw new Error(`registry lists CCTP domain ${domain} twice`);
+    seen.add(domain);
+    const kindRaw = typeof e.cctpRecipientKind === "string" ? e.cctpRecipientKind.toLowerCase() : "evm";
+    if (kindRaw !== "evm" && kindRaw !== "raw32") throw new Error(`registry entry for domain ${domain} has a bad cctpRecipientKind "${String(e.cctpRecipientKind)}"`);
+    out.push({ domain, kind: kindRaw === "raw32" ? KIND_RAW32 : KIND_EVM });
+  }
+  if (out.length === 0) throw new Error("the registry lists no CCTP destination (nothing live or preparing with a cctpDomain)");
+  return out;
+}
+
+// ── Send decision ──────────────────────────────────────────────────────────
+
+/** Chains where the script must never send, whatever the network is called. */
+export const MAINNET_CHAIN_IDS: ReadonlySet<number> = new Set([7531]);
+
+export interface SendInput {
+  /** A network name this script knows (so its chain id could be checked). */
+  knownNetwork: boolean;
+  /** The network is declared mainnet in the script's table. */
+  declaredMainnet: boolean;
+  /** The chain id the RPC reported. */
+  chainId: number;
+  wantSend: boolean;
+  /** Address of the key found in the environment, if any. */
+  signer?: string;
+  owner: string;
+}
+
+export interface SendDecision {
+  send: boolean;
+  /** Why not (or "ok"). Printed to the operator. */
+  reason: string;
+}
+
+/**
+ * Whether the script may send the planned calls. It may only when every
+ * condition holds: --send was given, the network is a known one, neither the
+ * table nor the live chain id says mainnet, a key is present, and that key is
+ * the contract's owner. The chain id is what counts: Rubicon under any name or
+ * through any RPC url is refused.
+ */
+export function canSend(i: SendInput): SendDecision {
+  if (!i.wantSend) return { send: false, reason: "--send was not given (print mode)" };
+  if (i.declaredMainnet || MAINNET_CHAIN_IDS.has(i.chainId)) {
+    return { send: false, reason: `chain ${i.chainId} is mainnet: print-only, sign the calldata with the cold Ledger` };
+  }
+  if (!i.knownNetwork) return { send: false, reason: "the network is not one this script knows, so --send is refused (print only)" };
+  if (!i.signer) return { send: false, reason: "no signer key in the environment (print mode only)" };
+  if (i.signer.toLowerCase() !== i.owner.toLowerCase()) {
+    return { send: false, reason: `the signer ${i.signer} is not the owner ${i.owner} (print mode only)` };
+  }
+  return { send: true, reason: "ok" };
+}
+
+// ── Circle's record, re-read on --check ────────────────────────────────────
+
+/** Circle's RemoteTokenMessenger discriminator: sha256("account:RemoteTokenMessenger")[..8]. */
+export const REMOTE_TOKEN_MESSENGER_DISCRIMINATOR = "6973ae225fe98afc";
+
+export interface SolanaAccount {
+  owner: string;
+  data: Uint8Array;
+}
+
+/**
+ * Checks Circle's live RemoteTokenMessenger record for an enabled domain, the
+ * same facts `enableCctpDomain` checked on the day it was enabled: owned by the
+ * v2 Token Messenger Minter, Circle's discriminator, the stored domain, and for
+ * an EVM-kind domain a messenger with 12 leading zero bytes. Returns a problem
+ * text, or null when the record still holds. A domain Circle removed or changed
+ * after Rome enabled it shows up here, not in a burn.
+ */
+export function checkCircleRecord(
+  domain: number, kind: number, account: SolanaAccount | null, tokenMessengerMinterProgram: string,
+): string | null {
+  if (!account) return `Circle has no RemoteTokenMessenger account for domain ${domain} any more`;
+  if (account.owner !== tokenMessengerMinterProgram) return `domain ${domain}: the account is owned by ${account.owner}, not the CCTP v2 Token Messenger Minter`;
+  const d = account.data;
+  if (d.length < 44) return `domain ${domain}: the account is too short (${d.length} bytes)`;
+  const disc = Buffer.from(d.subarray(0, 8)).toString("hex");
+  if (disc !== REMOTE_TOKEN_MESSENGER_DISCRIMINATOR) return `domain ${domain}: wrong account discriminator ${disc}`;
+  const stored = d[8] | (d[9] << 8) | (d[10] << 16) | (d[11] * 0x1000000);
+  if (stored !== domain) return `domain ${domain}: the account records domain ${stored}`;
+  if (kind === KIND_EVM && d.subarray(12, 24).some((b) => b !== 0)) {
+    return `domain ${domain}: Circle's messenger is no longer EVM-shaped (${Buffer.from(d.subarray(12, 44)).toString("hex")}), but Rome has it as an EVM destination`;
+  }
+  return null;
+}

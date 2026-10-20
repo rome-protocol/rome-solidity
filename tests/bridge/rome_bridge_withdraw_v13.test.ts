@@ -478,8 +478,9 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
   describe("gas", () => {
     // v12 on the same simulated EVM and the same mock, third consecutive
     // burnUSDC(amount, address, 0) (the first two pay one-off mock storage
-    // writes): 259,993 gas (2-argument overload: 259,376). v13 adds two storage
-    // reads to a burn (the recipient kind and the pause flag).
+    // writes): 259,993 gas (2-argument overload: 259,376). v13 adds the pause
+    // flag read and the recipient kind (next to the PDA, in the same struct).
+    // This is simulated-EVM gas only: it says nothing about Rome CU or accounts.
     const V12_STEADY_STATE_GAS = 259_993n;
 
     it("burnUSDC costs about what v12 did (steady state)", async () => {

@@ -42,10 +42,14 @@ async function main() {
   await app.wait();
   console.log("  approve:", app.hash);
 
-  console.log("Submitting burnETH…");
-  const burn = await romeWallet.sendTransaction({ to: WITHDRAW, data: sel("burnETH(uint256,address)") + amount + recipient, gasLimit: 1_500_000n, gasPrice: GAS_PRICE });
+  // 13.0.0 removed burnETH: wETH goes out through burnToWormhole. The owner must
+  // have allowed the wETH mint and the target chain first (set-wormhole-allowlist.ts).
+  console.log("Submitting burnToWormhole…");
+  const wrapper = dep.SPL_ERC20_WETH.address.slice(2).toLowerCase().padStart(64, "0");
+  const targetChain = (10002).toString(16).padStart(64, "0"); // Wormhole id of Sepolia
+  const burn = await romeWallet.sendTransaction({ to: WITHDRAW, data: sel("burnToWormhole(address,uint256,bytes32,uint16)") + wrapper + amount + recipient + targetChain, gasLimit: 1_500_000n, gasPrice: GAS_PRICE });
   const rcpt = await burn.wait();
-  if (!rcpt || rcpt.status !== 1) throw new Error("burnETH reverted");
+  if (!rcpt || rcpt.status !== 1) throw new Error("burnToWormhole reverted");
   console.log("  burn:", burn.hash);
 
   // Get Solana sigs — may return multiple (TransmitTx + DoTx). Pick the one

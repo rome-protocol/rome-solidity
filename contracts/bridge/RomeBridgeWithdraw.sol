@@ -32,11 +32,11 @@ import {UserPda} from "../cpi/UserPda.sol";
 ///      from the deploy script. No pubkeys are hardcoded in this contract —
 ///      it is fully network-agnostic.
 ///
-///      Admin authority uses `msg.sender`, never `_msgSender()`. Every
-///      deployment passes a zero forwarder (so the two are identical today),
-///      but if a forwarder were ever set, `_msgSender()` would let that
-///      forwarder act as the owner. Only the user-facing burn paths keep
-///      ERC-2771 semantics via `_msgSender()`.
+///      The constructor refuses a non-zero ERC-2771 forwarder: a forwarder
+///      could append any user's address and burn that user's balance (every
+///      user keeps a standing delegate to this contract). With a zero
+///      forwarder `_msgSender()` is `msg.sender`. Admin authority uses
+///      `msg.sender` directly anyway, so it never depends on that.
 contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     /// @notice Contract version, bumped with every behaviour change.
     string public constant VERSION = "13.0.0";

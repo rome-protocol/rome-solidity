@@ -35,6 +35,7 @@ import { SOLANA_DEVNET_NETWORKS } from "./lib/wormhole-target-chain.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
 import { SOLANA_PROGRAM_IDS, SOLANA_PROGRAM_IDS_DEVNET } from "./constants.js";
 import { deriveCctpAccounts } from "./derive/cctp-accounts.js";
+import { resolveRoles } from "./lib/deploy-roles.js";
 import { deriveWormholeGlobalAccounts } from "./derive/wormhole-accounts.js";
 
 // CPI precompile at 0xff..08 as defined in contracts/interface.sol.
@@ -222,16 +223,19 @@ export async function deployWithdraw(
   // Owner and guardian are fixed in the constructor, so there is no hand-over gap.
   const [deployerWallet] = await viem.getWalletClients();
   const isMainnet = MAINNET_NETWORKS.has(networkName);
-  const owner = envAddress("BRIDGE_OWNER") ?? envAddress("WORMHOLE_ADMIN");
-  const guardian = envAddress("BRIDGE_GUARDIAN");
-  if (isMainnet && !owner) {
-    throw new Error(`[${networkName}] BRIDGE_OWNER is required on mainnet (the cold Ledger address)`);
-  }
-  if (isMainnet && !guardian) {
-    throw new Error(`[${networkName}] BRIDGE_GUARDIAN is required on mainnet (the ops key that can only stop things)`);
-  }
-  const bridgeOwner = owner ?? (deployerWallet.account.address as `0x${string}`);
-  const bridgeGuardian = guardian ?? ZERO_ADDRESS;
+  // Owner and guardian rules live in lib/deploy-roles.ts (tested): on mainnet
+  // BRIDGE_OWNER only, never WORMHOLE_ADMIN; owner != deploy key; guardian != owner.
+  const deployerAddress = deployerWallet.account.address as `0x${string}`;
+  const roles = resolveRoles({
+    network: networkName,
+    isMainnet,
+    deployer: deployerAddress,
+    bridgeOwner: envAddress("BRIDGE_OWNER"),
+    wormholeAdmin: envAddress("WORMHOLE_ADMIN"),
+    bridgeGuardian: envAddress("BRIDGE_GUARDIAN"),
+  });
+  const bridgeOwner = roles.owner as `0x${string}`;
+  const bridgeGuardian = roles.guardian as `0x${string}`;
   console.log(`[${networkName}] owner → ${bridgeOwner}; guardian → ${bridgeGuardian === ZERO_ADDRESS ? "(none)" : bridgeGuardian}`);
   const wormholeGeneric = { admin: bridgeOwner, targetChains: [] as number[], assetWrappers: [] as `0x${string}`[] };
 
@@ -245,6 +249,22 @@ export async function deployWithdraw(
   ]);
 
   console.log(`[${networkName}] RomeBridgeWithdraw → ${withdraw.address}`);
+
+  // Read everything back before it is recorded: a wrong constructor argument
+  // (an owner that cannot be zeroed) must stop here, not after the registry
+  // has been told about this address.
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  const got = {
+    version: (await withdraw.read.VERSION()) as string,
+    owner: (await withdraw.read.owner()) as string,
+    guardian: (await withdraw.read.guardian()) as string,
+    domains: (await withdraw.read.cctpDomains()) as readonly number[],
+  };
+  if (got.version !== "13.0.0") throw new Error(`[${networkName}] VERSION() is ${got.version}, expected 13.0.0`);
+  if (!same(got.owner, bridgeOwner)) throw new Error(`[${networkName}] owner() is ${got.owner}, expected ${bridgeOwner}`);
+  if (!same(got.guardian, bridgeGuardian)) throw new Error(`[${networkName}] guardian() is ${got.guardian}, expected ${bridgeGuardian}`);
+  if (got.domains.length !== 0) throw new Error(`[${networkName}] cctpDomains() is not empty: ${got.domains.join(",")}`);
+  console.log(`[${networkName}] read back: VERSION ${got.version}, owner ${got.owner}, guardian ${got.guardian}, no CCTP domain enabled`);
   const d = readDeployments(networkName) as Record<string, any>;
   d["RomeBridgeWithdraw"] = { address: withdraw.address, deployedAt: Math.floor(Date.now() / 1000) };
   writeDeployments(networkName, d as any);

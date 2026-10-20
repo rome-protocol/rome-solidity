@@ -61,7 +61,7 @@ async function main() {
   if (owner.toLowerCase() !== me.toLowerCase()) {
     throw new Error(
       `signer ${me} is not the owner ${owner} — setWormhole* are onlyOwner. ` +
-        `Use the owner key, or transferOwnership to this signer first.`,
+        `Use the owner key, or hand ownership to this signer first (transferOwnership by the owner, then acceptOwnership by this signer).`,
     );
   }
 
