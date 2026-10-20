@@ -211,7 +211,7 @@ export async function verifyDeployment(r: ChainReader, want: Expected): Promise<
   const addrEq = (a: unknown, b: unknown) => typeof a === "string" && typeof b === "string" && eq(a, b);
 
   const code = await r.getCode();
-  if (!code || code === "0x") bad.push("no contract code at the deployed address");
+  if (!code || code === "0x") throw new Error("read-back failed (1):\n  - no contract code at the deployed address");
 
   check("VERSION()", await r.read("VERSION"), EXPECTED_VERSION);
   check("owner()", await r.read("owner"), want.owner, addrEq);
