@@ -103,10 +103,31 @@ describe("every script that sends is behind the guard", () => {
     }
     return out;
   }
-  const SEND = /sendTransaction\(|deployContract\(|writeContract\(|\.write\.|sendRawTransaction|sendAndConfirmTransaction/;
+  // Viem / web3.js / hardhat send calls, plus the ethers ones: a contract-method send in
+  // ethers is `const tx = await tm.depositForBurn(...); await tx.wait()`, which has no
+  // "send" in its name, so it is recognised by what every ethers send ends in (a `.wait(`
+  // on the returned response, also `await (await usdc.approve(...)).wait()`) and by a
+  // Contract built with a signer (`new Contract(addr, abi, signer)`) or `getSigner(`.
+  // A bare `new Wallet(` is not a marker: smoke-emulate-all.ts signs but only emulates.
+  const SEND_CALLS = /sendTransaction\(|deployContract\(|writeContract\(|\.write\.|sendRawTransaction|sendAndConfirmTransaction/;
+  const ETHERS_SEND = /\.wait\(\s*\d*\s*\)|\.getSigner\(|new\s+(?:ethers\.)?Contract\([^)]*,\s*(?:signer|wallet)\s*\)/;
+  const SEND = new RegExp(`${SEND_CALLS.source}|${ETHERS_SEND.source}`);
   const GUARD = /assertTestnet(Send|Rpc|ChainId)\(|assertSolanaTestnetRpc\(|canSend\(/;
   /** Scripts that send only on a hard-coded Sepolia RPC (an Ethereum testnet), never on a Rome chain or Solana. */
   const SEPOLIA_ONLY = new Set(["inbound/01-submit-deposit.mjs", "inbound/01b-submit-whETH.mjs"]);
+
+  /** The files with a send site that are neither guarded in order nor on the Sepolia-only list. */
+  function unguarded(entries: ReadonlyArray<readonly [string, string]>, sepoliaOnly: ReadonlySet<string>): string[] {
+    const open: string[] = [];
+    for (const [rel, src] of entries) {
+      if (!SEND.test(src) || sepoliaOnly.has(rel.split(path.sep).join("/"))) continue;
+      const g = src.search(GUARD);
+      if (g < 0) { open.push(rel); continue; }
+      // A top-level script has no function boundary: the guard must come first.
+      if (!/function main\(|const main\s*=/.test(src) && g > src.search(SEND)) open.push(rel);
+    }
+    return open;
+  }
 
   const files = walk(path.join(repo, "scripts/bridge"))
     .filter((f) => !f.includes(`${path.sep}lib${path.sep}`)) // helpers, no entry points
@@ -116,15 +137,42 @@ describe("every script that sends is behind the guard", () => {
     assert.ok(files.filter(([, src]) => SEND.test(src)).length >= 15);
   });
   it("each file with a send site calls the guard, and a script without a main() calls it before its first send", () => {
-    const open: string[] = [];
-    for (const [rel, src] of files) {
-      if (!SEND.test(src) || SEPOLIA_ONLY.has(rel.split(path.sep).join("/"))) continue;
-      const g = src.search(GUARD);
-      if (g < 0) { open.push(rel); continue; }
-      // A top-level script has no function boundary: the guard must come first.
-      if (!/function main\(|const main\s*=/.test(src) && g > src.search(SEND)) open.push(rel);
+    assert.deepEqual(unguarded(files, SEPOLIA_ONLY), [], "scripts that can send without the testnet guard");
+  });
+  it("the scan sees ethers-only senders: both Sepolia-only scripts are send sites, so their exception is really used", () => {
+    for (const rel of SEPOLIA_ONLY) {
+      const src = files.find(([r]) => r.split(path.sep).join("/") === rel)?.[1];
+      assert.ok(src, `${rel} exists`);
+      assert.equal(SEND_CALLS.test(src), false, `${rel} has no viem/web3 send call: only the ethers markers can catch it`);
+      assert.equal(SEND.test(src), true, `${rel} must be recognised as a send site`);
+      // Without the exception they would be reported as unguarded.
+      assert.deepEqual(unguarded([[rel, src]], new Set()), [rel]);
+      assert.deepEqual(unguarded([[rel, src]], SEPOLIA_ONLY), []);
     }
-    assert.deepEqual(open, [], "scripts that can send without the testnet guard");
+  });
+  it("a future ethers-only sender with no guard is caught, and one that guards first is not", () => {
+    const ethersOnly = [
+      'import { Wallet, JsonRpcProvider, Contract } from "ethers";',
+      "const signer = new Wallet(key, new JsonRpcProvider(process.env.RPC));",
+      'const tm = new Contract(TM, ABI, signer);',
+      "const tx = await tm.depositForBurn(amount, 0, mintRecipient, usdc);",
+      "await tx.wait();",
+    ].join("\n");
+    assert.deepEqual(unguarded([["new-sender.ts", ethersOnly]], SEPOLIA_ONLY), ["new-sender.ts"]);
+    // Only a contract-method send and a .wait(): no Wallet or Contract constructor in this file.
+    const waitOnly = 'const tx = await tm.depositForBurn(a, 0, r, u);\nawait tx.wait();\n';
+    assert.deepEqual(unguarded([["wait-only.mjs", waitOnly]], SEPOLIA_ONLY), ["wait-only.mjs"]);
+    // A Contract built with a signer is a marker on its own (a send that is never awaited).
+    const noWait = 'const tm = new Contract(TM, ABI, signer);\ntm.depositForBurn(a, 0, r, u);\n';
+    assert.deepEqual(unguarded([["no-wait.mjs", noWait]], SEPOLIA_ONLY), ["no-wait.mjs"]);
+    // Signing and emulating only (smoke-emulate-all.ts) is not a send.
+    assert.deepEqual(unguarded([["emulate.ts", "const wallet = new Wallet(pk, provider);\nconst signed = await wallet.signTransaction(tx);"]], SEPOLIA_ONLY), []);
+    // Guard after the send in a top-level script is still open.
+    assert.deepEqual(unguarded([["late.mjs", `${waitOnly}await assertTestnetRpc(url, "late");`]], SEPOLIA_ONLY), ["late.mjs"]);
+    // Guard first, then the send.
+    assert.deepEqual(unguarded([["ok.mjs", `await assertTestnetRpc(url, "ok");\n${waitOnly}`]], SEPOLIA_ONLY), []);
+    // The exception is by path only: the same code under another name is not exempt.
+    assert.deepEqual(unguarded([["inbound/other.mjs", ethersOnly]], SEPOLIA_ONLY), ["inbound/other.mjs"]);
   });
   it("e2e-all-four and outbound-wh-e2e check the Rome RPC before they load a key", () => {
     for (const f of ["e2e-all-four.ts", "outbound-wh-e2e.ts"]) {
