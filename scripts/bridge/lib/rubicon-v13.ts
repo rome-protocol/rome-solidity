@@ -6,20 +6,26 @@
 //
 // What the deploy does, in order:
 //   1. asks the guard whether this chain may be touched (chain 7531 only with
-//      --i-understand-mainnet; lib/testnet-guard.ts)
+//      --i-understand-mainnet, and only when this process was started as
+//      scripts/bridge/deploy-rubicon-v13.ts; lib/testnet-guard.ts)
 //   2. checks the roles: owner = the cold Ledger, guardian = the ops key, both
-//      given explicitly, neither zero, neither the deploy key, not each other
+//      given explicitly, neither zero, neither the deploy key, not each other. On
+//      Rubicon both must be EIP-55 checksummed, hold no code, and the owner must hold gas.
 //   3. builds the constructor arguments (lib/withdraw-ctor-args.ts, the same ones
 //      deploy.ts uses on the testnets)
-//   4. --dry-run: estimates gas, prints the deploy transaction and the arguments,
-//      and stops. Nothing is sent.
-//   5. deploys with the hot deploy key, reads everything back, and fails loudly on
-//      any mismatch (and then writes nothing)
+//   4. a DRY RUN estimates gas, prints the deploy transaction, the constructor arguments, the
+//      source commit, the bytecode hash and a DEPLOY DIGEST, and stops. Nothing is sent. On
+//      Rubicon a dry run is the default; the real deploy needs --deploy <digest>, the digest
+//      of the exact bytes (and chain and deploy key) the dry run showed.
+//   5. deploys with the hot deploy key, reads everything back (with retries for RPC lag), and
+//      fails loudly on any mismatch (and then writes nothing)
 //   6. records the address under RomeBridgeWithdrawV13 in deployments/<network>.json,
 //      next to the live v12 record and without touching it
 //   7. PRINTS the owner calls the Ledger signs. It never sends them.
+// --verify-existing <address> --deploy-tx <hash> does steps 5 to 7 for a contract that is
+// already deployed (a read-back that failed on a transient error), without sending anything.
 
-import { encodeFunctionData, getAddress, isAddress, parseAbi, type Hex } from "viem";
+import { concatHex, encodeFunctionData, getAddress, isAddress, keccak256, pad, parseAbi, toHex, type Hex } from "viem";
 import { base58ToBytes32 } from "../../lib/pubkey.js";
 import { MAINNET_FLAG } from "./testnet-guard.js";
 import { ZERO_ADDRESS, buildWithdrawConstructorArgs } from "./withdraw-ctor-args.js";
@@ -44,11 +50,19 @@ export interface DeployOptions {
   guardian: string;
   dryRun: boolean;
   mainnetFlag: boolean;
+  /** --deploy <digest>: the digest a dry run printed. Required for a real deploy on Rubicon. */
+  deployDigest: string | undefined;
+  /** --verify-existing <address> --deploy-tx <hash>: check and record a contract that is already deployed. */
+  verifyExisting: { address: string; txHash: string } | undefined;
 }
 
 export const USAGE =
   "usage: npx tsx scripts/bridge/deploy-rubicon-v13.ts --network <name> --owner <ledger address> --guardian <ops key address> " +
-  `[--dry-run] [${MAINNET_FLAG}]`;
+  `[--dry-run | --deploy <digest> | --verify-existing <address> --deploy-tx <hash>] [${MAINNET_FLAG}]`;
+
+const VALUE_OPTIONS = ["--network", "--owner", "--guardian", "--deploy", "--verify-existing", "--deploy-tx"];
+const DIGEST_RE = /^0x[0-9a-fA-F]{16}$/;
+const TX_RE = /^0x[0-9a-fA-F]{64}$/;
 
 /**
  * Parses the command line (after the script name). Unknown arguments, a missing
@@ -64,13 +78,13 @@ export function parseArgs(argv: readonly string[]): DeployOptions {
     if (a === "--dry-run" || a === MAINNET_FLAG) {
       name = a;
       value = true;
-    } else if (a === "--network" || a === "--owner" || a === "--guardian") {
+    } else if (VALUE_OPTIONS.includes(a)) {
       name = a;
       const next = argv[i + 1];
       if (next === undefined || next.startsWith("--")) throw new Error(`${a} needs a value. ${USAGE}`);
       value = next;
       i++;
-    } else if (/^--(network|owner|guardian)=/.test(a)) {
+    } else if (new RegExp(`^(${VALUE_OPTIONS.join("|")})=`).test(a)) {
       const eqAt = a.indexOf("=");
       name = a.slice(0, eqAt);
       value = a.slice(eqAt + 1);
@@ -86,15 +100,30 @@ export function parseArgs(argv: readonly string[]): DeployOptions {
     if (typeof v !== "string") throw new Error(`${n} is required and has no default. ${USAGE}`);
     return v;
   };
+  const opt = (n: string): string | undefined => {
+    const v = seen.get(n);
+    return typeof v === "string" ? v : undefined;
+  };
+  const deployDigest = opt("--deploy");
+  const vAddr = opt("--verify-existing");
+  const vTx = opt("--deploy-tx");
   const opts: DeployOptions = {
     network: need("--network"),
     owner: need("--owner"),
     guardian: need("--guardian"),
     dryRun: seen.has("--dry-run"),
     mainnetFlag: seen.has(MAINNET_FLAG),
+    deployDigest,
+    verifyExisting: vAddr !== undefined && vTx !== undefined ? { address: vAddr, txHash: vTx } : undefined,
   };
+  if (deployDigest !== undefined && !DIGEST_RE.test(deployDigest)) throw new Error(`--deploy needs the 8-byte digest a dry run prints (0x and 16 hex digits). ${USAGE}`);
+  if ((vAddr === undefined) !== (vTx === undefined)) throw new Error(`--verify-existing and --deploy-tx go together. ${USAGE}`);
+  if (vAddr !== undefined && !isAddress(vAddr)) throw new Error(`--verify-existing "${vAddr}" is not a 20-byte address. ${USAGE}`);
+  if (vTx !== undefined && !TX_RE.test(vTx)) throw new Error(`--deploy-tx "${vTx}" is not a transaction hash. ${USAGE}`);
+  const modes = [opts.dryRun, deployDigest !== undefined, vAddr !== undefined].filter(Boolean).length;
+  if (modes > 1) throw new Error(`--dry-run, --deploy and --verify-existing are different modes: give one. ${USAGE}`);
   if (opts.network === RUBICON_NETWORK && !opts.mainnetFlag) {
-    throw new Error(`--network ${RUBICON_NETWORK} is mainnet: pass ${MAINNET_FLAG} (start with --dry-run). ${USAGE}`);
+    throw new Error(`--network ${RUBICON_NETWORK} is mainnet: pass ${MAINNET_FLAG} (a run without --deploy is a dry run). ${USAGE}`);
   }
   return opts;
 }
@@ -107,8 +136,11 @@ export interface Roles {
   deployer: Address;
 }
 
-function parseAddress(label: string, v: string): Address {
+function parseAddress(label: string, v: string, strict = false): Address {
   if (!isAddress(v)) throw new Error(`${label} "${v}" is not a 20-byte address (mixed-case addresses must have a valid checksum)`);
+  // viem accepts an all-lowercase address with no checksum, so a one-character typo would pass.
+  // On mainnet the input must carry the EIP-55 checksum, which catches it.
+  if (strict && v !== getAddress(v)) throw new Error(`${label} "${v}" is not EIP-55 checksummed: on Rubicon copy it with its checksum (it should read ${getAddress(v)} if it is the address you meant)`);
   return getAddress(v);
 }
 
@@ -116,9 +148,9 @@ function parseAddress(label: string, v: string): Address {
  * owner = the cold Ledger, guardian = the ops key, deployer = the hot deploy key.
  * All three are different, and none is zero. The deploy key ends the deploy with no role.
  */
-export function validateRoles(i: { deployer: string; owner: string; guardian: string }): Roles {
-  const owner = parseAddress("--owner", i.owner);
-  const guardian = parseAddress("--guardian", i.guardian);
+export function validateRoles(i: { deployer: string; owner: string; guardian: string }, strictChecksum = false): Roles {
+  const owner = parseAddress("--owner", i.owner, strictChecksum);
+  const guardian = parseAddress("--guardian", i.guardian, strictChecksum);
   const deployer = parseAddress("the deploy key's address", i.deployer);
   if (eq(owner, ZERO_ADDRESS)) throw new Error("--owner is the zero address: the contract would have no admin");
   if (eq(guardian, ZERO_ADDRESS)) throw new Error("--guardian is the zero address: Rubicon needs the ops key as the stop-only guardian");
@@ -144,20 +176,24 @@ export interface OwnerCall {
   value: "0";
 }
 
-/** The two calls the cold Ledger signs after the deploy. Printed, never sent. */
+/**
+ * The two calls the cold Ledger signs after the deploy. Printed, never sent. The token account
+ * comes first: enabling the CCTP domain first would leave the rail open on a bridge with no
+ * USDC token account, where every burn would revert.
+ */
 export function buildOwnerCalls(bridge: Address, usdcMintBase58: string): OwnerCall[] {
   const mint = base58ToBytes32(usdcMintBase58);
   return [
     {
-      description: `enableCctpDomain(${ETHEREUM_DOMAIN}, ${RECIPIENT_EVM}): enable Ethereum (CCTP domain 0) as an EVM-recipient destination. The contract derives and checks Circle's RemoteTokenMessenger account itself.`,
+      description: `ensureBridgeAta(${mint}): create the bridge's USDC token account (mint ${usdcMintBase58}); paid from the operator's rent, so it is owner-only. Sign this FIRST: no domain is enabled yet, so no burn can reach a bridge without the account.`,
       to: bridge,
-      data: encodeFunctionData({ abi: OWNER_ABI, functionName: "enableCctpDomain", args: [ETHEREUM_DOMAIN, RECIPIENT_EVM] }),
+      data: encodeFunctionData({ abi: OWNER_ABI, functionName: "ensureBridgeAta", args: [mint] }),
       value: "0",
     },
     {
-      description: `ensureBridgeAta(${mint}): create the bridge's USDC token account (mint ${usdcMintBase58}); paid from the operator's rent, so it is owner-only. Needed once before the first burn.`,
+      description: `enableCctpDomain(${ETHEREUM_DOMAIN}, ${RECIPIENT_EVM}): enable Ethereum (CCTP domain 0) as an EVM-recipient destination. Sign this SECOND: it opens the CCTP rail. The contract derives and checks Circle's RemoteTokenMessenger account itself.`,
       to: bridge,
-      data: encodeFunctionData({ abi: OWNER_ABI, functionName: "ensureBridgeAta", args: [mint] }),
+      data: encodeFunctionData({ abi: OWNER_ABI, functionName: "enableCctpDomain", args: [ETHEREUM_DOMAIN, RECIPIENT_EVM] }),
       value: "0",
     },
   ];
@@ -252,6 +288,10 @@ export interface V13Record {
   guardian: Address;
   deployTx: Hex;
   deployedAt: number;
+  /** `git rev-parse HEAD` of the checkout that built the bytecode. */
+  commit: string;
+  /** keccak256 of the deployed (runtime) bytecode in the local artifact. */
+  bytecodeHash: Hex;
 }
 
 /** Adds the V13 record next to everything else. Refuses to replace an existing V13 record. */
@@ -274,38 +314,95 @@ export function usdcFromDeployments(d: Record<string, any>, network: string): { 
 
 // ── The deploy itself ──────────────────────────────────────────────────────
 
+type CtorArgs = ReturnType<typeof buildWithdrawConstructorArgs>;
+
 export interface DeployDeps {
   networkName: string;
   /** The hot deploy key's address (the key itself never leaves the wallet client). */
   deployer: string;
   /**
    * Asks the guard about the chain the RPC reports; resolves with its id or throws. The
-   * script wires it with its own file path, so the guard sees who is really calling.
+   * guard decides from the chain id, the script's own path and the process entry point.
    */
   guard(mainnetFlag: boolean): Promise<number>;
   store: DeploymentStore;
-  /** Gas for the deploy transaction, from the node. A dry run sends nothing. */
-  estimate(args: ReturnType<typeof buildWithdrawConstructorArgs>): Promise<{ gas: bigint; gasPrice?: bigint; balance?: bigint }>;
-  /** Sends the deploy transaction and waits for it to be mined. */
-  deploy(args: ReturnType<typeof buildWithdrawConstructorArgs>): Promise<{ address: Address; txHash: Hex }>;
+  /** The creation bytecode plus the encoded constructor arguments: exactly what the deploy transaction carries. */
+  deployData(args: CtorArgs): Hex;
+  /**
+   * Gas for the deploy transaction, from the node. A dry run sends nothing. `gasPrice` is the
+   * price the real deploy will use: the network's pinned gasPrice when it has one (then
+   * `gasPricePinned` is true), the RPC's otherwise.
+   */
+  estimate(args: CtorArgs): Promise<{ gas: bigint; gasPrice?: bigint; gasPricePinned: boolean; balance?: bigint }>;
+  /** Sends the deploy transaction and waits for it to be mined. Calls the guard itself, with the operator's flag. */
+  deploy(args: CtorArgs, mainnetFlag: boolean): Promise<{ address: Address; txHash: Hex }>;
   reader(address: Address): ChainReader;
+  /** Code and balance of an account. */
+  accountInfo(address: Address): Promise<{ hasCode: boolean; balance: bigint }>;
+  /** The checkout the artifact was built from: git commit, whether contracts/ is clean, and the runtime bytecode hash. */
+  source(): Promise<{ commit: string; contractsClean: boolean; bytecodeHash: Hex }>;
+  /** A mined transaction, for --verify-existing. Undefined when the node does not know it. */
+  getDeployTx(hash: Hex): Promise<{ from: string; input: Hex; to: string | null | undefined; status: string; contractAddress: string | null | undefined } | undefined>;
   /** eth_call of an owner call from the owner's address; the answer is printed, never fatal. */
   simulate?(from: Address, call: OwnerCall): Promise<void>;
   now(): number;
   log(line: string): void;
+  /** Pause between read-back retries. Defaults to a real timer. */
+  sleep?(ms: number): Promise<void>;
 }
 
 export interface DeployResult {
   dryRun: boolean;
   chainId: number;
   roles: Roles;
-  args: ReturnType<typeof buildWithdrawConstructorArgs>;
+  args: CtorArgs;
+  digest: Hex;
   deployed?: { address: Address; txHash: Hex };
   ownerCalls?: OwnerCall[];
 }
 
 function jsonArgs(args: unknown): string {
   return JSON.stringify(args, (_k, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+}
+
+/**
+ * The 8-byte digest that ties a real deploy to a dry run: keccak256 of the deploy transaction's
+ * data (bytecode and constructor arguments, so owner and guardian), the chain id and the deploy
+ * key's address. A changed artifact, owner, guardian, chain or deploy key changes it.
+ */
+export function deployDigest(data: Hex, chainId: number, deployer: string): Hex {
+  const h = keccak256(concatHex([data, pad(toHex(chainId), { size: 32 }), getAddress(deployer)]));
+  return h.slice(0, 18) as Hex;
+}
+
+const READBACK_ATTEMPTS = 4;
+const READBACK_PAUSE_MS = 2000;
+
+/** The read-back, retried when the node lags (no code yet, a failed call). A value that is wrong is final at once. */
+async function verifyWithRetry(deps: DeployDeps, address: Address, txHash: Hex, want: Expected): Promise<string[]> {
+  const tag = `[${deps.networkName}]`;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  let last = "";
+  for (let i = 1; i <= READBACK_ATTEMPTS; i++) {
+    try {
+      return await verifyDeployment(deps.reader(address), want);
+    } catch (e) {
+      last = (e as Error).message;
+      const wrong = last.startsWith("read-back failed") && !/no contract code/.test(last);
+      if (wrong) {
+        throw new Error(
+          `${tag} the contract at ${address} (tx ${txHash}) FAILED the read-back and was NOT recorded. ` +
+          `Do not use it; do not enable anything on it.\n${last}`,
+        );
+      }
+      if (i < READBACK_ATTEMPTS) await sleep(READBACK_PAUSE_MS * i);
+    }
+  }
+  throw new Error(
+    `${tag} the deploy transaction ${txHash} created ${address}, but the read-back could not be completed after ${READBACK_ATTEMPTS} tries ` +
+    `(${last.split("\n").slice(0, 3).join(" ").trim()}). Nothing was recorded. Do NOT deploy again. ` +
+    `Re-run the same command with --verify-existing ${address} --deploy-tx ${txHash} (instead of --deploy) to read it back and record it.`,
+  );
 }
 
 export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions): Promise<DeployResult> {
@@ -320,9 +417,17 @@ export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions)
   if (chainId === RUBICON_CHAIN_ID && deps.networkName !== RUBICON_NETWORK) {
     throw new Error(`${tag} the RPC reports Rubicon (${RUBICON_CHAIN_ID}) but the network is called "${deps.networkName}": use --network ${RUBICON_NETWORK}`);
   }
+  const mainnet = chainId === RUBICON_CHAIN_ID;
+  const verifying = opts.verifyExisting !== undefined;
 
-  // 2. Roles.
-  const roles = validateRoles({ deployer: deps.deployer, owner: opts.owner, guardian: opts.guardian });
+  // 2. Roles. On Rubicon: checksummed, no code, and the owner holds gas.
+  const roles = validateRoles({ deployer: deps.deployer, owner: opts.owner, guardian: opts.guardian }, mainnet);
+  const ownerInfo = await deps.accountInfo(roles.owner);
+  const guardianInfo = await deps.accountInfo(roles.guardian);
+  if (mainnet) {
+    if (ownerInfo.hasCode) throw new Error(`${tag} --owner ${roles.owner} has contract code: the owner must be the cold Ledger (an account with no code)`);
+    if (guardianInfo.hasCode) throw new Error(`${tag} --guardian ${roles.guardian} has contract code: the guardian must be the ops key (an account with no code)`);
+  }
 
   // 3. Inputs and constructor arguments.
   const existing = deps.store.read();
@@ -335,59 +440,135 @@ export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions)
     owner: roles.owner,
     guardian: roles.guardian,
   });
+  const data = deps.deployData(args);
+  const digest = deployDigest(data, chainId, roles.deployer);
+  const src = await deps.source();
+  if (mainnet && !verifying && !src.contractsClean) {
+    throw new Error(`${tag} contracts/ has uncommitted changes (git status --porcelain contracts/ is not empty): on Rubicon the bytecode must come from a clean, reviewed commit`);
+  }
 
-  log(`${tag} chain ${chainId}; mode ${opts.dryRun ? "DRY RUN (nothing is sent)" : "DEPLOY"}`);
+  // On Rubicon a run without --deploy is a dry run, so a skipped step 2 deploys nothing.
+  const dryRun = opts.dryRun || (mainnet && !verifying && opts.deployDigest === undefined);
+  const mode = verifying ? "VERIFY EXISTING (nothing is sent)" : dryRun ? `DRY RUN (nothing is sent${opts.dryRun ? "" : "; the default on Rubicon"})` : "DEPLOY";
+
+  log(`${tag} chain ${chainId}; mode ${mode}`);
   log(`${tag} deploy key   ${roles.deployer}   (hot; ends with no role)`);
-  log(`${tag} owner        ${roles.owner}   (cold Ledger, set in the constructor)`);
+  log(`${tag} owner        ${roles.owner}   (cold Ledger, set in the constructor; balance ${ownerInfo.balance} wei)`);
   log(`${tag} guardian     ${roles.guardian}   (ops key, stop-only)`);
   log(`${tag} USDC wrapper ${usdc.wrapper}   mint ${usdc.mintBase58}`);
   log(`${tag} live v12 record RomeBridgeWithdraw ${existing["RomeBridgeWithdraw"]?.address ?? "(none)"} is not touched`);
-
-  // 4. Dry run.
-  if (opts.dryRun) {
-    const est = await deps.estimate(args);
-    log(`${tag} deploy transaction: contract creation of RomeBridgeWithdraw ${EXPECTED_VERSION} from ${roles.deployer}`);
-    log(`${tag} constructor args:\n${jsonArgs(args)}`);
-    log(`${tag} estimated gas ${est.gas}${est.gasPrice !== undefined ? `, gas price ${est.gasPrice}, cost about ${est.gas * est.gasPrice} wei` : ""}`);
-    if (est.balance !== undefined) {
-      const enough = est.gasPrice === undefined || est.balance >= est.gas * est.gasPrice;
-      log(`${tag} deploy key balance ${est.balance} wei${enough ? "" : "  WARNING: below the estimated cost"}`);
+  const v12 = existing["RomeBridgeWithdraw"]?.address;
+  if (typeof v12 === "string" && isAddress(v12)) {
+    try {
+      const v12Owner = (await deps.reader(getAddress(v12)).read("owner")) as string;
+      log(`${tag} v12 owner() is ${v12Owner}; the new owner is ${roles.owner}${eq(v12Owner, roles.owner) ? " (the same)" : " (different)"}. Compare them with the Ledger's own screen.`);
+    } catch {
+      log(`${tag} v12 owner() could not be read; compare --owner with the Ledger's own screen`);
     }
-    log(`${tag} DRY RUN: nothing was sent. After the deploy the Ledger signs the two owner calls printed by the real run.`);
-    return { dryRun: true, chainId, roles, args };
+  }
+  log(`${tag} source: commit ${src.commit}, contracts/ ${src.contractsClean ? "clean" : "HAS UNCOMMITTED CHANGES"}, runtime bytecode hash ${src.bytecodeHash}`);
+  log(`${tag} deploy digest ${digest}   (bytecode + constructor args + chain + deploy key)`);
+
+  const ownerNeedsGas = mainnet && ownerInfo.balance === 0n;
+  if (ownerNeedsGas) log(`${tag} WARNING: the owner holds no Rubicon gas; it needs some to sign the two owner calls (README step 1)`);
+
+  const sourceFacts = { commit: src.commit, bytecodeHash: src.bytecodeHash };
+  let deployed: { address: Address; txHash: Hex };
+
+  if (verifying) {
+    // 4v. A contract already deployed: it must be this deploy's transaction.
+    const v = opts.verifyExisting!;
+    const address = getAddress(v.address);
+    const txHash = v.txHash as Hex;
+    const tx = await deps.getDeployTx(txHash);
+    if (!tx) throw new Error(`${tag} the node does not know transaction ${txHash}`);
+    const problems: string[] = [];
+    if (tx.status !== "success") problems.push(`the transaction status is ${tx.status}`);
+    if (tx.to) problems.push(`the transaction is a call to ${tx.to}, not a contract creation`);
+    if (!eq(tx.from, roles.deployer)) problems.push(`the transaction was sent by ${tx.from}, not by the deploy key ${roles.deployer}`);
+    if (!tx.contractAddress || !eq(tx.contractAddress, address)) problems.push(`the transaction created ${tx.contractAddress ?? "no contract"}, not ${address}`);
+    if (tx.input.toLowerCase() !== data.toLowerCase()) problems.push("the transaction data is not this artifact's bytecode with these constructor arguments");
+    if (problems.length > 0) throw new Error(`${tag} ${address} is not this deploy's contract:\n  - ${problems.join("\n  - ")}`);
+    deployed = { address, txHash };
+    log(`${tag} transaction ${txHash} is the deploy key's creation of ${address} with exactly these bytes`);
+  } else {
+    const wantDigest = opts.deployDigest;
+    if (!dryRun && wantDigest !== undefined && wantDigest.toLowerCase() !== digest.toLowerCase()) {
+      throw new Error(
+        `${tag} --deploy ${wantDigest} does not match this deploy (the digest covers the bytecode, constructor arguments, chain and deploy key). ` +
+        "Something changed since the dry run: run it again, read it, and use the digest it prints now.",
+      );
+    }
+    if (mainnet) {
+      // Both the dry run and the real deploy check the price and the balance.
+      const est = await deps.estimate(args);
+      if (!est.gasPricePinned || est.gasPrice === undefined) {
+        throw new Error(`${tag} RUBICON_GAS_PRICE is not set: Rubicon's proxy rejects "auto" gas prices. export RUBICON_GAS_PRICE=$(( $(cast gas-price -r <rpc>) * 11 / 10 )) and run again`);
+      }
+      const cost = est.gas * est.gasPrice;
+      log(`${tag} estimated gas ${est.gas}, pinned gas price ${est.gasPrice}, cost about ${cost} wei`);
+      if (est.balance !== undefined) {
+        const enough = est.balance >= cost;
+        log(`${tag} deploy key balance ${est.balance} wei${enough ? "" : "  WARNING: below the estimated cost"}`);
+        if (!dryRun && !enough) throw new Error(`${tag} the deploy key holds ${est.balance} wei, below the estimated cost ${cost}: fund it and run the dry run again`);
+      }
+      if (!dryRun && ownerNeedsGas) throw new Error(`${tag} the owner ${roles.owner} holds no Rubicon gas: fund the Ledger first (README step 1), then run the dry run again`);
+    }
+
+    // 4. Dry run.
+    if (dryRun) {
+      log(`${tag} deploy transaction: contract creation of RomeBridgeWithdraw ${EXPECTED_VERSION} from ${roles.deployer}`);
+      log(`${tag} constructor args:\n${jsonArgs(args)}`);
+      if (!mainnet) {
+        const est = await deps.estimate(args);
+        log(`${tag} estimated gas ${est.gas}${est.gasPrice !== undefined ? `, gas price ${est.gasPrice}, cost about ${est.gas * est.gasPrice} wei` : ""}`);
+        if (est.balance !== undefined) {
+          const enough = est.gasPrice === undefined || est.balance >= est.gas * est.gasPrice;
+          log(`${tag} deploy key balance ${est.balance} wei${enough ? "" : "  WARNING: below the estimated cost"}`);
+        }
+      }
+      log(`${tag} DRY RUN: nothing was sent.`);
+      if (mainnet) log(`${tag} To deploy, run the same command with --deploy ${digest} (and no --dry-run). The deploy refuses any other digest. After the deploy the Ledger signs the two owner calls the real run prints.`);
+      else log(`${tag} After the deploy the Ledger signs the two owner calls the real run prints.`);
+      return { dryRun: true, chainId, roles, args, digest };
+    }
+
+    // 5a. Send.
+    deployed = await deps.deploy(args, opts.mainnetFlag);
+    log(`${tag} RomeBridgeWithdraw ${EXPECTED_VERSION} deployed at ${deployed.address} (tx ${deployed.txHash})`);
   }
 
-  // 5. Deploy, then read everything back.
-  const deployed = await deps.deploy(args);
-  log(`${tag} RomeBridgeWithdraw ${EXPECTED_VERSION} deployed at ${deployed.address} (tx ${deployed.txHash})`);
-  let checked: string[];
-  try {
-    checked = await verifyDeployment(deps.reader(deployed.address), {
-      owner: roles.owner, guardian: roles.guardian, deployer: roles.deployer,
-      usdcWrapper: usdc.wrapper, usdcMintBase58: usdc.mintBase58,
-    });
-  } catch (e) {
-    throw new Error(
-      `${tag} the contract at ${deployed.address} (tx ${deployed.txHash}) FAILED the read-back and was NOT recorded. ` +
-      `Do not use it; do not enable anything on it.\n${(e as Error).message}`,
-    );
-  }
+  // 5b. Read everything back.
+  const checked = await verifyWithRetry(deps, deployed.address, deployed.txHash, {
+    owner: roles.owner, guardian: roles.guardian, deployer: roles.deployer,
+    usdcWrapper: usdc.wrapper, usdcMintBase58: usdc.mintBase58,
+  });
   for (const line of checked) log(`${tag} read back: ${line}`);
 
   // 6. Record it, beside v12.
-  deps.store.write(withV13Record(deps.store.read(), {
+  const record: V13Record = {
     address: deployed.address,
     version: EXPECTED_VERSION,
     owner: roles.owner,
     guardian: roles.guardian,
     deployTx: deployed.txHash,
     deployedAt: Math.floor(deps.now() / 1000),
-  }));
+    ...sourceFacts,
+  };
+  try {
+    deps.store.write(withV13Record(deps.store.read(), record));
+  } catch (e) {
+    log(`${tag} COULD NOT WRITE the record (${(e as Error).message.split("\n")[0]}). It read back correctly. Add this under "${RECORD_KEY}" by hand:\n${jsonArgs(record)}`);
+    throw new Error(
+      `${tag} the contract ${deployed.address} (tx ${deployed.txHash}) read back correctly but deployments/${deps.networkName}.json could not be written. ` +
+      `Do NOT deploy again: fix the file problem and re-run with --verify-existing ${deployed.address} --deploy-tx ${deployed.txHash}.`,
+    );
+  }
   log(`${tag} wrote ${RECORD_KEY} to deployments/${deps.networkName}.json (the registry switch-over is a separate step)`);
 
   // 7. Print the owner calls.
   const ownerCalls = buildOwnerCalls(deployed.address, usdc.mintBase58);
-  log(`\n${tag} OWNER CALLS: ${ownerCalls.length}. The cold Ledger (${roles.owner}) signs and sends each one. This script does not send them.`);
+  log(`\n${tag} OWNER CALLS: ${ownerCalls.length}, in this order. The cold Ledger (${roles.owner}) signs and sends each one. This script does not send them.`);
   log(`${tag} The owner needs Rubicon gas. The Wormhole allowlists stay empty: no call for them.`);
   for (const [i, c] of ownerCalls.entries()) {
     log(`\n[${i + 1}] ${c.description}`);
@@ -403,5 +584,5 @@ export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions)
       }
     }
   }
-  return { dryRun: false, chainId, roles, args, deployed, ownerCalls };
+  return { dryRun: false, chainId, roles, args, digest, deployed, ownerCalls };
 }
