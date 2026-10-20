@@ -351,13 +351,14 @@ describe("the one mainnet exception: deploy-rubicon-v13.ts, with --i-understand-
   });
   it("the script's send step asks the guard itself, with the digest recomputed from the bytes and the nonce, before it hands anything to the wallet", () => {
     const src = readFileSync(path.join(repo, RUBICON_V13_DEPLOY_SCRIPT), "utf8");
-    const deploy = src.slice(src.search(/deploy:\s*async\s*\(args, mainnetFlag, digest\)/));
+    const deploy = src.slice(src.search(/deploy:\s*async\s*\(args, mainnetFlag, digest, beforeSend\)/));
     assert.ok(deploy.length < src.length, "found the deploy closure");
     const guardAt = deploy.indexOf("await assertRubiconV13DeploySend(");
     assert.ok(guardAt >= 0 && guardAt < deploy.indexOf("wallet.deployContract("), "the guard comes first");
     assert.ok(deploy.indexOf("deployDigest(data, chainId, deployer, nonce)") >= 0 && deploy.indexOf("deployDigest(") < guardAt, "the digest is recomputed before the guard");
     assert.match(deploy.slice(guardAt, guardAt + 200), /phase: "send", digestMatches/);
     assert.equal(src.split("wallet.deployContract(").length - 1, 1, "one send site");
+    assert.ok(guardAt < deploy.indexOf("beforeSend?.()") && deploy.indexOf("beforeSend?.()") < deploy.indexOf("wallet.deployContract(") && deploy.indexOf("wallet.deployContract(") - deploy.indexOf("beforeSend?.()") < 400, "sendStarted is set right before the wallet send, after the guard");
   });
   it("the script computes its own path for the guard, and that path is the one the exception names", () => {
     const src = readFileSync(path.join(repo, RUBICON_V13_DEPLOY_SCRIPT), "utf8");

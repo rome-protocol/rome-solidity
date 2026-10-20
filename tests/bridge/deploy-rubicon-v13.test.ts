@@ -9,7 +9,7 @@ import path from "node:path";
 import { decodeFunctionData, getAddress, keccak256, parseAbi, toFunctionSelector } from "viem";
 import hardhat from "hardhat";
 import {
-  EXPECTED_VERSION, RECORD_KEY, RecordConflict, buildOwnerCalls, deployDigest, parseArgs, predictedAddress, runRubiconV13Deploy, usdcFromDeployments, validateRoles,
+  EXPECTED_VERSION, RECORD_KEY, RecordConflict, buildOwnerCalls, preSendNote, deployDigest, parseArgs, predictedAddress, runRubiconV13Deploy, usdcFromDeployments, validateRoles,
   verifyDeployment, withV13Record, type DeployDeps, type DeployOptions,
 } from "../../scripts/bridge/lib/rubicon-v13.js";
 import { assertRubiconV13DeploySend } from "../../scripts/bridge/lib/testnet-guard.js";
@@ -491,7 +491,7 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
       source: async () => GOOD_SOURCE,
       sourceAt: async (c: string) => ({ commit: c, sameSources: true }),
       estimate: async () => { counters.estimates++; return { gas: 3_000_000n, gasPrice: 10n, gasPricePinned: true, balance: 10n ** 18n }; },
-      deploy: async (args) => { counters.deploys++; return d.deploy(args, false); }, // the local chain's own guard: 31337
+      deploy: async (args, _flag, _digest, beforeSend) => { counters.deploys++; return d.deploy(args, false, undefined, beforeSend); }, // the local chain's own guard: 31337
       sleep: async () => {},
       ...over,
     };
@@ -780,6 +780,7 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
       assert.ok(e.message.includes(`cast code ${predicted}`));
       assert.match(e.message, /--verify-existing/);
       assert.match(e.message, /unknown RPC error/, "the cause is still there");
+      assert.doesNotMatch(e.message, /THIS run only|this run sent nothing/, "the send was started: the error carries its own advice");
       return true;
     });
     // it did land: the nonce moved and the contract sits at the predicted address
@@ -804,7 +805,8 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
         assert.match(e.message, /RomeBridgeWithdrawV13 is already recorded/);
         assert.match(e.message, /refusal is about THIS run only: this run sent nothing/);
         assert.match(e.message, /nothing about earlier runs/);
-        assert.match(e.message, /earlier run may have sent a deploy.*cast nonce 0x[0-9a-fA-F]{40}.*explorer.*--verify-existing.*Never deploy again/s);
+        assert.match(e.message, /earlier run may have sent a deploy.*cast nonce 0x[0-9a-fA-F]{40}.*explorer.*--verify-existing.*never deploy a second time/s);
+        assert.doesNotMatch(e.message, /Never deploy again/);
         return true;
       });
     }
@@ -824,7 +826,7 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
     // after the send: the record cannot be written. The deploy landed, so the wording is the recovery one
     const store = memStore(STORE());
     const good = await digestFor(memStore(STORE()));
-    const { deps } = await mainDeps({ ...store, update: () => { throw new Error("EIO"); } } as any, []);
+    const { deps } = await mainDeps({ ...store, addRecord: () => { throw new Error("EIO"); } } as any, []);
     await assert.rejects(runRubiconV13Deploy(deps, opts({ deployDigest: good })), (e: Error) => {
       assert.match(e.message, /Do NOT deploy again.*--verify-existing/s);
       assert.doesNotMatch(e.message, /THIS run only|this run sent nothing/);
@@ -835,11 +837,11 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
   it("the deploy flow reports a record conflict at the write as 'not written, do not overwrite, do not deploy again', never 'fix and re-run'", async () => {
     const good = await digestFor(memStore(STORE()));
     const store = memStore(STORE());
-    const conflict = { ...store, update: () => { throw new RecordConflict("RomeBridgeWithdrawV13 is already in the file (0x1)"); } };
+    const conflict = { ...store, addRecord: () => { throw new RecordConflict("deployments/rubicon.json changed since this run read it, so the record was NOT written. The record is printed below. Read the file and decide by hand; if it now holds a RomeBridgeWithdrawV13 entry, that may be a second live contract: stop and tell the team."); } };
     const lines: string[] = [];
     const { deps } = await mainDeps(conflict as any, lines);
     await assert.rejects(runRubiconV13Deploy(deps, opts({ deployDigest: good })), (e: Error) => {
-      assert.match(e.message, /read back correctly but deployments\/rubicon\.json changed while this run worked.*NOT written over it.*Do NOT deploy again and do NOT overwrite/s);
+      assert.match(e.message, /read back correctly, but deployments\/rubicon\.json changed since this run read it, so the record was NOT written\..*second live contract.*Do NOT deploy again and do NOT overwrite/s);
       assert.doesNotMatch(e.message, /fix the file problem/);
       return true;
     });
@@ -1295,7 +1297,7 @@ describe("the deployments file store replaces the file atomically and refuses an
       // the disk fills after 10 bytes of the new text
       const faulty = { ...fs, writeSync: ((fd: number, buf: Buffer, off: number) => { fs.writeSync(fd, buf, off, 10); throw Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" }); }) as unknown as typeof fs.writeSync };
       const store = fileStore(file, faulty);
-      assert.throws(() => store.update!((cur) => withV13Record(cur, rec as any)), /ENOSPC/);
+      assert.throws(() => store.addRecord!(raw, rec as any), /ENOSPC/);
       assert.equal(readFileSync(file, "utf8"), raw, "v12 is intact");
       assert.deepEqual(left(dir), ["rubicon.json"]);
       assert.throws(() => store.write({ ...V12, x: 1 }), /ENOSPC/);
@@ -1308,7 +1310,7 @@ describe("the deployments file store replaces the file atomically and refuses an
     for (const op of ["fsyncSync", "renameSync"] as const) {
       withTmp((dir, file, raw) => {
         const faulty = { ...fs, [op]: () => { throw new Error(`${op} failed`); } } as typeof fs;
-        assert.throws(() => fileStore(file, faulty).update!((cur) => withV13Record(cur, rec as any)), new RegExp(`${op} failed`));
+        assert.throws(() => fileStore(file, faulty).addRecord!(raw, rec as any), new RegExp(`${op} failed`));
         assert.equal(readFileSync(file, "utf8"), raw, op);
         assert.deepEqual(left(dir), ["rubicon.json"], op);
       });
@@ -1316,8 +1318,8 @@ describe("the deployments file store replaces the file atomically and refuses an
   });
 
   it("a good update adds the record, keeps v12 and the file mode, and leaves no temp or lock file", () => {
-    withTmp((dir, file) => {
-      fileStore(file).update!((cur) => withV13Record(cur, rec as any));
+    withTmp((dir, file, raw) => {
+      fileStore(file).addRecord!(raw, rec as any);
       const back = JSON.parse(readFileSync(file, "utf8"));
       assert.deepEqual(back.RomeBridgeWithdraw, V12.RomeBridgeWithdraw);
       assert.equal(back[RECORD_KEY].address, rec.address);
@@ -1331,10 +1333,10 @@ describe("the deployments file store replaces the file atomically and refuses an
   });
 
   it("a symlinked deployments file is replaced where it really lives, and the link stays a link", () => {
-    withTmp((dir, file) => {
+    withTmp((dir, file, raw) => {
       const link = path.join(dir, "link.json");
       fs.symlinkSync(file, link);
-      fileStore(link).update!((cur) => withV13Record(cur, rec as any));
+      fileStore(link).addRecord!(raw, rec as any);
       assert.equal(fs.lstatSync(link).isSymbolicLink(), true);
       assert.equal(JSON.parse(readFileSync(file, "utf8"))[RECORD_KEY].address, rec.address);
     });
@@ -1344,7 +1346,7 @@ describe("the deployments file store replaces the file atomically and refuses an
     withTmp((dir, file, raw) => {
       let tmpSeen = "";
       const spy = { ...fs, openSync: ((p: string, ...rest: any[]) => { if (String(p).endsWith(".tmp")) tmpSeen = String(p); return (fs.openSync as any)(p, ...rest); }) as unknown as typeof fs.openSync };
-      fileStore(file, spy).update!((cur) => withV13Record(cur, rec as any));
+      fileStore(file, spy).addRecord!(raw, rec as any);
       const after = readFileSync(file, "utf8");
       const head = raw.slice(0, raw.lastIndexOf("\n}"));
       assert.ok(after.startsWith(head + ",\n"), "every byte of the old text is still there, in place");
@@ -1361,7 +1363,7 @@ describe("the deployments file store replaces the file atomically and refuses an
           if (op === "openSync" && !String(a[0]).endsWith(".tmp")) return (fs.openSync as any)(...a);
           throw new Error(`${op} failed`);
         } } as typeof fs;
-        assert.throws(() => fileStore(file, faulty).update!((cur) => withV13Record(cur, rec as any)), new RegExp(`${op} failed`));
+        assert.throws(() => fileStore(file, faulty).addRecord!(raw, rec as any), new RegExp(`${op} failed`));
         assert.equal(readFileSync(file, "utf8"), raw, op);
         assert.deepEqual(left(dir), ["rubicon.json"], op);
       });
@@ -1371,73 +1373,113 @@ describe("the deployments file store replaces the file atomically and refuses an
       const other = path.join(dir, "someone-elses.tmp");
       writeFileSync(other, "theirs");
       const clash = { ...fs, openSync: ((p: string, ...a: any[]) => (String(p).endsWith(".tmp") ? (fs.openSync as any)(other, "wx") : (fs.openSync as any)(p, ...a))) as unknown as typeof fs.openSync };
-      assert.throws(() => fileStore(file, clash).update!((cur) => withV13Record(cur, rec as any)), /EEXIST/);
+      assert.throws(() => fileStore(file, clash).addRecord!(raw, rec as any), /EEXIST/);
       assert.equal(readFileSync(other, "utf8"), "theirs");
       assert.equal(readFileSync(file, "utf8"), raw);
     });
   });
 
-  it("(b) the V13 key appearing between the start and the rename refuses the write: the other record stays, no temp file is left", () => {
-    withTmp((dir, file) => {
-      // another writer adds its own record while this run flushes its temp file
+  const CONFLICT = /deployments\/rubicon\.json changed since this run read it, so the record was NOT written\. The record is printed below\. Read the file and decide by hand; if it now holds a RomeBridgeWithdrawV13 entry, that may be a second live contract: stop and tell the team\./;
+
+  it("(a) the new text is the snapshot plus one entry, v12 verbatim, on a copy of the real rubicon.json", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "rubicon-snap-"));
+    try {
+      const real = readFileSync(path.join(repo, "deployments/rubicon.json"), "utf8");
+      const file = path.join(dir, "rubicon.json");
+      writeFileSync(file, real);
+      const store = fileStore(file);
+      const snapshot = store.readRaw!();
+      assert.equal(snapshot, real);
+      store.addRecord!(snapshot, rec as any);
+      const after = readFileSync(file, "utf8");
+      const entry = JSON.stringify({ [RECORD_KEY]: rec }, null, 2);
+      assert.equal(after, `${real.slice(0, real.lastIndexOf("\n}"))},\n${entry.slice(2, entry.lastIndexOf("\n}"))}\n}\n`, "the snapshot's bytes, then the one entry");
+      assert.equal(after, JSON.stringify({ ...JSON.parse(real), [RECORD_KEY]: rec }, null, 2) + "\n");
+      assert.ok(after.startsWith(real.slice(0, real.lastIndexOf("\n}"))), "every byte of the old text, v12 included, is in place");
+      assert.deepEqual(left(dir), ["rubicon.json"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("(b) a V13 key, or any other change, appearing between the snapshot and the rename refuses the write: the file is as the other writer left it and no temp file remains", () => {
+    withTmp((dir, file, raw) => {
       const other = { ...V12, [RECORD_KEY]: { address: ADDR(0x999), version: "13.0.0" } };
       const racing = { ...fs, fsyncSync: ((fd: number) => { writeFileSync(file, JSON.stringify(other, null, 2) + "\n"); return fs.fsyncSync(fd); }) as unknown as typeof fs.fsyncSync };
-      assert.throws(() => fileStore(file, racing).update!((cur) => withV13Record(cur, rec as any)), (e: Error) => {
+      assert.throws(() => fileStore(file, racing).addRecord!(raw, rec as any), (e: Error) => {
         assert.ok(e instanceof RecordConflict);
-        assert.match(e.message, /RomeBridgeWithdrawV13 is already in the file/);
+        assert.match(e.message, CONFLICT);
         return true;
       });
       assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), other, "the other record is as it was");
       assert.deepEqual(left(dir), ["rubicon.json"]);
     });
-  });
-
-  it("(b) a change to anything else in the file between the start and the rename also refuses the write", () => {
     withTmp((dir, file, raw) => {
       const changed = { ...V12, RomeBridgeWithdraw: { ...V12.RomeBridgeWithdraw, address: ADDR(0x123) } };
       const racing = { ...fs, fsyncSync: ((fd: number) => { writeFileSync(file, JSON.stringify(changed, null, 2) + "\n"); return fs.fsyncSync(fd); }) as unknown as typeof fs.fsyncSync };
-      assert.throws(() => fileStore(file, racing).update!((cur) => withV13Record(cur, rec as any)), /other content is not what this run read/);
+      assert.throws(() => fileStore(file, racing).addRecord!(raw, rec as any), CONFLICT);
       assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), changed);
-      assert.notEqual(readFileSync(file, "utf8"), raw);
       assert.deepEqual(left(dir), ["rubicon.json"]);
     });
   });
 
-  it("a change that is more than adding the V13 key is refused, and so is a file whose layout the rewrite would change", () => {
+  it("the file is compared with the snapshot BEFORE the temp file is created too: a change before that leaves no temp file and the file untouched", () => {
     withTmp((dir, file, raw) => {
-      assert.throws(() => fileStore(file).update!((cur) => ({ ...withV13Record(cur, rec as any), extra: 1 })), /more than adding that one key|other content/);
-      assert.throws(() => fileStore(file).update!((cur) => { const c = withV13Record(cur, rec as any); (c.RomeBridgeWithdraw as any).deployedAt = 1; return c; }), /other content/);
-      assert.equal(readFileSync(file, "utf8"), raw);
-      // a compact layout would be reformatted by the rewrite, which would change v12's bytes: refused, untouched
-      const compact = JSON.stringify(V12);
-      writeFileSync(file, compact);
-      assert.throws(() => fileStore(file).update!((cur) => withV13Record(cur, rec as any)), /canonical 2-space JSON layout/);
-      assert.equal(readFileSync(file, "utf8"), compact);
+      const changed = raw.replace("1790219940", "1790219941");
+      writeFileSync(file, changed);
+      let opened = false;
+      const spy = { ...fs, openSync: ((p: string, ...rest: any[]) => { if (String(p).endsWith(".tmp")) opened = true; return (fs.openSync as any)(p, ...rest); }) as unknown as typeof fs.openSync };
+      assert.throws(() => fileStore(file, spy).addRecord!(raw, rec as any), CONFLICT);
+      assert.equal(opened, false, "no temp file was created");
+      assert.equal(readFileSync(file, "utf8"), changed);
       assert.deepEqual(left(dir), ["rubicon.json"]);
+    });
+  });
+
+  it("(c) a property reorder inside v12 that keeps the canonical layout is a change: refused, file untouched (the parsed content would be equal)", () => {
+    withTmp((dir, file, raw) => {
+      const reordered = JSON.stringify({ RomeBridgeWithdraw: { deployedAt: V12.RomeBridgeWithdraw.deployedAt, address: V12.RomeBridgeWithdraw.address }, SPL_ERC20_USDC: V12.SPL_ERC20_USDC }, null, 2) + "\n";
+      assert.notEqual(reordered, raw);
+      assert.deepEqual(JSON.parse(reordered), JSON.parse(raw), "the parsed content is equal, only the order differs");
+      const racing = { ...fs, fsyncSync: ((fd: number) => { writeFileSync(file, reordered); return fs.fsyncSync(fd); }) as unknown as typeof fs.fsyncSync };
+      assert.throws(() => fileStore(file, racing).addRecord!(raw, rec as any), CONFLICT);
+      assert.equal(readFileSync(file, "utf8"), reordered);
+      assert.deepEqual(left(dir), ["rubicon.json"]);
+    });
+  });
+
+  it("a snapshot that is not in the canonical 2-space layout is refused by the store too, file untouched", () => {
+    withTmp((dir, file, raw) => {
+      for (const text of [JSON.stringify(V12), JSON.stringify(V12, null, 4) + "\n"]) {
+        writeFileSync(file, text);
+        assert.throws(() => fileStore(file).addRecord!(text, rec as any), /canonical 2-space JSON layout; restore it with git checkout and run again/);
+        assert.equal(readFileSync(file, "utf8"), text);
+        assert.deepEqual(left(dir), ["rubicon.json"]);
+      }
     });
   });
 
   it("a short write (3 bytes at a time) writes the whole file, and a write with no progress fails cleanly", () => {
-    withTmp((dir, file) => {
+    withTmp((dir, file, raw) => {
       const writes: number[] = [];
       const short = { ...fs, writeSync: ((fd: number, buf: Buffer, off: number, len: number) => { const n = fs.writeSync(fd, buf, off, Math.min(3, len)); writes.push(n); return n; }) as unknown as typeof fs.writeSync };
-      fileStore(file, short).update!((cur) => withV13Record(cur, rec as any));
+      fileStore(file, short).addRecord!(raw, rec as any);
       assert.ok(writes.length > 10);
       assert.deepEqual(left(dir), ["rubicon.json"], "no temp file after the run");
       assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { ...V12, [RECORD_KEY]: rec });
     });
     withTmp((dir, file, raw) => {
       const stuck = { ...fs, writeSync: (() => 0) as unknown as typeof fs.writeSync };
-      assert.throws(() => fileStore(file, stuck).update!((cur) => withV13Record(cur, rec as any)), /no progress/);
+      assert.throws(() => fileStore(file, stuck).addRecord!(raw, rec as any), /no progress/);
       assert.equal(readFileSync(file, "utf8"), raw);
       assert.deepEqual(left(dir), ["rubicon.json"]);
     });
   });
 
   it("there is no lock file: a stale `.lock` beside the file neither blocks nor is touched", () => {
-    withTmp((dir, file) => {
+    withTmp((dir, file, raw) => {
       writeFileSync(`${file}.lock`, "4242:left-by-a-dead-run");
-      fileStore(file).update!((cur) => withV13Record(cur, rec as any));
+      fileStore(file).addRecord!(raw, rec as any);
       assert.equal(JSON.parse(readFileSync(file, "utf8"))[RECORD_KEY].address, rec.address);
       assert.equal(readFileSync(`${file}.lock`, "utf8"), "4242:left-by-a-dead-run");
       assert.deepEqual(left(dir), ["rubicon.json", "rubicon.json.lock"]);
@@ -1446,7 +1488,7 @@ describe("the deployments file store replaces the file atomically and refuses an
     });
   });
 
-  it("the deploy flow writes the record through update (the atomic path) when the store has it", async () => {
+  it("the deploy flow writes the record through addRecord (the atomic path) when the store has it", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "store-flow-"));
     try {
       const conn = await hardhat.network.connect();
@@ -1470,6 +1512,144 @@ describe("the deployments file store replaces the file atomically and refuses an
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the record write from the step-3 snapshot, through the real flow and the real file store (in-process Hardhat)", () => {
+  const V12 = { address: "0xceea191761cdba2fc589996d7dd096e57db29c84", deployedAt: 1790219940 };
+  const CONFLICT = /deployments\/rubicon\.json changed since this run read it, so the record was NOT written\. The record is printed below\. Read the file and decide by hand; if it now holds a RomeBridgeWithdrawV13 entry, that may be a second live contract: stop and tell the team\./;
+  const CANONICAL = /^deployments\/\w+\.json is not in the canonical 2-space JSON layout; restore it with git checkout and run again/;
+
+  async function setup() {
+    const dir = mkdtempSync(path.join(tmpdir(), "snap-flow-"));
+    const conn = await hardhat.network.connect();
+    const wallets = await conn.viem.getWalletClients();
+    const pc = await conn.viem.getPublicClient();
+    const wrapperC = await conn.viem.deployContract("MockSplErc20", [USDC_MINT32]);
+    const base = { SPL_ERC20_USDC: { address: wrapperC.address, mintId: USDC_MINT }, RomeBridgeWithdraw: V12 };
+    const file = path.join(dir, "rubicon.json");
+    const opts = (over: Partial<DeployOptions> = {}): DeployOptions => ({
+      network: "hardhatMainnet", owner: wallets[1].account.address, guardian: wallets[2].account.address, dryRun: false, mainnetFlag: false,
+      deployDigest: undefined, verifyExisting: undefined, ownerDiffersFromV12: false, ...over,
+    });
+    const nonce = async () => Number(await pc.getTransactionCount({ address: wallets[0].account.address }));
+    return { dir, conn, file, base, opts, nonce, wallets, pc };
+  }
+  /** Deps on the real file store; `duringReadBack` runs when the flow reads the new contract's code (after step 3, before the record write). */
+  async function flowDeps(conn: any, file: string, lines: string[], duringReadBack?: () => void): Promise<DeployDeps> {
+    const d = await depsFromConnection(conn, fileStore(file), (l) => lines.push(l));
+    return {
+      ...d,
+      sleep: async () => {},
+      reader: (a) => { const r = d.reader(a); return { ...r, getCode: async () => { duringReadBack?.(); return r.getCode(); } }; },
+    };
+  }
+  const ls = (dir: string) => fs.readdirSync(dir).sort();
+
+  it("(b) a V13 key written by another writer during the read-back: RecordConflict wording, the file is the other writer's, no temp file", async () => {
+    const t = await setup();
+    try {
+      writeFileSync(t.file, JSON.stringify(t.base, null, 2) + "\n");
+      const other = JSON.stringify({ ...t.base, [RECORD_KEY]: { address: ADDR(0x999), version: "13.0.0" } }, null, 2) + "\n";
+      const lines: string[] = [];
+      const d = await flowDeps(t.conn, t.file, lines, () => writeFileSync(t.file, other));
+      await assert.rejects(runRubiconV13Deploy(d, t.opts()), (e: Error) => {
+        assert.match(e.message, CONFLICT);
+        assert.match(e.message, /Do NOT deploy again and do NOT overwrite/);
+        assert.doesNotMatch(e.message, /THIS run only|this run sent nothing/, "the deploy was sent: no pre-send note");
+        return true;
+      });
+      assert.match(lines.join("\n"), /NOT WRITTEN/);
+      assert.match(lines.join("\n"), /"codeHash"/, "the record is printed");
+      assert.equal(readFileSync(t.file, "utf8"), other, "untouched");
+      assert.deepEqual(ls(t.dir), ["rubicon.json"], "no temp file");
+    } finally { rmSync(t.dir, { recursive: true, force: true }); }
+  });
+
+  it("(c) a property reorder inside v12 (canonical layout kept) injected after step 3 is a RecordConflict, file untouched", async () => {
+    const t = await setup();
+    try {
+      writeFileSync(t.file, JSON.stringify(t.base, null, 2) + "\n");
+      const reordered = JSON.stringify({ SPL_ERC20_USDC: t.base.SPL_ERC20_USDC, RomeBridgeWithdraw: { deployedAt: V12.deployedAt, address: V12.address } }, null, 2) + "\n";
+      assert.notEqual(reordered, readFileSync(t.file, "utf8"));
+      const d = await flowDeps(t.conn, t.file, [], () => writeFileSync(t.file, reordered));
+      await assert.rejects(runRubiconV13Deploy(d, t.opts()), CONFLICT);
+      assert.equal(readFileSync(t.file, "utf8"), reordered, "untouched");
+      assert.deepEqual(ls(t.dir), ["rubicon.json"]);
+    } finally { rmSync(t.dir, { recursive: true, force: true }); }
+  });
+
+  it("with nothing changed in between, the new text is the step-3 snapshot plus the one entry, v12 verbatim", async () => {
+    const t = await setup();
+    try {
+      const snapshot = JSON.stringify(t.base, null, 2) + "\n";
+      writeFileSync(t.file, snapshot);
+      const d = await flowDeps(t.conn, t.file, []);
+      await runRubiconV13Deploy(d, t.opts());
+      const after = readFileSync(t.file, "utf8");
+      assert.ok(after.startsWith(snapshot.slice(0, snapshot.lastIndexOf("\n}")) + ",\n"));
+      assert.equal(JSON.stringify(JSON.parse(after).RomeBridgeWithdraw), JSON.stringify(V12));
+      assert.ok(JSON.parse(after)[RECORD_KEY].address);
+      assert.deepEqual(ls(t.dir), ["rubicon.json"]);
+    } finally { rmSync(t.dir, { recursive: true, force: true }); }
+  });
+
+  it("(d) a 4-space-indented file and a file with RomeBridgeWithdrawV13 set to null are refused at step 3, in a dry run and a deploy, and the deploy key's nonce does not move", async () => {
+    const t = await setup();
+    try {
+      const cases: Array<[string, string, RegExp, RegExp?]> = [
+        ["4-space", JSON.stringify(t.base, null, 4) + "\n", CANONICAL, /changed since this run read it|second live contract|changed while this run worked/],
+        ["null key", JSON.stringify({ ...t.base, [RECORD_KEY]: null }, null, 2) + "\n", /RomeBridgeWithdrawV13 is already recorded/],
+        ["false key", JSON.stringify({ ...t.base, [RECORD_KEY]: false }, null, 2) + "\n", /RomeBridgeWithdrawV13 is already recorded/],
+        ["zero key", JSON.stringify({ ...t.base, [RECORD_KEY]: 0 }, null, 2) + "\n", /RomeBridgeWithdrawV13 is already recorded/],
+        ["empty-string key", JSON.stringify({ ...t.base, [RECORD_KEY]: "" }, null, 2) + "\n", /RomeBridgeWithdrawV13 is already recorded/],
+      ];
+      for (const [name, text, re, not] of cases) {
+        writeFileSync(t.file, text);
+        const before = await t.nonce();
+        for (const dryRun of [true, false]) {
+          const d = await flowDeps(t.conn, t.file, []);
+          await assert.rejects(runRubiconV13Deploy(d, t.opts({ dryRun })), (e: Error) => {
+            assert.match(e.message, re, `${name} dryRun=${dryRun}`);
+            assert.match(e.message, /refusal is about THIS run only: this run sent nothing/, "carries the pre-send note");
+            if (not) assert.doesNotMatch(e.message, not, name);
+            return true;
+          });
+        }
+        assert.equal(await t.nonce(), before, `${name}: the deploy key's nonce did not move`);
+        assert.equal(readFileSync(t.file, "utf8"), text, `${name}: file untouched`);
+        assert.deepEqual(ls(t.dir), ["rubicon.json"]);
+      }
+    } finally { rmSync(t.dir, { recursive: true, force: true }); }
+  });
+
+  it("(e) wording: 'never deploy a second time', the dry run's nonce line compares with the previous dry run, and an RPC error inside deploy() before the send carries the pre-send note", async () => {
+    const t = await setup();
+    try {
+      assert.match(preSendNote("0x" + "ab".repeat(20)), /and never deploy a second time\.$/);
+      assert.doesNotMatch(preSendNote("0x" + "ab".repeat(20)), /Never deploy again/);
+      writeFileSync(t.file, JSON.stringify(t.base, null, 2) + "\n");
+      const lines: string[] = [];
+      const d = await flowDeps(t.conn, t.file, lines);
+      await runRubiconV13Deploy(d, t.opts({ dryRun: true }));
+      const text = lines.join("\n");
+      assert.match(text, /Compare this nonce with the nonce the previous dry run printed/);
+      assert.match(text, /never deploy a second time/);
+      assert.doesNotMatch(text, /Check that nonce against `cast nonce/);
+      assert.doesNotMatch(text, /never deploy again/);
+      // an RPC error inside deploy(), before the wallet send (the second nonce read fails)
+      let calls = 0;
+      const flaky = new Proxy(t.pc, { get: (target: any, k) => (k === "getTransactionCount" ? async (a: any) => { if (++calls === 2) throw new Error("RPC down"); return target.getTransactionCount(a); } : Reflect.get(target, k)) });
+      const conn2 = { viem: { getPublicClient: async () => flaky, getWalletClients: () => t.conn.viem.getWalletClients() }, networkName: t.conn.networkName };
+      const d2 = await depsFromConnection(conn2 as any, fileStore(t.file), () => {});
+      const before = await t.nonce();
+      await assert.rejects(runRubiconV13Deploy({ ...d2, sleep: async () => {} }, t.opts()), (e: Error) => {
+        assert.match(e.message, /RPC down/);
+        assert.match(e.message, /refusal is about THIS run only: this run sent nothing/);
+        return true;
+      });
+      assert.equal(await t.nonce(), before, "nothing was sent");
+    } finally { rmSync(t.dir, { recursive: true, force: true }); }
   });
 });
 

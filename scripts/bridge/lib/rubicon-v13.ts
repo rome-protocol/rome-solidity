@@ -295,16 +295,18 @@ export async function verifyDeployment(r: ChainReader, want: Expected): Promise<
 export interface DeploymentStore {
   read(): Record<string, any>;
   write(data: Record<string, any>): void;
+  /** The file's exact text as it is now (undefined when there is no file). The flow reads it ONCE at step 3 and keeps it as the snapshot. */
+  readRaw?(): string | undefined;
   /**
-   * Read, change and write back the record. The file store writes a temp file next to the destination,
-   * flushes it and renames it over the destination, and right before the rename it reads the file again
-   * and refuses (RecordConflict) if RomeBridgeWithdrawV13 is there already or if the change would alter
-   * anything but that one key. A failed or refused write leaves the file as it was, v12 byte for byte.
+   * Writes the record. The new text is the SNAPSHOT plus the one entry (every byte of the snapshot kept, v12
+   * included), never a fresh read. The file store re-reads the raw text before it creates the temp file and again
+   * right before the rename, and refuses (RecordConflict) unless it is byte-identical to the snapshot. A failed or
+   * refused write leaves the file as it was.
    */
-  update?(change: (current: Record<string, any>) => Record<string, any>): void;
+  addRecord?(snapshot: string | undefined, record: V13Record): void;
 }
 
-/** The deployments file changed while this run was working, so the record was NOT written over it. */
+/** The deployments file changed since this run read it, so the record was NOT written over it. */
 export class RecordConflict extends Error {
   constructor(message: string) {
     super(message);
@@ -320,7 +322,7 @@ export function preSendNote(deployer: string): string {
   return (
     "\nThis refusal is about THIS run only: this run sent nothing. It says nothing about earlier runs. If an earlier run may have sent a deploy, " +
     `check the deploy key's transactions first (\`cast nonce ${deployer}\`, or the deploy key's page on the explorer) and, if a deploy landed, ` +
-    "record it with --verify-existing <address> --deploy-tx <hash> --source-commit <the commit you deployed from>. Never deploy again."
+    "record it with --verify-existing <address> --deploy-tx <hash> --source-commit <the commit you deployed from>, and never deploy a second time."
   );
 }
 
@@ -351,7 +353,7 @@ export interface V13Record {
 
 /** Adds the V13 record next to everything else. Refuses to replace an existing V13 record. */
 export function withV13Record(existing: Record<string, any>, rec: V13Record): Record<string, any> {
-  if (existing[RECORD_KEY]) throw new Error(`${RECORD_KEY} is already recorded (${existing[RECORD_KEY].address}): refusing to overwrite it`);
+  if (RECORD_KEY in existing) throw new Error(`${RECORD_KEY} is already recorded (${existing[RECORD_KEY]?.address}): refusing to overwrite it`);
   return { ...existing, [RECORD_KEY]: rec };
 }
 
@@ -396,8 +398,10 @@ export interface DeployDeps {
    * operator's flag, and on Rubicon only when `digest` equals the digest recomputed from the bytes and
    * the nonce about to be sent. Resolves with the address and the hash of the transaction that was
    * MINED (the receipt's hash, which is not the sent hash when the transaction was replaced).
+   * `beforeSend` is called right before the transaction is handed to the wallet: an error before that
+   * point is a refusal of THIS run, an error after it may have left a deploy behind.
    */
-  deploy(args: CtorArgs, mainnetFlag: boolean, digest?: Hex): Promise<{ address: Address; txHash: Hex }>;
+  deploy(args: CtorArgs, mainnetFlag: boolean, digest?: Hex, beforeSend?: () => void): Promise<{ address: Address; txHash: Hex }>;
   reader(address: Address): ChainReader;
   /** Code and balance of an account. */
   accountInfo(address: Address): Promise<{ hasCode: boolean; balance: bigint }>;
@@ -563,9 +567,14 @@ async function runFlow(deps: DeployDeps, opts: DeployOptions, stage: { sendStart
   }
 
   // 3. Inputs and constructor arguments.
-  // Before ANY send (a dry run included): an existing v13 record means a deploy was already recorded.
-  const existing = deps.store.read();
-  if (existing[RECORD_KEY]) throw new Error(`${tag} ${RECORD_KEY} is already recorded (${existing[RECORD_KEY].address}): a deploy was recorded by an earlier run, so this run refuses to go on`);
+  // The deployments file is read ONCE, as raw text (the snapshot), and kept for the whole run: the record is
+  // written from it. Every refusal of the record write is checked HERE, before any send, a dry run included.
+  const snapshot = deps.store.readRaw ? deps.store.readRaw() : undefined;
+  const existing: Record<string, any> = snapshot !== undefined ? JSON.parse(snapshot) : deps.store.read();
+  if (RECORD_KEY in existing) throw new Error(`${tag} ${RECORD_KEY} is already recorded (${existing[RECORD_KEY]?.address}): a deploy was recorded by an earlier run, so this run refuses to go on`);
+  if (snapshot !== undefined && JSON.stringify(existing, null, 2) + "\n" !== snapshot) {
+    throw new Error(`deployments/${deps.networkName}.json is not in the canonical 2-space JSON layout; restore it with git checkout and run again`);
+  }
   const usdc = usdcFromDeployments(existing, deps.networkName);
   const args = buildWithdrawConstructorArgs({
     networkName: deps.networkName,
@@ -690,7 +699,7 @@ async function runFlow(deps: DeployDeps, opts: DeployOptions, stage: { sendStart
     if (dryRun) {
       log(`${tag} deploy transaction: contract creation of RomeBridgeWithdraw ${EXPECTED_VERSION} from ${roles.deployer}`);
       log(`${tag} deploy key nonce ${nonce}: the contract will be created at ${predicted}`);
-      log(`${tag} Check that nonce against \`cast nonce ${roles.deployer}\` and the explorer: if it is higher than you expect, an earlier run may have sent a deploy. Then use --verify-existing, never deploy again.`);
+      log(`${tag} Compare this nonce with the nonce the previous dry run printed: if it is higher, the deploy key has sent something since, and an earlier run may have sent a deploy. Check the deploy key's page on the explorer, then use --verify-existing, never deploy a second time.`);
       log(`${tag} constructor args:\n${jsonArgs(args)}`);
       log(`${tag} deploy input hash ${deployInputHash}   (keccak256 of the transaction input; after the deploy, cast keccak $(cast tx <hash> input) shows the same)`);
       log(`${tag} deploy digest ${digest}   (bytecode + constructor args + chain + deploy key + nonce)`);
@@ -710,8 +719,8 @@ async function runFlow(deps: DeployDeps, opts: DeployOptions, stage: { sendStart
 
     // 5a. Send.
     log(`${tag} sending: deploy key nonce ${nonce}, the contract will be created at ${predicted}. If this run stops without a receipt, check \`cast nonce ${roles.deployer}\` and \`cast code ${predicted}\` before anything else: do NOT deploy again.`);
-    stage.sendStarted = true; // from here on an error carries its own recovery advice
-    deployed = await deps.deploy(args, opts.mainnetFlag, opts.deployDigest as Hex | undefined);
+    // deps.deploy calls this right before the wallet send; from there on an error carries its own recovery advice.
+    deployed = await deps.deploy(args, opts.mainnetFlag, opts.deployDigest as Hex | undefined, () => { stage.sendStarted = true; });
     log(`${tag} RomeBridgeWithdraw ${EXPECTED_VERSION} deployed at ${deployed.address} (tx ${deployed.txHash})`);
     if (!eq(deployed.address, predicted!)) {
       throw new Error(
@@ -768,14 +777,14 @@ async function runFlow(deps: DeployDeps, opts: DeployOptions, stage: { sendStart
     deployInputHash,
   };
   try {
-    if (deps.store.update) deps.store.update((cur) => withV13Record(cur, record));
-    else deps.store.write(withV13Record(deps.store.read(), record));
+    if (deps.store.addRecord) deps.store.addRecord(snapshot, record);
+    else deps.store.write(withV13Record(existing, record));
   } catch (e) {
     if (e instanceof RecordConflict) {
-      log(`${tag} NOT WRITTEN: ${e.message}. This run's contract read back correctly. Its record, for a hand merge:\n${jsonArgs(record)}`);
+      log(`${tag} NOT WRITTEN: ${e.message}\nThis run's contract read back correctly. Its record, for a hand merge:\n${jsonArgs(record)}`);
       throw new Error(
-        `${tag} the contract ${deployed.address} (tx ${deployed.txHash}) read back correctly but deployments/${deps.networkName}.json changed while this run worked, so the record was NOT written over it: ${e.message}. ` +
-        "Do NOT deploy again and do NOT overwrite the file: read it, and decide by hand which record is right (a second v13 record means a second live contract: stop and tell the team).",
+        `${tag} the contract ${deployed.address} (tx ${deployed.txHash}) read back correctly, but ${e.message} ` +
+        "Do NOT deploy again and do NOT overwrite the file.",
       );
     }
     log(`${tag} COULD NOT WRITE the record (${(e as Error).message.split("\n")[0]}). It read back correctly. Add this under "${RECORD_KEY}" by hand:\n${jsonArgs(record)}`);

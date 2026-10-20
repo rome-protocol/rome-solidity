@@ -42,9 +42,21 @@
 // nonce to the wallet), and fails loudly on any mismatch (and then writes nothing).
 // It writes the address, the commit, the build, the code hash and the deploy input hash to
 // deployments/rubicon.json under RomeBridgeWithdrawV13, next to the live v12 record, which it
-// does not touch; the file is replaced atomically (a temp file, flushed, renamed over it; right before
-// the rename the file is read again and the write is refused if RomeBridgeWithdrawV13 has appeared or anything but that key
-// would change), so a failed write leaves v12 byte for byte as it was. There is no lock file: one operator runs this at a time.
+// does not touch. The file is read ONCE at step 3, as raw text (the snapshot), and the record is written from that
+// snapshot: the new text is the snapshot plus the one entry, v12's bytes verbatim, never a fresh read. It is replaced
+// atomically (a temp file, flushed, renamed over it); before the temp file is created and again right before the
+// rename the raw text is read again and must be byte-identical to the snapshot, otherwise the write is refused
+// (RecordConflict, the record is printed) and the file is left as it is, so a failed write leaves v12 byte for byte
+// as it was. Every refusal of the write that can be known in advance is made at step 3, before any send, in every
+// mode (a dry run included): RomeBridgeWithdrawV13 present under any value, or a file that is not in the canonical
+// 2-space JSON layout.
+//
+// THREAT MODEL: one operator runs this script, once, in a fresh clone only they use; nothing else writes
+// deployments/rubicon.json during the run, and the record reaches the team through a reviewed PR. The record write
+// refuses rather than overwrites when the file changed since the run read it. A second process writing the file in
+// the instant between the final re-check and the rename is OUT OF SCOPE: there is no lock, by design (the lock
+// produced more edge cases than it removed).
+//
 // A run refuses before it sends anything (a dry run included) if RomeBridgeWithdrawV13 is already recorded; every such
 // refusal says it is about THIS run only, and that if an earlier run may have sent a deploy the operator checks the deploy
 // key's transactions and uses --verify-existing, never a second deploy. Then it PRINTS the two owner calls the Ledger signs (ensureBridgeAta(<Rubicon
@@ -71,13 +83,12 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs, { realpathSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { isDeepStrictEqual } from "node:util";
 import hardhat from "hardhat";
 import { encodeDeployData } from "viem";
 import { checkBuildProvenance, checkDependencySources, fetchTarballFromRegistry } from "./lib/build-provenance.js";
 import {
-  READ_ABI, RECORD_KEY, RUBICON_NETWORK, USAGE, RecordConflict, preSendNote, deployDigest, parseArgs, predictedAddress, runRubiconV13Deploy,
-  type DeployDeps, type DeployOptions, type DeploymentStore,
+  READ_ABI, RECORD_KEY, RUBICON_NETWORK, USAGE, RecordConflict, deployDigest, parseArgs, predictedAddress, runRubiconV13Deploy,
+  type DeployDeps, type DeployOptions, type DeploymentStore, type V13Record,
 } from "./lib/rubicon-v13.js";
 import { assertRubiconV13DeploySend } from "./lib/testnet-guard.js";
 
@@ -95,14 +106,20 @@ export type FileIo = Pick<typeof fs, "existsSync" | "readFileSync" | "mkdirSync"
  * A deployments file, read the way scripts/lib/deployments.ts does, and written ATOMICALLY: the new
  * text goes to a temp file in the same directory (every byte, short writes included), is flushed, and is
  * renamed over the destination, so a full disk or a dying process leaves the old file whole (the v12
- * record included) and removes the temp file this run created. There is no lock file: this script is run
- * by one operator at a time.
+ * record included) and removes the temp file this run created.
  *
- * `update` is the record write. It re-reads the file right before the rename and refuses (RecordConflict)
- * if RomeBridgeWithdrawV13 is there already, or if anything other than that one key would change (the
- * parsed content is compared without that key). It also refuses a file that is not in the canonical
- * 2-space JSON layout, because rewriting it would change the v12 record's bytes; in the canonical layout
- * the new file is the old text with the one entry added at the end, so v12 is byte for byte the same.
+ * `readRaw` is the snapshot: the flow reads the file's raw text ONCE at step 3 and keeps it. `addRecord`
+ * is the record write. Its new text is the snapshot plus the one RomeBridgeWithdrawV13 entry (the
+ * snapshot's bytes kept as they are, v12 included), never a fresh read. Before the temp file is created and
+ * again right before the rename, the file's raw text is read and must be byte-identical to the snapshot,
+ * otherwise nothing is replaced (RecordConflict). The snapshot must be in the canonical 2-space JSON layout
+ * (the flow checks it before any send), because only then is "snapshot plus one entry" the same text a
+ * rewrite would produce.
+ *
+ * Threat model: one operator runs this script, once, in a fresh clone only they use; nothing else writes
+ * deployments/<network>.json during the run, and the record reaches the team through a reviewed PR. A second
+ * process writing the file in the instant between the final re-check and the rename is OUT OF SCOPE: there is
+ * no lock, by design (the lock produced more edge cases than it removed).
  */
 export function fileStore(file: string, io: FileIo = fs): DeploymentStore {
   /** Writes every byte (a write may be short); a write that makes no progress is an error, never a spin. */
@@ -115,39 +132,46 @@ export function fileStore(file: string, io: FileIo = fs): DeploymentStore {
   }
 
   const realTarget = (): string => (io.existsSync(file) ? (io.realpathSync(file) as string) : file);
-  const serialize = (data: Record<string, any>): string => JSON.stringify(data, null, 2) + "\n";
-  const read = (): Record<string, any> => (io.existsSync(file) ? JSON.parse(io.readFileSync(file, "utf8") as string) : {});
-  const without = (data: Record<string, any>): Record<string, any> => {
-    const { [RECORD_KEY]: _dropped, ...rest } = data;
-    return rest;
+  const readRaw = (): string | undefined => (io.existsSync(file) ? (io.readFileSync(file, "utf8") as string) : undefined);
+  const read = (): Record<string, any> => {
+    const raw = readRaw();
+    return raw === undefined ? {} : JSON.parse(raw);
   };
 
-  /** The refusals of the record write, checked against the file as it is NOW. */
-  function assertAddOnly(next: Record<string, any>): void {
-    const raw = io.existsSync(file) ? (io.readFileSync(file, "utf8") as string) : undefined;
-    const current: Record<string, any> = raw === undefined ? {} : JSON.parse(raw);
-    if (current[RECORD_KEY] !== undefined) {
-      throw new RecordConflict(`${RECORD_KEY} is already in the file (${String(current[RECORD_KEY]?.address)})`);
+  /** The snapshot plus the one entry. Every byte of the snapshot stays where it was. */
+  function withEntry(snapshot: string | undefined, record: V13Record): string {
+    if (snapshot === undefined) return JSON.stringify({ [RECORD_KEY]: record }, null, 2) + "\n";
+    if (JSON.stringify(JSON.parse(snapshot), null, 2) + "\n" !== snapshot) {
+      throw new Error(`deployments/${path.basename(file)} is not in the canonical 2-space JSON layout; restore it with git checkout and run again`);
     }
-    if (!isDeepStrictEqual(without(current), without(next))) {
-      throw new RecordConflict("the file's other content is not what this run read, or the change is more than adding that one key");
-    }
-    if (raw !== undefined && serialize(current) !== raw) {
-      throw new RecordConflict("the file is not in the canonical 2-space JSON layout, so rewriting it would change the v12 record's bytes");
+    const entry = JSON.stringify({ [RECORD_KEY]: record }, null, 2); // "{\n  <key>: ...\n}"
+    if (snapshot === "{}\n") return entry + "\n";
+    const head = snapshot.slice(0, snapshot.lastIndexOf("\n}"));
+    return `${head},\n${entry.slice(2, entry.lastIndexOf("\n}"))}\n}\n`;
+  }
+
+  /** The file as it is NOW must be byte-identical to the snapshot. */
+  function assertUnchanged(snapshot: string | undefined): void {
+    if (readRaw() !== snapshot) {
+      throw new RecordConflict(
+        `deployments/${path.basename(file)} changed since this run read it, so the record was NOT written. The record is printed below. ` +
+        `Read the file and decide by hand; if it now holds a ${RECORD_KEY} entry, that may be a second live contract: stop and tell the team.`,
+      );
     }
   }
 
-  function writeAtomic(data: Record<string, any>, beforeRename?: () => void): void {
+  function writeAtomic(text: string, beforeRename?: () => void, beforeTemp?: () => void): void {
     // A symlinked file is replaced where it really lives.
     const target = realTarget();
     const dir = path.dirname(target);
     io.mkdirSync(dir, { recursive: true });
     const mode = io.existsSync(target) ? io.statSync(target).mode & 0o777 : 0o644;
     const tmp = path.join(dir, `.${path.basename(target)}.${process.pid}.${randomUUID()}.tmp`);
-    const bytes = Buffer.from(serialize(data), "utf8");
+    const bytes = Buffer.from(text, "utf8");
     let fd: number | undefined;
     let created = false;
     try {
+      beforeTemp?.();
       fd = io.openSync(tmp, "wx", mode);
       created = true;
       writeAll(fd, bytes);
@@ -172,11 +196,11 @@ export function fileStore(file: string, io: FileIo = fs): DeploymentStore {
 
   return {
     read,
-    write: (data) => writeAtomic(data),
-    update: (change) => {
-      const next = change(read());
-      assertAddOnly(next); // early: nothing is written for a file that is already wrong
-      writeAtomic(next, () => assertAddOnly(next)); // and again, right before the rename
+    readRaw,
+    write: (data) => writeAtomic(JSON.stringify(data, null, 2) + "\n"),
+    addRecord: (snapshot, record) => {
+      const text = withEntry(snapshot, record);
+      writeAtomic(text, () => assertUnchanged(snapshot), () => assertUnchanged(snapshot));
     },
   };
 }
@@ -246,22 +270,18 @@ export async function depsFromConnection(
       const balance = (await publicClient.getBalance({ address: deployer }).catch(() => undefined)) as bigint | undefined;
       return { gas, gasPrice, gasPricePinned: pinned !== undefined, balance };
     },
-    deploy: async (args, mainnetFlag, digest) => {
+    deploy: async (args, mainnetFlag, digest, beforeSend) => {
       // The final send boundary. Chain, bytes and nonce are read HERE, and the guard only lets chain 7531
       // through when the operator's digest equals the digest of exactly these.
       const data = deployData(args);
       const nonce = await pendingNonce();
       const chainId = Number(await publicClient.getChainId());
       const digestMatches = digest !== undefined && digest.toLowerCase() === deployDigest(data, chainId, deployer, nonce).toLowerCase();
-      try {
-        await assertRubiconV13DeploySend(publicClient, label, { script: SELF, mainnetFlag, phase: "send", digestMatches });
-      } catch (e) {
-        // The guard's refusal comes before the send: it is about this run only.
-        if (e instanceof Error) e.message += preSendNote(deployer);
-        throw e;
-      }
+      // The guard's refusal comes before the send: the flow adds the "this run only" note to it, as it does to every error before beforeSend.
+      await assertRubiconV13DeploySend(publicClient, label, { script: SELF, mainnetFlag, phase: "send", digestMatches });
       const predicted = predictedAddress(deployer, nonce);
       let txHash: `0x${string}`;
+      beforeSend?.(); // from here on an error may have left a deploy behind and carries its own recovery advice
       try {
         txHash = (await wallet.deployContract({ abi, bytecode, args: [...args], nonce })) as `0x${string}`;
       } catch (e) {
