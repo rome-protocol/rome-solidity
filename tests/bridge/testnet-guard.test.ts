@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { mkdtempSync, rmSync, symlinkSync, copyFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import {
-  EXTRA_ENV, MAINNET_FLAG, RUBICON_V13_DEPLOY_SCRIPT, assertRubiconV13DeploySend, assertSolanaTestnetRpc, assertTestnetChainId, assertTestnetRpc, assertTestnetSend, judgeChain, judgeRubiconV13Deploy, judgeSolanaGenesis,
+  EXTRA_ENV, MAINNET_FLAG, RUBICON_V13_DEPLOY_SCRIPT, assertRubiconV13DeploySend, assertSolanaTestnetRpc, entryScript, assertTestnetChainId, assertTestnetRpc, assertTestnetSend, judgeChain, judgeRubiconV13Deploy, judgeSolanaGenesis,
   parseExtraChainIds,
 } from "../../scripts/bridge/lib/testnet-guard.js";
 import { resolveBurnAmount, resolveBurnRecipient } from "../../scripts/bridge/lib/burn-recipient.js";
@@ -210,7 +212,8 @@ describe("every script that sends is behind the guard", () => {
 });
 
 describe("the one mainnet exception: deploy-rubicon-v13.ts, with --i-understand-mainnet", () => {
-  const OK = { script: RUBICON_V13_DEPLOY_SCRIPT, mainnetFlag: true };
+  const OK = { script: RUBICON_V13_DEPLOY_SCRIPT, entry: RUBICON_V13_DEPLOY_SCRIPT, mainnetFlag: true };
+  const SCRIPT_FILE = path.join(repo, RUBICON_V13_DEPLOY_SCRIPT);
   const client = (id: number) => ({ getChainId: async () => id });
 
   it("the exception names exactly one script and one flag", () => {
@@ -228,19 +231,19 @@ describe("the one mainnet exception: deploy-rubicon-v13.ts, with --i-understand-
       "scripts/bridge/lib/deploy-rubicon-v13.ts", "scripts/other/deploy-rubicon-v13.ts", "deploy-rubicon-v13.ts", "", "scripts/bridge/deploy-rubicon-v13.ts ",
     ]) {
       for (const mainnetFlag of [true, false]) {
-        const v = judgeRubiconV13Deploy(7531, { script, mainnetFlag });
+        const v = judgeRubiconV13Deploy(7531, { script, entry: script, mainnetFlag });
         assert.equal(v.allowed, false, `${script || "(empty)"} flag=${mainnetFlag}`);
       }
     }
-    assert.match(judgeRubiconV13Deploy(7531, { script: "scripts/bridge/deploy.ts", mainnetFlag: true }).reason, /only scripts\/bridge\/deploy-rubicon-v13\.ts may deploy/);
+    assert.match(judgeRubiconV13Deploy(7531, { script: "scripts/bridge/deploy.ts", entry: "scripts/bridge/deploy.ts", mainnetFlag: true }).reason, /only scripts\/bridge\/deploy-rubicon-v13\.ts may deploy/);
   });
   it("the exception opens chain 7531 and nothing else: other mainnets and unlisted ids stay shut, the extra list cannot unlock it", () => {
     for (const id of [1, 2, 10, 7530, 7532, 424242, 0, NaN, undefined]) {
       assert.equal(judgeRubiconV13Deploy(id as number | undefined, OK).allowed, false, String(id));
     }
     assert.equal(judgeRubiconV13Deploy(7532, OK, "7532").allowed, true, "an id listed on purpose is a testnet, as in judgeChain");
-    assert.equal(judgeRubiconV13Deploy(7531, { script: "x", mainnetFlag: true }, "7531").allowed, false);
-    for (const id of [200010, 121214, 121213, 121302, 210000, 31337]) assert.equal(judgeRubiconV13Deploy(id, { script: "x", mainnetFlag: false }).allowed, true, String(id));
+    assert.equal(judgeRubiconV13Deploy(7531, { script: "x", entry: "x", mainnetFlag: true }, "7531").allowed, false);
+    for (const id of [200010, 121214, 121213, 121302, 210000, 31337]) assert.equal(judgeRubiconV13Deploy(id, { script: "x", entry: undefined, mainnetFlag: false }).allowed, true, String(id));
   });
   it("judgeChain and assertTestnetSend still refuse 7531 for everyone, flag or no flag", async () => {
     assert.equal(judgeChain(7531).allowed, false);
@@ -248,11 +251,49 @@ describe("the one mainnet exception: deploy-rubicon-v13.ts, with --i-understand-
     await assert.rejects(assertTestnetSend(client(7531), "any other script"), /mainnet/);
   });
   it("assertRubiconV13DeploySend reads the live chain id and throws with the script's name", async () => {
-    assert.equal(await assertRubiconV13DeploySend(client(7531), "t", OK, undefined), 7531);
-    assert.equal(await assertRubiconV13DeploySend(client(31337), "t", { script: "x", mainnetFlag: false }, undefined), 31337);
-    await assert.rejects(assertRubiconV13DeploySend(client(7531), "rubicon deploy", { ...OK, mainnetFlag: false }, undefined), /rubicon deploy.*--i-understand-mainnet/);
-    await assert.rejects(assertRubiconV13DeploySend(client(7531), "copy", { script: "scripts/bridge/copy.ts", mainnetFlag: true }, undefined), /copy.*only scripts\/bridge\/deploy-rubicon-v13\.ts/);
-    await assert.rejects(assertRubiconV13DeploySend({ getChainId: async () => { throw new Error("ECONNREFUSED"); } }, "t", OK, undefined), /cannot read the chain id.*refusing to send/);
+    const caller = { script: RUBICON_V13_DEPLOY_SCRIPT, mainnetFlag: true };
+    assert.equal(await assertRubiconV13DeploySend(client(7531), "t", caller, undefined, SCRIPT_FILE), 7531);
+    assert.equal(await assertRubiconV13DeploySend(client(31337), "t", { script: "x", mainnetFlag: false }, undefined, "elsewhere.ts"), 31337);
+    await assert.rejects(assertRubiconV13DeploySend(client(7531), "rubicon deploy", { ...caller, mainnetFlag: false }, undefined, SCRIPT_FILE), /rubicon deploy.*--i-understand-mainnet/);
+    await assert.rejects(assertRubiconV13DeploySend(client(7531), "copy", { script: "scripts/bridge/copy.ts", mainnetFlag: true }, undefined, SCRIPT_FILE), /copy.*only scripts\/bridge\/deploy-rubicon-v13\.ts/);
+    await assert.rejects(assertRubiconV13DeploySend({ getChainId: async () => { throw new Error("ECONNREFUSED"); } }, "t", caller, undefined, SCRIPT_FILE), /cannot read the chain id.*refusing to send/);
+  });
+  it("on 7531 the PROCESS must have been started as the script: another entry point is refused even with the right script string and the flag", async () => {
+    const caller = { script: RUBICON_V13_DEPLOY_SCRIPT, mainnetFlag: true };
+    const other = path.join(repo, "scripts/bridge/enable-cctp-domains.ts");
+    await assert.rejects(assertRubiconV13DeploySend(client(7531), "t", caller, undefined, other), /must be the file this process was started as.*enable-cctp-domains\.ts/);
+    // the default entry is process.argv[1]: the test runner, not the script
+    await assert.rejects(assertRubiconV13DeploySend(client(7531), "t", caller, undefined), /started as/);
+    await assert.rejects(assertRubiconV13DeploySend(client(7531), "t", caller, undefined, undefined), /started as "unknown"|started as/);
+    assert.equal(judgeRubiconV13Deploy(7531, { ...OK, entry: "scripts/bridge/other.ts" }).allowed, false);
+    assert.equal(judgeRubiconV13Deploy(7531, { ...OK, entry: undefined }).allowed, false);
+    // testnets and local chains do not care which file is the entry
+    assert.equal(await assertRubiconV13DeploySend(client(31337), "t", caller, undefined, other), 31337);
+  });
+  it("entryScript maps argv[1] to a repo-relative path, resolves links, and gives undefined for anything outside the repo", () => {
+    assert.equal(entryScript(SCRIPT_FILE), RUBICON_V13_DEPLOY_SCRIPT);
+    assert.equal(entryScript(path.join(repo, "scripts/bridge/../bridge/deploy-rubicon-v13.ts")), RUBICON_V13_DEPLOY_SCRIPT);
+    assert.equal(entryScript(path.join(repo, "scripts/bridge/deploy.ts")), "scripts/bridge/deploy.ts");
+    assert.equal(entryScript(undefined), undefined);
+    assert.equal(entryScript(""), undefined);
+    assert.equal(entryScript(path.join(repo, "scripts/bridge/does-not-exist.ts")), undefined);
+    const dir = mkdtempSync(path.join(tmpdir(), "entry-"));
+    try {
+      // a COPY of the script outside the repo is not the script
+      const copy = path.join(dir, "deploy-rubicon-v13.ts");
+      copyFileSync(SCRIPT_FILE, copy);
+      assert.equal(entryScript(copy), undefined);
+      // a link to the real file resolves to the real file
+      const link = path.join(dir, "link.ts");
+      symlinkSync(SCRIPT_FILE, link);
+      assert.equal(entryScript(link), RUBICON_V13_DEPLOY_SCRIPT);
+      // a link to a different file in the repo resolves to that file, whatever it is called
+      const link2 = path.join(dir, "deploy-rubicon-v13.ts.link");
+      symlinkSync(path.join(repo, "scripts/bridge/deploy.ts"), link2);
+      assert.equal(entryScript(link2), "scripts/bridge/deploy.ts");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   function walkAll(dir: string, out: string[] = []): string[] {
@@ -274,6 +315,30 @@ describe("the one mainnet exception: deploy-rubicon-v13.ts, with --i-understand-
       ...walkAll(path.join(repo, "tests")).filter((f) => !f.endsWith("testnet-guard.test.ts") && !f.endsWith("deploy-rubicon-v13.test.ts")),
     ].filter((f) => EXCEPTION.test(readFileSync(f, "utf8"))).map(rel).sort();
     assert.deepEqual(users, ["scripts/bridge/deploy-rubicon-v13.ts", "scripts/bridge/lib/testnet-guard.ts"]);
+  });
+  it("only the script's own test file imports the script or lib/rubicon-v13 (the sending wiring cannot be reached from another file)", () => {
+    const IMPORT = /(?:from|import|require)\s*\(?\s*["'][^"']*(?:deploy-rubicon-v13|rubicon-v13)(?:\.[mc]?[jt]s)?["']/;
+    const importers = [
+      ...walkAll(path.join(repo, "scripts")),
+      ...walkAll(path.join(repo, ".github")),
+      ...walkAll(path.join(repo, "tests")).filter((f) => !f.endsWith("testnet-guard.test.ts")), // this file quotes import lines as test data
+    ].filter((f) => IMPORT.test(readFileSync(f, "utf8"))).map(rel).sort();
+    assert.deepEqual(importers, ["scripts/bridge/deploy-rubicon-v13.ts", "tests/bridge/deploy-rubicon-v13.test.ts"]);
+    // and the scan itself sees the forms an importer would use
+    for (const line of [
+      'import { depsFromConnection } from "./deploy-rubicon-v13.js";',
+      'import { runRubiconV13Deploy } from "./lib/rubicon-v13.js";',
+      "const m = await import('../bridge/deploy-rubicon-v13.ts');",
+      'const m = require("./lib/rubicon-v13");',
+    ]) assert.match(line, IMPORT, line);
+    assert.doesNotMatch('// see deploy-rubicon-v13.ts for the Rubicon deploy', IMPORT);
+  });
+  it("the script's send step asks the guard itself, before it hands anything to the wallet", () => {
+    const src = readFileSync(path.join(repo, RUBICON_V13_DEPLOY_SCRIPT), "utf8");
+    const deploy = src.slice(src.search(/deploy:\s*async\s*\(args, mainnetFlag\)/));
+    assert.ok(deploy.length < src.length, "found the deploy closure");
+    assert.ok(deploy.indexOf("await guard(mainnetFlag)") >= 0 && deploy.indexOf("await guard(mainnetFlag)") < deploy.indexOf("wallet.deployContract("));
+    assert.equal(src.split("wallet.deployContract(").length - 1, 1, "one send site");
   });
   it("the script computes its own path for the guard, and that path is the one the exception names", () => {
     const src = readFileSync(path.join(repo, RUBICON_V13_DEPLOY_SCRIPT), "utf8");

@@ -18,6 +18,10 @@
 //   ROME_EXTRA_TESTNET_CHAIN_IDS=1234,5678
 // Mainnet ids are refused even if they are listed there.
 
+import { realpathSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 /** Chain ids the scripts may send on. Name is for messages only. */
 export const TESTNET_CHAIN_IDS: ReadonlyMap<number, string> = new Map([
   [200010, "hadrian"],
@@ -130,20 +134,51 @@ export const MAINNET_FLAG = "--i-understand-mainnet";
 export interface RubiconDeployCaller {
   /** Repo-relative path of the calling script. Anything but RUBICON_V13_DEPLOY_SCRIPT is refused on mainnet. */
   script: string;
+  /**
+   * Repo-relative path of the file this process was started as (argv[1]). On mainnet it must
+   * ALSO be RUBICON_V13_DEPLOY_SCRIPT, so a file that imports the script's wiring and runs it
+   * as its own entry point is refused even if it passes the right `script` string.
+   */
+  entry: string | undefined;
   /** True only when the operator passed --i-understand-mainnet. */
   mainnetFlag: boolean;
 }
 
+/** The repo root, from this file's own location (scripts/bridge/lib -> three levels up). */
+function repoRoot(): string {
+  return realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.."));
+}
+
+/**
+ * The repo-relative path (forward slashes) of the file this process was started as, or
+ * undefined when it cannot be worked out or lies outside the repo. Symlinks are resolved on
+ * both sides, so a link to the script from elsewhere does not pass as another name.
+ */
+export function entryScript(argv1: string | undefined): string | undefined {
+  if (!argv1) return undefined;
+  try {
+    const rel = path.relative(repoRoot(), realpathSync(path.resolve(argv1)));
+    if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) return undefined;
+    return rel.split(path.sep).join("/");
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * judgeChain, plus ONE narrow exception: chain 7531 passes when the caller is the Rubicon
- * v13 deploy script and the operator passed --i-understand-mainnet. Testnets pass exactly as
- * in judgeChain. Any other caller, a missing flag, or any other mainnet id is refused. The
+ * v13 deploy script, the process was started as that script, and the operator passed
+ * --i-understand-mainnet. Testnets pass exactly as in judgeChain. Any other caller, another
+ * entry point, a missing flag, or any other mainnet id is refused. The
  * ROME_EXTRA_TESTNET_CHAIN_IDS list still cannot unlock mainnet.
  */
 export function judgeRubiconV13Deploy(chainId: number | undefined, caller: RubiconDeployCaller, extraEnv?: string): ChainVerdict {
   if (chainId === 7531) {
     if (caller.script !== RUBICON_V13_DEPLOY_SCRIPT) {
       return { allowed: false, reason: `chain 7531 is mainnet: only ${RUBICON_V13_DEPLOY_SCRIPT} may deploy there, and "${caller.script}" is not it` };
+    }
+    if (caller.entry !== RUBICON_V13_DEPLOY_SCRIPT) {
+      return { allowed: false, reason: `chain 7531 is mainnet: ${RUBICON_V13_DEPLOY_SCRIPT} must be the file this process was started as (it was started as "${caller.entry ?? "unknown"}")` };
     }
     if (!caller.mainnetFlag) {
       return { allowed: false, reason: `chain 7531 is mainnet: pass ${MAINNET_FLAG} to run ${RUBICON_V13_DEPLOY_SCRIPT} against it` };
@@ -154,15 +189,17 @@ export function judgeRubiconV13Deploy(chainId: number | undefined, caller: Rubic
 }
 
 /**
- * Reads the live chain id and applies judgeRubiconV13Deploy. Only deploy-rubicon-v13.ts
- * calls this (tests/bridge/testnet-guard.test.ts scans scripts/ and fails if any other
- * file does). Returns the chain id.
+ * Reads the live chain id and applies judgeRubiconV13Deploy. The entry point is read from
+ * process.argv[1] here, never taken from the caller. Only deploy-rubicon-v13.ts calls this
+ * (tests/bridge/testnet-guard.test.ts scans scripts/ and fails if any other file does, or
+ * imports that script). Returns the chain id. `entryArgv1` exists for the tests.
  */
 export async function assertRubiconV13DeploySend(
   client: ChainIdSource,
   what: string,
-  caller: RubiconDeployCaller,
+  caller: Omit<RubiconDeployCaller, "entry">,
   extraEnv: string | undefined = process.env[EXTRA_ENV],
+  entryArgv1: string | undefined = process.argv[1],
 ): Promise<number> {
   let chainId: number | undefined;
   try {
@@ -170,7 +207,7 @@ export async function assertRubiconV13DeploySend(
   } catch (e) {
     throw new Error(`[${what}] cannot read the chain id from the RPC (${(e as Error).message.split("\n")[0]}): refusing to send`);
   }
-  const v = judgeRubiconV13Deploy(chainId, caller, extraEnv);
+  const v = judgeRubiconV13Deploy(chainId, { ...caller, entry: entryScript(entryArgv1) }, extraEnv);
   if (!v.allowed) throw new Error(`[${what}] ${v.reason}`);
   return chainId;
 }
