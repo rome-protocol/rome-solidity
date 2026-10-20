@@ -1,6 +1,6 @@
 import { before, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { encodeFunctionData, parseEventLogs, toFunctionSelector } from "viem";
+import { encodeAbiParameters, encodeFunctionData, keccak256, parseEventLogs, toFunctionSelector, toHex } from "viem";
 import hardhat from "hardhat";
 import {
   ADDR, CCTP, CCTP_TMM_PROGRAM, EVM, FORWARDER, PK, RAW32, Rail, WH, ZERO32, ZERO_ADDR,
@@ -101,6 +101,33 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
       await assert.rejects(user.sendTransaction({ to: bridge.address, data }));
     });
 
+    it("burnUSDC has no same-arity overload: the RAW32 entry has its own name, so a hand-written ABI cannot mis-pick", async () => {
+      const burns = bridge.abi.filter((e: any) => e.type === "function" && e.name.startsWith("burn"));
+      const sigs = burns.map((e: any) => `${e.name}(${e.inputs.map((i: any) => i.type).join(",")})`).sort();
+      assert.ok(sigs.includes("burnUSDC(uint256,address)"));
+      assert.ok(sigs.includes("burnUSDC(uint256,address,uint32)"));
+      assert.ok(sigs.includes("burnUSDCToBytes32(uint256,bytes32,uint32)"));
+      assert.ok(!sigs.includes("burnUSDC(uint256,bytes32,uint32)"));
+      const burnUSDC = burns.filter((e: any) => e.name === "burnUSDC");
+      assert.equal(new Set(burnUSDC.map((e: any) => e.inputs.length)).size, burnUSDC.length, "burnUSDC overloads must differ in arity");
+    });
+
+    it("a domain's PDA and recipient kind sit in consecutive storage slots (one lookup on Rome)", async () => {
+      await enable(6);
+      const pda = remoteMessengerPda(6);
+      let found = -1;
+      for (let slot = 0; slot < 40 && found < 0; slot++) {
+        const base = BigInt(keccak256(encodeAbiParameters([{ type: "uint32" }, { type: "uint256" }], [6, BigInt(slot)])));
+        const v = await pc.getStorageAt({ address: bridge.address, slot: toHex(base, { size: 32 }) });
+        if (v && v.toLowerCase() === pda) {
+          found = slot;
+          const k = await pc.getStorageAt({ address: bridge.address, slot: toHex(base + 1n, { size: 32 }) });
+          assert.equal(BigInt(k as string), BigInt(EVM));
+        }
+      }
+      assert.ok(found >= 0, "the PDA was not found in a mapping slot");
+    });
+
     it("the constructor takes the CCTP list out: a new bridge has no destination", async () => {
       assert.deepEqual(await domains(), []);
     });
@@ -117,7 +144,7 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
 
     it("a zero guardian means no guardian: only the owner can pause", async () => {
       const b = await deploy({ guardianAddr: ZERO_ADDR });
-      await assert.rejects(b.write.pauseRail([Rail.CCTP], { account: stranger.account }), /NotOwnerOrGuardian/);
+      await assert.rejects(b.write.pauseRail([Rail.CCTP], { account: stranger.account }), /NotOwnerOrGuardian\(/);
       await b.write.pauseRail([Rail.CCTP]);
       assert.equal(await b.read.railPaused([Rail.CCTP]), true);
     });
@@ -128,8 +155,8 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
   describe("setter access", () => {
     it("enableCctpDomain: owner may, guardian and stranger may not", async () => {
       await plant(6);
-      await assert.rejects(bridge.write.enableCctpDomain([6, EVM], { account: guardian.account }), /NotOwner/);
-      await assert.rejects(bridge.write.enableCctpDomain([6, EVM], { account: stranger.account }), /NotOwner/);
+      await assert.rejects(bridge.write.enableCctpDomain([6, EVM], { account: guardian.account }), /NotOwner\(/);
+      await assert.rejects(bridge.write.enableCctpDomain([6, EVM], { account: stranger.account }), /NotOwner\(/);
       assert.deepEqual(await domains(), []);
       await bridge.write.enableCctpDomain([6, EVM], { account: owner.account });
       assert.deepEqual(await domains(), [6]);
@@ -139,14 +166,14 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
       await enable(0);
       await enable(1);
       await enable(3);
-      await assert.rejects(bridge.write.disableCctpDomain([0], { account: stranger.account }), /NotOwnerOrGuardian/);
+      await assert.rejects(bridge.write.disableCctpDomain([0], { account: stranger.account }), /NotOwnerOrGuardian\(/);
       await bridge.write.disableCctpDomain([0], { account: guardian.account });
       await bridge.write.disableCctpDomain([1], { account: owner.account });
       assert.deepEqual(await domains(), [3]);
     });
 
     it("pauseRail: owner and guardian may, stranger may not", async () => {
-      await assert.rejects(bridge.write.pauseRail([Rail.CCTP], { account: stranger.account }), /NotOwnerOrGuardian/);
+      await assert.rejects(bridge.write.pauseRail([Rail.CCTP], { account: stranger.account }), /NotOwnerOrGuardian\(/);
       await bridge.write.pauseRail([Rail.CCTP], { account: guardian.account });
       await bridge.write.pauseRail([Rail.WORMHOLE], { account: owner.account });
       assert.equal(await bridge.read.railPaused([Rail.CCTP]), true);
@@ -155,40 +182,36 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
 
     it("unpauseRail is owner-only: not the guardian, not a stranger", async () => {
       await bridge.write.pauseRail([Rail.CCTP], { account: guardian.account });
-      await assert.rejects(bridge.write.unpauseRail([Rail.CCTP], { account: guardian.account }), /NotOwner/);
-      await assert.rejects(bridge.write.unpauseRail([Rail.CCTP], { account: stranger.account }), /NotOwner/);
+      await assert.rejects(bridge.write.unpauseRail([Rail.CCTP], { account: guardian.account }), /NotOwner\(/);
+      await assert.rejects(bridge.write.unpauseRail([Rail.CCTP], { account: stranger.account }), /NotOwner\(/);
       assert.equal(await bridge.read.railPaused([Rail.CCTP]), true);
       await bridge.write.unpauseRail([Rail.CCTP], { account: owner.account });
       assert.equal(await bridge.read.railPaused([Rail.CCTP]), false);
     });
 
     it("setGuardian is owner-only; the guardian cannot name a successor or itself", async () => {
-      await assert.rejects(bridge.write.setGuardian([stranger.account.address], { account: guardian.account }), /NotOwner/);
-      await assert.rejects(bridge.write.setGuardian([stranger.account.address], { account: stranger.account }), /NotOwner/);
+      await assert.rejects(bridge.write.setGuardian([stranger.account.address], { account: guardian.account }), /NotOwner\(/);
+      await assert.rejects(bridge.write.setGuardian([stranger.account.address], { account: stranger.account }), /NotOwner\(/);
       await bridge.write.setGuardian([other.account.address], { account: owner.account });
       assert.equal((await bridge.read.guardian()).toLowerCase(), other.account.address.toLowerCase());
       // The removed guardian is powerless; the new one can pause.
-      await assert.rejects(bridge.write.pauseRail([Rail.CCTP], { account: guardian.account }), /NotOwnerOrGuardian/);
+      await assert.rejects(bridge.write.pauseRail([Rail.CCTP], { account: guardian.account }), /NotOwnerOrGuardian\(/);
       await bridge.write.pauseRail([Rail.CCTP], { account: other.account });
     });
 
     it("the existing admin setters stay owner-only", async () => {
-      await assert.rejects(bridge.write.setMessageRents([1n, 1n], { account: guardian.account }), /NotOwner/);
-      await assert.rejects(bridge.write.setWormholeTargetChainAllowed([23, true], { account: guardian.account }), /NotOwner/);
-      await assert.rejects(bridge.write.setWormholeAssetAllowed([weth.address, false], { account: guardian.account }), /NotOwner/);
-      await assert.rejects(bridge.write.ensureBridgeAta([PK(40)], { account: guardian.account }), /NotOwner/);
+      await assert.rejects(bridge.write.setMessageRents([1n, 1n], { account: guardian.account }), /NotOwner\(/);
+      await assert.rejects(bridge.write.setWormholeTargetChainAllowed([23, true], { account: guardian.account }), /NotOwner\(/);
+      await assert.rejects(bridge.write.setWormholeAssetAllowed([weth.address, false], { account: guardian.account }), /NotOwner\(/);
+      await assert.rejects(bridge.write.ensureBridgeAta([PK(40)], { account: guardian.account }), /NotOwner\(/);
     });
 
-    it("admin checks use msg.sender, so a trusted ERC-2771 forwarder cannot act as the owner", async () => {
-      const fwd = stranger;
-      const b = await deploy({ forwarder: fwd.account.address });
+    it("a non-zero ERC-2771 forwarder is refused at construction, so no forwarder can spoof a burner or the owner", async () => {
+      await assert.rejects(deploy({ forwarder: stranger.account.address }), /ForwarderNotAllowed/);
+      // A zero forwarder deploys, and admin calls resolve to the real sender.
+      const b = await deploy({ forwarder: ZERO_ADDR });
       await plant(6);
-      const data = encodeFunctionData({ abi: b.abi, functionName: "enableCctpDomain", args: [6, EVM] });
-      // Forwarder appends the owner's address to the calldata, as a real one would.
-      const spoofed = (data + owner.account.address.slice(2)) as `0x${string}`;
-      await assert.rejects(fwd.sendTransaction({ to: b.address, data: spoofed }), /NotOwner/);
-      assert.deepEqual(await domains(b), []);
-      // The owner calling directly still works.
+      await assert.rejects(b.write.enableCctpDomain([6, EVM], { account: stranger.account }), /NotOwner\(/);
       await b.write.enableCctpDomain([6, EVM], { account: owner.account });
       assert.deepEqual(await domains(b), [6]);
     });
@@ -374,17 +397,18 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
 
   describe("recipient kinds", () => {
     const burn = (args: any[], who: any = user) => bridge.write.burnUSDC(args, { account: who.account });
+    const burnRaw = (args: any[], who: any = user) => bridge.write.burnUSDCToBytes32(args, { account: who.account });
 
-    it("EVM domain: the address overload passes its guards; the bytes32 overload is refused", async () => {
+    it("EVM domain: the address overload passes its guards; burnUSDCToBytes32 is refused", async () => {
       await enable(6);
-      await assert.rejects(burn([1000n, RECIPIENT32, 6]), /RecipientKindMismatch/);
+      await assert.rejects(burnRaw([1000n, RECIPIENT32, 6]), /RecipientKindMismatch/);
       await assert.rejects(burn([1000n, ZERO_ADDR, 6]), /ZeroRecipient/); // past the kind check
     });
 
-    it("RAW32 domain: the bytes32 overload passes its guards; the address overload is refused", async () => {
+    it("RAW32 domain: burnUSDCToBytes32 passes its guards; the address overload is refused", async () => {
       await enable(8, RAW32);
       await assert.rejects(burn([1000n, EVM_RECIPIENT, 8]), /RecipientKindMismatch/);
-      await assert.rejects(burn([1000n, ZERO32, 8]), /ZeroRecipient/); // past the kind check
+      await assert.rejects(burnRaw([1000n, ZERO32, 8]), /ZeroRecipient/); // past the kind check
     });
 
     it("the 2-argument burnUSDC targets domain 0 and needs it enabled as EVM", async () => {
@@ -396,8 +420,8 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
       await assert.rejects(bridge.write.burnUSDC([1000n, ZERO_ADDR], { account: user.account }), /ZeroRecipient/);
     });
 
-    it("the bytes32 overload on an unlisted domain reverts UnsupportedDestinationDomain", async () => {
-      await assert.rejects(burn([1000n, RECIPIENT32, 8]), /UnsupportedDestinationDomain/);
+    it("burnUSDCToBytes32 on an unlisted domain reverts UnsupportedDestinationDomain", async () => {
+      await assert.rejects(burnRaw([1000n, RECIPIENT32, 8]), /UnsupportedDestinationDomain/);
     });
 
     it("EVM burn: pulls into the bridge, emits Withdrawn and WithdrawnToDomain unchanged, mints to the padded address", async () => {
@@ -423,7 +447,7 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
     it("RAW32 burn: emits only WithdrawnToDomainRaw, carrying the full 32 bytes", async () => {
       await enable(8, RAW32);
       await fund(usdc, PK(40), 7_000n);
-      const hash = await burn([7_000n, RECIPIENT32, 8]);
+      const hash = await burnRaw([7_000n, RECIPIENT32, 8]);
       const receipt = await pc.waitForTransactionReceipt({ hash });
       const raw = parseEventLogs({ abi: bridge.abi, logs: receipt.logs, eventName: "WithdrawnToDomainRaw" }) as any[];
       const w = parseEventLogs({ abi: bridge.abi, logs: receipt.logs, eventName: "Withdrawn" }) as any[];
@@ -441,7 +465,7 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
       await plant(5);
       await assert.rejects(bridge.write.enableCctpDomain([5, EVM]), /UnsupportedDestinationDomain/);
       await assert.rejects(burn([1000n, EVM_RECIPIENT, 5]), /UnsupportedDestinationDomain/);
-      await assert.rejects(burn([1000n, RECIPIENT32, 5]), /UnsupportedDestinationDomain/);
+      await assert.rejects(burnRaw([1000n, RECIPIENT32, 5]), /UnsupportedDestinationDomain/);
     });
 
     it("no RAW32 domain exists on a fresh bridge", async () => {
@@ -493,19 +517,20 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
     const wormhole = () => bridge.write.burnToWormhole([weth.address, 1_000n, RECIPIENT32, 10002], { account: user.account });
     const wormholeNative = () => bridge.write.transferNativeToWormhole([weth.address, 1_000n, RECIPIENT32, 10002], { account: user.account });
     const toSolana = () => bridge.write.bridgeOutToSolana([RECIPIENT_SOL, 1_000n, PK(41)], { account: user.account });
+    const ensureAta = () => bridge.write.ensureRecipientAta([RECIPIENT_SOL, PK(41)], { account: user.account });
 
     it("with nothing paused, every rail works", async () => {
       await prepare();
-      await cctp(); await wormhole(); await wormholeNative(); await toSolana();
+      await cctp(); await wormhole(); await wormholeNative(); await toSolana(); await ensureAta();
     });
 
     it("pausing CCTP stops both burnUSDC overloads and the default one, and nothing else", async () => {
       await prepare();
       await bridge.write.pauseRail([Rail.CCTP], { account: guardian.account });
       await assert.rejects(cctp(), /RailPaused/);
-      await assert.rejects(bridge.write.burnUSDC([1_000n, RECIPIENT32, 6], { account: user.account }), /RailPaused/);
+      await assert.rejects(bridge.write.burnUSDCToBytes32([1_000n, RECIPIENT32, 6], { account: user.account }), /RailPaused/);
       await assert.rejects(bridge.write.burnUSDC([1_000n, EVM_RECIPIENT], { account: user.account }), /RailPaused/);
-      await wormhole(); await wormholeNative(); await toSolana();
+      await wormhole(); await wormholeNative(); await toSolana(); await ensureAta();
     });
 
     it("pausing Wormhole stops burnToWormhole and transferNativeToWormhole, and nothing else", async () => {
@@ -513,13 +538,15 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
       await bridge.write.pauseRail([Rail.WORMHOLE], { account: guardian.account });
       await assert.rejects(wormhole(), /RailPaused/);
       await assert.rejects(wormholeNative(), /RailPaused/);
-      await cctp(); await toSolana();
+      await cctp(); await toSolana(); await ensureAta();
     });
 
     it("pausing to-Solana stops bridgeOutToSolana, and nothing else", async () => {
       await prepare();
       await bridge.write.pauseRail([Rail.TO_SOLANA], { account: guardian.account });
       await assert.rejects(toSolana(), /RailPaused/);
+      // ensureRecipientAta spends operator rent for anyone: it is part of this rail.
+      await assert.rejects(ensureAta(), /RailPaused/);
       await cctp(); await wormhole(); await wormholeNative();
     });
 
@@ -530,6 +557,7 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
       await assert.rejects(wormhole(), /RailPaused/);
       await assert.rejects(wormholeNative(), /RailPaused/);
       await assert.rejects(toSolana(), /RailPaused/);
+      await assert.rejects(ensureAta(), /RailPaused/);
     });
 
     it("a paused rail still lets the owner administer: enable, disable, setters", async () => {
@@ -577,14 +605,14 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
       assert.equal(ev.args.pendingOwner.toLowerCase(), other.account.address.toLowerCase());
       // The old owner can still administer, the pending one cannot yet.
       await plant(6);
-      await assert.rejects(bridge.write.enableCctpDomain([6, EVM], { account: other.account }), /NotOwner/);
+      await assert.rejects(bridge.write.enableCctpDomain([6, EVM], { account: other.account }), /NotOwner\(/);
       await bridge.write.enableCctpDomain([6, EVM]);
     });
 
     it("only the pending owner can accept: not the old owner, not a stranger", async () => {
       await bridge.write.transferOwnership([other.account.address]);
-      await assert.rejects(bridge.write.acceptOwnership({ account: owner.account }), /NotPendingOwner/);
-      await assert.rejects(bridge.write.acceptOwnership({ account: stranger.account }), /NotPendingOwner/);
+      await assert.rejects(bridge.write.acceptOwnership({ account: owner.account }), /NotPendingOwner\(/);
+      await assert.rejects(bridge.write.acceptOwnership({ account: stranger.account }), /NotPendingOwner\(/);
       assert.equal((await bridge.read.owner()).toLowerCase(), owner.account.address.toLowerCase());
     });
 
@@ -597,18 +625,18 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
       assert.equal((await bridge.read.owner()).toLowerCase(), other.account.address.toLowerCase());
       assert.equal(await bridge.read.pendingOwner(), ZERO_ADDR);
       await plant(6);
-      await assert.rejects(bridge.write.enableCctpDomain([6, EVM], { account: owner.account }), /NotOwner/);
-      await assert.rejects(bridge.write.setGuardian([stranger.account.address], { account: owner.account }), /NotOwner/);
+      await assert.rejects(bridge.write.enableCctpDomain([6, EVM], { account: owner.account }), /NotOwner\(/);
+      await assert.rejects(bridge.write.setGuardian([stranger.account.address], { account: owner.account }), /NotOwner\(/);
       await bridge.write.enableCctpDomain([6, EVM], { account: other.account });
       // The old owner cannot accept a second time.
-      await assert.rejects(bridge.write.acceptOwnership({ account: other.account }), /NotPendingOwner/);
+      await assert.rejects(bridge.write.acceptOwnership({ account: other.account }), /NotPendingOwner\(/);
     });
 
     it("a second transferOwnership overwrites the pending owner: the first can no longer accept", async () => {
       await bridge.write.transferOwnership([other.account.address]);
       await bridge.write.transferOwnership([stranger.account.address]);
       assert.equal((await bridge.read.pendingOwner()).toLowerCase(), stranger.account.address.toLowerCase());
-      await assert.rejects(bridge.write.acceptOwnership({ account: other.account }), /NotPendingOwner/);
+      await assert.rejects(bridge.write.acceptOwnership({ account: other.account }), /NotPendingOwner\(/);
       await bridge.write.acceptOwnership({ account: stranger.account });
       assert.equal((await bridge.read.owner()).toLowerCase(), stranger.account.address.toLowerCase());
     });
@@ -617,8 +645,8 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
       await bridge.write.transferOwnership([other.account.address]);
       await bridge.write.transferOwnership([ZERO_ADDR]);
       assert.equal(await bridge.read.pendingOwner(), ZERO_ADDR);
-      await assert.rejects(bridge.write.acceptOwnership({ account: other.account }), /NotPendingOwner/);
-      await assert.rejects(bridge.write.acceptOwnership({ account: stranger.account }), /NotPendingOwner/);
+      await assert.rejects(bridge.write.acceptOwnership({ account: other.account }), /NotPendingOwner\(/);
+      await assert.rejects(bridge.write.acceptOwnership({ account: stranger.account }), /NotPendingOwner\(/);
       assert.equal((await bridge.read.owner()).toLowerCase(), owner.account.address.toLowerCase());
     });
 
@@ -629,8 +657,8 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
     });
 
     it("a stranger and the guardian cannot start a transfer", async () => {
-      await assert.rejects(bridge.write.transferOwnership([stranger.account.address], { account: stranger.account }), /NotOwner/);
-      await assert.rejects(bridge.write.transferOwnership([guardian.account.address], { account: guardian.account }), /NotOwner/);
+      await assert.rejects(bridge.write.transferOwnership([stranger.account.address], { account: stranger.account }), /NotOwner\(/);
+      await assert.rejects(bridge.write.transferOwnership([guardian.account.address], { account: guardian.account }), /NotOwner\(/);
     });
 
     it("the guardian survives an ownership change; the new owner can replace it", async () => {

@@ -84,7 +84,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ///         NONE (0) is the value of a domain that is not enabled.
     ///         EVM (1): the recipient is a 20-byte address, left-padded to 32 bytes.
     ///         RAW32 (2): the recipient is a full 32-byte value (Sui, Aptos and the
-    ///         like). Only `burnUSDC(uint256,bytes32,uint32)` can burn to these.
+    ///         like). Only `burnUSDCToBytes32` can burn to these.
     uint8 public constant RECIPIENT_NONE = 0;
     uint8 public constant RECIPIENT_EVM = 1;
     uint8 public constant RECIPIENT_RAW32 = 2;
@@ -95,10 +95,26 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ///         own record of that domain. It is both the per-destination account
     ///         CCTP requires and the guard that stops a burn to a domain Rome has
     ///         not switched on. Zero = not enabled.
-    mapping(uint32 => bytes32) public cctpRemoteTokenMessengers;
+    /// @dev The PDA and the recipient kind live in one struct on purpose: a
+    ///      burn reads both, and on Rome every distinct storage slot a call
+    ///      touches can pull another storage account into the transaction. In
+    ///      one struct the two values sit in consecutive slots. The two public
+    ///      views below keep the ABI of the separate mappings.
+    struct CctpDest {
+        bytes32 remoteTokenMessenger; // zero = not enabled
+        uint8 kind;                   // RECIPIENT_*
+    }
+    mapping(uint32 => CctpDest) private _cctpDest;
+
+    /// @notice The RemoteTokenMessenger PDA of an enabled domain (zero if none).
+    function cctpRemoteTokenMessengers(uint32 domain) external view returns (bytes32) {
+        return _cctpDest[domain].remoteTokenMessenger;
+    }
 
     /// @notice How the recipient of an enabled domain is encoded (RECIPIENT_*).
-    mapping(uint32 => uint8) public cctpRecipientKind;
+    function cctpRecipientKind(uint32 domain) external view returns (uint8) {
+        return _cctpDest[domain].kind;
+    }
 
     // Enumerable set of enabled domains: array plus 1-based index (0 = absent).
     uint32[] private _cctpDomains;
@@ -149,9 +165,9 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
 
     /// @notice The three outbound rails that can be paused one at a time.
     enum Rail {
-        CCTP,       // burnUSDC (both overloads)
+        CCTP,       // burnUSDC (both overloads), burnUSDCToBytes32
         WORMHOLE,   // burnToWormhole, transferNativeToWormhole
-        TO_SOLANA   // bridgeOutToSolana
+        TO_SOLANA   // bridgeOutToSolana, ensureRecipientAta
     }
 
     /// @dev Bit `1 << uint8(rail)` is set while that rail is paused.
@@ -182,6 +198,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     error NotOwnerOrGuardian(address caller);
     error NotPendingOwner(address caller);
     error ZeroOwner();
+    error ForwarderNotAllowed(address forwarder);
     error SubGranularityAmount(uint256 amount, uint256 granularity);
     error RailPaused(Rail rail);
     error RailNotPaused(Rail rail);
@@ -296,6 +313,10 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         WormholeGenericConfig memory whg,
         address _guardian
     ) ERC2771Context(forwarder) {
+        // A forwarder could append any address to calldata and burn that user's
+        // balance (users keep a standing delegate to this contract), so none is
+        // accepted. The parameter stays so the constructor ABI is unchanged.
+        if (forwarder != address(0)) revert ForwarderNotAllowed(forwarder);
         usdcWrapper = _usdc;
         usdcMint = _usdc.mint_id();
         // CCTP
@@ -379,8 +400,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
             revert MessengerNotEvmShaped(domain, circleMessenger);
         }
 
-        cctpRemoteTokenMessengers[domain] = pda;
-        cctpRecipientKind[domain] = recipientKind;
+        _cctpDest[domain] = CctpDest(pda, recipientKind);
         if (_cctpDomainIndex[domain] == 0) {
             _cctpDomains.push(domain);
             _cctpDomainIndex[domain] = _cctpDomains.length;
@@ -403,8 +423,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         }
         _cctpDomains.pop();
         delete _cctpDomainIndex[domain];
-        delete cctpRemoteTokenMessengers[domain];
-        delete cctpRecipientKind[domain];
+        delete _cctpDest[domain];
         emit CctpDomainDisabled(domain, msg.sender);
     }
 
@@ -580,7 +599,7 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ///         enabled with the RAW32 recipient kind; no such domain exists until
     ///         the owner enables one. Nothing checks the 32 bytes beyond
     ///         non-zero, so the caller must give the destination's own format.
-    function burnUSDC(uint256 amount, bytes32 recipient, uint32 destinationDomain)
+    function burnUSDCToBytes32(uint256 amount, bytes32 recipient, uint32 destinationDomain)
         external
         whenNotPaused(Rail.CCTP)
     {
@@ -592,11 +611,12 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
         // exact-revert-testable on a simulated EVM (no Rome precompiles).
         // An enabled domain is never 5 (`enableCctpDomain` refuses it), so a
         // burn to Solana's domain fails here as an unsupported domain.
-        bytes32 remoteTokenMessenger = cctpRemoteTokenMessengers[destinationDomain];
+        CctpDest memory dest = _cctpDest[destinationDomain];
+        bytes32 remoteTokenMessenger = dest.remoteTokenMessenger;
         if (remoteTokenMessenger == bytes32(0)) {
             revert UnsupportedDestinationDomain(destinationDomain);
         }
-        uint8 domainKind = cctpRecipientKind[destinationDomain];
+        uint8 domainKind = dest.kind;
         if (domainKind != requiredKind) {
             revert RecipientKindMismatch(destinationDomain, domainKind, requiredKind);
         }
@@ -1086,9 +1106,11 @@ contract RomeBridgeWithdraw is ERC2771Context, RomeBridgeEvents {
     ///         by design: one CPI, atomic — never trips the iterative-VM gate.
     ///         Permissionless with an arbitrary `(recipient, mint)` — the caller
     ///         pays no Rome-side fee for the operator-funded rent this commits.
+    ///         Since it spends operator rent for anyone, it sits behind the
+    ///         to-Solana pause: pausing that rail stops a rent-drain loop.
     /// @param solanaRecipient Recipient Solana wallet pubkey (bytes32, non-zero).
     /// @param mint            The wrapper's underlying SPL mint.
-    function ensureRecipientAta(bytes32 solanaRecipient, bytes32 mint) external {
+    function ensureRecipientAta(bytes32 solanaRecipient, bytes32 mint) external whenNotPaused(Rail.TO_SOLANA) {
         if (solanaRecipient == bytes32(0)) {
             revert ZeroRecipient();
         }

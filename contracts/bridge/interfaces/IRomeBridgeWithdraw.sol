@@ -63,6 +63,7 @@ interface IRomeBridgeWithdraw {
     error InvalidCctpAccount(uint32 domain, bytes32 account);
     error MessengerNotEvmShaped(uint32 domain, bytes32 messenger);
     error ZeroOwner();
+    error ForwarderNotAllowed(address forwarder);
     error SubGranularityAmount(uint256 amount, uint256 granularity);
 
     // ─── CCTP (USDC) egress ──────────────────────────────────────────────────
@@ -70,7 +71,7 @@ interface IRomeBridgeWithdraw {
     function burnUSDC(uint256 amount, address recipient, uint32 destinationDomain) external;
     /// @notice For domains enabled with the RAW32 recipient kind only (Sui,
     ///         Aptos and the like). Reverts RecipientKindMismatch for an EVM domain.
-    function burnUSDC(uint256 amount, bytes32 recipient, uint32 destinationDomain) external;
+    function burnUSDCToBytes32(uint256 amount, bytes32 recipient, uint32 destinationDomain) external;
 
     // ─── Wormhole — generic asset egress ─────────────────────────────────────
     /// @notice transfer_wrapped path, for Wormhole-origin assets (e.g. wETH).
