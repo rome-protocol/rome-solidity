@@ -42,8 +42,12 @@
 // nonce to the wallet), and fails loudly on any mismatch (and then writes nothing).
 // It writes the address, the commit, the build, the code hash and the deploy input hash to
 // deployments/rubicon.json under RomeBridgeWithdrawV13, next to the live v12 record, which it
-// does not touch; the file is replaced atomically (a temp file renamed over it), so a failed write
-// leaves v12 as it was. A lock file that already exists is refused before anything is sent. Then it PRINTS the two owner calls the Ledger signs (ensureBridgeAta(<Rubicon
+// does not touch; the file is replaced atomically (a temp file, flushed, renamed over it; right before
+// the rename the file is read again and the write is refused if RomeBridgeWithdrawV13 has appeared or anything but that key
+// would change), so a failed write leaves v12 byte for byte as it was. There is no lock file: one operator runs this at a time.
+// A run refuses before it sends anything (a dry run included) if RomeBridgeWithdrawV13 is already recorded; every such
+// refusal says it is about THIS run only, and that if an earlier run may have sent a deploy the operator checks the deploy
+// key's transactions and uses --verify-existing, never a second deploy. Then it PRINTS the two owner calls the Ledger signs (ensureBridgeAta(<Rubicon
 // USDC mint>) first, then enableCctpDomain(0, 1)); it never sends them.
 //
 // If the deploy landed but the read-back or the file write failed, do not deploy again:
@@ -67,11 +71,12 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs, { realpathSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import hardhat from "hardhat";
 import { encodeDeployData } from "viem";
 import { checkBuildProvenance, checkDependencySources, fetchTarballFromRegistry } from "./lib/build-provenance.js";
 import {
-  READ_ABI, RUBICON_NETWORK, USAGE, deployDigest, parseArgs, predictedAddress, runRubiconV13Deploy,
+  READ_ABI, RECORD_KEY, RUBICON_NETWORK, USAGE, RecordConflict, preSendNote, deployDigest, parseArgs, predictedAddress, runRubiconV13Deploy,
   type DeployDeps, type DeployOptions, type DeploymentStore,
 } from "./lib/rubicon-v13.js";
 import { assertRubiconV13DeploySend } from "./lib/testnet-guard.js";
@@ -88,16 +93,16 @@ export type FileIo = Pick<typeof fs, "existsSync" | "readFileSync" | "mkdirSync"
 
 /**
  * A deployments file, read the way scripts/lib/deployments.ts does, and written ATOMICALLY: the new
- * text goes to a temp file in the same directory, is flushed, and is renamed over the destination, so a
- * full disk or a dying process leaves the old file whole (the v12 record included) and removes the
- * temp file. Writers are serialized by a lock file (`<file>.lock`, created exclusively, holding a token
- * only this run knows). A lock that already exists is NEVER taken over, not even one left by a dead
- * process: the run refuses and tells the operator to confirm that nothing else is running and to remove
- * the file by hand. The run looks for the lock BEFORE anything is sent (`assertUnlocked`, a dry run
- * included), so a leftover lock is found while "run again" is still safe; a lock that appears later,
- * at the record write after a deploy landed, names --verify-existing instead. A run releases only the
- * lock it created (the token in the file is checked before the unlink). `update` does the read, the change and the write under one lock, so two runs cannot
- * lose each other's change.
+ * text goes to a temp file in the same directory (every byte, short writes included), is flushed, and is
+ * renamed over the destination, so a full disk or a dying process leaves the old file whole (the v12
+ * record included) and removes the temp file this run created. There is no lock file: this script is run
+ * by one operator at a time.
+ *
+ * `update` is the record write. It re-reads the file right before the rename and refuses (RecordConflict)
+ * if RomeBridgeWithdrawV13 is there already, or if anything other than that one key would change (the
+ * parsed content is compared without that key). It also refuses a file that is not in the canonical
+ * 2-space JSON layout, because rewriting it would change the v12 record's bytes; in the canonical layout
+ * the new file is the old text with the one entry added at the end, so v12 is byte for byte the same.
  */
 export function fileStore(file: string, io: FileIo = fs): DeploymentStore {
   /** Writes every byte (a write may be short); a write that makes no progress is an error, never a spin. */
@@ -109,32 +114,52 @@ export function fileStore(file: string, io: FileIo = fs): DeploymentStore {
     }
   }
 
-  const lockPath = (): string => `${io.existsSync(file) ? (io.realpathSync(file) as string) : file}.lock`;
-  const holderOf = (lock: string): string => {
-    try { return String(io.readFileSync(lock, "utf8")).trim().split(":")[0]; } catch { return ""; /* it may be gone already */ }
+  const realTarget = (): string => (io.existsSync(file) ? (io.realpathSync(file) as string) : file);
+  const serialize = (data: Record<string, any>): string => JSON.stringify(data, null, 2) + "\n";
+  const read = (): Record<string, any> => (io.existsSync(file) ? JSON.parse(io.readFileSync(file, "utf8") as string) : {});
+  const without = (data: Record<string, any>): Record<string, any> => {
+    const { [RECORD_KEY]: _dropped, ...rest } = data;
+    return rest;
   };
 
-  const read = (): Record<string, any> => (io.existsSync(file) ? JSON.parse(io.readFileSync(file, "utf8") as string) : {});
+  /** The refusals of the record write, checked against the file as it is NOW. */
+  function assertAddOnly(next: Record<string, any>): void {
+    const raw = io.existsSync(file) ? (io.readFileSync(file, "utf8") as string) : undefined;
+    const current: Record<string, any> = raw === undefined ? {} : JSON.parse(raw);
+    if (current[RECORD_KEY] !== undefined) {
+      throw new RecordConflict(`${RECORD_KEY} is already in the file (${String(current[RECORD_KEY]?.address)})`);
+    }
+    if (!isDeepStrictEqual(without(current), without(next))) {
+      throw new RecordConflict("the file's other content is not what this run read, or the change is more than adding that one key");
+    }
+    if (raw !== undefined && serialize(current) !== raw) {
+      throw new RecordConflict("the file is not in the canonical 2-space JSON layout, so rewriting it would change the v12 record's bytes");
+    }
+  }
 
-  function writeAtomic(data: Record<string, any>): void {
+  function writeAtomic(data: Record<string, any>, beforeRename?: () => void): void {
     // A symlinked file is replaced where it really lives.
-    const target = io.existsSync(file) ? (io.realpathSync(file) as string) : file;
+    const target = realTarget();
     const dir = path.dirname(target);
     io.mkdirSync(dir, { recursive: true });
     const mode = io.existsSync(target) ? io.statSync(target).mode & 0o777 : 0o644;
-    const tmp = path.join(dir, `.${path.basename(target)}.${process.pid}.${Date.now()}.tmp`);
-    const bytes = Buffer.from(JSON.stringify(data, null, 2) + "\n", "utf8");
+    const tmp = path.join(dir, `.${path.basename(target)}.${process.pid}.${randomUUID()}.tmp`);
+    const bytes = Buffer.from(serialize(data), "utf8");
     let fd: number | undefined;
+    let created = false;
     try {
       fd = io.openSync(tmp, "wx", mode);
+      created = true;
       writeAll(fd, bytes);
       io.fsyncSync(fd);
       io.closeSync(fd);
       fd = undefined;
+      beforeRename?.();
       io.renameSync(tmp, target);
     } catch (e) {
       if (fd !== undefined) { try { io.closeSync(fd); } catch { /* the original error matters */ } }
-      try { io.unlinkSync(tmp); } catch { /* it may not exist */ }
+      // Only a temp file this run created.
+      if (created) { try { io.unlinkSync(tmp); } catch { /* it may not exist */ } }
       throw e;
     }
     try {
@@ -145,52 +170,14 @@ export function fileStore(file: string, io: FileIo = fs): DeploymentStore {
     }
   }
 
-  function locked<T>(fn: () => T): T {
-    const lock = lockPath();
-    const target = lock.slice(0, -".lock".length);
-    io.mkdirSync(path.dirname(lock), { recursive: true });
-    const token = `${process.pid}:${randomUUID()}`;
-    let fd: number;
-    try {
-      fd = io.openSync(lock, "wx", 0o644);
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
-      const holder = holderOf(lock);
-      // This is the late case: the run already passed assertUnlocked, so something created the lock since.
-      throw new Error(
-        `${path.basename(target)} is locked: ${lock} appeared during this run${holder ? ` (written by ${holder})` : ""}. This script never takes a lock over. ` +
-        "If this run already sent the deploy, do NOT run it again: confirm that no other deploy run is active (ps), remove the lock file by hand, and record the contract with --verify-existing (the recovery command is printed with this error).",
-      );
-    }
-    let wrote = false;
-    try {
-      writeAll(fd, Buffer.from(token, "utf8"));
-      wrote = true;
-      return fn();
-    } finally {
-      try { io.closeSync(fd); } catch { /* released below */ }
-      // Only the lock this run created: the file must still hold this run's token.
-      let mine = !wrote; // a token that never got written: the file is the empty one this run just created
-      if (wrote) {
-        try { mine = String(io.readFileSync(lock, "utf8")) === token; } catch { /* gone: nothing to release */ }
-      }
-      if (mine) { try { io.unlinkSync(lock); } catch { /* already gone */ } }
-    }
-  }
-
   return {
     read,
-    assertUnlocked: () => {
-      const lock = lockPath();
-      if (!io.existsSync(lock)) return;
-      const holder = holderOf(lock);
-      throw new Error(
-        `${path.basename(lock.slice(0, -".lock".length))} is locked: ${lock} exists${holder ? ` (written by ${holder})` : ""}. This script never takes a lock over, and nothing was sent. ` +
-        "Confirm that no other deploy run is active (ps, and `cast nonce <deploy key>`), remove the lock file by hand and run again.",
-      );
+    write: (data) => writeAtomic(data),
+    update: (change) => {
+      const next = change(read());
+      assertAddOnly(next); // early: nothing is written for a file that is already wrong
+      writeAtomic(next, () => assertAddOnly(next)); // and again, right before the rename
     },
-    write: (data) => locked(() => writeAtomic(data)),
-    update: (change) => locked(() => writeAtomic(change(read()))),
   };
 }
 
@@ -266,7 +253,13 @@ export async function depsFromConnection(
       const nonce = await pendingNonce();
       const chainId = Number(await publicClient.getChainId());
       const digestMatches = digest !== undefined && digest.toLowerCase() === deployDigest(data, chainId, deployer, nonce).toLowerCase();
-      await assertRubiconV13DeploySend(publicClient, label, { script: SELF, mainnetFlag, phase: "send", digestMatches });
+      try {
+        await assertRubiconV13DeploySend(publicClient, label, { script: SELF, mainnetFlag, phase: "send", digestMatches });
+      } catch (e) {
+        // The guard's refusal comes before the send: it is about this run only.
+        if (e instanceof Error) e.message += preSendNote(deployer);
+        throw e;
+      }
       const predicted = predictedAddress(deployer, nonce);
       let txHash: `0x${string}`;
       try {

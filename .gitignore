@@ -21,6 +21,9 @@
 
 .idea
 
+# Throwaway scripts a test writes so they resolve node_modules (outside tests/ and scripts/)
+/.test-scratch/
+
 # Local deployment artifacts
 deployments/local.json
 
