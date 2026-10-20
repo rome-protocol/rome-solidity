@@ -2,25 +2,26 @@
 //
 // Per-chain deploy script for the Rome Bridge stack:
 //   - ERC20Users (idempotent — reused if already deployed)
-//   - SPL_ERC20 wrappers for USDC (WUSDC) and wETH (WETH), one per env-var-supplied mint
-//   - RomeBridgeWithdraw (only if both wrappers were deployed — otherwise skipped)
+//   - RomeBridgeWithdraw 13.0.0 (needs the USDC wrapper; skipped without USDC_MINT)
 //
 // The legacy RomeBridgePaymaster / RomeBridgeInbound were removed — the active
-// flow is user-paid (burnUSDC / burnETH / bridgeOutToSolana signed directly from
-// the user's wallet) and inbound is settle_inbound_bridge on the Rome EVM program.
+// flow is user-paid (burnUSDC / burnToWormhole / bridgeOutToSolana signed directly
+// from the user's wallet) and inbound is settle_inbound_bridge on the Rome EVM program.
+//
+// v13 deploys with NO CCTP destination and NO Wormhole allowlist entries: both
+// are switched on afterwards by the owner (scripts/bridge/enable-cctp-domains.ts,
+// scripts/bridge/set-wormhole-allowlist.ts). The owner and guardian are set here.
+//
+//   BRIDGE_OWNER     owner address (admin). Required on Rubicon (the cold Ledger);
+//                    elsewhere defaults to WORMHOLE_ADMIN, then the deployer.
+//   BRIDGE_GUARDIAN  stop-only ops key (pause, disable a domain). Required on
+//                    Rubicon; elsewhere defaults to none (zero address).
 //
 // Mint configuration is per-chain via env vars; constants no longer hard-code
-// Rome's mints. Operators always pass the mints explicitly:
+// Rome's mints. Operators always pass the USDC mint explicitly:
 //
 //   USDC_MINT=4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU \
-//   WETH_MINT=6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs \
 //   npx hardhat run scripts/bridge/deploy.ts --network <chain>
-//
-// If a mint env var is empty / unset, the corresponding SPL_ERC20 wrapper is
-// skipped. RomeBridgeWithdraw deploys only when BOTH USDC + WETH wrappers are
-// present, since its constructor takes both and per-mint Wormhole / CCTP PDAs
-// must be derived from real mints. A chain with no Ethereum-origin bridge
-// target therefore gets ERC20Users + wrappers only — no broken withdraw artefact.
 //
 // Universal Solana constants (program IDs, sysvars) are base58-decoded here.
 //
@@ -30,12 +31,11 @@
 import { PublicKey } from "@solana/web3.js";
 import hardhat from "hardhat";
 import { readDeployments, writeDeployments } from "../lib/deployments.js";
-import { SOLANA_DEVNET_NETWORKS, wormholeTargetChainFor } from "./lib/wormhole-target-chain.js";
+import { SOLANA_DEVNET_NETWORKS } from "./lib/wormhole-target-chain.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
 import { SOLANA_PROGRAM_IDS, SOLANA_PROGRAM_IDS_DEVNET } from "./constants.js";
 import { deriveCctpAccounts } from "./derive/cctp-accounts.js";
-import { CCTP_V2_DOMAINS_DEVNET, CCTP_V2_DOMAINS_MAINNET } from "./constants.js";
-import { deriveWormholeAccounts } from "./derive/wormhole-accounts.js";
+import { deriveWormholeGlobalAccounts } from "./derive/wormhole-accounts.js";
 
 // CPI precompile at 0xff..08 as defined in contracts/interface.sol.
 const CPI_PROGRAM_ADDRESS = "0xFF00000000000000000000000000000000000008" as const;
@@ -82,40 +82,33 @@ interface SolanaPdaAccounts {
   cctpTokenMessengerConfig:     `0x${string}`;
   cctpTokenMinter:              `0x${string}`;
   cctpLocalTokenUsdc:           `0x${string}`;
-  // v6 multi-destination allowlist (parallel arrays) — replaces the singular
-  // v1 cctpRemoteTokenMessenger.
-  cctpDomains:                  number[];
-  cctpRemoteTokenMessengers:    `0x${string}`[];
   cctpSenderAuthorityPda:       `0x${string}`;
   cctpEventAuthority:           `0x${string}`;
   cctpMessageTransmitterEventAuthority: `0x${string}`;
   // Wormhole PDAs
   wormholeConfig:          `0x${string}`;
-  wormholeCustody:         `0x${string}`;
   wormholeAuthoritySigner: `0x${string}`;
   wormholeCustodySigner:   `0x${string}`;
   wormholeBridgeConfig:    `0x${string}`;
   wormholeFeeCollector:    `0x${string}`;
   wormholeEmitter:         `0x${string}`;
   wormholeSequence:        `0x${string}`;
-  wormholeWrappedMeta:     `0x${string}`;
 }
 
 /// Derives all Solana PDAs required for the RomeBridgeWithdraw constructor.
-/// Both mints are passed in by the caller — never read from a global default —
+/// The USDC mint is passed in by the caller — never read from a global default —
 /// so the same script works across any Rome chain. The `networkName` selects
 /// which Wormhole program IDs to derive sub-PDAs against (mainnet vs devnet).
 /// CCTP uses the same IDs across clusters so its derivation is unaffected.
-function loadSolanaPdas(usdcMintBase58: string, wethMintBase58: string, networkName: string): SolanaPdaAccounts {
+/// Only mint-independent Wormhole accounts are needed: custody and wrapped_meta
+/// are derived per asset on chain.
+function loadSolanaPdas(usdcMintBase58: string, networkName: string): SolanaPdaAccounts {
   const usdcMint = new PublicKey(usdcMintBase58);
-  const wethMint = new PublicKey(wethMintBase58);
   const ids = programIdsFor(networkName);
+  const { cctpDomains: _d, cctpRemoteTokenMessengers: _r, ...cctp } = deriveCctpAccounts(usdcMint);
   return {
-    ...deriveCctpAccounts(
-      usdcMint,
-      SOLANA_DEVNET_NETWORKS.has(networkName) ? CCTP_V2_DOMAINS_DEVNET : CCTP_V2_DOMAINS_MAINNET,
-    ),
-    ...deriveWormholeAccounts(wethMint, {
+    ...cctp,
+    ...deriveWormholeGlobalAccounts({
       tokenBridgeProgramId: ids.WORMHOLE_TOKEN_BRIDGE,
       coreProgramId:        ids.WORMHOLE_CORE,
     }),
@@ -151,7 +144,7 @@ export async function ensureErc20Users(): Promise<`0x${string}`> {
 // wrapper" footgun from the pre-2026-05-18 deploy.ts).
 function requireExistingWrapper(
   networkName: string,
-  key: "SPL_ERC20_USDC" | "SPL_ERC20_WETH",
+  key: "SPL_ERC20_USDC",
   symbol: string,
 ): { address: `0x${string}` } {
   const existing = (readDeployments(networkName) as Record<string, any>)?.[key]?.address;
@@ -166,14 +159,25 @@ function requireExistingWrapper(
   return { address: existing as `0x${string}` };
 }
 
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+
+/// Mainnet networks need an explicit owner and guardian: the deployer is a hot
+/// key and must never end up as the owner by default.
+const MAINNET_NETWORKS: ReadonlySet<string> = new Set(["rubicon"]);
+
+function envAddress(name: string): `0x${string}` | undefined {
+  const v = (process.env[name] ?? "").trim();
+  if (!v) return undefined;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(v)) throw new Error(`${name} is not a 20-byte 0x address`);
+  return v as `0x${string}`;
+}
+
 export async function deployWithdraw(
   usdcWrapper: `0x${string}`,
-  wethWrapper: `0x${string}`,
   usdcMintBase58: string,
-  wethMintBase58: string,
 ) {
   const { viem, networkName } = await hardhat.network.connect();
-  const pdas = loadSolanaPdas(usdcMintBase58, wethMintBase58, networkName);
+  const pdas = loadSolanaPdas(usdcMintBase58, networkName);
   const UNIVERSAL = universalFor(networkName);
 
   const cctpParams = {
@@ -185,8 +189,6 @@ export async function deployWithdraw(
     tokenMessengerConfig:      pdas.cctpTokenMessengerConfig,
     tokenMinter:               pdas.cctpTokenMinter,
     localTokenUsdc:            pdas.cctpLocalTokenUsdc,
-    domains:                   pdas.cctpDomains,
-    remoteTokenMessengers:     pdas.cctpRemoteTokenMessengers,
     senderAuthorityPda:        pdas.cctpSenderAuthorityPda,
     eventAuthority:            pdas.cctpEventAuthority,
     messageTransmitterEventAuthority: pdas.cctpMessageTransmitterEventAuthority,
@@ -200,47 +202,46 @@ export async function deployWithdraw(
     clockSysvar:        UNIVERSAL.clockSysvar,
     rentSysvar:         UNIVERSAL.rentSysvar,
     config:             pdas.wormholeConfig,
-    custody:            pdas.wormholeCustody,
     authoritySigner:    pdas.wormholeAuthoritySigner,
     custodySigner:      pdas.wormholeCustodySigner,
     bridgeConfig:       pdas.wormholeBridgeConfig,
     feeCollector:       pdas.wormholeFeeCollector,
     emitter:            pdas.wormholeEmitter,
     sequence:           pdas.wormholeSequence,
-    wrappedMeta:        pdas.wormholeWrappedMeta,
-    // Wormhole destination chain id follows the Solana cluster (devnet → Sepolia
-    // 10002, mainnet-beta → Ethereum 2); see lib/wormhole-target-chain.ts.
-    targetChain:        wormholeTargetChainFor(networkName),
   };
 
   // forwarder = address(0): the meta-tx paymaster was removed. ERC2771Context
   // with a zero forwarder resolves _msgSender() to msg.sender directly — the
-  // user-paid flow the Rome app actually uses (burnUSDC / burnETH / bridgeOutToSolana
-  // are signed straight from the user's wallet, never sponsored).
-  // Generic-Wormhole allowlist (asset-agnostic + multi-destination egress).
-  // Register the wETH wrapper + this chain's Wormhole target so burnToWormhole
-  // works for wETH too — additive to the legacy burnETH path (which keeps its
-  // own immutables). Expand assetWrappers/targetChains as LST wrappers + more
-  // destination chains land (that closes inbound⇒outbound symmetry per asset).
-  // Allowlist admin: the account that can enable further assets/chains on the
-  // LIVE contract post-deploy (no redeploy per addition). Defaults to the
-  // deployer; override via WORMHOLE_ADMIN for a cold-ledger / multisig owner.
+  // user-paid flow the Rome app actually uses (burnUSDC / burnToWormhole /
+  // bridgeOutToSolana are signed straight from the user's wallet, never sponsored).
+  //
+  // Nothing is switched on at deploy time: no CCTP domain (the owner runs
+  // enable-cctp-domains.ts afterwards) and no Wormhole chain or asset (the owner
+  // runs set-wormhole-allowlist.ts). Empty lists keep both rails fail-closed.
+  //
+  // Owner and guardian are fixed in the constructor, so there is no hand-over gap.
   const [deployerWallet] = await viem.getWalletClients();
-  const wormholeAdmin = (process.env.WORMHOLE_ADMIN ?? deployerWallet.account.address) as `0x${string}`;
-  const wormholeGeneric = {
-    admin: wormholeAdmin,
-    targetChains: [wormholeParams.targetChain],
-    assetWrappers: wethWrapper ? [wethWrapper] : [],
-  };
-  console.log(`[${networkName}] Wormhole allowlist admin → ${wormholeAdmin}`);
+  const isMainnet = MAINNET_NETWORKS.has(networkName);
+  const owner = envAddress("BRIDGE_OWNER") ?? envAddress("WORMHOLE_ADMIN");
+  const guardian = envAddress("BRIDGE_GUARDIAN");
+  if (isMainnet && !owner) {
+    throw new Error(`[${networkName}] BRIDGE_OWNER is required on mainnet (the cold Ledger address)`);
+  }
+  if (isMainnet && !guardian) {
+    throw new Error(`[${networkName}] BRIDGE_GUARDIAN is required on mainnet (the ops key that can only stop things)`);
+  }
+  const bridgeOwner = owner ?? (deployerWallet.account.address as `0x${string}`);
+  const bridgeGuardian = guardian ?? ZERO_ADDRESS;
+  console.log(`[${networkName}] owner → ${bridgeOwner}; guardian → ${bridgeGuardian === ZERO_ADDRESS ? "(none)" : bridgeGuardian}`);
+  const wormholeGeneric = { admin: bridgeOwner, targetChains: [] as number[], assetWrappers: [] as `0x${string}`[] };
 
   const withdraw = await viem.deployContract("RomeBridgeWithdraw", [
-    "0x0000000000000000000000000000000000000000",
+    ZERO_ADDRESS,
     usdcWrapper,
-    wethWrapper,
     cctpParams,
     wormholeParams,
     wormholeGeneric,
+    bridgeGuardian,
   ]);
 
   console.log(`[${networkName}] RomeBridgeWithdraw → ${withdraw.address}`);
@@ -255,36 +256,31 @@ export async function deployWithdraw(
 // Standalone entrypoint
 // -------------------------------------------------------------------------
 
-/// Reads `USDC_MINT` and `WETH_MINT` from the environment. Either may be
-/// absent — the corresponding wrapper is skipped in that case, and
-/// RomeBridgeWithdraw is skipped unless both are present.
-function readMintEnv(): { usdcMint: string | null; wethMint: string | null } {
+/// Reads `USDC_MINT` from the environment. When it is absent, RomeBridgeWithdraw
+/// is skipped.
+function readMintEnv(): { usdcMint: string | null } {
   const usdc = (process.env.USDC_MINT ?? "").trim();
-  const weth = (process.env.WETH_MINT ?? "").trim();
-  return {
-    usdcMint: usdc.length > 0 ? usdc : null,
-    wethMint: weth.length > 0 ? weth : null,
-  };
+  return { usdcMint: usdc.length > 0 ? usdc : null };
 }
 
 async function main() {
   const { networkName } = await hardhat.network.connect();
 
-  const { usdcMint, wethMint } = readMintEnv();
-  console.log(
-    `[${networkName}] USDC_MINT=${usdcMint ?? "(unset — WUSDC wrapper skipped)"}; ` +
-    `WETH_MINT=${wethMint ?? "(unset — WETH wrapper skipped)"}`,
-  );
+  const { usdcMint } = readMintEnv();
+  console.log(`[${networkName}] USDC_MINT=${usdcMint ?? "(unset — RomeBridgeWithdraw skipped)"}`);
 
   const usdc = usdcMint ? requireExistingWrapper(networkName, "SPL_ERC20_USDC", "wUSDC") : null;
-  const weth = wethMint ? requireExistingWrapper(networkName, "SPL_ERC20_WETH", "wETH") : null;
 
-  if (usdc && weth && usdcMint && wethMint) {
-    await deployWithdraw(usdc.address, weth.address, usdcMint, wethMint);
+  if (usdc && usdcMint) {
+    await deployWithdraw(usdc.address, usdcMint);
+    console.log(
+      `[${networkName}] No CCTP domain is enabled yet. Next: ` +
+      `npx tsx scripts/bridge/enable-cctp-domains.ts --network ${networkName} --domains <list>`,
+    );
   } else {
     console.log(
-      `[${networkName}] Skipping RomeBridgeWithdraw — both USDC_MINT and WETH_MINT must be set ` +
-      `to derive Wormhole/CCTP PDAs and wire the constructor. Deploy ERC20Users + wrappers only.`,
+      `[${networkName}] Skipping RomeBridgeWithdraw — USDC_MINT must be set to derive the CCTP PDAs ` +
+      `and wire the constructor.`,
     );
   }
 }

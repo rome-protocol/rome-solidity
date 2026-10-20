@@ -449,6 +449,29 @@ describe("RomeBridgeWithdraw 13.0.0", function () {
     });
   });
 
+  // ── Gas against v12 ────────────────────────────────────────────────────────
+
+  describe("gas", () => {
+    // v12 on the same simulated EVM and the same mock, third consecutive
+    // burnUSDC(amount, address, 0) (the first two pay one-off mock storage
+    // writes): 259,993 gas (2-argument overload: 259,376). v13 adds two storage
+    // reads to a burn (the recipient kind and the pause flag).
+    const V12_STEADY_STATE_GAS = 259_993n;
+
+    it("burnUSDC costs about what v12 did (steady state)", async () => {
+      await enable(0);
+      await fund(usdc, PK(40), 10_000_000n);
+      const gases: bigint[] = [];
+      for (let i = 0; i < 3; i++) {
+        const hash = await bridge.write.burnUSDC([1000n, EVM_RECIPIENT, 0], { account: user.account });
+        gases.push((await pc.waitForTransactionReceipt({ hash })).gasUsed);
+      }
+      console.log(`GAS v13 burnUSDC(uint256,address,uint32) first/second/third: ${gases.join(" / ")}  (v12 third: ${V12_STEADY_STATE_GAS})`);
+      const third = gases[2];
+      assert.ok(third <= V12_STEADY_STATE_GAS + 10_000n, `burnUSDC gas ${third} is more than 10,000 above v12's ${V12_STEADY_STATE_GAS}`);
+    });
+  });
+
   // ── Pause, per rail ────────────────────────────────────────────────────────
 
   describe("pause per rail", () => {

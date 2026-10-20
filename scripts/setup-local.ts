@@ -233,12 +233,7 @@ async function main() {
     deployments.SPL_ERC20_WETH = { address: wethWrapper.address, mintId: wethMint };
 
     try {
-        await deployWithdraw(
-            usdcWrapper.address,
-            wethWrapper.address,
-            usdcMint,
-            wethMint,
-        );
+        await deployWithdraw(usdcWrapper.address, usdcMint);
         deployments.RomeBridgeWithdraw = { address: "(see deployments/local.json)" };
     } catch (err) {
         console.warn(

@@ -101,15 +101,3 @@ export const WORMHOLE_DISCRIMINATORS = {
 } as const;
 
 export type SolanaProgramKey = keyof typeof SOLANA_PROGRAM_IDS;
-
-
-/**
- * CCTP v2 destination-domain allowlist per Solana cluster, deployed into
- * RomeBridgeWithdraw v6's constructor (domain -> remote_token_messenger).
- * Devnet (testnet destinations): Ethereum-family/Sepolia 0, Avalanche Fuji 1,
- * Arbitrum Sepolia 3, Base Sepolia 6, Polygon Amoy 7, Monad Testnet 15 —
- * all six verified live on Circle's sandbox attester (2026-07-04).
- * Mainnet list stays conservative until a mainnet bridge chain exists.
- */
-export const CCTP_V2_DOMAINS_DEVNET: number[] = [0, 1, 3, 6, 7, 15];
-export const CCTP_V2_DOMAINS_MAINNET: number[] = [0];

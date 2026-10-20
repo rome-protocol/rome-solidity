@@ -96,20 +96,19 @@ The **on-chain half** of the Rome bridge — the *egress* surface for leaving Ro
 
 | Contract | What | Key surface |
 |---|---|---|
-| `RomeBridgeWithdraw` | The single outbound entrypoint — takes an SPL-wrapper token in on Rome and fires a Solana CPI (direct CALL, signed as the bridge's own Rome PDA — a delegatecall into a mutating precompile is refused) over one of five rails | see rails below |
+| `RomeBridgeWithdraw` | The single outbound entrypoint — takes an SPL-wrapper token in on Rome and fires a Solana CPI (direct CALL, signed as the bridge's own Rome PDA — a delegatecall into a mutating precompile is refused) over one of four rails | see rails below |
 | `RomeBridgeEvents` | Shared event schema the `rome-bridge-api` indexer watches to attribute each egress | `Withdrawn` / `WormholeBurn` / `BridgedOutToSolana` / … |
 | `ICCTPV2` (`CCTPV2Lib`) | **The live CCTP encoder** — `deposit_for_burn` bytes + 19 account-metas for Circle CCTP **v2** | `encodeDepositForBurn` / `buildDepositForBurnAccounts` |
 | `ICCTP` (`CCTPLib`) | Legacy CCTP **v1** encoder (retained reference; not imported by the live withdraw contract) | `encodeDepositForBurn` (v1, 18 metas) |
 | `IWormholeTokenBridge` | Wormhole egress encoders — `transfer_wrapped` (tag 4) and `transfer_native` (tag 5) | `encodeTransferTokens` / `buildTransferWrappedAccounts` |
 
-**The five egress rails** on `RomeBridgeWithdraw` (all permissionless; network config injected via constructor, so one bytecode works on any chain):
-1. **CCTP (USDC)** — `burnUSDC(amount, recipient[, destinationDomain])` → CCTP **v2** `deposit_for_burn`. Per-call Circle domain (e.g. Monad = domain 15, v2-only).
-2. **Wormhole ETH** — `burnETH`, single tx: pulls the caller's SPL into the bridge's own ATA, re-grants Wormhole's delegate there, and burns. Precondition (off-contract): the caller grants the bridge an SPL delegate once via `approve_spl(bridge, …)` sent directly to `0xff..09`.
-3. **Generic Wormhole** — `burnToWormhole(assetWrapper, amount, recipient, targetChain)`, single tx, same pull-then-burn shape as `burnETH`, for any allowlisted wrapper/chain.
-4. **Wormhole native** — `transferNativeToWormhole(...)` locks Solana-native mints (wSOL/LSTs) into per-mint custody instead of burning.
-5. **Rome → Solana SPL** — `bridgeOutToSolana(recipient, amount, mint)` + `ensureRecipientAta(...)` (the generic SPL exit for any wrapper).
+**The four egress rails** on `RomeBridgeWithdraw` (all permissionless; network config injected via constructor, so one bytecode works on any chain). Since v13 the allowed CCTP destinations are not fixed at deploy: the owner enables each Circle domain with `enableCctpDomain`, which checks Circle's own record of that domain on chain, and the owner or a stop-only guardian can pause a rail or disable a domain. A new CCTP chain needs a registry entry and one owner transaction, not a new contract.
+1. **CCTP (USDC)** — `burnUSDC(amount, recipient[, destinationDomain])` → CCTP **v2** `deposit_for_burn`. Per-call Circle domain (e.g. Monad = domain 15, v2-only), which must be enabled by the owner. Domains with 32-byte recipients (Sui, Aptos) use `burnUSDC(amount, bytes32, domain)` and only work once enabled as RAW32.
+2. **Generic Wormhole** — `burnToWormhole(assetWrapper, amount, recipient, targetChain)`, single tx: pulls the caller's SPL into the bridge's own ATA, re-grants Wormhole's delegate there, and burns. For any allowlisted wrapper/chain, wETH included (the old ETH-only `burnETH` is gone in v13). Precondition (off-contract): the caller grants the bridge an SPL delegate once via `approve_spl(bridge, …)` sent directly to `0xff..09`.
+3. **Wormhole native** — `transferNativeToWormhole(...)` locks Solana-native mints (wSOL/LSTs) into per-mint custody instead of burning.
+4. **Rome → Solana SPL** — `bridgeOutToSolana(recipient, amount, mint)` + `ensureRecipientAta(...)` (the generic SPL exit for any wrapper).
 
-**Why it exists:** the trustless, user-signed on-chain path out of Rome; the user's single `external_auth` PDA is auto-signed by the rome-evm precompile (users pre-fund it via `SimpleActivator`). **Where used:** `rome-bridge-api` is the canonical consumer (builds egress txns for all five rails); `appia` (`src/egress.ts` — "deliver to my wallet" Wormhole egress), `cardo` (bridge-out flows), `rome-aave-v3-demo` (cross-chain funding UI).
+**Why it exists:** the trustless, user-signed on-chain path out of Rome; the user's single `external_auth` PDA is auto-signed by the rome-evm precompile (users pre-fund it via `SimpleActivator`). **Where used:** `rome-bridge-api` is the canonical consumer (builds egress txns for all four rails); `appia` (`src/egress.ts` — "deliver to my wallet" Wormhole egress), `cardo` (bridge-out flows), `rome-aave-v3-demo` (cross-chain funding UI).
 
 > Note: `contracts/bridge/README.md` is Phase-1-era and lags the code (documents CCTP v1, omits v2/Monad + `burnToWormhole` + `transferNativeToWormhole` + the unified-PDA model). Trust `RomeBridgeWithdraw.sol`'s NatSpec and this document over it.
 

@@ -53,7 +53,9 @@ Attestation/VAA fetching and the return-leg submission happen off-chain in the b
 Three bridge contracts on the `<chain>` devnet EVM:
 
 - **`SPL_ERC20`** (`WUSDC`, `WETH`, `WSOL`, plus any future `W{Symbol}` deployed via the factory) — generic ERC-20 wrapper for any SPL mint. Binds the mint to a standard ERC-20 interface (`balanceOf` reads `getATA(AUTHORITY_PDA, mint)`, transfers/approvals go through Rome's CPI precompile). Phase-2 generic outbound (`bridgeOutToSolana` + `ensureRecipientAta`) lives here — see § "Generic Rome → Solana SPL outbound" below.
-- **`RomeBridgeWithdraw`** — entrypoint for outbound flows. Every mutating call is a direct CALL signing as the bridge's own PDA (the rome-evm program refuses a delegatecall into a mutating precompile), so each rail pulls the caller's SPL into the bridge's own ATA first — the user grants that pull delegate once, off-contract, via `approve_spl(bridge, …)` sent directly to `0xff..09`. `burnUSDC(amount, ethRecipient)` fires a CCTP `depositForBurn` CPI. `burnETH(amount, ethRecipient)` re-grants Wormhole's `authority_signer` delegate on the bridge's own ATA and fires a `transferWrapped` CPI, all in one tx. The contract takes all Solana program IDs, sysvars, and PDAs through its constructor so it is network-agnostic.
+- **`RomeBridgeWithdraw`** — entrypoint for outbound flows. Every mutating call is a direct CALL signing as the bridge's own PDA (the rome-evm program refuses a delegatecall into a mutating precompile), so each rail pulls the caller's SPL into the bridge's own ATA first — the user grants that pull delegate once, off-contract, via `approve_spl(bridge, …)` sent directly to `0xff..09`. `burnUSDC(amount, ethRecipient)` fires a CCTP `depositForBurn` CPI. `burnToWormhole(assetWrapper, amount, recipient, targetChain)` re-grants Wormhole's `authority_signer` delegate on the bridge's own ATA and fires a `transferWrapped` CPI, all in one tx (it replaces `burnETH`, removed in 13.0.0). The contract takes all Solana program IDs, sysvars, and PDAs through its constructor so it is network-agnostic.
+
+  **13.0.0 — destinations without a redeploy.** The CCTP destination list is owner-managed after deployment. `enableCctpDomain(domain, recipientKind)` derives Circle's `RemoteTokenMessenger` PDA for that domain itself, reads Circle's account through the account-read precompile, and enables the domain only if the account is owned by the CCTP v2 Token Messenger Minter, carries Circle's discriminator, records that same domain, the domain is not 5 (Solana), and, for an EVM destination, the messenger is address-shaped (12 leading zero bytes). A chain Circle has not registered, or a Sui/Aptos-style chain, therefore cannot be enabled as an address destination. `disableCctpDomain` (owner or guardian) is instant, `cctpDomains()` lists what is enabled. Recipient kinds: EVM (`burnUSDC(uint256,address[,uint32])`) and RAW32 (`burnUSDC(uint256,bytes32,uint32)`, only for domains enabled as RAW32; none exist at launch). Each rail (CCTP, Wormhole, to-Solana) can be paused by the guardian or owner; only the owner unpauses, enables domains or sets the guardian. Ownership moves in two steps and owner and guardian are set in the constructor. Admin checks use `msg.sender`, not the ERC-2771 `_msgSender()`, so a forwarder could never act as the owner. Operations: `scripts/bridge/enable-cctp-domains.ts` prints the owner calldata for any change (never sends on Rubicon). Adding a CCTP chain is a registry entry plus one owner transaction.
 - **`RomeBridgePaymaster`** — ERC-2771 trusted forwarder with per-user 3-tx sponsorship cap and a `(target, selector)` allowlist. **Legacy — no longer used by the active bridge worker.** The current inbound flow uses `settle_inbound_bridge` on rome-evm signed by `the settle payer key`, no Rome EVM tx involved. Kept in chain.contracts config for back-compat parsing only.
 
 `IWormholeTokenBridge.sol` and `ICCTP.sol` encode the Solana instructions and account lists for the two CPI targets. All Solana program IDs and sysvar addresses are constructor params, not constants.
@@ -87,7 +89,7 @@ Post-2026-05-15 collapse: `bridgeOutToSolana` inlines the recipient-ATA-create C
 
 | Asset origin | Inbound | Outbound | Per-asset Solidity? |
 |---|---|---|---|
-| Originates on Ethereum (USDC, ETH, future ERC20s) | CCTP / Wormhole | `RomeBridgeWithdraw.{burnUSDC, burnETH}` | Yes — one method per protocol |
+| Originates on Ethereum (USDC, ETH, future ERC20s) | CCTP / Wormhole | `RomeBridgeWithdraw.{burnUSDC, burnToWormhole}` (`burnETH` in v12 and earlier) | Yes — one method per protocol |
 | Native to Solana (any SPL deployed via `add_spl_token_no_metadata`) | Send SPL to PDA-ATA | **`bridgeOutToSolana`** | **No — one method covers every wrapper** |
 
 Frontend consumers integrate via the contract ABIs.
@@ -275,7 +277,7 @@ rome's gas token is `USDC` (bare — native gas mint), priced against `SOL` via 
 
 Start here:
 
-- `contracts/bridge/RomeBridgeWithdraw.sol` — entrypoint contract. The outbound side of both flows lives here. Read the NatSpec on `burnETH` for the pull-then-burn rationale.
+- `contracts/bridge/RomeBridgeWithdraw.sol` — entrypoint contract. The outbound side of both flows lives here. Read the NatSpec on `_pullToBridge` for the pull-then-burn rationale.
 - `contracts/bridge/IWormholeTokenBridge.sol` — Wormhole account layout. The long comment on `TransferWrappedAccounts` lists the exact order and mutability; match it to the IDL before changing.
 - `contracts/bridge/ICCTP.sol` — CCTP `depositForBurn` layout (17 accounts per Circle's IDL).
 - `scripts/bridge/derive/wormhole-accounts.ts` — PDA derivations. `wrappedMeta` depends on the mint — keep it in sync with the deployed WETH wrapper.

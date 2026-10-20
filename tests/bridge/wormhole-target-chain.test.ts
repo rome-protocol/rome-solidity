@@ -36,12 +36,11 @@ describe("wormholeTargetChainFor", () => {
     assert.equal(WORMHOLE_CHAIN_ETHEREUM, 2);
   });
 
-  it("deploy.ts derives targetChain from the shared resolver — no inline network list remains", () => {
+  it("deploy.ts keeps no inline network list (v13 takes no fixed Wormhole target chain at deploy)", () => {
     const src = readFileSync(
       path.join(path.dirname(fileURLToPath(import.meta.url)), "../../scripts/bridge/deploy.ts"),
       "utf8",
     );
-    assert.match(src, /wormholeTargetChainFor\(networkName\)/);
     assert.doesNotMatch(src, /\["marcus", "local", "trajan", "hadrian"\]/);
     assert.doesNotMatch(src, /const SOLANA_DEVNET_NETWORKS = new Set/);
   });

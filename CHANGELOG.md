@@ -1,3 +1,40 @@
+## 2026-10-20 — RomeBridgeWithdraw 13.0.0: CCTP destinations configurable without a redeploy
+
+Until v12 the list of allowed CCTP destination chains was written once, in the constructor, and
+could not be changed, so every new CCTP chain meant a new contract. v13 moves that list into
+owner-managed state. Source only: nothing is deployed by this change.
+
+- **Owner-managed CCTP destinations.** `enableCctpDomain(uint32 domain, uint8 recipientKind)` (owner only)
+  derives Circle's `RemoteTokenMessenger` PDA itself, reads the account through the account-read
+  precompile, and requires: owner = the CCTP v2 Token Messenger Minter program, Circle's account
+  discriminator, stored domain == `domain`, `domain != 5` (Solana), and for the EVM kind a messenger
+  whose first 12 bytes are zero (so Sui and Aptos cannot be enabled as address destinations).
+  `disableCctpDomain(uint32)` (owner or guardian) takes effect at once. `cctpDomains()` lists the enabled
+  domains; `cctpRecipientKind(domain)` and `cctpRemoteTokenMessengers(domain)` are views.
+  Re-enabling an enabled domain re-checks Circle's record and may change the kind; it never lists a domain twice.
+- **Recipient kinds.** EVM (existing `burnUSDC(uint256,address,uint32)` and `burnUSDC(uint256,address)`, which
+  targets domain 0) and RAW32 (new `burnUSDC(uint256,bytes32,uint32)`, only for domains enabled as RAW32;
+  emits the new `WithdrawnToDomainRaw`). No RAW32 domain is enabled at launch.
+- **Pause per rail** (CCTP, Wormhole, to-Solana). Guardian or owner pauses; only the owner unpauses, enables
+  domains or sets the guardian.
+- **Two-step ownership** (`transferOwnership` names, `acceptOwnership` completes; a second call replaces the
+  pending owner, address(0) cancels). Owner and guardian are set in the constructor, so there is no hand-over gap.
+- **Admin checks use `msg.sender`**, not `_msgSender()`. Every deployment passes a zero forwarder, so nothing
+  changes today, but a forwarder, if one were ever set, could otherwise act as the owner.
+- **`burnETH` removed**, with everything only it used: the `wethWrapper`, `wethMint`, `wethDecimals`,
+  `wormholeTargetChain`, `wormholeCustody` and `wormholeWrappedMeta` values and their constructor fields.
+  `burnToWormhole` carries wETH like any other asset. The constructor no longer takes a CCTP domain list.
+- **Unchanged:** ABI and behaviour of `burnUSDC` (both address overloads), `burnToWormhole`,
+  `transferNativeToWormhole`, `bridgeOutToSolana`, `ensureRecipientAta`, `ensureBridgeAta`, the Wormhole setters,
+  `setMessageRents`, and the `Withdrawn` / `WithdrawnToDomain` events.
+- **Scripts.** `deploy.ts` deploys with no domain list and empty Wormhole lists (owner and guardian from
+  `BRIDGE_OWNER` / `BRIDGE_GUARDIAN`, both required on Rubicon). New `enable-cctp-domains.ts` diffs a wanted list
+  against `cctpDomains()` and prints the exact owner calldata; it only sends on a testnet, with `--send`, as the
+  owner, and never on Rubicon. `CCTP_V2_DOMAINS_*` are gone from `constants.ts`.
+- **Tests.** `tests/bridge/rome_bridge_withdraw_v13.test.ts` and `tests/bridge/enable-cctp-domains.test.ts`,
+  with `BridgePrecompileMock` extended to serve `account_info`. Existing bridge tests adapted only for the new
+  constructor and the removed `burnETH`.
+
 ## 2026-07-09 — WrappedGasFacade: WETH9-shaped wrap/unwrap with canonical events
 
 ### Bridge deploy — Wormhole target chain follows the Solana cluster

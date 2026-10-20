@@ -9,21 +9,22 @@ Token nomenclature follows the canonical W-prefix standard.
 ## Deploy scripts
 
 - `constants.ts` — canonical Solana program IDs (mainnet + devnet), SPL mint pubkeys, CCTP domains, Wormhole chain IDs. `SPL_MINTS_DEVNET.WETH_WORMHOLE` must match the canonical wrapped-ETH mint for the Ethereum chain you are bridging from.
-- `deploy.ts` — one-shot fresh deploy: paymaster + SPL_ERC20 (WUSDC, WETH) + withdraw. Allowlists `burnUSDC` and `burnETH` on the paymaster. Writes to `deployments/{network}.json`.
+- `deploy.ts` — deploys `RomeBridgeWithdraw` 13.0.0 against the existing USDC wrapper (`USDC_MINT` required). It deploys with **no CCTP domain and empty Wormhole lists**: the owner switches those on afterwards. `BRIDGE_OWNER` and `BRIDGE_GUARDIAN` set the owner and the stop-only guardian (both required on Rubicon, where the owner is the cold Ledger). Writes to `deployments/{network}.json`.
+- `enable-cctp-domains.ts` — `--network <name> --domains 0,1,3,6:evm,8:raw32`: reads the live `cctpDomains()`, diffs it against the wanted list in both directions, and **prints** the target address and calldata of each `enableCctpDomain` / `disableCctpDomain` call, with a dry run from the owner and the Circle account the contract will derive. It sends only with `--send`, only on a testnet, only when `<NETWORK>_PRIVATE_KEY` is the contract's owner; Rubicon is print-only. `--check` exits 1 when the chain differs from the list (drift check). Pure helpers and tests in `lib/cctp-domain-plan.ts`.
 - `redeploy-withdraw-devnet-wh.ts` — redeploy only the withdraw contract against devnet Wormhole programs; reuses paymaster + wrappers.
 - `redeploy-withdraw-canonical-weth.ts` — redeploy withdraw + new WETH wrapper bound to the canonical wrapped-ETH mint (used when refreshing on a chain where the WETH wrapper still points at a stale mint).
 - `redeploy-withdraw-only.ts` — redeploy withdraw with mainnet Wormhole programs (production path).
 - `deploy-weth-v9.ts`, `deploy-wsol-v9.ts` — minimal SPL_ERC20 wrapper redeploys carrying the v9 outbound surface (`bridgeOutToSolana` + `ensureRecipientAta` + `balanceOf` reads from AUTHORITY_PDA). Use these to refresh wrappers on a chain after the contract upgrade. They do not touch the factory or paymaster.
 - `ensure-bridge-atas.ts` — v10 rollout step 3, OWNER-only: `ensureBridgeAta(mint)` once per bridged mint before its first burn (`transfer_spl_from_ata` has no create leg; the ATA is paid from operator rent, hence owner-gated). Reads the bridge from `deployments/{network}.json`, the mints from its `SPL_ERC20_*` wrappers (or `BRIDGE_ATA_MINTS`), the bridge PDA from the HelperProgram `pda()` view; checks each ATA on Solana first (skip if present) and reads it back after the call. `DRY_RUN=1` reports without writing. Run from `contract-deploys/bridge-ensure-ata.yml` (owner key lives in the GitHub Environment). Pure helpers + tests in `lib/ensure-bridge-atas.ts`.
-- `derive/cctp-accounts.ts` — derives the 6 CCTP PDAs via `PublicKey.findProgramAddressSync`.
-- `derive/wormhole-accounts.ts` — derives the 8 Wormhole PDAs (including `wrappedMeta`, which is per-mint).
+- `derive/cctp-accounts.ts` — derives the CCTP PDAs via `PublicKey.findProgramAddressSync`, and `deriveRemoteTokenMessenger(domain)` (Circle's per-domain account, which the v13 contract derives on chain too).
+- `derive/wormhole-accounts.ts` — derives the Wormhole PDAs. `deriveWormholeGlobalAccounts` is the mint-independent set the v13 constructor takes; `deriveWormholeAccounts` adds the per-mint custody and `wrappedMeta`.
 - `lib/canonical-mint.ts` — derives the canonical wrapped-ETH mint from `(tokenChain, tokenAddress, tokenBridgeProgramId)` per Wormhole's seed scheme. Always use this to resolve the wETH mint rather than hard-coding.
 - `lib/verify-mint-on-chain.ts` — verifies the derived mint exists on Solana.
 
 ## Flow / test scripts
 
 - `submit-burn.ts` — outbound CCTP: single `burnUSDC(amount, ethRecipient)` tx on Rome.
-- `submit-burnETH.ts` — outbound Wormhole E2E: sends `approve_spl(bridge, amount, mint)` direct to `0xff..09` (the bridge's pull-delegate precondition), then `burnETH(amount, ethRecipient)`. `burnETH` itself is single-tx now — it pulls, re-grants Wormhole's delegate, and burns all in one atomic CPI sequence.
+- `submit-burnETH.ts` — (v12 and earlier only: `burnETH` is removed in 13.0.0, use `burnToWormhole`) outbound Wormhole E2E: sends `approve_spl(bridge, amount, mint)` direct to `0xff..09` (the bridge's pull-delegate precondition), then `burnETH(amount, ethRecipient)`. `burnETH` itself is single-tx now — it pulls, re-grants Wormhole's delegate, and burns all in one atomic CPI sequence.
 - `smoke-emulate-all.ts` — quick `rome_emulateTx` health check for `burnUSDC` and the `approve_spl` precondition. `burnETH` is skipped because it needs that delegate already live on-chain to emulate cleanly.
 - `inbound/` — scripts for Sepolia → Rome inbound flows (CCTP deposit, Wormhole transfer, manual VAA complete).
 - `do-full-test.ts`, `try-burn.ts`, `smoke-test-canonical.ts` — legacy integration helpers used during initial bring-up; kept for reference.

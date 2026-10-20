@@ -28,13 +28,16 @@ export interface WormholePdas {
   wormholeWrappedMeta: `0x${string}`;
 }
 
-export function deriveWormholeAccounts(
-  wethMint: PublicKey,
-  opts: {
-    tokenBridgeProgramId?: string;
-    coreProgramId?: string;
-  } = {}
-): WormholePdas {
+export type WormholeGlobalPdas = Omit<WormholePdas, "wormholeCustody" | "wormholeWrappedMeta">;
+
+type WormholeOpts = { tokenBridgeProgramId?: string; coreProgramId?: string };
+
+/**
+ * The Wormhole accounts that do not depend on any mint: exactly what
+ * RomeBridgeWithdraw's constructor takes (v13). Per-mint accounts (custody,
+ * wrapped_meta) are derived on chain at call time.
+ */
+export function deriveWormholeGlobalAccounts(opts: WormholeOpts = {}): WormholeGlobalPdas {
   const tokenBridgeId = new PublicKey(
     opts.tokenBridgeProgramId ?? SOLANA_PROGRAM_IDS.WORMHOLE_TOKEN_BRIDGE
   );
@@ -42,8 +45,6 @@ export function deriveWormholeAccounts(
     opts.coreProgramId ?? SOLANA_PROGRAM_IDS.WORMHOLE_CORE
   );
   const config = pda([Buffer.from("config")], tokenBridgeId);
-  // custody PDA is per-mint (the wETH mint on Solana)
-  const custody = pda([wethMint.toBuffer()], tokenBridgeId);
   const authoritySigner = pda([Buffer.from("authority_signer")], tokenBridgeId);
   const custodySigner = pda([Buffer.from("custody_signer")], tokenBridgeId);
   // bridgeConfig and feeCollector are under the Core bridge program
@@ -52,18 +53,28 @@ export function deriveWormholeAccounts(
   // emitter is under the Token Bridge; sequence is under Core indexed by emitter
   const emitter = pda([Buffer.from("emitter")], tokenBridgeId);
   const sequence = pda([Buffer.from("Sequence"), emitter.toBuffer()], coreId);
-  // wrapped_meta PDA: seeds = [b"meta", wethMint], program = Token Bridge
-  const wrappedMeta = pda([Buffer.from("meta"), wethMint.toBuffer()], tokenBridgeId);
-
   return {
     wormholeConfig: base58ToBytes32(config.toBase58()),
-    wormholeCustody: base58ToBytes32(custody.toBase58()),
     wormholeAuthoritySigner: base58ToBytes32(authoritySigner.toBase58()),
     wormholeCustodySigner: base58ToBytes32(custodySigner.toBase58()),
     wormholeBridgeConfig: base58ToBytes32(bridgeConfig.toBase58()),
     wormholeFeeCollector: base58ToBytes32(feeCollector.toBase58()),
     wormholeEmitter: base58ToBytes32(emitter.toBase58()),
     wormholeSequence: base58ToBytes32(sequence.toBase58()),
+  };
+}
+
+/** Global accounts plus the two per-mint ones for `wethMint` (kept for tooling and tests). */
+export function deriveWormholeAccounts(wethMint: PublicKey, opts: WormholeOpts = {}): WormholePdas {
+  const tokenBridgeId = new PublicKey(
+    opts.tokenBridgeProgramId ?? SOLANA_PROGRAM_IDS.WORMHOLE_TOKEN_BRIDGE
+  );
+  // custody PDA is per-mint; wrapped_meta PDA: seeds = [b"meta", mint], program = Token Bridge
+  const custody = pda([wethMint.toBuffer()], tokenBridgeId);
+  const wrappedMeta = pda([Buffer.from("meta"), wethMint.toBuffer()], tokenBridgeId);
+  return {
+    ...deriveWormholeGlobalAccounts(opts),
+    wormholeCustody: base58ToBytes32(custody.toBase58()),
     wormholeWrappedMeta: base58ToBytes32(wrappedMeta.toBase58()),
   };
 }
