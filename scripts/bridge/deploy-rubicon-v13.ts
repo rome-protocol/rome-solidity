@@ -29,7 +29,7 @@
 // back VERSION, owner, pendingOwner, guardian, the empty CCTP list, the unpaused rails, the
 // USDC wrapper and mint, the empty Wormhole lists and the deploy key's lack of any role (with
 // retries for RPC lag), and fails loudly on any mismatch (and then writes nothing). It writes
-// the address, the commit and the bytecode hash to deployments/rubicon.json under
+// the address, the commit, the code hash and the deploy input hash to deployments/rubicon.json under
 // RomeBridgeWithdrawV13, next to the live v12 record, which it does not touch. Then it
 // PRINTS the two owner calls the Ledger signs (ensureBridgeAta(<Rubicon USDC mint>) first,
 // then enableCctpDomain(0, 1)); it never sends them.
@@ -46,11 +46,11 @@
 // rehearsal, with no flag.
 
 import { execFileSync } from "node:child_process";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
-import fs from "node:fs";
+import fs, { realpathSync } from "node:fs";
 import hardhat from "hardhat";
-import { encodeDeployData, keccak256 } from "viem";
+import { encodeDeployData } from "viem";
 import {
   READ_ABI, USAGE, parseArgs, runRubiconV13Deploy,
   type DeployDeps, type DeployOptions, type DeploymentStore,
@@ -155,13 +155,18 @@ export async function depsFromConnection(
       } catch {
         // not a git checkout: unknown commit, and a mainnet run refuses (contractsClean stays false)
       }
-      return { commit, contractsClean, bytecodeHash: keccak256(artifact.deployedBytecode as `0x${string}`) };
+      return { commit, contractsClean };
     },
     getDeployTx: async (hash) => {
       const tx = await publicClient.getTransaction({ hash }).catch(() => undefined);
       if (!tx) return undefined;
       const receipt = await publicClient.getTransactionReceipt({ hash }).catch(() => undefined);
-      return { from: tx.from, input: tx.input, to: tx.to, status: receipt?.status ?? "pending", contractAddress: receipt?.contractAddress };
+      let blockTimestamp: number | undefined;
+      if (receipt?.blockNumber !== undefined) {
+        const block = await publicClient.getBlock({ blockNumber: receipt.blockNumber }).catch(() => undefined);
+        if (block) blockTimestamp = Number(block.timestamp);
+      }
+      return { from: tx.from, input: tx.input, to: tx.to, status: receipt?.status ?? "pending", contractAddress: receipt?.contractAddress, blockTimestamp };
     },
     simulate: async (from, call) => {
       await publicClient.call({ account: from, to: call.to, data: call.data });
@@ -181,8 +186,21 @@ async function main() {
   await runRubiconV13Deploy(deps, opts);
 }
 
+/**
+ * True when argv1 is this file, compared by real path (a symlinked start is still this file),
+ * the same rule lib/testnet-guard.ts uses for the entry point.
+ */
+export function isEntryPoint(argv1: string | undefined, selfUrl: string = import.meta.url): boolean {
+  if (!argv1) return false;
+  try {
+    return realpathSync(path.resolve(argv1)) === realpathSync(fileURLToPath(selfUrl));
+  } catch {
+    return false;
+  }
+}
+
 // Run only when this file is the entry point, so the tests can import the functions above.
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+if (isEntryPoint(process.argv[1])) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.message : err);
     console.error(USAGE);

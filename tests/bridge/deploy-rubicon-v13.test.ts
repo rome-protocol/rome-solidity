@@ -1,11 +1,11 @@
 import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
+import fs, { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os, { tmpdir } from "node:os";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
-import { decodeFunctionData, getAddress, parseAbi, toFunctionSelector } from "viem";
+import { decodeFunctionData, getAddress, keccak256, parseAbi, toFunctionSelector } from "viem";
 import hardhat from "hardhat";
 import {
   EXPECTED_VERSION, RECORD_KEY, buildOwnerCalls, deployDigest, parseArgs, runRubiconV13Deploy, usdcFromDeployments, validateRoles,
@@ -13,7 +13,7 @@ import {
 } from "../../scripts/bridge/lib/rubicon-v13.js";
 import { assertRubiconV13DeploySend } from "../../scripts/bridge/lib/testnet-guard.js";
 import { buildWithdrawConstructorArgs, universalFor } from "../../scripts/bridge/lib/withdraw-ctor-args.js";
-import { depsFromConnection, fileStore } from "../../scripts/bridge/deploy-rubicon-v13.js";
+import { depsFromConnection, fileStore, isEntryPoint } from "../../scripts/bridge/deploy-rubicon-v13.js";
 import { SOLANA_PROGRAM_IDS } from "../../scripts/bridge/constants.js";
 import { base58ToBytes32 } from "../../scripts/lib/pubkey.js";
 import { ADDR } from "./helpers/v13.js";
@@ -151,7 +151,7 @@ describe("buildOwnerCalls: printed, and exactly the two Ledger calls", () => {
 
 describe("the deployments record", () => {
   const v12 = { address: "0xceea191761cdba2fc589996d7dd096e57db29c84", deployedAt: 1790219940 };
-  const rec = { address: ADDR(0xabc), version: "13.0.0", owner: LEDGER, guardian: OPS, deployTx: ("0x" + "11".repeat(32)) as `0x${string}`, deployedAt: 1, commit: "c0ffee", bytecodeHash: ("0x" + "22".repeat(32)) as `0x${string}` };
+  const rec = { address: ADDR(0xabc), version: "13.0.0", owner: LEDGER, guardian: OPS, deployTx: ("0x" + "11".repeat(32)) as `0x${string}`, deployedAt: 1, commit: "c0ffee", codeHash: ("0x" + "22".repeat(32)) as `0x${string}`, deployInputHash: ("0x" + "33".repeat(32)) as `0x${string}` };
   it("adds the V13 key and leaves every other key as it was", () => {
     const before = { SPL_ERC20_USDC: { address: ADDR(5), mintId: USDC_MINT }, RomeBridgeWithdraw: v12 };
     const after = withV13Record(before, rec);
@@ -279,9 +279,16 @@ describe("the deploy flow on a local Hardhat chain", function () {
     assert.deepEqual(decodeFunctionData({ abi: OWNER_ABI, data: res.ownerCalls![0].data }).args, [USDC_MINT32]);
     assert.deepEqual(decodeFunctionData({ abi: OWNER_ABI, data: res.ownerCalls![1].data }).args, [0, 1]);
     assert.ok(text0(lines).indexOf(res.ownerCalls![0].data) < text0(lines).indexOf(res.ownerCalls![1].data), "ensureBridgeAta is printed first");
-    // the record carries the commit and the bytecode hash
+    // the record carries the commit and two hashes a person can check against the chain
     assert.match(rec[RECORD_KEY].commit, /^[0-9a-f]{40}$|^unknown$/);
-    assert.match(rec[RECORD_KEY].bytecodeHash, /^0x[0-9a-f]{64}$/);
+    assert.match(rec[RECORD_KEY].codeHash, /^0x[0-9a-f]{64}$/);
+    assert.match(rec[RECORD_KEY].deployInputHash, /^0x[0-9a-f]{64}$/);
+    assert.equal(rec[RECORD_KEY].bytecodeHash, undefined);
+    const chainCode = (await pc.getCode({ address: res.deployed!.address })) as `0x${string}`;
+    const chainTx = await pc.getTransaction({ hash: res.deployed!.txHash });
+    assert.equal(rec[RECORD_KEY].codeHash, keccak256(chainCode), "codeHash = keccak256(eth_getCode)");
+    assert.equal(rec[RECORD_KEY].deployInputHash, keccak256(chainTx.input), "deployInputHash = keccak256(deploy tx input)");
+    assert.equal(rec[RECORD_KEY].deployedAt, Number((await pc.getBlock({ blockNumber: chainTx.blockNumber })).timestamp));
     const text = lines.join("\n");
     assert.ok(text.includes(res.ownerCalls![0].data) && text.includes(res.ownerCalls![1].data));
     assert.match(text, /This script does not send them/);
@@ -451,7 +458,7 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
     network: "rubicon", owner: A(1), guardian: A(2),
     dryRun: false, mainnetFlag: true, deployDigest: undefined, verifyExisting: undefined, ...over,
   });
-  const GOOD_SOURCE = { commit: "a".repeat(40), contractsClean: true, bytecodeHash: ("0x" + "bb".repeat(32)) as `0x${string}` };
+  const GOOD_SOURCE = { commit: "a".repeat(40), contractsClean: true };
   const ctorFor = (owner: `0x${string}`) => buildWithdrawConstructorArgs({ networkName: "rubicon", usdcWrapper: wrapper.address, usdcMintBase58: USDC_MINT, owner, guardian: A(2) });
 
   /**
@@ -504,7 +511,8 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
     assert.match(text, /run the same command with --deploy 0x[0-9a-f]{16}/);
     assert.match(text, V12_OWNER_NOTE);
     assert.match(text, new RegExp(`source: commit ${"a".repeat(40)}`));
-    assert.match(text, /runtime bytecode hash 0x(bb){32}/);
+    assert.match(text, /deploy input hash 0x[0-9a-f]{64}/);
+    assert.doesNotMatch(text, /bytecode hash/);
     assert.match(text, /pinned gas price 10/);
     // an explicit --dry-run says so
     const lines2: string[] = [];
@@ -531,18 +539,22 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
     const store = memStore(STORE());
     const good = await digestFor(store);
     for (const bad of ["0x0000000000000000", "0xffffffffffffffff", good.slice(0, -1) + (good.endsWith("0") ? "1" : "0")]) {
-      const { deps, counters } = await mainDeps(store, []);
+      const lines: string[] = [];
+      const { deps, counters } = await mainDeps(store, lines);
       await assert.rejects(runRubiconV13Deploy(deps, opts({ deployDigest: bad })), (e: Error) => {
         assert.match(e.message, /does not match this deploy/);
         assert.equal(e.message.includes(good), false, "the error never prints the digest that would pass");
         return true;
       });
       assert.equal(counters.deploys, 0);
+      assert.equal(lines.join("\n").toLowerCase().includes(good.toLowerCase()), false, "a refused run's log never contains the digest that would pass");
     }
     const other = await digestFor(memStore(STORE()), { owner: A(3) });
-    const { deps, counters } = await mainDeps(store, []);
+    const lines2: string[] = [];
+    const { deps, counters } = await mainDeps(store, lines2);
     await assert.rejects(runRubiconV13Deploy(deps, opts({ deployDigest: other })), /does not match this deploy/);
     assert.equal(counters.deploys, 0);
+    assert.equal(lines2.join("\n").toLowerCase().includes(good.toLowerCase()), false);
     assert.equal(store.peek()[RECORD_KEY], undefined);
   });
 
@@ -556,7 +568,15 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
     const rec = store.peek();
     assert.equal(rec[RECORD_KEY].address, r.deployed!.address);
     assert.equal(rec[RECORD_KEY].commit, "a".repeat(40));
-    assert.equal(rec[RECORD_KEY].bytecodeHash, GOOD_SOURCE.bytecodeHash);
+    // the recorded hashes are checkable against the chain: keccak256(eth_getCode) and keccak256(deploy tx input)
+    const onChainCode = (await pc.getCode({ address: r.deployed!.address })) as `0x${string}`;
+    const onChainTx = await pc.getTransaction({ hash: r.deployed!.txHash });
+    assert.equal(rec[RECORD_KEY].codeHash, keccak256(onChainCode));
+    assert.equal(rec[RECORD_KEY].deployInputHash, keccak256(onChainTx.input));
+    assert.equal(rec[RECORD_KEY].deployInputHash, keccak256(deps.deployData(ctorFor(A(1)))));
+    assert.equal(rec[RECORD_KEY].bytecodeHash, undefined, "the artifact hash (immutables zeroed) is not recorded: it can never match the chain");
+    const deployBlock = await pc.getBlock({ blockNumber: onChainTx.blockNumber });
+    assert.equal(rec[RECORD_KEY].deployedAt, Number(deployBlock.timestamp), "deployedAt is the deploy block's time");
     assert.deepEqual(rec.RomeBridgeWithdraw, STORE().RomeBridgeWithdraw);
     assert.equal(decodeFunctionData({ abi: OWNER_ABI, data: r.ownerCalls![0].data }).functionName, "ensureBridgeAta");
     assert.deepEqual(decodeFunctionData({ abi: OWNER_ABI, data: r.ownerCalls![1].data }).args, [0, 1]);
@@ -657,6 +677,28 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
     assert.equal(store.peek()[RECORD_KEY].deployTx, landed.txHash);
     assert.equal(r.ownerCalls!.length, 2);
     assert.match(lines.join("\n"), /mode VERIFY EXISTING/);
+    // the record is the same kind as a fresh deploy's: chain-checkable hashes and the deploy block's time
+    const rec = store.peek()[RECORD_KEY];
+    const tx = await pc.getTransaction({ hash: landed.txHash });
+    assert.equal(rec.codeHash, keccak256((await pc.getCode({ address: landed.address })) as `0x${string}`));
+    assert.equal(rec.deployInputHash, keccak256(tx.input));
+    assert.equal(rec.deployedAt, Number((await pc.getBlock({ blockNumber: tx.blockNumber })).timestamp));
+  });
+
+  it("--verify-existing records the deploy block's time, not the time of the verify run", async () => {
+    const store = memStore(STORE());
+    const { deps, d } = await mainDeps(store, [], { now: () => 4_000_000_000_000 }); // far later than the deploy
+    const landed = await d.deploy(ctorFor(A(1)), false);
+    const tx = await pc.getTransaction({ hash: landed.txHash });
+    const blockTime = Number((await pc.getBlock({ blockNumber: tx.blockNumber })).timestamp);
+    await runRubiconV13Deploy(deps, opts({ verifyExisting: { address: landed.address, txHash: landed.txHash } }));
+    assert.equal(store.peek()[RECORD_KEY].deployedAt, blockTime);
+    assert.notEqual(store.peek()[RECORD_KEY].deployedAt, 4_000_000_000);
+    // with no block time to read, verify refuses rather than record the verify time
+    const store2 = memStore(STORE());
+    const noTime = await mainDeps(store2, [], { getDeployTx: async (h) => ({ ...(await d.getDeployTx(h))!, blockTimestamp: undefined }) });
+    await assert.rejects(runRubiconV13Deploy(noTime.deps, opts({ verifyExisting: { address: landed.address, txHash: landed.txHash } })), /block time .* could not be read/);
+    assert.equal(store2.peek()[RECORD_KEY], undefined);
   });
 
   it("--verify-existing refuses another address, an unknown hash, and a transaction that deployed other constructor arguments", async () => {
@@ -679,7 +721,8 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
     await assert.rejects(runRubiconV13Deploy(deps, opts({ deployDigest: good })), /read back correctly but deployments\/rubicon\.json could not be written.*Do NOT deploy again.*--verify-existing/s);
     const text = lines.join("\n");
     assert.match(text, /COULD NOT WRITE the record/);
-    assert.match(text, /"bytecodeHash"/);
+    assert.match(text, /"codeHash"/);
+    assert.match(text, /"deployInputHash"/);
   });
 });
 
@@ -752,6 +795,35 @@ describe("the script as a command (arguments are checked before any network exis
     assert.notEqual(r.status, 0);
     assert.match(r.stderr, /8-byte digest/);
     assert.doesNotMatch(r.stderr + r.stdout, /RUBICON_RPC_URL|chain 7531/);
+  });
+  it("started through a symlink it still runs (not a silent exit 0): the same real-path rule as the guard", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "v13-symlink-"));
+    try {
+      const link = path.join(dir, "linked-deploy.ts");
+      fs.symlinkSync(script, link);
+      const env = { ...process.env };
+      for (const k of Object.keys(env)) if (/^RUBICON_|^HARDHAT_/.test(k)) delete env[k];
+      const r = spawnSync(tsx, [link], { cwd: repo, env, encoding: "utf8", timeout: 120_000 });
+      assert.notEqual(r.status, 0, "ran main(): the missing arguments are an error, not a silent success");
+      assert.match(r.stderr, /is required and has no default/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it("isEntryPoint compares real paths: this file by its path or through a symlink, nothing else", () => {
+    const self = pathToFileURL(script).href;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "v13-entry-"));
+    try {
+      const link = path.join(dir, "link.ts");
+      fs.symlinkSync(script, link);
+      assert.equal(isEntryPoint(script, self), true);
+      assert.equal(isEntryPoint(link, self), true);
+      assert.equal(isEntryPoint(path.join(repo, "scripts/bridge/deploy.ts"), self), false);
+      assert.equal(isEntryPoint(path.join(dir, "missing.ts"), self), false);
+      assert.equal(isEntryPoint(undefined, self), false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
   it("importing the script does not run it", async () => {
     // depsFromConnection and fileStore were imported at the top of this file without a run.

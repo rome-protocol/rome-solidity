@@ -8,12 +8,14 @@ hot key that then transferred ownership (#368). This adds the path. Source only:
   refused when either is zero, they are equal, or either is the deploy key. On Rubicon both must also be EIP-55
   checksummed accounts with no code, the owner must hold gas, `contracts/` must be clean in git, and
   `RUBICON_GAS_PRICE` must be set. On Rubicon a run is a DRY RUN unless it is given `--deploy <digest>`: the dry
-  run estimates gas at the pinned price and prints the deploy, the constructor arguments, the commit, the bytecode
+  run estimates gas at the pinned price and prints the deploy, the constructor arguments, the commit, the deploy input
   hash, v12's owner next to the new owner, and a digest of the exact bytes (plus chain and deploy key); the real
   run refuses any other digest. A real run reads back VERSION, owner, pendingOwner, guardian, the empty CCTP
   list, the unpaused rails, the USDC wrapper and mint, the empty Wormhole lists and the deploy key's lack of any
   role (retried for RPC lag), and fails loudly (recording nothing) on any mismatch. It records the address, the
-  commit and the bytecode hash under `RomeBridgeWithdrawV13` in `deployments/<network>.json` without touching the
+  commit, `codeHash` (keccak256 of `eth_getCode` after the read-back), `deployInputHash` (keccak256 of the deploy
+  transaction input) and `deployedAt` (the deploy block's time) under `RomeBridgeWithdrawV13` in
+  `deployments/<network>.json` without touching the
   v12 record, then PRINTS, never sends, the Ledger's two calls in order: `ensureBridgeAta(<Rubicon USDC mint>)`
   first, then `enableCctpDomain(0, 1)`. `--verify-existing <address> --deploy-tx <hash>` reads back and records a
   contract that already landed (after a transient failure) without sending anything.
