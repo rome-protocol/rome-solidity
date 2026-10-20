@@ -139,7 +139,8 @@ export function planDomainChanges(wanted: DomainEntry[], onChain: DomainEntry[])
  * both (Hadrian's has Sepolia in `sourceEvm` and the other five in `sourceEvms[]`),
  * and reading only one would plan to disable the other's domain. The same chain in
  * both fields counts once, keyed on `chainId` (like the bridge-api's catalog), the
- * first occurrence winning. It then takes every entry that has a `cctpDomain` and
+ * first occurrence winning unless it is not live and the other one is (a live entry in
+ * either field beats a retired one in the other). It then takes every entry that has a `cctpDomain` and
  * is `preparing` or `live` (no status counts as live): a chain is enabled on chain
  * while it is still `preparing`, before the route is shown. Any other status is
  * left out, so the chain would be disabled. An entry may carry
@@ -149,17 +150,31 @@ export function planDomainChanges(wanted: DomainEntry[], onChain: DomainEntry[])
 export function domainsFromRegistry(registry: unknown): DomainEntry[] {
   const root = registry as { sourceEvms?: unknown; sourceEvm?: unknown };
   const candidates: unknown[] = [root?.sourceEvm, ...(Array.isArray(root?.sourceEvms) ? root.sourceEvms : [])];
+  // An entry that would be wanted: a cctpDomain and a live or preparing status.
+  const counts = (c: unknown): boolean => {
+    const e = c as { cctpDomain?: unknown; status?: unknown };
+    if (e.cctpDomain === undefined || e.cctpDomain === null) return false;
+    const status = e.status === undefined ? "live" : e.status;
+    return status === "live" || status === "preparing";
+  };
   const entries: unknown[] = [];
-  const chains = new Set<string>();
+  const byChain = new Map<string, number>(); // chainId -> index in entries
   for (const c of candidates) {
     if (c === undefined || c === null || typeof c !== "object") continue;
-    const ent = c as { chainId?: unknown; cctpDomain?: unknown };
+    const ent = c as { chainId?: unknown };
     // Only an entry with a chainId can be recognised as a repeat. Without one it is
     // kept, so a domain listed twice still fails loudly below.
     if (ent.chainId !== undefined && ent.chainId !== null) {
       const key = String(ent.chainId);
-      if (chains.has(key)) continue;
-      chains.add(key);
+      const at = byChain.get(key);
+      if (at !== undefined) {
+        // The same chain twice: the first occurrence stays, unless it would not be
+        // wanted and this one would. A live entry in either field wins over a retired
+        // one in the other, so a domain that is live somewhere is never planned for disabling.
+        if (!counts(entries[at]) && counts(c)) entries[at] = c;
+        continue;
+      }
+      byChain.set(key, entries.length);
     }
     entries.push(c);
   }

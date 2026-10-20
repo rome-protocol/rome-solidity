@@ -242,12 +242,34 @@ describe("domainsFromRegistry", () => {
       sourceEvms: [{ name: "Sepolia again", chainId: 11155111, cctpDomain: 0 }, { name: "Base", chainId: 84532, cctpDomain: 6 }],
     };
     assert.deepEqual(domainsFromRegistry(both).map((e) => e.domain), [0, 6]);
-    // The first occurrence decides the status: a retired legacy entry is not revived by a live duplicate.
-    const retiredFirst = {
+  });
+  it("the same chainId retired in one field and live in the other: the live one wins, in either order", () => {
+    const legacyRetired = {
       sourceEvm: { chainId: 1, cctpDomain: 0, status: "retired" },
       sourceEvms: [{ chainId: 1, cctpDomain: 0, status: "live" }, { chainId: 2, cctpDomain: 6 }],
     };
-    assert.deepEqual(domainsFromRegistry(retiredFirst).map((e) => e.domain), [6]);
+    assert.deepEqual(domainsFromRegistry(legacyRetired).map((e) => e.domain), [0, 6]);
+    const listRetired = {
+      sourceEvm: { chainId: 1, cctpDomain: 0, status: "live" },
+      sourceEvms: [{ chainId: 1, cctpDomain: 0, status: "retired" }, { chainId: 2, cctpDomain: 6 }],
+    };
+    assert.deepEqual(domainsFromRegistry(listRetired).map((e) => e.domain), [0, 6]);
+    // preparing counts as live too
+    const preparing = {
+      sourceEvm: { chainId: 1, cctpDomain: 0, status: "retired" },
+      sourceEvms: [{ chainId: 1, cctpDomain: 0, status: "preparing" }, { chainId: 2, cctpDomain: 6 }],
+    };
+    assert.deepEqual(domainsFromRegistry(preparing).map((e) => e.domain), [0, 6]);
+    // The plan against a chain that has domain 0 enabled never disables it.
+    const plan = planDomainChanges(domainsFromRegistry(legacyRetired), [{ domain: 0, kind: KIND_EVM }, { domain: 6, kind: KIND_EVM }]);
+    assert.equal(plan.calls.length, 0);
+  });
+  it("the same chainId retired in both fields stays out", () => {
+    const both = {
+      sourceEvm: { chainId: 1, cctpDomain: 0, status: "retired" },
+      sourceEvms: [{ chainId: 1, cctpDomain: 0, status: "retired" }, { chainId: 2, cctpDomain: 6 }],
+    };
+    assert.deepEqual(domainsFromRegistry(both).map((e) => e.domain), [6]);
   });
   it("two different chains on one CCTP domain is still an error", () => {
     assert.throws(() => domainsFromRegistry({
