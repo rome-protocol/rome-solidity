@@ -142,6 +142,15 @@ export interface RubiconDeployCaller {
   entry: string | undefined;
   /** True only when the operator passed --i-understand-mainnet. */
   mainnetFlag: boolean;
+  /**
+   * "inspect" is a read-only step (the dry run, the read-back): the flag and the entry point are
+   * enough. "send" is the one step that sends a transaction: on mainnet it ALSO needs
+   * `digestMatches`, true only when the digest the operator passed equals the digest recomputed
+   * from the bytes about to be sent (data, chain, deploy key and nonce).
+   */
+  phase: "inspect" | "send";
+  /** For phase "send": the operator's --deploy digest equals the one recomputed at the send. Ignored for "inspect". */
+  digestMatches: boolean;
 }
 
 /** The repo root, from this file's own location (scripts/bridge/lib -> three levels up). */
@@ -183,6 +192,12 @@ export function judgeRubiconV13Deploy(chainId: number | undefined, caller: Rubic
     if (!caller.mainnetFlag) {
       return { allowed: false, reason: `chain 7531 is mainnet: pass ${MAINNET_FLAG} to run ${RUBICON_V13_DEPLOY_SCRIPT} against it` };
     }
+    if (caller.phase === "send" && caller.digestMatches !== true) {
+      return { allowed: false, reason: "chain 7531 is mainnet: a send needs --deploy <digest> and the digest must match the bytes about to be sent (data, chain, deploy key and nonce); run the dry run again and use the digest it prints now" };
+    }
+    if (caller.phase !== "send" && caller.phase !== "inspect") {
+      return { allowed: false, reason: `chain 7531 is mainnet: unknown phase "${String(caller.phase)}"` };
+    }
     return { allowed: true, reason: "chain 7531 (rubicon, mainnet): the v13 deploy script with --i-understand-mainnet" };
   }
   return judgeChain(chainId, extraEnv);
@@ -190,16 +205,16 @@ export function judgeRubiconV13Deploy(chainId: number | undefined, caller: Rubic
 
 /**
  * Reads the live chain id and applies judgeRubiconV13Deploy. The entry point is read from
- * process.argv[1] here, never taken from the caller. Only deploy-rubicon-v13.ts calls this
- * (tests/bridge/testnet-guard.test.ts scans scripts/ and fails if any other file does, or
- * imports that script). Returns the chain id. `entryArgv1` exists for the tests.
+ * process.argv[1] here, and there is NO parameter to override it: nobody can name another entry
+ * point. Only deploy-rubicon-v13.ts calls this (tests/bridge/testnet-guard.test.ts scans
+ * scripts/ and fails if any other file does, or imports that script). The pure decision is
+ * judgeRubiconV13Deploy, which the tests call directly. Returns the chain id.
  */
 export async function assertRubiconV13DeploySend(
   client: ChainIdSource,
   what: string,
   caller: Omit<RubiconDeployCaller, "entry">,
   extraEnv: string | undefined = process.env[EXTRA_ENV],
-  entryArgv1: string | undefined = process.argv[1],
 ): Promise<number> {
   let chainId: number | undefined;
   try {
@@ -207,7 +222,7 @@ export async function assertRubiconV13DeploySend(
   } catch (e) {
     throw new Error(`[${what}] cannot read the chain id from the RPC (${(e as Error).message.split("\n")[0]}): refusing to send`);
   }
-  const v = judgeRubiconV13Deploy(chainId, { ...caller, entry: entryScript(entryArgv1) }, extraEnv);
+  const v = judgeRubiconV13Deploy(chainId, { ...caller, entry: entryScript(process.argv[1]) }, extraEnv);
   if (!v.allowed) throw new Error(`[${what}] ${v.reason}`);
   return chainId;
 }

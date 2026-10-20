@@ -22,10 +22,11 @@
 //   6. records the address under RomeBridgeWithdrawV13 in deployments/<network>.json,
 //      next to the live v12 record and without touching it
 //   7. PRINTS the owner calls the Ledger signs. It never sends them.
-// --verify-existing <address> --deploy-tx <hash> does steps 5 to 7 for a contract that is
-// already deployed (a read-back that failed on a transient error), without sending anything.
+// --verify-existing <address> --deploy-tx <hash> --source-commit <sha> does steps 5 to 7 for a
+// contract that is already deployed (a read-back that failed on a transient error), without
+// sending anything.
 
-import { concatHex, encodeFunctionData, getAddress, isAddress, keccak256, pad, parseAbi, toHex, type Hex } from "viem";
+import { concatHex, encodeFunctionData, getAddress, getContractAddress, isAddress, keccak256, pad, parseAbi, toHex, type Hex } from "viem";
 import { base58ToBytes32 } from "../../lib/pubkey.js";
 import { MAINNET_FLAG } from "./testnet-guard.js";
 import { ZERO_ADDRESS, buildWithdrawConstructorArgs } from "./withdraw-ctor-args.js";
@@ -52,15 +53,27 @@ export interface DeployOptions {
   mainnetFlag: boolean;
   /** --deploy <digest>: the digest a dry run printed. Required for a real deploy on Rubicon. */
   deployDigest: string | undefined;
-  /** --verify-existing <address> --deploy-tx <hash>: check and record a contract that is already deployed. */
-  verifyExisting: { address: string; txHash: string } | undefined;
+  /**
+   * --verify-existing <address> --deploy-tx <hash> --source-commit <sha>: check and record a contract
+   * that is already deployed. The commit is the one the deploy was run from; the recovery never
+   * substitutes its own checkout's HEAD for it.
+   */
+  verifyExisting: { address: string; txHash: string; sourceCommit: string } | undefined;
+  /**
+   * --owner-differs-from-v12: on Rubicon the owner must be the live v12 contract's owner() (the
+   * chain's contract admin) unless the operator says on purpose that it is not.
+   */
+  ownerDiffersFromV12: boolean;
 }
+
+export const OWNER_DIFFERS_FLAG = "--owner-differs-from-v12";
 
 export const USAGE =
   "usage: npx tsx scripts/bridge/deploy-rubicon-v13.ts --network <name> --owner <ledger address> --guardian <ops key address> " +
-  `[--dry-run | --deploy <digest> | --verify-existing <address> --deploy-tx <hash>] [${MAINNET_FLAG}]`;
+  `[--dry-run | --deploy <digest> | --verify-existing <address> --deploy-tx <hash> --source-commit <sha>] [${OWNER_DIFFERS_FLAG}] [${MAINNET_FLAG}]`;
 
-const VALUE_OPTIONS = ["--network", "--owner", "--guardian", "--deploy", "--verify-existing", "--deploy-tx"];
+const VALUE_OPTIONS = ["--network", "--owner", "--guardian", "--deploy", "--verify-existing", "--deploy-tx", "--source-commit"];
+const COMMIT_RE = /^[0-9a-fA-F]{40}$/;
 const DIGEST_RE = /^0x[0-9a-fA-F]{16}$/;
 const TX_RE = /^0x[0-9a-fA-F]{64}$/;
 
@@ -75,7 +88,7 @@ export function parseArgs(argv: readonly string[]): DeployOptions {
     const a = argv[i];
     let name: string;
     let value: string | true;
-    if (a === "--dry-run" || a === MAINNET_FLAG) {
+    if (a === "--dry-run" || a === MAINNET_FLAG || a === OWNER_DIFFERS_FLAG) {
       name = a;
       value = true;
     } else if (VALUE_OPTIONS.includes(a)) {
@@ -107,6 +120,7 @@ export function parseArgs(argv: readonly string[]): DeployOptions {
   const deployDigest = opt("--deploy");
   const vAddr = opt("--verify-existing");
   const vTx = opt("--deploy-tx");
+  const vCommit = opt("--source-commit");
   const opts: DeployOptions = {
     network: need("--network"),
     owner: need("--owner"),
@@ -114,10 +128,12 @@ export function parseArgs(argv: readonly string[]): DeployOptions {
     dryRun: seen.has("--dry-run"),
     mainnetFlag: seen.has(MAINNET_FLAG),
     deployDigest,
-    verifyExisting: vAddr !== undefined && vTx !== undefined ? { address: vAddr, txHash: vTx } : undefined,
+    verifyExisting: vAddr !== undefined && vTx !== undefined && vCommit !== undefined ? { address: vAddr, txHash: vTx, sourceCommit: vCommit } : undefined,
+    ownerDiffersFromV12: seen.has(OWNER_DIFFERS_FLAG),
   };
   if (deployDigest !== undefined && !DIGEST_RE.test(deployDigest)) throw new Error(`--deploy needs the 8-byte digest a dry run prints (0x and 16 hex digits). ${USAGE}`);
-  if ((vAddr === undefined) !== (vTx === undefined)) throw new Error(`--verify-existing and --deploy-tx go together. ${USAGE}`);
+  if (new Set([vAddr === undefined, vTx === undefined, vCommit === undefined]).size > 1) throw new Error(`--verify-existing, --deploy-tx and --source-commit go together. ${USAGE}`);
+  if (vCommit !== undefined && !COMMIT_RE.test(vCommit)) throw new Error(`--source-commit "${vCommit}" is not a full 40-digit git commit hash. ${USAGE}`);
   if (vAddr !== undefined && !isAddress(vAddr)) throw new Error(`--verify-existing "${vAddr}" is not a 20-byte address. ${USAGE}`);
   if (vTx !== undefined && !TX_RE.test(vTx)) throw new Error(`--deploy-tx "${vTx}" is not a transaction hash. ${USAGE}`);
   const modes = [opts.dryRun, deployDigest !== undefined, vAddr !== undefined].filter(Boolean).length;
@@ -279,6 +295,12 @@ export async function verifyDeployment(r: ChainReader, want: Expected): Promise<
 export interface DeploymentStore {
   read(): Record<string, any>;
   write(data: Record<string, any>): void;
+  /**
+   * Read, change and write back as one step that other writers cannot interleave with. The record
+   * is written through this when the store has it (the file store does: a lock, then a temp file
+   * renamed over the destination), so a failed or concurrent write never costs the v12 record.
+   */
+  update?(change: (current: Record<string, any>) => Record<string, any>): void;
 }
 
 export interface V13Record {
@@ -288,8 +310,14 @@ export interface V13Record {
   guardian: Address;
   deployTx: Hex;
   deployedAt: number;
-  /** `git rev-parse HEAD` of the checkout that built the bytecode. */
+  /**
+   * The commit the bytecode was built from. A fresh deploy records `git rev-parse HEAD` of a checkout whose
+   * contracts/, hardhat.config.ts and package-lock.json are clean and whose artifact was checked against them;
+   * a recovery records the --source-commit the operator gave, after checking its sources equal the checkout's.
+   */
   commit: string;
+  /** The build the bytes came from: the compiler input's id and the solc version. */
+  build: { buildInfoId: string; solcVersion: string };
   /**
    * keccak256 of eth_getCode(address), taken after the read-back. Check it against the chain with
    * `cast keccak $(cast code <address> -r <rpc>)`. (The local artifact's runtime bytecode cannot be
@@ -340,21 +368,34 @@ export interface DeployDeps {
    * `gasPricePinned` is true), the RPC's otherwise.
    */
   estimate(args: CtorArgs): Promise<{ gas: bigint; gasPrice?: bigint; gasPricePinned: boolean; balance?: bigint }>;
-  /** Sends the deploy transaction and waits for it to be mined. Calls the guard itself, with the operator's flag. */
-  deploy(args: CtorArgs, mainnetFlag: boolean): Promise<{ address: Address; txHash: Hex }>;
+  /** The deploy key's transaction count including pending ones: the nonce its next transaction takes. */
+  nonce(): Promise<number>;
+  /**
+   * Sends the deploy transaction and waits for it to be mined. Calls the guard itself, with the
+   * operator's flag, and on Rubicon only when `digest` equals the digest recomputed from the bytes and
+   * the nonce about to be sent. Resolves with the address and the hash of the transaction that was
+   * MINED (the receipt's hash, which is not the sent hash when the transaction was replaced).
+   */
+  deploy(args: CtorArgs, mainnetFlag: boolean, digest?: Hex): Promise<{ address: Address; txHash: Hex }>;
   reader(address: Address): ChainReader;
   /** Code and balance of an account. */
   accountInfo(address: Address): Promise<{ hasCode: boolean; balance: bigint }>;
-  /** The checkout the artifact was built from: git commit and whether contracts/ is clean. */
-  source(): Promise<{ commit: string; contractsClean: boolean }>;
+  /**
+   * The checkout the artifact was built from: git commit, whether contracts/, hardhat.config.ts and
+   * package-lock.json are clean, and whether the artifact was compiled from exactly the sources and
+   * settings on disk (the build-info check, lib/build-provenance.ts).
+   */
+  source(): Promise<{ commit: string; contractsClean: boolean; build: { ok: boolean; problems: string[]; buildInfoId: string; solcVersion?: string } }>;
+  /** For a recovery: whether the operator's --source-commit has the same contracts, config and lockfile as this checkout. Resolves with the full hash. */
+  sourceAt(commit: string): Promise<{ commit: string; sameSources: boolean; problem?: string }>;
   /**
    * A mined transaction: for --verify-existing, and after a deploy for its input and its block's
-   * timestamp (seconds). Undefined when the node does not know it.
+   * timestamp (seconds). Undefined when the node does not know it. The block is the one the
+   * receipt names (by hash).
    */
   getDeployTx(hash: Hex): Promise<{ from: string; input: Hex; to: string | null | undefined; status: string; contractAddress: string | null | undefined; blockTimestamp?: number } | undefined>;
   /** eth_call of an owner call from the owner's address; the answer is printed, never fatal. */
   simulate?(from: Address, call: OwnerCall): Promise<void>;
-  now(): number;
   log(line: string): void;
   /** Pause between read-back retries. Defaults to a real timer. */
   sleep?(ms: number): Promise<void>;
@@ -365,7 +406,9 @@ export interface DeployResult {
   chainId: number;
   roles: Roles;
   args: CtorArgs;
-  digest: Hex;
+  /** The digest of this deploy (not for --verify-existing). */
+  digest?: Hex;
+  nonce?: number;
   deployed?: { address: Address; txHash: Hex };
   ownerCalls?: OwnerCall[];
 }
@@ -376,21 +419,46 @@ function jsonArgs(args: unknown): string {
 
 /**
  * The 8-byte digest that ties a real deploy to a dry run: keccak256 of the deploy transaction's
- * data (bytecode and constructor arguments, so owner and guardian), the chain id and the deploy
- * key's address. A changed artifact, owner, guardian, chain or deploy key changes it.
+ * data (bytecode and constructor arguments, so owner and guardian), the chain id, the deploy
+ * key's address and the deploy key's nonce. A changed artifact, owner, guardian, chain, deploy key
+ * or nonce changes it. The nonce is in it so that a deploy that landed (whatever the script saw of
+ * the answer) makes the old digest stale: the address a deploy creates is set by the nonce.
  */
-export function deployDigest(data: Hex, chainId: number, deployer: string): Hex {
-  const h = keccak256(concatHex([data, pad(toHex(chainId), { size: 32 }), getAddress(deployer)]));
+export function deployDigest(data: Hex, chainId: number, deployer: string, nonce: number | bigint): Hex {
+  const h = keccak256(concatHex([data, pad(toHex(chainId), { size: 32 }), getAddress(deployer), pad(toHex(BigInt(nonce)), { size: 32 })]));
   return h.slice(0, 18) as Hex;
+}
+
+/** The address a contract creation from `deployer` at `nonce` gets. */
+export function predictedAddress(deployer: string, nonce: number | bigint): Address {
+  return getContractAddress({ from: getAddress(deployer), nonce: BigInt(nonce) });
+}
+
+/** What a mined deploy transaction must be for the record: success, a creation, by the deploy key, of this address, with these bytes. */
+export function deployTxProblems(tx: { from: string; input: Hex; to: string | null | undefined; status: string; contractAddress: string | null | undefined }, address: string, data: Hex, deployer: string): string[] {
+  const problems: string[] = [];
+  if (tx.status !== "success") problems.push(`the transaction status is ${tx.status}`);
+  if (tx.to) problems.push(`the transaction is a call to ${tx.to}, not a contract creation`);
+  if (!eq(tx.from, deployer)) problems.push(`the transaction was sent by ${tx.from}, not by the deploy key ${deployer}`);
+  if (!tx.contractAddress || !eq(tx.contractAddress, address)) problems.push(`the transaction created ${tx.contractAddress ?? "no contract"}, not ${address}`);
+  if (tx.input.toLowerCase() !== data.toLowerCase()) problems.push("the transaction data is not this artifact's bytecode with these constructor arguments");
+  return problems;
 }
 
 const READBACK_ATTEMPTS = 4;
 const READBACK_PAUSE_MS = 2000;
 
+/** The recovery command a failure message points at (the deploy landed; do not send it again). */
+function recoverArgs(address: string, txHash: string, commit: string): string {
+  return `--verify-existing ${address} --deploy-tx ${txHash} --source-commit ${commit}`;
+}
+
+const sleeper = (deps: DeployDeps) => deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+
 /** The read-back, retried when the node lags (no code yet, a failed call). A value that is wrong is final at once. */
-async function verifyWithRetry(deps: DeployDeps, address: Address, txHash: Hex, want: Expected): Promise<string[]> {
+async function verifyWithRetry(deps: DeployDeps, address: Address, txHash: Hex, want: Expected, recover: string): Promise<string[]> {
   const tag = `[${deps.networkName}]`;
-  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const sleep = sleeper(deps);
   let last = "";
   for (let i = 1; i <= READBACK_ATTEMPTS; i++) {
     try {
@@ -410,8 +478,29 @@ async function verifyWithRetry(deps: DeployDeps, address: Address, txHash: Hex, 
   throw new Error(
     `${tag} the deploy transaction ${txHash} created ${address}, but the read-back could not be completed after ${READBACK_ATTEMPTS} tries ` +
     `(${last.split("\n").slice(0, 3).join(" ").trim()}). Nothing was recorded. Do NOT deploy again. ` +
-    `Re-run the same command with --verify-existing ${address} --deploy-tx ${txHash} (instead of --deploy) to read it back and record it.`,
+    `Re-run the same command with ${recover} (instead of --deploy) to read it back and record it.`,
   );
+}
+
+type MinedTx = NonNullable<Awaited<ReturnType<DeployDeps["getDeployTx"]>>>;
+
+/**
+ * The mined deploy transaction with its block's time, retried while the node lags. Both are needed
+ * for the record, so without them nothing is recorded: the record never takes the local clock.
+ */
+async function fetchMinedDeploy(deps: DeployDeps, hash: Hex, hint: string): Promise<MinedTx & { blockTimestamp: number }> {
+  const tag = `[${deps.networkName}]`;
+  const sleep = sleeper(deps);
+  let seen: MinedTx | undefined;
+  for (let i = 1; i <= READBACK_ATTEMPTS; i++) {
+    const tx = await deps.getDeployTx(hash).catch(() => undefined);
+    if (tx) seen = tx;
+    if (tx && tx.status !== "pending" && tx.blockTimestamp !== undefined) return tx as MinedTx & { blockTimestamp: number };
+    if (i < READBACK_ATTEMPTS) await sleep(READBACK_PAUSE_MS * i);
+  }
+  if (!seen) throw new Error(`${tag} the node does not know transaction ${hash}. Nothing was recorded. ${hint}`);
+  if (seen.status === "pending") throw new Error(`${tag} transaction ${hash} is not mined yet. Nothing was recorded. ${hint}`);
+  throw new Error(`${tag} the block time of ${hash} could not be read, so deployedAt cannot be recorded. Nothing was recorded. ${hint}`);
 }
 
 export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions): Promise<DeployResult> {
@@ -450,15 +539,24 @@ export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions)
     guardian: roles.guardian,
   });
   const data = deps.deployData(args);
-  const digest = deployDigest(data, chainId, roles.deployer);
   const src = await deps.source();
-  if (mainnet && !verifying && !src.contractsClean) {
-    throw new Error(`${tag} contracts/ has uncommitted changes (git status --porcelain contracts/ is not empty): on Rubicon the bytecode must come from a clean, reviewed commit`);
+  if (mainnet) {
+    if (!src.contractsClean) {
+      throw new Error(`${tag} contracts/, hardhat.config.ts or package-lock.json has uncommitted changes (git status --porcelain on them is not empty): on Rubicon the bytecode must come from a clean, reviewed commit`);
+    }
+    if (!src.build.ok) {
+      throw new Error(`${tag} the artifact was not built from the sources and settings on disk, so the bytecode is not the reviewed commit's:\n  - ${src.build.problems.slice(0, 6).join("\n  - ")}\nCompile again from the reviewed checkout (npx hardhat compile; the script does it itself when started as a command)`);
+    }
   }
 
   // On Rubicon a run without --deploy is a dry run, so a skipped step 2 deploys nothing.
   const dryRun = opts.dryRun || (mainnet && !verifying && opts.deployDigest === undefined);
   const mode = verifying ? "VERIFY EXISTING (nothing is sent)" : dryRun ? `DRY RUN (nothing is sent${opts.dryRun ? "" : "; the default on Rubicon"})` : "DEPLOY";
+
+  // The deploy key's nonce sets the address the deploy creates, and it is in the digest.
+  const nonce = verifying ? undefined : await deps.nonce();
+  const digest = nonce === undefined ? undefined : deployDigest(data, chainId, roles.deployer, nonce);
+  const predicted = nonce === undefined ? undefined : predictedAddress(roles.deployer, nonce);
 
   log(`${tag} chain ${chainId}; mode ${mode}`);
   log(`${tag} deploy key   ${roles.deployer}   (hot; ends with no role)`);
@@ -466,49 +564,70 @@ export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions)
   log(`${tag} guardian     ${roles.guardian}   (ops key, stop-only)`);
   log(`${tag} USDC wrapper ${usdc.wrapper}   mint ${usdc.mintBase58}`);
   log(`${tag} live v12 record RomeBridgeWithdraw ${existing["RomeBridgeWithdraw"]?.address ?? "(none)"} is not touched`);
+
+  // The v12 owner is the chain's contract admin: the intended v13 owner. A wrong-but-valid owner (the
+  // ops key pasted as --owner, another Ledger account) passes every other rule, so on Rubicon it is compared.
   const v12 = existing["RomeBridgeWithdraw"]?.address;
+  let v12Owner: Address | undefined;
   if (typeof v12 === "string" && isAddress(v12)) {
     try {
-      const v12Owner = (await deps.reader(getAddress(v12)).read("owner")) as string;
-      log(`${tag} v12 owner() is ${v12Owner}; the new owner is ${roles.owner}${eq(v12Owner, roles.owner) ? " (the same)" : " (different)"}. Compare them with the Ledger's own screen.`);
+      const read = (await deps.reader(getAddress(v12)).read("owner")) as string;
+      if (typeof read === "string" && isAddress(read) && !eq(read, ZERO_ADDRESS)) {
+        v12Owner = getAddress(read);
+        log(`${tag} v12 owner() is ${v12Owner}; the new owner is ${roles.owner}${eq(v12Owner, roles.owner) ? " (the same)" : " (different)"}. Compare them with the Ledger's own screen.`);
+      } else {
+        log(`${tag} v12 owner() read as ${String(read)}, not an account; compare --owner with the Ledger's own screen`);
+      }
     } catch {
       log(`${tag} v12 owner() could not be read; compare --owner with the Ledger's own screen`);
     }
   }
-  log(`${tag} source: commit ${src.commit}, contracts/ ${src.contractsClean ? "clean" : "HAS UNCOMMITTED CHANGES"}`);
-  // The digest is printed only where it cannot be copied into a refused run: the dry run and verify.
+  if (mainnet && typeof v12 === "string") {
+    if (v12Owner && eq(roles.guardian, v12Owner)) {
+      throw new Error(`${tag} --guardian ${roles.guardian} is v12's owner(): the live owner is the intended v13 OWNER, so --owner and --guardian look swapped (the ops key would end as owner). Refusing, a dry run included.`);
+    }
+    if (!opts.ownerDiffersFromV12 && !(v12Owner && eq(v12Owner, roles.owner))) {
+      const why = v12Owner
+        ? `--owner ${roles.owner} is not v12's owner() ${v12Owner}`
+        : "v12's owner() could not be read as an account, so --owner cannot be compared with it";
+      if (dryRun) {
+        log(`${tag} WARNING: ${why}. A real deploy will be refused unless it is on purpose: then add ${OWNER_DIFFERS_FLAG}.`);
+      } else {
+        throw new Error(`${tag} ${why}. The chain's contract admin is the intended v13 owner; if the owner really differs, say so on purpose with ${OWNER_DIFFERS_FLAG}.`);
+      }
+    }
+  }
+  log(`${tag} source: commit ${src.commit}, contracts/ ${src.contractsClean ? "clean" : "HAS UNCOMMITTED CHANGES"}, artifact ${src.build.ok ? `built from these sources (${src.build.buildInfoId})` : "NOT built from these sources"}`);
+  if (!src.build.ok) log(`${tag} WARNING: ${src.build.problems.slice(0, 3).join("; ")}`);
+  // The digest is printed only where it cannot be copied into a refused run: the dry run.
 
   const ownerNeedsGas = mainnet && ownerInfo.balance === 0n;
   if (ownerNeedsGas) log(`${tag} WARNING: the owner holds no Rubicon gas; it needs some to sign the two owner calls (README step 1)`);
 
   const deployInputHash = keccak256(data);
   let deployed: { address: Address; txHash: Hex };
-  let deployTx: Awaited<ReturnType<DeployDeps["getDeployTx"]>>;
+  let mined: (MinedTx & { blockTimestamp: number }) | undefined;
+  let commit = src.commit;
 
   if (verifying) {
-    // 4v. A contract already deployed: it must be this deploy's transaction.
+    // 4v. A contract already deployed: it must be this deploy's transaction, built from the commit the operator names.
     const v = opts.verifyExisting!;
     const address = getAddress(v.address);
     const txHash = v.txHash as Hex;
-    const tx = await deps.getDeployTx(txHash);
-    if (!tx) throw new Error(`${tag} the node does not know transaction ${txHash}`);
-    deployTx = tx;
-    const problems: string[] = [];
-    if (tx.status !== "success") problems.push(`the transaction status is ${tx.status}`);
-    if (tx.to) problems.push(`the transaction is a call to ${tx.to}, not a contract creation`);
-    if (!eq(tx.from, roles.deployer)) problems.push(`the transaction was sent by ${tx.from}, not by the deploy key ${roles.deployer}`);
-    if (!tx.contractAddress || !eq(tx.contractAddress, address)) problems.push(`the transaction created ${tx.contractAddress ?? "no contract"}, not ${address}`);
-    if (tx.input.toLowerCase() !== data.toLowerCase()) problems.push("the transaction data is not this artifact's bytecode with these constructor arguments");
+    const at = await deps.sourceAt(v.sourceCommit);
+    if (!at.sameSources) throw new Error(`${tag} --source-commit ${v.sourceCommit} cannot be recorded: ${at.problem ?? "its contracts, config and lockfile differ from this checkout's"}. Check out the commit the deploy was run from (or one with identical sources) and run again.`);
+    commit = at.commit;
+    mined = await fetchMinedDeploy(deps, txHash, "Run --verify-existing again.");
+    const problems = deployTxProblems(mined, address, data, roles.deployer);
     if (problems.length > 0) throw new Error(`${tag} ${address} is not this deploy's contract:\n  - ${problems.join("\n  - ")}`);
     deployed = { address, txHash };
-    log(`${tag} deploy digest ${digest}   (bytecode + constructor args + chain + deploy key)`);
-    log(`${tag} transaction ${txHash} is the deploy key's creation of ${address} with exactly these bytes`);
+    log(`${tag} transaction ${txHash} is the deploy key's creation of ${address} with exactly these bytes; recorded against commit ${commit}`);
   } else {
     const wantDigest = opts.deployDigest;
-    if (!dryRun && wantDigest !== undefined && wantDigest.toLowerCase() !== digest.toLowerCase()) {
+    if (!dryRun && wantDigest !== undefined && wantDigest.toLowerCase() !== digest!.toLowerCase()) {
       throw new Error(
-        `${tag} --deploy ${wantDigest} does not match this deploy (the digest covers the bytecode, constructor arguments, chain and deploy key). ` +
-        "Something changed since the dry run: run it again, read it, and use the digest it prints now.",
+        `${tag} --deploy ${wantDigest} does not match this deploy (the digest covers the bytecode, constructor arguments, chain, deploy key and the deploy key's nonce). ` +
+        "Something changed since the dry run, or a transaction from the deploy key has landed since: check `cast nonce` and the predicted address, then run the dry run again, read it, and use the digest it prints now.",
       );
     }
     if (mainnet) {
@@ -530,9 +649,10 @@ export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions)
     // 4. Dry run.
     if (dryRun) {
       log(`${tag} deploy transaction: contract creation of RomeBridgeWithdraw ${EXPECTED_VERSION} from ${roles.deployer}`);
+      log(`${tag} deploy key nonce ${nonce}: the contract will be created at ${predicted}`);
       log(`${tag} constructor args:\n${jsonArgs(args)}`);
       log(`${tag} deploy input hash ${deployInputHash}   (keccak256 of the transaction input; after the deploy, cast keccak $(cast tx <hash> input) shows the same)`);
-      log(`${tag} deploy digest ${digest}   (bytecode + constructor args + chain + deploy key)`);
+      log(`${tag} deploy digest ${digest}   (bytecode + constructor args + chain + deploy key + nonce)`);
       if (!mainnet) {
         const est = await deps.estimate(args);
         log(`${tag} estimated gas ${est.gas}${est.gasPrice !== undefined ? `, gas price ${est.gasPrice}, cost about ${est.gas * est.gasPrice} wei` : ""}`);
@@ -542,22 +662,24 @@ export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions)
         }
       }
       log(`${tag} DRY RUN: nothing was sent.`);
-      if (mainnet) log(`${tag} To deploy, run the same command with --deploy ${digest} (and no --dry-run). The deploy refuses any other digest. After the deploy the Ledger signs the two owner calls the real run prints.`);
+      if (mainnet) log(`${tag} To deploy, run the same command with --deploy ${digest} (and no --dry-run). The deploy refuses any other digest, and the digest goes stale if the deploy key sends anything first. After the deploy the Ledger signs the two owner calls the real run prints.`);
       else log(`${tag} After the deploy the Ledger signs the two owner calls the real run prints.`);
-      return { dryRun: true, chainId, roles, args, digest };
+      return { dryRun: true, chainId, roles, args, digest, nonce };
     }
 
     // 5a. Send.
-    deployed = await deps.deploy(args, opts.mainnetFlag);
+    log(`${tag} sending: deploy key nonce ${nonce}, the contract will be created at ${predicted}. If this run stops without a receipt, check \`cast nonce ${roles.deployer}\` and \`cast code ${predicted}\` before anything else: do NOT deploy again.`);
+    deployed = await deps.deploy(args, opts.mainnetFlag, opts.deployDigest as Hex | undefined);
     log(`${tag} RomeBridgeWithdraw ${EXPECTED_VERSION} deployed at ${deployed.address} (tx ${deployed.txHash})`);
-    deployTx = await deps.getDeployTx(deployed.txHash).catch(() => undefined);
+    if (!eq(deployed.address, predicted!)) log(`${tag} NOTE: the contract is at ${deployed.address}, not the predicted ${predicted}: the deploy key sent another transaction in between`);
   }
 
   // 5b. Read everything back.
+  const recover = recoverArgs(deployed.address, deployed.txHash, commit);
   const checked = await verifyWithRetry(deps, deployed.address, deployed.txHash, {
     owner: roles.owner, guardian: roles.guardian, deployer: roles.deployer,
     usdcWrapper: usdc.wrapper, usdcMintBase58: usdc.mintBase58,
-  });
+  }, recover);
   for (const line of checked) log(`${tag} read back: ${line}`);
 
   // The hashes a person can check against the chain: the code the node holds now, and the transaction input.
@@ -565,20 +687,20 @@ export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions)
   if (!chainCode || chainCode === "0x") {
     throw new Error(
       `${tag} the contract ${deployed.address} (tx ${deployed.txHash}) read back correctly but its code could not be read for the record. Nothing was recorded. ` +
-      `Do NOT deploy again: re-run with --verify-existing ${deployed.address} --deploy-tx ${deployed.txHash}.`,
+      `Do NOT deploy again: re-run with ${recover}.`,
     );
   }
   const codeHash = keccak256(chainCode as Hex);
-  if (deployTx && deployTx.input.toLowerCase() !== data.toLowerCase()) {
-    throw new Error(`${tag} the transaction ${deployed.txHash} carries different data from what was built: it is NOT recorded. Do not use ${deployed.address}.`);
+  if (!mined) {
+    // A fresh deploy: the transaction that was MINED must be the approved one (it can be a replacement of the one sent).
+    mined = await fetchMinedDeploy(deps, deployed.txHash, `Do NOT deploy again: re-run with ${recover}.`);
+    const problems = deployTxProblems(mined, deployed.address, data, roles.deployer);
+    if (problems.length > 0) {
+      throw new Error(`${tag} the mined transaction ${deployed.txHash} is not the approved deploy, so ${deployed.address} is NOT recorded. Do not use it:\n  - ${problems.join("\n  - ")}`);
+    }
   }
-  // deployedAt is the deploy block's time, not the time of this run (--verify-existing may run much later).
-  let deployedAtSec = deployTx?.blockTimestamp;
-  if (deployedAtSec === undefined) {
-    if (verifying) throw new Error(`${tag} the block time of ${deployed.txHash} could not be read, so deployedAt cannot be recorded. Nothing was recorded; run --verify-existing again.`);
-    deployedAtSec = Math.floor(deps.now() / 1000);
-    log(`${tag} the deploy block's time could not be read; deployedAt is this run's clock`);
-  }
+  // deployedAt is the deploy block's time, never the clock of this run.
+  const deployedAtSec = mined.blockTimestamp;
   log(`${tag} code hash ${codeHash}   (keccak256 of eth_getCode ${deployed.address})`);
   log(`${tag} deploy input hash ${deployInputHash}   (keccak256 of the input of ${deployed.txHash})`);
 
@@ -590,17 +712,19 @@ export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions)
     guardian: roles.guardian,
     deployTx: deployed.txHash,
     deployedAt: deployedAtSec,
-    commit: src.commit,
+    commit,
+    build: { buildInfoId: src.build.buildInfoId, solcVersion: src.build.solcVersion ?? "unknown" },
     codeHash,
     deployInputHash,
   };
   try {
-    deps.store.write(withV13Record(deps.store.read(), record));
+    if (deps.store.update) deps.store.update((cur) => withV13Record(cur, record));
+    else deps.store.write(withV13Record(deps.store.read(), record));
   } catch (e) {
     log(`${tag} COULD NOT WRITE the record (${(e as Error).message.split("\n")[0]}). It read back correctly. Add this under "${RECORD_KEY}" by hand:\n${jsonArgs(record)}`);
     throw new Error(
       `${tag} the contract ${deployed.address} (tx ${deployed.txHash}) read back correctly but deployments/${deps.networkName}.json could not be written. ` +
-      `Do NOT deploy again: fix the file problem and re-run with --verify-existing ${deployed.address} --deploy-tx ${deployed.txHash}.`,
+      `Do NOT deploy again: fix the file problem and re-run with ${recover}.`,
     );
   }
   log(`${tag} wrote ${RECORD_KEY} to deployments/${deps.networkName}.json (the registry switch-over is a separate step)`);
@@ -623,5 +747,5 @@ export async function runRubiconV13Deploy(deps: DeployDeps, opts: DeployOptions)
       }
     }
   }
-  return { dryRun: false, chainId, roles, args, digest, deployed, ownerCalls };
+  return { dryRun: false, chainId, roles, args, digest, nonce, deployed, ownerCalls };
 }

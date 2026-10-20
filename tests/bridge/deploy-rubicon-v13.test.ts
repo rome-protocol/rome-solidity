@@ -8,12 +8,13 @@ import path from "node:path";
 import { decodeFunctionData, getAddress, keccak256, parseAbi, toFunctionSelector } from "viem";
 import hardhat from "hardhat";
 import {
-  EXPECTED_VERSION, RECORD_KEY, buildOwnerCalls, deployDigest, parseArgs, runRubiconV13Deploy, usdcFromDeployments, validateRoles,
+  EXPECTED_VERSION, RECORD_KEY, buildOwnerCalls, deployDigest, parseArgs, predictedAddress, runRubiconV13Deploy, usdcFromDeployments, validateRoles,
   verifyDeployment, withV13Record, type DeployDeps, type DeployOptions,
 } from "../../scripts/bridge/lib/rubicon-v13.js";
 import { assertRubiconV13DeploySend } from "../../scripts/bridge/lib/testnet-guard.js";
 import { buildWithdrawConstructorArgs, universalFor } from "../../scripts/bridge/lib/withdraw-ctor-args.js";
-import { depsFromConnection, fileStore, isEntryPoint } from "../../scripts/bridge/deploy-rubicon-v13.js";
+import { compileProject, depsFromConnection, fileStore, isEntryPoint } from "../../scripts/bridge/deploy-rubicon-v13.js";
+import { checkBuildProvenance } from "../../scripts/bridge/lib/build-provenance.js";
 import { SOLANA_PROGRAM_IDS } from "../../scripts/bridge/constants.js";
 import { base58ToBytes32 } from "../../scripts/lib/pubkey.js";
 import { ADDR } from "./helpers/v13.js";
@@ -35,7 +36,7 @@ const OWNER_ABI = parseAbi([
 describe("parseArgs", () => {
   const ok = ["--network", "hardhatMainnet", "--owner", LEDGER, "--guardian", OPS];
   it("reads the three required arguments and the two flags", () => {
-    assert.deepEqual(parseArgs(ok), { network: "hardhatMainnet", owner: LEDGER, guardian: OPS, dryRun: false, mainnetFlag: false, deployDigest: undefined, verifyExisting: undefined });
+    assert.deepEqual(parseArgs(ok), { network: "hardhatMainnet", owner: LEDGER, guardian: OPS, dryRun: false, mainnetFlag: false, deployDigest: undefined, verifyExisting: undefined, ownerDiffersFromV12: false });
     const o = parseArgs([...ok, "--dry-run", FLAG]);
     assert.equal(o.dryRun, true);
     assert.equal(o.mainnetFlag, true);
@@ -69,14 +70,24 @@ describe("parseArgs", () => {
     assert.throws(() => parseArgs([...rub, "--deploy"]), /--deploy needs a value/);
     assert.throws(() => parseArgs([...rub, "--deploy", digest, "--dry-run"]), /different modes/);
     const tx = "0x" + "ab".repeat(32);
-    const v = parseArgs([...rub, "--verify-existing", ADDR(0xabc), "--deploy-tx", tx]);
-    assert.deepEqual(v.verifyExisting, { address: ADDR(0xabc), txHash: tx });
+    const sha = "ab".repeat(20);
+    const v = parseArgs([...rub, "--verify-existing", ADDR(0xabc), "--deploy-tx", tx, "--source-commit", sha]);
+    assert.deepEqual(v.verifyExisting, { address: ADDR(0xabc), txHash: tx, sourceCommit: sha });
     assert.throws(() => parseArgs([...rub, "--verify-existing", ADDR(0xabc)]), /go together/);
     assert.throws(() => parseArgs([...rub, "--deploy-tx", tx]), /go together/);
-    assert.throws(() => parseArgs([...rub, "--verify-existing", "0x12", "--deploy-tx", tx]), /not a 20-byte address/);
-    assert.throws(() => parseArgs([...rub, "--verify-existing", ADDR(0xabc), "--deploy-tx", "0x12"]), /not a transaction hash/);
-    assert.throws(() => parseArgs([...rub, "--verify-existing", ADDR(0xabc), "--deploy-tx", tx, "--deploy", digest]), /different modes/);
-    assert.throws(() => parseArgs([...rub, "--verify-existing", ADDR(0xabc), "--deploy-tx", tx, "--dry-run"]), /different modes/);
+    assert.throws(() => parseArgs([...rub, "--verify-existing", ADDR(0xabc), "--deploy-tx", tx]), /--source-commit go together/);
+    assert.throws(() => parseArgs([...rub, "--source-commit", sha]), /go together/);
+    assert.throws(() => parseArgs([...rub, "--verify-existing", ADDR(0xabc), "--deploy-tx", tx, "--source-commit", "abc123"]), /not a full 40-digit git commit hash/);
+    assert.throws(() => parseArgs([...rub, "--verify-existing", "0x12", "--deploy-tx", tx, "--source-commit", sha]), /not a 20-byte address/);
+    assert.throws(() => parseArgs([...rub, "--verify-existing", ADDR(0xabc), "--deploy-tx", "0x12", "--source-commit", sha]), /not a transaction hash/);
+    assert.throws(() => parseArgs([...rub, "--verify-existing", ADDR(0xabc), "--deploy-tx", tx, "--source-commit", sha, "--deploy", digest]), /different modes/);
+    assert.throws(() => parseArgs([...rub, "--verify-existing", ADDR(0xabc), "--deploy-tx", tx, "--source-commit", sha, "--dry-run"]), /different modes/);
+  });
+  it("reads --owner-differs-from-v12 as a flag", () => {
+    const rub = ["--network", "rubicon", "--owner", LEDGER, "--guardian", OPS, FLAG];
+    assert.equal(parseArgs(rub).ownerDiffersFromV12, false);
+    assert.equal(parseArgs([...rub, "--owner-differs-from-v12"]).ownerDiffersFromV12, true);
+    assert.throws(() => parseArgs([...rub, "--owner-differs-from-v12", "--owner-differs-from-v12"]), /given twice/);
   });
 });
 
@@ -151,7 +162,7 @@ describe("buildOwnerCalls: printed, and exactly the two Ledger calls", () => {
 
 describe("the deployments record", () => {
   const v12 = { address: "0xceea191761cdba2fc589996d7dd096e57db29c84", deployedAt: 1790219940 };
-  const rec = { address: ADDR(0xabc), version: "13.0.0", owner: LEDGER, guardian: OPS, deployTx: ("0x" + "11".repeat(32)) as `0x${string}`, deployedAt: 1, commit: "c0ffee", codeHash: ("0x" + "22".repeat(32)) as `0x${string}`, deployInputHash: ("0x" + "33".repeat(32)) as `0x${string}` };
+  const rec = { address: ADDR(0xabc), version: "13.0.0", owner: LEDGER, guardian: OPS, deployTx: ("0x" + "11".repeat(32)) as `0x${string}`, deployedAt: 1, commit: "c0ffee", build: { buildInfoId: "solc-x", solcVersion: "0.8.28" }, codeHash: ("0x" + "22".repeat(32)) as `0x${string}`, deployInputHash: ("0x" + "33".repeat(32)) as `0x${string}` };
   it("adds the V13 key and leaves every other key as it was", () => {
     const before = { SPL_ERC20_USDC: { address: ADDR(5), mintId: USDC_MINT }, RomeBridgeWithdraw: v12 };
     const after = withV13Record(before, rec);
@@ -231,7 +242,7 @@ describe("the deploy flow on a local Hardhat chain", function () {
   }
 
   const opts = (over: Partial<DeployOptions> = {}): DeployOptions => ({
-    network: "hardhatMainnet", owner: wallets[1].account.address, guardian: wallets[2].account.address, dryRun: false, mainnetFlag: false, deployDigest: undefined, verifyExisting: undefined, ...over,
+    network: "hardhatMainnet", owner: wallets[1].account.address, guardian: wallets[2].account.address, dryRun: false, mainnetFlag: false, deployDigest: undefined, verifyExisting: undefined, ownerDiffersFromV12: false, ...over,
   });
 
   async function deps(store: ReturnType<typeof memStore>, lines: string[]): Promise<DeployDeps> {
@@ -456,9 +467,11 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
   }
   const opts = (over: Partial<DeployOptions> = {}): DeployOptions => ({
     network: "rubicon", owner: A(1), guardian: A(2),
-    dryRun: false, mainnetFlag: true, deployDigest: undefined, verifyExisting: undefined, ...over,
+    dryRun: false, mainnetFlag: true, deployDigest: undefined, verifyExisting: undefined, ownerDiffersFromV12: false, ...over,
   });
-  const GOOD_SOURCE = { commit: "a".repeat(40), contractsClean: true };
+  const GOOD_SOURCE = { commit: "a".repeat(40), contractsClean: true, build: { ok: true, problems: [] as string[], buildInfoId: "solc-0_8_28-test", solcVersion: "0.8.28" } };
+  const SOURCE_COMMIT = "a".repeat(40);
+  const verifyOf = (landed: { address: string; txHash: string }) => ({ address: landed.address, txHash: landed.txHash, sourceCommit: SOURCE_COMMIT });
   const ctorFor = (owner: `0x${string}`) => buildWithdrawConstructorArgs({ networkName: "rubicon", usdcWrapper: wrapper.address, usdcMintBase58: USDC_MINT, owner, guardian: A(2) });
 
   /**
@@ -473,6 +486,7 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
       networkName: "rubicon",
       guard: async () => 7531,
       source: async () => GOOD_SOURCE,
+      sourceAt: async (c: string) => ({ commit: c, sameSources: true }),
       estimate: async () => { counters.estimates++; return { gas: 3_000_000n, gasPrice: 10n, gasPricePinned: true, balance: 10n ** 18n }; },
       deploy: async (args) => { counters.deploys++; return d.deploy(args, false); }, // the local chain's own guard: 31337
       sleep: async () => {},
@@ -482,7 +496,7 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
   }
   const digestFor = async (store: ReturnType<typeof memStore>, over: Partial<DeployOptions> = {}) => {
     const { deps } = await mainDeps(store, []);
-    return (await runRubiconV13Deploy(deps, opts(over))).digest;
+    return (await runRubiconV13Deploy(deps, opts(over))).digest!;
   };
 
   before(async () => {
@@ -491,7 +505,8 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
     pc = await viem.getPublicClient();
     wallets = await viem.getWalletClients();
     wrapper = await viem.deployContract("MockSplErc20", [USDC_MINT32]);
-    const ctor = buildWithdrawConstructorArgs({ networkName: "hardhatMainnet", usdcWrapper: wrapper.address, usdcMintBase58: USDC_MINT, owner: A(8), guardian: A(9) });
+    // v12's owner() is the chain's contract admin: the intended v13 owner (A(1) in these tests)
+    const ctor = buildWithdrawConstructorArgs({ networkName: "hardhatMainnet", usdcWrapper: wrapper.address, usdcMintBase58: USDC_MINT, owner: A(1), guardian: A(9) });
     v12 = await viem.deployContract("RomeBridgeWithdraw", [...ctor]);
   });
 
@@ -512,6 +527,7 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
     assert.match(text, V12_OWNER_NOTE);
     assert.match(text, new RegExp(`source: commit ${"a".repeat(40)}`));
     assert.match(text, /deploy input hash 0x[0-9a-f]{64}/);
+    assert.match(text, /deploy key nonce \d+: the contract will be created at 0x[0-9a-fA-F]{40}/);
     assert.doesNotMatch(text, /bytecode hash/);
     assert.match(text, /pinned gas price 10/);
     // an explicit --dry-run says so
@@ -521,18 +537,20 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
     assert.match(lines2.join("\n"), /mode DRY RUN \(nothing is sent\)/);
   });
 
-  it("the digest follows the bytecode, the constructor arguments (owner, guardian), the chain and the deploy key", async () => {
+  it("the digest follows the bytecode, the constructor arguments (owner, guardian), the chain, the deploy key and its nonce", async () => {
     const { deps } = await mainDeps(memStore(STORE()), []);
-    const base = (await runRubiconV13Deploy(deps, opts())).digest;
+    const base = (await runRubiconV13Deploy(deps, opts())).digest!;
     assert.match(base, /^0x[0-9a-f]{16}$/);
     assert.equal((await runRubiconV13Deploy(deps, opts())).digest, base, "stable");
     assert.notEqual((await runRubiconV13Deploy(deps, opts({ owner: A(3) }))).digest, base);
     assert.notEqual((await runRubiconV13Deploy(deps, opts({ guardian: A(3) }))).digest, base);
     const data = deps.deployData(ctorFor(A(1)));
-    assert.equal(deployDigest(data, 7531, A(0)), base);
-    assert.notEqual(deployDigest(data, 7532, A(0)), base);
-    assert.notEqual(deployDigest(data, 7531, A(4)), base);
-    assert.notEqual(deployDigest((data.slice(0, -2) + (data.endsWith("ff") ? "fe" : "ff")) as `0x${string}`, 7531, A(0)), base, "one changed byte of the data");
+    const nonce = await pc.getTransactionCount({ address: A(0), blockTag: "pending" });
+    assert.equal(deployDigest(data, 7531, A(0), nonce), base);
+    assert.notEqual(deployDigest(data, 7532, A(0), nonce), base);
+    assert.notEqual(deployDigest(data, 7531, A(4), nonce), base);
+    assert.notEqual(deployDigest(data, 7531, A(0), nonce + 1), base, "the deploy key's nonce is in the digest");
+    assert.notEqual(deployDigest((data.slice(0, -2) + (data.endsWith("ff") ? "fe" : "ff")) as `0x${string}`, 7531, A(0), nonce), base, "one changed byte of the data");
   });
 
   it("a real deploy on Rubicon needs the digest: a wrong one, or the digest of a different owner, is refused and nothing is sent", async () => {
@@ -608,8 +626,8 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
 
   it("on Rubicon contracts/ must be clean, RUBICON_GAS_PRICE must be pinned, and the deploy key must cover the cost", async () => {
     const dirty = await mainDeps(memStore(STORE()), [], { source: async () => ({ ...GOOD_SOURCE, contractsClean: false }) });
-    await assert.rejects(runRubiconV13Deploy(dirty.deps, opts()), /contracts\/ has uncommitted changes/);
-    await assert.rejects(runRubiconV13Deploy(dirty.deps, opts({ dryRun: true })), /contracts\/ has uncommitted changes/);
+    await assert.rejects(runRubiconV13Deploy(dirty.deps, opts()), /contracts\/, hardhat\.config\.ts or package-lock\.json has uncommitted changes/);
+    await assert.rejects(runRubiconV13Deploy(dirty.deps, opts({ dryRun: true })), /has uncommitted changes/);
     assert.equal(dirty.counters.deploys, 0);
 
     const unpinned = await mainDeps(memStore(STORE()), [], { estimate: async () => ({ gas: 3_000_000n, gasPrice: 10n, gasPricePinned: false, balance: 10n ** 18n }) });
@@ -649,9 +667,10 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
 
     // the node never answers
     const store2 = memStore(STORE());
+    const good2 = await digestFor(memStore(STORE())); // the first deploy moved the deploy key's nonce: a fresh digest
     const dead = await mainDeps(store2, [], { sleep: async () => { slept++; } });
     const failing: DeployDeps = { ...dead.deps, reader: (a) => ({ ...dead.deps.reader(a), getCode: async () => { throw new Error("socket hang up"); } }) };
-    await assert.rejects(runRubiconV13Deploy(failing, opts({ deployDigest: good })), (e: Error) => {
+    await assert.rejects(runRubiconV13Deploy(failing, opts({ deployDigest: good2 })), (e: Error) => {
       assert.match(e.message, /Do NOT deploy again/);
       assert.match(e.message, /--verify-existing 0x[0-9a-fA-F]{40} --deploy-tx 0x[0-9a-f]{64}/);
       assert.doesNotMatch(e.message, /FAILED the read-back/);
@@ -669,7 +688,7 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
     const landed = await d.deploy(ctorFor(A(1)), false);
     assert.equal(store.peek()[RECORD_KEY], undefined);
     const nonce = await pc.getTransactionCount({ address: A(0) });
-    const r = await runRubiconV13Deploy(deps, opts({ verifyExisting: { address: landed.address, txHash: landed.txHash } }));
+    const r = await runRubiconV13Deploy(deps, opts({ verifyExisting: verifyOf(landed) }));
     assert.equal(counters.deploys, 0);
     assert.equal(await pc.getTransactionCount({ address: A(0) }), nonce);
     assert.equal(r.deployed!.address, getAddress(landed.address));
@@ -687,17 +706,16 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
 
   it("--verify-existing records the deploy block's time, not the time of the verify run", async () => {
     const store = memStore(STORE());
-    const { deps, d } = await mainDeps(store, [], { now: () => 4_000_000_000_000 }); // far later than the deploy
+    const { deps, d } = await mainDeps(store, [], {});
     const landed = await d.deploy(ctorFor(A(1)), false);
     const tx = await pc.getTransaction({ hash: landed.txHash });
     const blockTime = Number((await pc.getBlock({ blockNumber: tx.blockNumber })).timestamp);
-    await runRubiconV13Deploy(deps, opts({ verifyExisting: { address: landed.address, txHash: landed.txHash } }));
+    await runRubiconV13Deploy(deps, opts({ verifyExisting: verifyOf(landed) }));
     assert.equal(store.peek()[RECORD_KEY].deployedAt, blockTime);
-    assert.notEqual(store.peek()[RECORD_KEY].deployedAt, 4_000_000_000);
     // with no block time to read, verify refuses rather than record the verify time
     const store2 = memStore(STORE());
     const noTime = await mainDeps(store2, [], { getDeployTx: async (h) => ({ ...(await d.getDeployTx(h))!, blockTimestamp: undefined }) });
-    await assert.rejects(runRubiconV13Deploy(noTime.deps, opts({ verifyExisting: { address: landed.address, txHash: landed.txHash } })), /block time .* could not be read/);
+    await assert.rejects(runRubiconV13Deploy(noTime.deps, opts({ verifyExisting: verifyOf(landed) })), /block time .* could not be read/);
     assert.equal(store2.peek()[RECORD_KEY], undefined);
   });
 
@@ -706,10 +724,253 @@ describe("Rubicon rules, run on a local chain with the guard faked to report 753
     const { deps, d } = await mainDeps(store, []);
     const landed = await d.deploy(ctorFor(A(1)), false);
     const other = await d.deploy(ctorFor(A(3)), false); // a different owner
-    await assert.rejects(runRubiconV13Deploy(deps, opts({ verifyExisting: { address: other.address, txHash: landed.txHash } })), /created .*, not 0x/);
-    await assert.rejects(runRubiconV13Deploy(deps, opts({ verifyExisting: { address: other.address, txHash: other.txHash } })), /not this artifact's bytecode with these constructor arguments/);
-    await assert.rejects(runRubiconV13Deploy(deps, opts({ verifyExisting: { address: landed.address, txHash: ("0x" + "cd".repeat(32)) as `0x${string}` } })), /does not know transaction/);
+    await assert.rejects(runRubiconV13Deploy(deps, opts({ verifyExisting: { ...verifyOf(landed), address: other.address } })), /created .*, not 0x/);
+    await assert.rejects(runRubiconV13Deploy(deps, opts({ verifyExisting: verifyOf(other) })), /not this artifact's bytecode with these constructor arguments/);
+    await assert.rejects(runRubiconV13Deploy(deps, opts({ verifyExisting: { ...verifyOf(landed), txHash: ("0x" + "cd".repeat(32)) as `0x${string}` } })), /does not know transaction/);
     assert.equal(store.peek()[RECORD_KEY], undefined);
+  });
+
+  // ── Findings from the PR #391 audit ───────────────────────────────────────
+
+  it("the digest covers the deploy key's nonce: a transaction that lands after the dry run makes its digest stale, and nothing is sent", async () => {
+    const store = memStore(STORE());
+    const lines: string[] = [];
+    const { deps, counters } = await mainDeps(store, lines);
+    const dry = await runRubiconV13Deploy(deps, opts());
+    assert.equal(dry.nonce, await pc.getTransactionCount({ address: A(0), blockTag: "pending" }));
+    assert.match(lines.join("\n"), new RegExp(`the contract will be created at ${predictedAddress(A(0), dry.nonce!)}`));
+    // something from the deploy key lands (another run, or a send whose answer was lost)
+    await viem.deployContract("MockSplErc20", [USDC_MINT32]);
+    const nonceAfter = await pc.getTransactionCount({ address: A(0) });
+    await assert.rejects(runRubiconV13Deploy(deps, opts({ deployDigest: dry.digest })), /does not match this deploy.*nonce/s);
+    assert.equal(counters.deploys, 0);
+    assert.equal(await pc.getTransactionCount({ address: A(0) }), nonceAfter, "nothing was sent");
+    // the fresh dry run has a new digest and a new predicted address, and that one deploys
+    const dry2 = await runRubiconV13Deploy(deps, opts());
+    assert.notEqual(dry2.digest, dry.digest);
+    assert.equal(dry2.nonce, nonceAfter);
+    const r = await runRubiconV13Deploy(deps, opts({ deployDigest: dry2.digest }));
+    assert.equal(getAddress(r.deployed!.address), predictedAddress(A(0), nonceAfter), "the contract is where the dry run said");
+  });
+
+  it("a send whose answer is lost still leaves a trail: the error says it MAY have landed with the nonce and the predicted address, and the old digest is refused afterwards", async () => {
+    const store = memStore(STORE());
+    const lost = {
+      getPublicClient: () => viem.getPublicClient(),
+      getWalletClients: async () => {
+        const [w, ...rest] = await viem.getWalletClients();
+        // the node accepted and mined the transaction; the HTTP answer never came back (a 502 from the gateway)
+        return [{ account: w.account, deployContract: async (a: unknown) => { await w.deployContract(a); throw new Error("An unknown RPC error occurred.\n\nStatus: 502\nReceived an unexpected status code"); } }, ...rest];
+      },
+    };
+    const d = await depsFromConnection({ viem: lost, networkName: conn.networkName }, store, () => {});
+    const deps: DeployDeps = { ...d, networkName: "rubicon", guard: async () => 7531, source: async () => GOOD_SOURCE, sourceAt: async (c) => ({ commit: c, sameSources: true }), sleep: async () => {}, estimate: async () => ({ gas: 3_000_000n, gasPrice: 10n, gasPricePinned: true, balance: 10n ** 18n }) };
+    const dry = await runRubiconV13Deploy(deps, opts());
+    const nonce = dry.nonce!;
+    const predicted = predictedAddress(A(0), nonce);
+    await assert.rejects(runRubiconV13Deploy(deps, opts({ deployDigest: dry.digest })), (e: Error) => {
+      assert.match(e.message, /MAY have landed/);
+      assert.match(e.message, /Do NOT deploy again/);
+      assert.ok(e.message.includes(`nonce ${nonce}`), "names the nonce");
+      assert.ok(e.message.includes(predicted), "names the predicted address");
+      assert.match(e.message, /cast nonce 0x[0-9a-fA-F]{40}/);
+      assert.ok(e.message.includes(`cast code ${predicted}`));
+      assert.match(e.message, /--verify-existing/);
+      assert.match(e.message, /unknown RPC error/, "the cause is still there");
+      return true;
+    });
+    // it did land: the nonce moved and the contract sits at the predicted address
+    assert.equal(await pc.getTransactionCount({ address: A(0) }), nonce + 1);
+    assert.notEqual(await pc.getCode({ address: predicted }), undefined);
+    assert.equal(store.peek()[RECORD_KEY], undefined);
+    // the operator re-runs the dry run: the digest is a NEW one, and the old one no longer deploys a second contract
+    const dry2 = await runRubiconV13Deploy(deps, opts());
+    assert.notEqual(dry2.digest, dry.digest);
+    await assert.rejects(runRubiconV13Deploy(deps, opts({ deployDigest: dry.digest })), /does not match this deploy/);
+    assert.equal(await pc.getTransactionCount({ address: A(0) }), nonce + 1, "no second contract");
+  });
+
+  it("the real send boundary recomputes the digest from the bytes and nonce it sends; on a local chain no digest is needed (the 7531 rule is the guard's, tested in testnet-guard.test.ts)", async () => {
+    const d = await depsFromConnection(conn, memStore(STORE()), () => {});
+    const args = ctorFor(A(1));
+    const nonce = await pc.getTransactionCount({ address: A(0), blockTag: "pending" });
+    const good = deployDigest(d.deployData(args), 31337, A(0), nonce);
+    assert.match(good, /^0x[0-9a-f]{16}$/);
+    // on the local chain the guard does not need the digest, so the send goes ahead with or without it
+    const a = await d.deploy(args, false, "0x0000000000000000" as `0x${string}`);
+    assert.equal(getAddress(a.address), predictedAddress(A(0), nonce));
+  });
+
+  it("the mined hash is recorded, not the sent one: a repriced replacement comes back under its own hash", async () => {
+    const hashA = ("0x" + "aa".repeat(32)) as `0x${string}`;
+    const hashB = ("0x" + "bb".repeat(32)) as `0x${string}`;
+    const created = ADDR(0xc0de) as `0x${string}`;
+    const fake = {
+      getPublicClient: async () => ({
+        getChainId: async () => 31337, getTransactionCount: async () => 7,
+        waitForTransactionReceipt: async ({ hash }: { hash: string }) => { assert.equal(hash, hashA, "waits on the hash it sent"); return { status: "success", contractAddress: created, transactionHash: hashB }; },
+      }),
+      getWalletClients: async () => [{ account: { address: A(0) }, deployContract: async () => hashA }],
+    };
+    const lines: string[] = [];
+    const d = await depsFromConnection({ viem: fake, networkName: "hardhatMainnet" }, memStore(STORE()), (l) => lines.push(l));
+    const out = await d.deploy(ctorFor(A(1)), false);
+    assert.equal(out.txHash, hashB);
+    assert.equal(out.address, created);
+    assert.match(lines.join("\n"), /was replaced; the mined one is 0xbb/);
+  });
+
+  it("a mined transaction that is not the approved deploy is refused and not recorded: other data, another sender, or a call", async () => {
+    for (const [name, change, expected] of [
+      ["other data (a replacement with different constructor arguments)", { input: "0x1234" }, /not this artifact's bytecode/],
+      ["another sender", { from: A(5) }, /sent by .*, not by the deploy key/],
+      ["a call, not a creation", { to: A(6) }, /call to .*not a contract creation/],
+      ["a different created address", { contractAddress: A(7) }, /created .*, not 0x/],
+      ["reverted", { status: "reverted" }, /status is reverted/],
+    ] as const) {
+      const store = memStore(STORE());
+      const good = await digestFor(memStore(STORE()));
+      const { deps, d } = await mainDeps(store, []);
+      const wrapped: DeployDeps = { ...deps, getDeployTx: async (h) => ({ ...(await d.getDeployTx(h))!, ...change } as any) };
+      await assert.rejects(runRubiconV13Deploy(wrapped, opts({ deployDigest: good })), (e: Error) => {
+        assert.match(e.message, /is not the approved deploy/, name);
+        assert.match(e.message, expected, name);
+        assert.match(e.message, /NOT recorded/, name);
+        return true;
+      });
+      assert.equal(store.peek()[RECORD_KEY], undefined, name);
+    }
+  });
+
+  it("a fresh deploy never records the local clock: a missing block time is retried, and then nothing is recorded with the recovery command", async () => {
+    // transient: the transaction, then its block, are not there for the first reads
+    const good = await digestFor(memStore(STORE()));
+    const store = memStore(STORE());
+    let slept = 0;
+    let calls = 0;
+    const { deps, d } = await mainDeps(store, [], { sleep: async () => { slept++; } });
+    const flaky: DeployDeps = {
+      ...deps,
+      getDeployTx: async (h) => {
+        calls++;
+        if (calls === 1) return undefined;
+        if (calls === 2) return { ...(await d.getDeployTx(h))!, blockTimestamp: undefined };
+        return d.getDeployTx(h);
+      },
+    };
+    const r = await runRubiconV13Deploy(flaky, opts({ deployDigest: good }));
+    assert.ok(slept >= 2);
+    const tx = await pc.getTransaction({ hash: r.deployed!.txHash });
+    assert.equal(store.peek()[RECORD_KEY].deployedAt, Number((await pc.getBlock({ blockNumber: tx.blockNumber })).timestamp), "the block's time");
+
+    // persistent: no block time ever
+    const store2 = memStore(STORE());
+    const good2 = await digestFor(memStore(STORE()));
+    const { deps: dd, d: d2 } = await mainDeps(store2, []);
+    const lines: string[] = [];
+    const never: DeployDeps = { ...dd, log: (l) => lines.push(l), getDeployTx: async (h) => ({ ...(await d2.getDeployTx(h))!, blockTimestamp: undefined }) };
+    await assert.rejects(runRubiconV13Deploy(never, opts({ deployDigest: good2 })), (e: Error) => {
+      assert.match(e.message, /block time .* could not be read, so deployedAt cannot be recorded/);
+      assert.match(e.message, /Nothing was recorded/);
+      assert.match(e.message, /Do NOT deploy again.*--verify-existing 0x[0-9a-fA-F]{40} --deploy-tx 0x[0-9a-f]{64} --source-commit a{40}/s);
+      return true;
+    });
+    assert.equal(store2.peek()[RECORD_KEY], undefined);
+    // the clock is not an input any more
+    assert.equal("now" in dd, false);
+    assert.doesNotMatch(readFileSync(path.join(repo, "scripts/bridge/lib/rubicon-v13.ts"), "utf8"), /Date\.now|deps\.now/);
+  });
+
+  it("the record carries the build (build-info id and solc version) and the commit the checks passed on", async () => {
+    const store = memStore(STORE());
+    const good = await digestFor(memStore(STORE()));
+    const { deps } = await mainDeps(store, []);
+    await runRubiconV13Deploy(deps, opts({ deployDigest: good }));
+    assert.deepEqual(store.peek()[RECORD_KEY].build, { buildInfoId: "solc-0_8_28-test", solcVersion: "0.8.28" });
+  });
+
+  it("on Rubicon an artifact that was not compiled from the sources on disk is refused, dry run included; off Rubicon it only warns", async () => {
+    const stale = { ...GOOD_SOURCE, build: { ok: false, problems: ["project/contracts/bridge/RomeBridgeWithdraw.sol: differs from what the artifact was compiled from (stale artifact: compile again)"], buildInfoId: "solc-old" } };
+    const { deps, counters } = await mainDeps(memStore(STORE()), [], { source: async () => stale });
+    await assert.rejects(runRubiconV13Deploy(deps, opts()), /artifact was not built from the sources and settings on disk.*RomeBridgeWithdraw\.sol: differs/s);
+    await assert.rejects(runRubiconV13Deploy(deps, opts({ dryRun: true })), /not built from the sources/);
+    await assert.rejects(runRubiconV13Deploy(deps, opts({ deployDigest: "0x0123456789abcdef" })), /not built from the sources/);
+    assert.equal(counters.deploys, 0);
+    const lines: string[] = [];
+    const local = await depsFromConnection(conn, memStore(STORE()), (l) => lines.push(l));
+    await runRubiconV13Deploy({ ...local, source: async () => stale }, { ...opts({ network: "hardhatMainnet", mainnetFlag: false, dryRun: true }), owner: A(1) });
+    assert.match(lines.join("\n"), /artifact NOT built from these sources/);
+  });
+
+  it("the real source() reads the working tree: the artifact the tests compiled matches, and --source-commit is checked against HEAD", async () => {
+    const d = await depsFromConnection(conn, memStore(STORE()), () => {});
+    const src = await d.source();
+    assert.deepEqual(src.build.problems, [], "the artifact matches the sources on disk");
+    assert.equal(src.build.ok, true);
+    assert.match(src.build.buildInfoId, /^solc-0_8_28-/);
+    if (src.commit !== "unknown") {
+      assert.deepEqual(await d.sourceAt(src.commit), { commit: src.commit, sameSources: true });
+      const bad = await d.sourceAt("0".repeat(40));
+      assert.equal(bad.sameSources, false);
+      assert.match(bad.problem!, /not a commit/);
+    }
+  });
+
+  it("--verify-existing records the --source-commit it was given, never its own HEAD, and refuses a commit whose sources differ", async () => {
+    const store = memStore(STORE());
+    const { deps, d } = await mainDeps(store, [], { sourceAt: async (c: string) => ({ commit: "c".repeat(40), sameSources: true }) });
+    const landed = await d.deploy(ctorFor(A(1)), false);
+    await runRubiconV13Deploy(deps, opts({ verifyExisting: { ...verifyOf(landed), sourceCommit: "b".repeat(40) } }));
+    assert.equal(store.peek()[RECORD_KEY].commit, "c".repeat(40), "the resolved --source-commit, not GOOD_SOURCE.commit (the checkout's HEAD)");
+    assert.notEqual(store.peek()[RECORD_KEY].commit, GOOD_SOURCE.commit);
+    // sources differ
+    const store2 = memStore(STORE());
+    const { deps: d2 } = await mainDeps(store2, [], { sourceAt: async (c: string) => ({ commit: c, sameSources: false, problem: `${c} has different contracts/` }) });
+    await assert.rejects(runRubiconV13Deploy(d2, opts({ verifyExisting: verifyOf(landed) })), /--source-commit .* cannot be recorded: .* has different contracts/);
+    assert.equal(store2.peek()[RECORD_KEY], undefined);
+  });
+
+  it("an --owner that is not v12's owner() is refused on Rubicon (the swap of owner and guardian, another Ledger account) unless it is on purpose", async () => {
+    // Ledger = A(1) (v12's owner), ops key = A(2). The operator pastes them the wrong way round.
+    const swapped = { owner: A(2), guardian: A(1) };
+    const lines: string[] = [];
+    const { deps, counters } = await mainDeps(memStore(STORE()), lines);
+    await assert.rejects(runRubiconV13Deploy(deps, opts({ ...swapped, dryRun: true })), /--guardian .* is v12's owner\(\).*swapped.*a dry run included/s);
+    await assert.rejects(runRubiconV13Deploy(deps, opts({ ...swapped, ownerDiffersFromV12: true })), /is v12's owner\(\).*swapped/s, "the opt-out does not cover the swap");
+    assert.equal(counters.deploys, 0);
+
+    // another account as owner: the dry run says a real deploy will be refused, the real deploy refuses
+    const other = { owner: A(3), guardian: A(2) };
+    const l2: string[] = [];
+    const m2 = await mainDeps(memStore(STORE()), l2);
+    const dry = await runRubiconV13Deploy(m2.deps, opts(other));
+    assert.match(l2.join("\n"), /WARNING: --owner .* is not v12's owner\(\) .*A real deploy will be refused.*--owner-differs-from-v12/);
+    await assert.rejects(runRubiconV13Deploy(m2.deps, opts({ ...other, deployDigest: dry.digest })), /is not v12's owner\(\).*--owner-differs-from-v12/s);
+    assert.equal(m2.counters.deploys, 0);
+    // on purpose
+    const ok = await runRubiconV13Deploy(m2.deps, opts({ ...other, deployDigest: dry.digest, ownerDiffersFromV12: true }));
+    assert.equal(ok.dryRun, false);
+    assert.equal(m2.counters.deploys, 1);
+
+    // the intended owner needs no flag (every other test in this block deploys that way)
+    const m3 = await mainDeps(memStore(STORE()), []);
+    const d3 = await runRubiconV13Deploy(m3.deps, opts());
+    assert.equal((await runRubiconV13Deploy(m3.deps, opts({ deployDigest: d3.digest }))).dryRun, false);
+  });
+
+  it("when v12's owner() cannot be read on Rubicon, a real deploy needs the opt-out too; a chain with no v12 record, and a testnet, are not checked", async () => {
+    const m = await mainDeps(memStore(STORE()), []);
+    const blind: DeployDeps = { ...m.deps, reader: (a) => ({ ...m.deps.reader(a), read: async (fn, args) => { if (fn === "owner" && a.toLowerCase() === v12.address.toLowerCase()) throw new Error("boom"); return m.deps.reader(a).read(fn, args); } }) };
+    const dry = await runRubiconV13Deploy(blind, opts());
+    await assert.rejects(runRubiconV13Deploy(blind, opts({ deployDigest: dry.digest })), /could not be read as an account.*--owner-differs-from-v12/s);
+    assert.equal((await runRubiconV13Deploy(blind, opts({ deployDigest: dry.digest, ownerDiffersFromV12: true }))).dryRun, false);
+    // no v12 record at all: nothing to compare with
+    const noV12 = { SPL_ERC20_USDC: STORE().SPL_ERC20_USDC };
+    const m2 = await mainDeps(memStore(noV12), []);
+    assert.equal((await runRubiconV13Deploy(m2.deps, opts({ owner: A(3) }))).dryRun, true);
+    // off Rubicon the local chain's v12 has another owner than wallets[1], and the deploy goes ahead
+    const local = await depsFromConnection(conn, memStore(STORE()), () => {});
+    assert.equal((await runRubiconV13Deploy(local, { ...opts({ network: "hardhatMainnet", mainnetFlag: false, dryRun: true }), owner: A(4) })).dryRun, true);
   });
 
   it("a record file that cannot be written prints the record and says to use --verify-existing, not to deploy again", async () => {
@@ -742,6 +1003,7 @@ describe("the real wiring cannot send on Rubicon unless this process was started
       viem: {
         getPublicClient: async () => ({
           getChainId: async () => 7531,
+          getTransactionCount: async () => 0,
           estimateGas: async () => 1n, getGasPrice: async () => 1n, getBalance: async () => 1n, getCode: async () => undefined,
           waitForTransactionReceipt: async () => { throw new Error("no chain"); },
         }),
@@ -762,12 +1024,14 @@ describe("the real wiring cannot send on Rubicon unless this process was started
     assert.deepEqual(f.sent, [], "no deployContract call reached the wallet");
   });
 
-  it("the guard passes 7531 for the script as the entry point with the flag, and not without it", async () => {
-    const script = path.join(repo, "scripts/bridge/deploy-rubicon-v13.ts");
+  it("no argument of the guard names another entry point: a fifth argument is ignored, and 7531 is refused for every caller in this process", async () => {
     const client = { getChainId: async () => 7531 };
-    const caller = { script: "scripts/bridge/deploy-rubicon-v13.ts" };
-    assert.equal(await assertRubiconV13DeploySend(client, "t", { ...caller, mainnetFlag: true }, undefined, script), 7531);
-    await assert.rejects(assertRubiconV13DeploySend(client, "t", { ...caller, mainnetFlag: false }, undefined, script), /--i-understand-mainnet/);
+    const script = path.join(repo, "scripts/bridge/deploy-rubicon-v13.ts");
+    const caller = { script: "scripts/bridge/deploy-rubicon-v13.ts", mainnetFlag: true, phase: "send" as const, digestMatches: true };
+    // the old override: a path that IS the script, as the fifth argument
+    await assert.rejects((assertRubiconV13DeploySend as any)(client, "t", caller, undefined, script), /must be the file this process was started as/);
+    await assert.rejects(assertRubiconV13DeploySend(client, "t", caller), /must be the file this process was started as/);
+    await assert.rejects(assertRubiconV13DeploySend(client, "t", { ...caller, phase: "inspect" }), /must be the file this process was started as/);
   });
 });
 
@@ -829,5 +1093,214 @@ describe("the script as a command (arguments are checked before any network exis
     // depsFromConnection and fileStore were imported at the top of this file without a run.
     assert.equal(typeof fileStore, "function");
     assert.equal(typeof depsFromConnection, "function");
+  });
+});
+
+describe("the deployments file store replaces the file atomically and serializes writers", () => {
+  const V12 = { RomeBridgeWithdraw: { address: "0xceea191761cdba2fc589996d7dd096e57db29c84", deployedAt: 1790219940 }, SPL_ERC20_USDC: { address: ADDR(5), mintId: USDC_MINT } };
+  const rec = { address: ADDR(0xabc), version: "13.0.0" };
+  const withTmp = (fn: (dir: string, file: string, raw: string) => void) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "store-atomic-"));
+    try {
+      const file = path.join(dir, "rubicon.json");
+      const raw = JSON.stringify(V12, null, 2) + "\n";
+      writeFileSync(file, raw, { mode: 0o640 });
+      fn(dir, file, raw);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const left = (dir: string) => fs.readdirSync(dir).sort();
+
+  it("a write that dies after partial output leaves the original file byte for byte, and no temp or lock file", () => {
+    withTmp((dir, file, raw) => {
+      // the disk fills after 10 bytes of the new text
+      const faulty = { ...fs, writeSync: ((fd: number, buf: Buffer, off: number) => { fs.writeSync(fd, buf, off, 10); throw Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" }); }) as unknown as typeof fs.writeSync };
+      const store = fileStore(file, faulty);
+      assert.throws(() => store.update!((cur) => withV13Record(cur, rec as any)), /ENOSPC/);
+      assert.equal(readFileSync(file, "utf8"), raw, "v12 is intact");
+      assert.deepEqual(left(dir), ["rubicon.json"]);
+      assert.throws(() => store.write({ ...V12, x: 1 }), /ENOSPC/);
+      assert.equal(readFileSync(file, "utf8"), raw);
+      assert.deepEqual(left(dir), ["rubicon.json"]);
+    });
+  });
+
+  it("a failure at the flush, or at the rename, also keeps the original and cleans up", () => {
+    for (const op of ["fsyncSync", "renameSync"] as const) {
+      withTmp((dir, file, raw) => {
+        const faulty = { ...fs, [op]: () => { throw new Error(`${op} failed`); } } as typeof fs;
+        assert.throws(() => fileStore(file, faulty).update!((cur) => withV13Record(cur, rec as any)), new RegExp(`${op} failed`));
+        assert.equal(readFileSync(file, "utf8"), raw, op);
+        assert.deepEqual(left(dir), ["rubicon.json"], op);
+      });
+    }
+  });
+
+  it("a good update adds the record, keeps v12 and the file mode, and leaves no temp or lock file", () => {
+    withTmp((dir, file) => {
+      fileStore(file).update!((cur) => withV13Record(cur, rec as any));
+      const back = JSON.parse(readFileSync(file, "utf8"));
+      assert.deepEqual(back.RomeBridgeWithdraw, V12.RomeBridgeWithdraw);
+      assert.equal(back[RECORD_KEY].address, rec.address);
+      assert.equal(fs.statSync(file).mode & 0o777, 0o640);
+      assert.deepEqual(left(dir), ["rubicon.json"]);
+      // a store on a file that does not exist yet creates it
+      const fresh = path.join(dir, "new", "x.json");
+      fileStore(fresh).write({ a: 1 });
+      assert.deepEqual(JSON.parse(readFileSync(fresh, "utf8")), { a: 1 });
+    });
+  });
+
+  it("a symlinked deployments file is replaced where it really lives, and the link stays a link", () => {
+    withTmp((dir, file) => {
+      const link = path.join(dir, "link.json");
+      fs.symlinkSync(file, link);
+      fileStore(link).update!((cur) => withV13Record(cur, rec as any));
+      assert.equal(fs.lstatSync(link).isSymbolicLink(), true);
+      assert.equal(JSON.parse(readFileSync(file, "utf8"))[RECORD_KEY].address, rec.address);
+    });
+  });
+
+  it("a second writer is refused while the first holds the lock, and the file is untouched; a lock of a dead process is taken over", () => {
+    withTmp((dir, file, raw) => {
+      writeFileSync(`${file}.lock`, String(process.pid));          // this process is alive
+      assert.throws(() => fileStore(file).update!((cur) => withV13Record(cur, rec as any)), /being written by another run.*remove the lock file/);
+      assert.equal(readFileSync(file, "utf8"), raw);
+      assert.equal(fs.existsSync(`${file}.lock`), true, "another writer's lock is not removed");
+      // a pid nobody has
+      const dead = spawnSync(process.execPath, ["-e", "0"]);
+      writeFileSync(`${file}.lock`, String(dead.pid));
+      fileStore(file).update!((cur) => withV13Record(cur, rec as any));
+      assert.equal(JSON.parse(readFileSync(file, "utf8"))[RECORD_KEY].address, rec.address);
+      assert.deepEqual(left(dir), ["rubicon.json"]);
+    });
+  });
+
+  it("two updates under the lock do not lose each other's change, and update re-reads inside the lock", () => {
+    withTmp((dir, file) => {
+      const a = fileStore(file);
+      const b = fileStore(file);
+      a.update!((cur) => ({ ...cur, A: 1 }));
+      b.update!((cur) => ({ ...cur, B: 2 }));
+      const back = JSON.parse(readFileSync(file, "utf8"));
+      assert.equal(back.A, 1);
+      assert.equal(back.B, 2);
+      assert.deepEqual(back.RomeBridgeWithdraw, V12.RomeBridgeWithdraw);
+    });
+  });
+
+  it("the deploy flow writes the record through update (the atomic path) when the store has it", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "store-flow-"));
+    try {
+      const conn = await hardhat.network.connect();
+      const wallet = (await conn.viem.getWalletClients())[0];
+      const wrapperC = await conn.viem.deployContract("MockSplErc20", [USDC_MINT32]);
+      const file = path.join(dir, "hardhatMainnet.json");
+      const base = { SPL_ERC20_USDC: { address: wrapperC.address, mintId: USDC_MINT }, RomeBridgeWithdraw: V12.RomeBridgeWithdraw };
+      writeFileSync(file, JSON.stringify(base, null, 2) + "\n");
+      const raw = readFileSync(file, "utf8");
+      // the write fails after partial output: the flow reports it, and v12 is still whole
+      const faulty = { ...fs, writeSync: ((fd: number, buf: Buffer, off: number) => { fs.writeSync(fd, buf, off, 5); throw new Error("EIO"); }) as unknown as typeof fs.writeSync };
+      const d = await depsFromConnection(conn, fileStore(file, faulty), () => {});
+      const wallets = await conn.viem.getWalletClients();
+      await assert.rejects(runRubiconV13Deploy({ ...d, sleep: async () => {} }, {
+        network: "hardhatMainnet", owner: wallets[1].account.address, guardian: wallets[2].account.address, dryRun: false, mainnetFlag: false,
+        deployDigest: undefined, verifyExisting: undefined, ownerDiffersFromV12: false,
+      }), /could not be written.*Do NOT deploy again.*--verify-existing/s);
+      assert.equal(readFileSync(file, "utf8"), raw, "the existing record file is intact");
+      assert.deepEqual(left(dir), ["hardhatMainnet.json"]);
+      assert.ok(wallet);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the artifact must come from the sources on disk (build-info provenance)", () => {
+  const SETTINGS = { optimizer: { enabled: true, runs: 200 }, viaIR: true, evmVersion: "cancun" };
+  const NAME = "project/contracts/A.sol";
+  const code = "6080aa";
+
+  /** A tiny project: a project source, an npm source, a build-info and its output. */
+  function fixture(over: { aSource?: string; npmSource?: string; npmVersion?: string; settings?: any; solc?: string; bytecode?: string } = {}) {
+    const root = mkdtempSync(path.join(tmpdir(), "prov-"));
+    const w = (rel: string, text: string) => { fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true }); writeFileSync(path.join(root, rel), text); };
+    const A = "contract A { uint x = 1; }";
+    const B = "library B {}";
+    w("contracts/A.sol", over.aSource ?? A);
+    w("node_modules/@oz/contracts/utils/B.sol", over.npmSource ?? B);
+    w("node_modules/@oz/contracts/package.json", JSON.stringify({ name: "@oz/contracts", version: over.npmVersion ?? "5.6.1" }));
+    const id = "solc-0_8_28-abc";
+    w(`artifacts/build-info/${id}.json`, JSON.stringify({ id, solcVersion: "0.8.28", input: { settings: { ...SETTINGS, outputSelection: {}, remappings: [] }, sources: { [NAME]: { content: A }, "npm/@oz/contracts@5.6.1/utils/B.sol": { content: B } } } }));
+    w(`artifacts/build-info/${id}.output.json`, JSON.stringify({ id, output: { contracts: { [NAME]: { A: { evm: { bytecode: { object: over.bytecode ?? code } } } } } } }));
+    return {
+      root,
+      input: { root, artifactsDir: path.join(root, "artifacts"), buildInfoId: id, inputSourceName: NAME, contractName: "A", artifactBytecode: "0x" + code, expectedSolcVersion: over.solc ?? "0.8.28", expectedSettings: over.settings ?? { ...SETTINGS, outputSelection: { "*": {} }, remappings: ["x"] } },
+      clean: () => rmSync(root, { recursive: true, force: true }),
+    };
+  }
+
+  it("accepts an artifact built from exactly these sources, settings and compiler output", () => {
+    const f = fixture();
+    try {
+      const r = checkBuildProvenance(f.input);
+      assert.deepEqual(r.problems, []);
+      assert.equal(r.ok, true);
+      assert.equal(r.buildInfoId, "solc-0_8_28-abc");
+      assert.equal(r.solcVersion, "0.8.28");
+    } finally { f.clean(); }
+  });
+
+  it("refuses a stale artifact: a project source that was compiled differently, then switched back (a changed constant the read-back never looks at)", () => {
+    const f = fixture();
+    try {
+      writeFileSync(path.join(f.root, "contracts/A.sol"), "contract A { uint x = 2; }");   // the tree no longer matches what was compiled
+      const r = checkBuildProvenance(f.input);
+      assert.equal(r.ok, false);
+      assert.match(r.problems.join("\n"), /project\/contracts\/A\.sol: differs from what the artifact was compiled from \(stale artifact/);
+    } finally { f.clean(); }
+  });
+
+  it("refuses a changed dependency source, another dependency version, a missing source, other settings, another solc and bytecode that is not the compiler's", () => {
+    const cases: Array<[string, Parameters<typeof fixture>[0], RegExp]> = [
+      ["npm source edited", { npmSource: "library B { /* x */ }" }, /npm\/@oz\/contracts@5\.6\.1\/utils\/B\.sol: differs/],
+      ["npm version moved", { npmVersion: "5.7.0" }, /built with @oz\/contracts@5\.6\.1, node_modules has @oz\/contracts@5\.7\.0/],
+      ["other optimizer runs", { settings: { ...SETTINGS, optimizer: { enabled: true, runs: 1 } } }, /settings\.optimizer/],
+      ["viaIR off in the profile", { settings: { ...SETTINGS, viaIR: false } }, /settings\.viaIR/],
+      ["other solc", { solc: "0.8.29" }, /built with solc 0\.8\.28, the build profile says 0\.8\.29/],
+      ["bytecode swapped", { bytecode: "6080bb" }, /creation bytecode is not the compiler output/],
+    ];
+    for (const [name, over, re] of cases) {
+      const f = fixture(over);
+      try {
+        const r = checkBuildProvenance(f.input);
+        assert.equal(r.ok, false, name);
+        assert.match(r.problems.join("\n"), re, name);
+      } finally { f.clean(); }
+    }
+    const f = fixture();
+    try {
+      fs.rmSync(path.join(f.root, "contracts/A.sol"));
+      assert.match(checkBuildProvenance(f.input).problems.join("\n"), /not on disk any more/);
+      fs.rmSync(path.join(f.root, "artifacts/build-info"), { recursive: true });
+      assert.match(checkBuildProvenance(f.input).problems.join("\n"), /cannot be read: compile again/);
+      assert.match(checkBuildProvenance({ ...f.input, buildInfoId: "../../etc/passwd" }).problems.join("\n"), /not a plain file name/);
+    } finally { f.clean(); }
+  });
+
+  it("the script compiles before it reads the artifact, on every run, and the compile has a watchdog", () => {
+    const src = readFileSync(path.join(repo, "scripts/bridge/deploy-rubicon-v13.ts"), "utf8");
+    const main = src.slice(src.search(/async function main\(/));
+    assert.ok(main.indexOf("parseArgs(") < main.indexOf("await compileProject()"), "after the arguments are read");
+    assert.ok(main.indexOf("await compileProject()") < main.indexOf("network.connect("), "before any network or artifact");
+    assert.ok(main.indexOf("await compileProject()") < main.indexOf("depsFromConnection("));
+    assert.match(src, /hardhat\.tasks\.getTask\("compile"\)\.run\(\{\}\)/);
+    assert.match(src, /COMPILE_WATCHDOG_MS = 10 \* 60 \* 1000/);
+    assert.match(src, /BUILD_PATHS = \["contracts\/", "hardhat\.config\.ts", "package-lock\.json"\]/);
+  });
+
+  it("compileProject runs the real compile task (up to date here, so it returns at once)", async () => {
+    await compileProject();
   });
 });
