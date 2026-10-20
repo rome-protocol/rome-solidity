@@ -26,11 +26,15 @@ hot key that then transferred ownership (#368). This adds the path. Source only:
   address, the commit, the build (build-info id and solc version), `codeHash` (keccak256 of `eth_getCode` after the
   read-back), `deployInputHash` (keccak256 of the deploy transaction input) and `deployedAt` (the deploy block's
   time, retried; never the local clock) under `RomeBridgeWithdrawV13` in `deployments/<network>.json` without
-  touching the v12 record. The file is replaced atomically (a temp file in the same directory, written in full and
-  flushed, then renamed over it); right before the rename the file is read again and the write is refused if
-  `RomeBridgeWithdrawV13` has appeared or if anything but that one key would change, so a failed or refused write
-  leaves v12 byte for byte as it was. There is no lock file: one operator runs this at a time. A run refuses before it
-  sends anything (a dry run included) if `RomeBridgeWithdrawV13` is already recorded, and every refusal before the
+  touching the v12 record. Step 3 reads the file once as raw text (the snapshot); the new file is the snapshot plus
+  that one entry, so v12's bytes are kept verbatim. The file is replaced atomically (a temp file in the same
+  directory, written in full and flushed, then renamed over it); before the temp file is created and again right
+  before the rename, the file must still be byte for byte the snapshot, or the write is refused, the file is left
+  as it is and the record is printed for a hand merge. Threat model: one operator runs this once, in a fresh clone
+  only they use, and the record reaches the team through a reviewed PR; a second writer in the instant between the
+  last check and the rename is out of scope, and there is no lock file by design. A run refuses before it sends
+  anything (a dry run included) if the file is not in the canonical 2-space JSON layout or if `RomeBridgeWithdrawV13`
+  is present with any value, and every refusal before the
   send says it is about THIS run only and that, if an earlier run may have sent a deploy, the operator checks the
   deploy key's transactions (`cast nonce`, the explorer) and uses `--verify-existing`, never a second deploy. The recovery command printed
   after a landed deploy carries `--owner-differs-from-v12` when the run used it. Then it PRINTS, never sends, the Ledger's two calls in order:
