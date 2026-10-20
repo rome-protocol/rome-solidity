@@ -1,6 +1,7 @@
 import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import hardhat from "hardhat";
+import { GUARDIAN } from "./helpers/v13.js";
 
 /**
  * RomeBridgeWithdraw — Wormhole transfer_native egress (v11,
@@ -30,8 +31,6 @@ const CCTP = {
   tokenMessengerConfig: PK(5),
   tokenMinter: PK(6),
   localTokenUsdc: PK(7),
-  domains: [0, 15],
-  remoteTokenMessengers: [PK(8), PK(9)],
   senderAuthorityPda: PK(10),
   eventAuthority: PK(11),
   messageTransmitterEventAuthority: PK(12),
@@ -39,9 +38,8 @@ const CCTP = {
 const WH = {
   tokenBridgeProgram: PK(20), coreProgram: PK(21), splTokenProgram: PK(3),
   systemProgram: ZERO, clockSysvar: PK(22), rentSysvar: PK(23),
-  config: PK(24), custody: PK(25), authoritySigner: PK(26), custodySigner: PK(27),
+  config: PK(24), authoritySigner: PK(26), custodySigner: PK(27),
   bridgeConfig: PK(28), feeCollector: PK(29), emitter: PK(30), sequence: PK(31),
-  wrappedMeta: PK(32), targetChain: 10002,
 };
 const FORWARDER = "0x0000000000000000000000000000000000000000";
 
@@ -67,7 +65,7 @@ describe("RomeBridgeWithdraw — Wormhole transfer_native egress", function () {
       assetWrappers: [wsol.address, msol.address],
     };
     bridge = await viem.deployContract("RomeBridgeWithdraw", [
-      FORWARDER, usdc.address, weth.address, CCTP, WH, WHG,
+      FORWARDER, usdc.address, CCTP, WH, WHG, GUARDIAN,
     ]);
   });
 

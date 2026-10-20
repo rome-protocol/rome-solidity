@@ -27,42 +27,13 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import hardhat from "hardhat";
+import {
+  ADDR, CCTP, ZERO32, FORWARDER, GUARDIAN, PK, WH, enableDomain, installMock,
+} from "./helpers/v13.js";
 
-// Must track contracts/interface.sol's `..._address` constants exactly.
-const HELPER_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000009" as const;
-const CPI_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000008" as const;
-const SYSTEM_PROGRAM_ADDRESS = "0xff00000000000000000000000000000000000007" as const;
-
-const ZERO = "0x" + "00".repeat(32);
-const PK = (n: number) => ("0x" + n.toString(16).padStart(2, "0").repeat(32)) as `0x${string}`;
+const ZERO = ZERO32;
 const RECIPIENT = PK(0x99);
-const ADDR = (n: number) => ("0x" + n.toString(16).padStart(40, "0")) as `0x${string}`;
-const ETH_RECIPIENT_A = ADDR(0xaaa);
 const ETH_RECIPIENT_B = ADDR(0xbbb);
-const FORWARDER = "0x0000000000000000000000000000000000000000" as const;
-
-const CCTP = {
-  tokenMessengerProgram: PK(1),
-  messageTransmitterProgram: PK(2),
-  splTokenProgram: PK(3),
-  systemProgram: ZERO,
-  messageTransmitterConfig: PK(4),
-  tokenMessengerConfig: PK(5),
-  tokenMinter: PK(6),
-  localTokenUsdc: PK(7),
-  domains: [0],
-  remoteTokenMessengers: [PK(8)],
-  senderAuthorityPda: PK(10),
-  eventAuthority: PK(11),
-  messageTransmitterEventAuthority: PK(12),
-};
-const WH = {
-  tokenBridgeProgram: PK(20), coreProgram: PK(21), splTokenProgram: PK(3),
-  systemProgram: ZERO, clockSysvar: PK(22), rentSysvar: PK(23),
-  config: PK(24), custody: PK(25), authoritySigner: PK(26), custodySigner: PK(27),
-  bridgeConfig: PK(28), feeCollector: PK(29), emitter: PK(30), sequence: PK(31),
-  wrappedMeta: PK(32), targetChain: 10002,
-};
 
 describe("RomeBridgeWithdraw — direct-call migration", () => {
   describe("structural — source is ground truth", () => {
@@ -87,6 +58,14 @@ describe("RomeBridgeWithdraw — direct-call migration", () => {
       assert.ok(!/function approveWormholeBurn\(/.test(src), "approveWormholeBurn must be deleted");
     });
 
+    it("burnETH is gone from the source and the compiled ABI (v13)", async function () {
+      assert.ok(!/function burnETH\(/.test(src), "burnETH must be deleted");
+      const hre: any = hardhat;
+      const artifact = await hre.artifacts.readArtifact("RomeBridgeWithdraw");
+      const names = artifact.abi.filter((e: any) => e.type === "function").map((e: any) => e.name);
+      assert.ok(!names.includes("burnETH"), "burnETH must not be in the ABI");
+    });
+
     it("approveBurnETH and approveWormholeBurn are absent from the compiled ABI", async function () {
       const hre: any = hardhat;
       const artifact = await hre.artifacts.readArtifact("RomeBridgeWithdraw");
@@ -103,12 +82,6 @@ describe("RomeBridgeWithdraw — direct-call migration", () => {
       assert.ok(!body.includes(".delegatecall("));
     });
 
-    it("burnETH's own CPI is a direct CALL, never a delegatecall", () => {
-      const body = bodyOf("function burnETH(");
-      assert.ok(body.includes("address(CpiProgram).call("));
-      assert.ok(!body.includes(".delegatecall("));
-    });
-
     it("burnToWormhole's own CPI is a direct CALL, never a delegatecall", () => {
       const body = bodyOf("function burnToWormhole(");
       assert.ok(body.includes("address(CpiProgram).call("));
@@ -121,7 +94,7 @@ describe("RomeBridgeWithdraw — direct-call migration", () => {
       assert.ok(!body.includes(".delegatecall("));
     });
 
-    // burnETH / burnToWormhole / transferNativeToWormhole all route their pull
+    // burnToWormhole / transferNativeToWormhole all route their pull
     // and delegate-approve legs through these two private helpers — checked
     // once here rather than per call-site, since the caller-body checks above
     // don't see inside them.
@@ -186,15 +159,7 @@ describe("RomeBridgeWithdraw — direct-call migration", () => {
       conn = await hardhat.network.connect();
       viem = conn.viem;
 
-      const mockProto = await viem.deployContract("BridgePrecompileMock");
-      const client = await viem.getPublicClient();
-      const code = await client.getCode({ address: mockProto.address });
-      assert.ok(code && code !== "0x", "mock must have deployed code to install");
-      for (const addr of [HELPER_PROGRAM_ADDRESS, CPI_PROGRAM_ADDRESS, SYSTEM_PROGRAM_ADDRESS]) {
-        await conn.provider.request({ method: "hardhat_setCode", params: [addr, code] });
-      }
-      helper = await viem.getContractAt("BridgePrecompileMock", HELPER_PROGRAM_ADDRESS);
-      cpi = await viem.getContractAt("BridgePrecompileMock", CPI_PROGRAM_ADDRESS);
+      ({ helper, cpi } = await installMock(conn));
 
       const wallets = await viem.getWalletClients();
       userWallet = wallets[1]; // distinct from the deployer/admin (wallets[0])
@@ -216,8 +181,9 @@ describe("RomeBridgeWithdraw — direct-call migration", () => {
         assetWrappers: [weth.address],
       };
       bridge = await viem.deployContract("RomeBridgeWithdraw", [
-        FORWARDER, usdc.address, weth.address, CCTP, WH, whg,
+        FORWARDER, usdc.address, CCTP, WH, whg, GUARDIAN,
       ]);
+      await enableDomain(bridge, cpi, 0); // the burnUSDC tests below burn to domain 0
     });
 
     it("bridgeOutToSolana succeeds when the bridge is authorized as delegate of the explicit from_ata", async function () {
@@ -293,40 +259,6 @@ describe("RomeBridgeWithdraw — direct-call migration", () => {
         bridge.write.ensureRecipientAta([ZERO, PK(41)], { account: userWallet.account }),
         /ZeroRecipient/
       );
-    });
-
-    it("burnETH pulls the user's wETH into the bridge's own ATA, re-grants Wormhole's delegate there, and signs invoke_signed as the bridge", async function () {
-      const amount = 500n;
-      const user = userWallet.account.address;
-      await weth.write.setBalance([user, amount]);
-      const userAta = await helper.read.ata([user, PK(41)]);
-      const bridgeAta = await helper.read.ata([bridge.address, PK(41)]);
-      await helper.write.setAuthorized([userAta, bridge.address, true]);
-
-      await bridge.write.burnETH([amount, ETH_RECIPIENT_A], { account: userWallet.account });
-
-      // pull: userAta -> bridgeAta, signed by the bridge
-      assert.equal(await helper.read.transferCount(), 1n);
-      assert.equal((await helper.read.lastTransferCaller()).toLowerCase(), bridge.address.toLowerCase());
-      assert.equal(await helper.read.lastFromAta(), userAta);
-      assert.equal(await helper.read.lastToAta(), bridgeAta);
-      assert.equal(await helper.read.lastTransferTokens(), amount);
-
-      // Wormhole authority_signer re-granted on the bridge's OWN ata
-      assert.equal(await helper.read.approveCount(), 1n);
-      assert.equal((await helper.read.lastApproveCaller()).toLowerCase(), bridge.address.toLowerCase());
-      assert.equal(await helper.read.lastApproveAta(), bridgeAta);
-
-      // invoke_signed signed by the bridge, naming the bridge's PDA/ATA
-      assert.equal(await cpi.read.invokeSignedCount(), 1n);
-      assert.equal((await cpi.read.lastInvokeSignedCaller()).toLowerCase(), bridge.address.toLowerCase());
-      const bridgePda = await helper.read.pda([bridge.address]);
-      const payer = await cpi.read.lastAccount([0n]); // TransferWrappedAccounts.payer
-      assert.equal(payer[0], bridgePda);
-      const from = await cpi.read.lastAccount([2n]); // .from
-      assert.equal(from[0], bridgeAta);
-      const fromOwner = await cpi.read.lastAccount([3n]); // .from_owner
-      assert.equal(fromOwner[0], bridgePda);
     });
 
     it("burnUSDC pulls the user's wUSDC into the bridge's own ATA and signs the CCTP CPI as the bridge — no Wormhole delegate step", async function () {
@@ -426,29 +358,6 @@ describe("RomeBridgeWithdraw — direct-call migration", () => {
 
       await bridge.write.transferNativeToWormhole([weth.address, amount, RECIPIENT, 10002], { account: userWallet.account });
       assert.equal(await helper.read.transferCount(), 1n);
-    });
-
-    // REVIEW — per-tx message PDA must stay unique across users
-    it("burnETH: two different users' FIRST burns get different Wormhole message accounts", async function () {
-      const wallets = await viem.getWalletClients();
-      const userA = wallets[1];
-      const userB = wallets[2];
-      const amount = 10n;
-
-      await weth.write.setBalance([userA.account.address, amount]);
-      await weth.write.setBalance([userB.account.address, amount]);
-      const userAtaA = await helper.read.ata([userA.account.address, PK(41)]);
-      const userAtaB = await helper.read.ata([userB.account.address, PK(41)]);
-      await helper.write.setAuthorized([userAtaA, bridge.address, true]);
-      await helper.write.setAuthorized([userAtaB, bridge.address, true]);
-
-      await bridge.write.burnETH([amount, ETH_RECIPIENT_A], { account: userA.account });
-      const messageA = (await cpi.read.lastAccount([8n]))[0]; // TransferWrappedAccounts.message
-
-      await bridge.write.burnETH([amount, ETH_RECIPIENT_A], { account: userB.account });
-      const messageB = (await cpi.read.lastAccount([8n]))[0];
-
-      assert.notEqual(messageA, messageB, "messageAccount collided across users");
     });
 
     it("burnUSDC: two different users' FIRST burns get different CCTP event-data accounts", async function () {
