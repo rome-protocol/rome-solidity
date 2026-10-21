@@ -177,5 +177,20 @@
         "maxStaleness": 3600
       }
     ]
+  },
+  "RomeBridgeWithdrawV13": {
+    "address": "0xb444197b16972a926638a96bef73a42937b9ce87",
+    "version": "13.0.0",
+    "owner": "0x3D60F9B3E11CBe57516351F18FD9D6c3Fd4B8F96",
+    "guardian": "0xFaA200Ad61dA1801eBaEe08FB1294ad28E3C0676",
+    "deployTx": "0xd49ac7cb26bab6a3cbdbc42f2c06832dc9f977a542d73fbfb4db9d9e68f6cebf",
+    "deployedAt": 1792585461,
+    "commit": "37892af2dc9e242b038d0a61286739722563f1db",
+    "build": {
+      "buildInfoId": "solc-0_8_28-7bb2e63410e6e9c3bbe1c19f4f27b56ac26cecb8",
+      "solcVersion": "0.8.28"
+    },
+    "codeHash": "0x2e2978fd187b648bb9afc523cf5b45daba9015cc14017c977518363a7fca4788",
+    "deployInputHash": "0xa62bb70cb28c9e4cbd4f1b7fd684a8d0437532f92df66a16ee8f13825a1c7d69"
   }
 }
