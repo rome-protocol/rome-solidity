@@ -22,6 +22,8 @@ import { ADDR } from "./helpers/v13.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, "../..");
+/** deployments/rubicon.json as it was before the v13 record was committed (git show 37892af:deployments/rubicon.json), frozen so these tests do not move when the live file does. */
+const PRE_V13_RUBICON = path.join(here, "fixtures/rubicon-pre-v13.json");
 /** Where a test writes a throwaway script that must resolve the repo's node_modules: ignored by git, outside every scanned directory. */
 const PROBE_DIR = path.join(repo, ".test-scratch");
 
@@ -183,12 +185,23 @@ describe("the deployments record", () => {
     assert.throws(() => usdcFromDeployments({ SPL_ERC20_USDC: { address: ADDR(1) } }, "rubicon"), /no SPL_ERC20_USDC/);
     assert.throws(() => usdcFromDeployments({ SPL_ERC20_USDC: { address: ADDR(1), mintId: "zzz" } }, "rubicon"));
   });
-  it("the real rubicon.json today has the v12 record and no V13 key; the file store round-trips it byte for byte", () => {
-    const file = path.join(repo, "deployments/rubicon.json");
+  it("the committed rubicon.json carries the real V13 record, verbatim from the deploy", () => {
+    const d = JSON.parse(readFileSync(path.join(repo, "deployments/rubicon.json"), "utf8"));
+    const r = d[RECORD_KEY];
+    assert.equal(r.address, "0xb444197b16972a926638a96bef73a42937b9ce87");
+    assert.equal(r.version, "13.0.0");
+    assert.equal(r.owner, "0x3D60F9B3E11CBe57516351F18FD9D6c3Fd4B8F96");
+    assert.equal(r.guardian, "0xFaA200Ad61dA1801eBaEe08FB1294ad28E3C0676");
+    assert.equal(r.codeHash, "0x2e2978fd187b648bb9afc523cf5b45daba9015cc14017c977518363a7fca4788");
+    assert.equal(r.deployInputHash, "0xa62bb70cb28c9e4cbd4f1b7fd684a8d0437532f92df66a16ee8f13825a1c7d69");
+    assert.ok(d.RomeBridgeWithdraw?.address, "the v12 record is still there");
+  });
+  it("the pre-deploy rubicon.json has the v12 record and no V13 key; the file store round-trips it byte for byte", () => {
+    const file = PRE_V13_RUBICON;
     const raw = readFileSync(file, "utf8");
     const d = JSON.parse(raw);
     assert.ok(d.RomeBridgeWithdraw?.address);
-    assert.equal(d[RECORD_KEY], undefined, "the V13 record is written by the real deploy, not committed here");
+    assert.equal(d[RECORD_KEY], undefined, "the pre-deploy fixture has no V13 record");
     assert.equal(d.SPL_ERC20_USDC.mintId, USDC_MINT);
     const dir = mkdtempSync(path.join(tmpdir(), "rubicon-store-"));
     try {
@@ -1381,10 +1394,10 @@ describe("the deployments file store replaces the file atomically and refuses an
 
   const CONFLICT = /deployments\/rubicon\.json changed since this run read it, so the record was NOT written\. The record is printed below\. Read the file and decide by hand; if it now holds a RomeBridgeWithdrawV13 entry, that may be a second live contract: stop and tell the team\./;
 
-  it("(a) the new text is the snapshot plus one entry, v12 verbatim, on a copy of the real rubicon.json", () => {
+  it("(a) the new text is the snapshot plus one entry, v12 verbatim, on a copy of the pre-deploy rubicon.json", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "rubicon-snap-"));
     try {
-      const real = readFileSync(path.join(repo, "deployments/rubicon.json"), "utf8");
+      const real = readFileSync(PRE_V13_RUBICON, "utf8");
       const file = path.join(dir, "rubicon.json");
       writeFileSync(file, real);
       const store = fileStore(file);
