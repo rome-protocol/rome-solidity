@@ -520,5 +520,14 @@
     "deployedAt": 1792312176,
     "deployTx": "0x08e5692fcc71a4e99f6d2b6092916eb694d9ed4a458a776fb536cb2074d05ad9",
     "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+  },
+  "SPL_ERC20_TROME": {
+    "address": "0x518cCB47CD145b9cf1f65Dd6adB6ba5F579274c5",
+    "mintId": "92FWXdumEHGLGxsev83VQBWwy87sav1q5uxv9jm2XBGe",
+    "name": "Rome (test)",
+    "symbol": "tROME",
+    "deployedAt": 1793694093,
+    "deployTx": "0xe43255b35e6b7f8f91f7a7118d62af5cbddcea4803c08f2ef047b550c89e7ed1",
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   }
 }

@@ -1,0 +1,51 @@
+{
+  "_comment": "Registry patch for rome-protocol/registry: append one tROME spl_wrapper row to each chain's tokens.json (Hadrian after wBONK, Martius at the end), plus assets/trome.json with the Rome logo. Created by ERC20SPLFactory (Hadrian 9.0.0, Martius 2.0.0), cached track.",
+  "patches": [
+    {
+      "chainId": 200010,
+      "file": "chains/200010-hadrian/tokens.json",
+      "append": [
+        {
+          "address": "0x518ccb47cd145b9cf1f65dd6adb6ba5f579274c5",
+          "mintId": "92FWXdumEHGLGxsev83VQBWwy87sav1q5uxv9jm2XBGe",
+          "symbol": "tROME",
+          "name": "Rome (test)",
+          "decimals": 9,
+          "kind": "spl_wrapper",
+          "track": "cached",
+          "assetRef": "trome",
+          "underlying": {
+            "chain": "solana-devnet",
+            "asset": "tROME"
+          },
+          "factory": "ERC20SPLFactory",
+          "deployedAt": "2026-11-03T08:21:33Z",
+          "deployTx": "0xe43255b35e6b7f8f91f7a7118d62af5cbddcea4803c08f2ef047b550c89e7ed1"
+        }
+      ]
+    },
+    {
+      "chainId": 121214,
+      "file": "chains/121214-martius/tokens.json",
+      "append": [
+        {
+          "address": "0x8b184b21779d6d8260f81336536d423234f0ed96",
+          "mintId": "92FWXdumEHGLGxsev83VQBWwy87sav1q5uxv9jm2XBGe",
+          "symbol": "tROME",
+          "name": "Rome (test)",
+          "decimals": 9,
+          "kind": "spl_wrapper",
+          "track": "cached",
+          "assetRef": "trome",
+          "underlying": {
+            "chain": "solana-devnet",
+            "asset": "tROME"
+          },
+          "factory": "ERC20SPLFactory",
+          "deployedAt": "2026-11-03T08:21:49Z",
+          "deployTx": "0xe38490844235179936e7b8f69ee71d4fa2586aa5607b0bde4f0336b3288158b8"
+        }
+      ]
+    }
+  ]
+}

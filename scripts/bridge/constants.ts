@@ -81,6 +81,11 @@ export const LST_MINTS_DEVNET = {
   JITOSOL_WORMHOLE: "8uz9RSxeKQxS1q3Cvs8xzNDTapUdJWRZhcHG2GegEtMS",
 } as const;
 
+// tROME: the devnet test copy of the ROME token (classic SPL Token, 9 decimals,
+// mint authority revoked). Exists on Solana devnet only; Metaplex metadata is
+// name "Rome (test)", symbol "tROME".
+export const TROME_MINT_DEVNET = "92FWXdumEHGLGxsev83VQBWwy87sav1q5uxv9jm2XBGe";
+
 // Default export — points at devnet for now since active deploys target
 // rome/rome. Switch to SPL_MINTS_MAINNET for mainnet.
 export const SPL_MINTS = SPL_MINTS_DEVNET;
