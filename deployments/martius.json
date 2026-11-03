@@ -295,5 +295,14 @@
     "symbol": "wBONK",
     "deployedAt": 1789430414,
     "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+  },
+  "SPL_ERC20_TROME": {
+    "address": "0x8B184b21779d6D8260f81336536d423234F0eD96",
+    "mintId": "92FWXdumEHGLGxsev83VQBWwy87sav1q5uxv9jm2XBGe",
+    "name": "Rome (test)",
+    "symbol": "tROME",
+    "deployedAt": 1793694109,
+    "deployTx": "0xe38490844235179936e7b8f69ee71d4fa2586aa5607b0bde4f0336b3288158b8",
+    "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   }
 }

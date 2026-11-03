@@ -18,7 +18,7 @@ import hardhat from "hardhat";
 import { assertTestnetSend } from "./lib/testnet-guard.js";
 import { resolveERC20SPLFactoryAddress } from "../lib/deployments.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
-import { SPL_MINTS_DEVNET, SPL_MINTS_MAINNET, COMPOUND_COLLATERAL_MINTS_DEVNET, LST_MINTS_DEVNET } from "./constants.js";
+import { SPL_MINTS_DEVNET, SPL_MINTS_MAINNET, COMPOUND_COLLATERAL_MINTS_DEVNET, LST_MINTS_DEVNET, TROME_MINT_DEVNET } from "./constants.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -73,6 +73,13 @@ const HADRIAN_RESTORE_SET: WrapperSpec[] = [
   { key: "SPL_ERC20_WBONK",    mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BONK_TEST,    name: "Rome Wrapped BONK",    symbol: "wBONK"    },
 ];
 
+// tROME wrapper set: the devnet test copy of the ROME token, so EVM users can trade
+// it too. Same name and symbol as the mint's Metaplex metadata. Select with
+// `WRAPPER_SET=trome` (hadrian, martius).
+const TROME_SET: WrapperSpec[] = [
+  { key: "SPL_ERC20_TROME", mintBase58: TROME_MINT_DEVNET, name: "Rome (test)", symbol: "tROME" },
+];
+
 // Which mint set a network gets follows the Solana cluster it settles on — the
 // ONE set in lib/wormhole-target-chain.ts (shared with deploy.ts's program-id
 // and Wormhole target-chain choice). Rome network tier ≠ Solana cluster: the
@@ -90,6 +97,16 @@ function resolveSet(networkName: string): WrapperSpec[] {
       );
     }
     return HADRIAN_RESTORE_SET;
+  }
+  if (wrapperSet === "trome") {
+    // The tROME mint exists only on Solana devnet.
+    const override = process.env.BRIDGED_SET?.toLowerCase();
+    if (override === "mainnet" || (override !== "devnet" && !isSolanaDevnetNetwork(networkName))) {
+      throw new Error(
+        `WRAPPER_SET=trome is devnet-substrate-only (network '${networkName}' resolves to mainnet mints)`,
+      );
+    }
+    return TROME_SET;
   }
   if (wrapperSet === "collateral") {
     // Collateral test mints exist only on Solana devnet — refuse a mainnet run.
@@ -130,7 +147,7 @@ async function main() {
 
   console.log(`[${networkName}] deployer: ${deployer.account.address}`);
   console.log(`[${networkName}] factory:  ${factoryAddress}`);
-  const setLabel = set === HADRIAN_RESTORE_SET ? "hadrian-restore (devnet)" : set === COLLATERAL_SET_DEVNET ? "collateral (devnet)" : set === DEVNET_SET ? "devnet" : "mainnet";
+  const setLabel = set === TROME_SET ? "trome (devnet)" : set === HADRIAN_RESTORE_SET ? "hadrian-restore (devnet)" : set === COLLATERAL_SET_DEVNET ? "collateral (devnet)" : set === DEVNET_SET ? "devnet" : "mainnet";
   console.log(`[${networkName}] mint set: ${setLabel} (${set.length} entries)\n`);
 
   const deploymentsPath = `deployments/${networkName}.json`;
