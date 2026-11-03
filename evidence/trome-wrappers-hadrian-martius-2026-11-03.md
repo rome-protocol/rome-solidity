@@ -16,8 +16,14 @@ Reads after the deploy (both chains identical): code 5575 bytes; `mint_id()` = `
 `name()` = "Rome (test)"; `symbol()` = "tROME"; `decimals()` = 9; `totalSupply()` = 1000000000000000000 (1e9 tokens at 9 decimals
 scaled to 18, matching the mint supply); `factory.token_by_mint(mint)` returns the wrapper; `wrapper_kind_by_mint(mint)` = 1 (cached).
 
-One-unit transfer: NOT run. The tROME balance sits on the Solana deployer wallet, and the signer's EVM identity on each chain
-(`0x1f49...48F6`) holds 0 tROME (`balanceOf` = 0 on both wrappers). Moving tROME into that identity's token account needs the
-Solana deployer's key, which was not available to this run. To prove the transfer: send some tROME from the Solana deployer to
-the signer's Rome token account on each chain, grant `HelperProgram.approve_spl(wrapper, 2^64-1, mint)`, then transfer 1 unit
-and read both balances before and after.
+One-unit transfer from the signer `0x1f4946Be340F06c46A50E65084790968aBcc48F6` to `0x...dEaD`, run the way rome-solidity #384
+did it: first the one-time `HelperProgram.approve_spl(wrapper, 2^64-1, mint)` grant (sent to `0xff00...0009`), then
+`transfer(0x...dEaD, 1)` (gas limit = estimate x 1.3, legacy tx at 2x gas price). The lead funded the signer with 10 tROME on
+each chain beforehand (`balanceOf` = 10000000000 on both wrappers). Balances read before and after:
+
+| Chain | approve_spl tx | transfer tx | signer before -> after | recipient before -> after |
+|---|---|---|---|---|
+| Hadrian 200010 | `0xaf240096e27ca25ed1ac6918e3fd09c5f01f7af61b3c355e98db280c7db8aa29` | `0x1a1f643f3ca43ca005d020439a9fde25e16c0d8f0e321333bc81a00de1946835` | 10000000000 -> 9999999999 | 0 -> 1 |
+| Martius 121214 | `0x5ed69327425d9834c6d824f54d06dd1167bf19f9b8ea88a289a7a08b23c4a6df` | `0xc410c4f7c442e8453a176fe9867e29ad3219937b8d3c0125930d23d52f95e830` | 10000000000 -> 9999999999 | 0 -> 1 |
+
+All four transactions have status success. Signer down by 1 and recipient up by 1 on both chains.
