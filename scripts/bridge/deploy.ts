@@ -65,8 +65,9 @@ export async function ensureErc20Users(): Promise<`0x${string}`> {
 }
 
 // Forward-only: wrappers are ALWAYS created via `bootstrap-bridged-wrappers.ts`
-// (which calls `ERC20SPLFactory.add_spl_token_no_metadata` and emits the
-// `TokenCreated` event the the Rome app backend indexer subscribes to). This
+// (which calls the named wrapper factory's `add_spl_token_with_metadata`, so the
+// wrapper is named by rule, and emits the `TokenCreated` event the the Rome app
+// backend indexer subscribes to). This
 // helper reads the resulting addresses out of `deployments/<network>.json`
 // and hard-fails if missing — there is intentionally no fallback to a
 // direct `new SPL_ERC20(...)` deploy because that path would create a

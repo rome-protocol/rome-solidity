@@ -2,6 +2,11 @@
  * Hadrian smoke for the production hook-aware wrapper path:
  * factory -> SPL_ERC20_Token2022Hooked -> generic CPI -> Token-2022 -> hook.
  *
+ * The wrapper is made by the chain's live named factory (E1, deployments/hadrian.json
+ * ERC20SPLNamedFactory with live: true) through its metadata path, so the fixture mint must
+ * carry a name of its own; the wrapper is named by rule ("<name> (Rome)", "ro" + symbol).
+ * Without a live E1 the script stops before sending anything.
+ *
  * Required environment (public fixture identifiers only):
  *   LEAF2_MINT, LEAF2_HOOK_PROGRAM, LEAF2_VALIDATION
  * Signing material is loaded from the established local test wallet file and
@@ -19,6 +24,7 @@ import {
     type Hex,
 } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { resolveLiveNamedFactory } from "../lib/wrapper-factory.js";
 
 const HADRIAN_RPC = "https://hadrian.testnet.romeprotocol.xyz/";
 const CPI = "0xff00000000000000000000000000000000000008" as const;
@@ -27,7 +33,7 @@ const ZERO = "0x0000000000000000000000000000000000000000" as const;
 const AMOUNT = 1_000n;
 
 const factoryAbi = [
-    { type: "function", name: "add_spl_token_no_metadata", stateMutability: "nonpayable", inputs: [{ type: "bytes32", name: "mint" }, { type: "string", name: "name" }, { type: "string", name: "symbol" }], outputs: [{ type: "address" }] },
+    { type: "function", name: "add_spl_token_with_metadata", stateMutability: "nonpayable", inputs: [{ type: "bytes32", name: "mint" }], outputs: [{ type: "address" }] },
     { type: "function", name: "token_by_mint", stateMutability: "view", inputs: [{ type: "bytes32", name: "mint" }], outputs: [{ type: "address" }] },
     { type: "function", name: "wrapper_kind_by_mint", stateMutability: "view", inputs: [{ type: "bytes32", name: "mint" }], outputs: [{ type: "uint8" }] },
 ] as const;
@@ -59,10 +65,6 @@ function publicKey(key: `0x${string}`): PublicKey {
     return new PublicKey(Buffer.from(key.slice(2), "hex"));
 }
 
-function artifact(path: string): { abi: readonly unknown[]; bytecode: Hex } {
-    return JSON.parse(readFileSync(join(process.cwd(), path), "utf8"));
-}
-
 async function gasPrice(): Promise<bigint> {
     const response = await fetch(HADRIAN_RPC, {
         method: "POST",
@@ -82,6 +84,8 @@ async function tokenAmount(connection: Connection, ata: PublicKey): Promise<bigi
 }
 
 async function main(): Promise<void> {
+    // The chain's live named factory, or a stop before anything is read or sent.
+    const factoryAddress = resolveLiveNamedFactory("hadrian");
     const mint = envPublicKey("LEAF2_MINT");
     const hook = envPublicKey("LEAF2_HOOK_PROGRAM");
     const validation = envPublicKey("LEAF2_VALIDATION");
@@ -98,36 +102,32 @@ async function main(): Promise<void> {
     const walletClient = createWalletClient({ account: issuer, transport: http(HADRIAN_RPC) });
     const options = { account: issuer, gasPrice: await gasPrice() };
 
-    const factoryArtifact = artifact(
-        "artifacts/contracts/erc20spl/erc20spl_factory.sol/ERC20SPLFactory.json",
-    );
-    const factoryDeployHash = await walletClient.deployContract({
-        ...options,
-        abi: factoryArtifact.abi,
-        bytecode: factoryArtifact.bytecode,
-        args: [CPI],
-    });
-    const factoryReceipt = await publicClient.waitForTransactionReceipt({ hash: factoryDeployHash });
-    assert.equal(factoryReceipt.status, "success");
-    assert.ok(factoryReceipt.contractAddress);
-
-    const registerHash = await walletClient.writeContract({
-        ...options,
-        address: factoryReceipt.contractAddress,
+    const existing = await publicClient.readContract({
+        address: factoryAddress,
         abi: factoryAbi,
-        functionName: "add_spl_token_no_metadata",
-        args: [bytes32(mint), "Leaf 2 Hook Fixture", "L2HOOK"],
+        functionName: "token_by_mint",
+        args: [bytes32(mint)],
     });
-    assert.equal((await publicClient.waitForTransactionReceipt({ hash: registerHash })).status, "success");
+    let registerHash: Hex | null = null; // null when the live factory already held the mint's wrapper
+    if (existing === ZERO) {
+        registerHash = await walletClient.writeContract({
+            ...options,
+            address: factoryAddress,
+            abi: factoryAbi,
+            functionName: "add_spl_token_with_metadata",
+            args: [bytes32(mint)],
+        });
+        assert.equal((await publicClient.waitForTransactionReceipt({ hash: registerHash })).status, "success");
+    }
     const wrapper = await publicClient.readContract({
-        address: factoryReceipt.contractAddress,
+        address: factoryAddress,
         abi: factoryAbi,
         functionName: "token_by_mint",
         args: [bytes32(mint)],
     });
     assert.notEqual(wrapper, ZERO);
     const kind = await publicClient.readContract({
-        address: factoryReceipt.contractAddress,
+        address: factoryAddress,
         abi: factoryAbi,
         functionName: "wrapper_kind_by_mint",
         args: [bytes32(mint)],
@@ -205,14 +205,14 @@ async function main(): Promise<void> {
 
     const evidence = {
         status: "pass",
-        scope: "factory-created SPL_ERC20_Token2022Hooked on Hadrian",
+        scope: "SPL_ERC20_Token2022Hooked made by the live named factory on Hadrian",
         mint: mint.toBase58(),
         hookProgram: hook.toBase58(),
         validation: validation.toBase58(),
-        factory: factoryReceipt.contractAddress,
+        factory: factoryAddress,
         wrapper,
         wrapperKind: Number(kind),
-        transactions: { factoryDeploy: factoryDeployHash, register: registerHash, hookedTransfer: transferHash },
+        transactions: { register: registerHash, hookedTransfer: transferHash },
         standardTransfer: { rejected: true, balancesUnchanged: true, detail: standardTransferFailure },
         balances: {
             sourceAta: sourceAta.toBase58(),

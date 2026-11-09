@@ -6,6 +6,7 @@
 // Hadrian addresses from rome-solidity/deployments/hadrian.json.
 
 import hardhat from "hardhat";
+import { assertDirectWrapperDeployAllowed } from "./lib/wrapper-factory.js";
 
 const HADRIAN_RPC = "https://hadrian.testnet.romeprotocol.xyz/";
 const SOLANA_RPC = "https://api.devnet.solana.com";
@@ -73,6 +74,8 @@ async function main() {
     if (networkName !== "hadrian") {
         throw new Error(`Expected --network hadrian, got ${networkName}`);
     }
+    // No wrapper is deployed directly on a chain where the named wrapper factory (E1) is live.
+    assertDirectWrapperDeployAllowed(networkName, "deploy a wrapper directly (bench-spl-erc20-rewrite)");
 
     const [deployer] = await viem.getWalletClients();
     if (!deployer?.account) throw new Error("No deployer wallet — set HADRIAN_PRIVATE_KEY");

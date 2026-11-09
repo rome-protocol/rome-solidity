@@ -1,83 +1,86 @@
 // scripts/bridge/bootstrap-bridged-wrappers.ts
 //
-// Registers the canonical bridged-asset SPL mints (USDC, WETH) on the
-// chain's ERC20SPLFactory. Run once after deploying the factory on a
-// fresh chain — the resulting `TokenCreated` events are what the
-// the Rome app backend's token watcher consumes to populate Portfolio /
-// Swap / TokenSelectModal. Wrappers deployed via direct
-// `new SPL_ERC20(...)` (e.g. legacy bridge redeploy scripts) bypass
-// this event and never appear in the UI; this script keeps the
-// canonical wrappers on the indexed path.
+// Registers the canonical bridged-asset SPL mints (USDC, WETH, ...) on the
+// chain's LIVE named wrapper factory (E1, ERC20SPLNamedFactory), through its
+// metadata path (`add_spl_token_with_metadata`). Run once after E1 is live on
+// a chain — the resulting `TokenCreated` events are what the the Rome app
+// backend's token watcher consumes to populate Portfolio / Swap /
+// TokenSelectModal. Wrappers deployed via direct `new SPL_ERC20(...)` bypass
+// this event and never appear in the UI.
 //
-// Idempotent: skips mints that already have a wrapper registered
+// Nobody chooses a name here. A wrapper's name and symbol are D1's rule applied
+// to the metadata the mint itself carries ("<name> (Rome)", "ro" + symbol), as
+// E1's `preview` reports them. A mint E1 refuses (on the grandfather list, no
+// name of its own, a metadata pointer it does not accept, a name or symbol its
+// checks refuse) is skipped with the reason and registered under no other name.
+// A chain with no live E1, and any factory the chain's record marks deprecated,
+// is refused before anything is sent (scripts/lib/wrapper-factory.ts).
+//
+// Idempotent: records mints that already have a wrapper
 // (`factory.token_by_mint(mint) != 0`).
 
 import fs from "node:fs";
 import { isSolanaDevnetNetwork } from "./lib/wormhole-target-chain.js";
 import hardhat from "hardhat";
 import { assertTestnetSend } from "./lib/testnet-guard.js";
-import { resolveERC20SPLFactoryAddress } from "../lib/deployments.js";
+import { resolveLiveNamedFactory } from "../lib/wrapper-factory.js";
+import { planEntry, previewOutcome } from "./lib/bootstrap-plan.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
 import { SPL_MINTS_DEVNET, SPL_MINTS_MAINNET, COMPOUND_COLLATERAL_MINTS_DEVNET, LST_MINTS_DEVNET, TROME_MINT_DEVNET } from "./constants.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 type WrapperSpec = {
-  key: string;          // deployments.json key (e.g. "SPL_ERC20_USDC")
+  slot: string;         // the deployments.json entry (e.g. "SPL_ERC20_USDC")
   mintBase58: string;   // SPL mint
-  name: string;         // ERC20 name
-  symbol: string;       // ERC20 symbol — must be unique within the factory
 };
 
-// Canonical bridged set. Symbols match the Rome app's gas-wrapper-split
-// convention: native gas = "USDC", wrapped = "wUSDC"; native chain =
-// nothing here (we don't wrap an EVM-native), wormhole-wrapped ETH =
-// "wETH". Tracked separately for devnet / mainnet because the mint
-// addresses differ.
+// Canonical bridged set. The name and symbol of each wrapper are E1's, from
+// the mint's own metadata; this table names no one. Tracked separately for
+// devnet / mainnet because the mint addresses differ.
 const DEVNET_SET: WrapperSpec[] = [
-  { key: "SPL_ERC20_USDC", mintBase58: SPL_MINTS_DEVNET.USDC_NATIVE,   name: "Rome USDC", symbol: "wUSDC" },
-  { key: "SPL_ERC20_WETH", mintBase58: SPL_MINTS_DEVNET.WETH_WORMHOLE, name: "Rome ETH",  symbol: "wETH"  },
-  { key: "SPL_ERC20_WSOL", mintBase58: SPL_MINTS_DEVNET.WSOL_NATIVE,   name: "Rome SOL",  symbol: "wSOL"  },
+  { slot: "SPL_ERC20_USDC", mintBase58: SPL_MINTS_DEVNET.USDC_NATIVE },
+  { slot: "SPL_ERC20_WETH", mintBase58: SPL_MINTS_DEVNET.WETH_WORMHOLE },
+  { slot: "SPL_ERC20_WSOL", mintBase58: SPL_MINTS_DEVNET.WSOL_NATIVE },
 ];
 
 const MAINNET_SET: WrapperSpec[] = [
-  { key: "SPL_ERC20_USDC", mintBase58: SPL_MINTS_MAINNET.USDC_NATIVE,   name: "Rome USDC", symbol: "wUSDC" },
-  { key: "SPL_ERC20_WETH", mintBase58: SPL_MINTS_MAINNET.WETH_WORMHOLE, name: "Rome ETH",  symbol: "wETH"  },
-  { key: "SPL_ERC20_WSOL", mintBase58: SPL_MINTS_MAINNET.WSOL_NATIVE,   name: "Rome SOL",  symbol: "wSOL"  },
+  { slot: "SPL_ERC20_USDC", mintBase58: SPL_MINTS_MAINNET.USDC_NATIVE },
+  { slot: "SPL_ERC20_WETH", mintBase58: SPL_MINTS_MAINNET.WETH_WORMHOLE },
+  { slot: "SPL_ERC20_WSOL", mintBase58: SPL_MINTS_MAINNET.WSOL_NATIVE },
 ];
 
 // Compound-collateral wrapper set (devnet-substrate chains only). Mirrors the
-// 6 exotic collaterals of Hadrian's canonical 9-asset Comet — same underlying
-// devnet mints, same on-chain names/symbols — so a Comet deployed on any
-// devnet-substrate chain can carry the full asset suite. Select with
+// 6 exotic collaterals of Hadrian's canonical 9-asset Comet — the same
+// underlying devnet mints — so a Comet deployed on any devnet-substrate chain
+// can carry the full asset suite. Select with
 // `WRAPPER_SET=collateral`; the default run keeps the canonical bridged set.
 const COLLATERAL_SET_DEVNET: WrapperSpec[] = [
-  { key: "SPL_ERC20_WBTC",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BTC_TEST,     name: "Rome Wrapped BTC",     symbol: "wBTC"     },
-  { key: "SPL_ERC20_WJITOSOL", mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.JITOSOL_TEST, name: "Rome Wrapped JitoSOL", symbol: "wJitoSOL" },
-  { key: "SPL_ERC20_WMSOL",    mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.MSOL_TEST,    name: "Rome Wrapped mSOL",    symbol: "wmSOL"    },
-  { key: "SPL_ERC20_WJUP",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.JUP_TEST,     name: "Rome Wrapped JUP",     symbol: "wJUP"     },
-  { key: "SPL_ERC20_WJTO",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.JTO_TEST,     name: "Rome Wrapped JTO",     symbol: "wJTO"     },
-  { key: "SPL_ERC20_WBONK",    mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BONK_TEST,    name: "Rome Wrapped BONK",    symbol: "wBONK"    },
+  { slot: "SPL_ERC20_WBTC",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BTC_TEST },
+  { slot: "SPL_ERC20_WJITOSOL", mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.JITOSOL_TEST },
+  { slot: "SPL_ERC20_WMSOL",    mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.MSOL_TEST },
+  { slot: "SPL_ERC20_WJUP",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.JUP_TEST },
+  { slot: "SPL_ERC20_WJTO",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.JTO_TEST },
+  { slot: "SPL_ERC20_WBONK",    mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BONK_TEST },
 ];
 
 // Hadrian restore set: the wrappers the 2026-09 rotation (factory 9.0.0) did not
-// recreate. Same mints, names and symbols as the retired wrappers, so Solana-side
-// balances and pools still match. The Marinade mint has no Metaplex metadata, and
-// the retired wrapper was named "msol" / "msol". Select with
-// `WRAPPER_SET=hadrian-restore`.
+// recreate, on the same mints. The Marinade test mint has no Metaplex metadata, so
+// E1 refuses it (no name of its own: it is not carried) and the run skips it.
+// Select with `WRAPPER_SET=hadrian-restore`.
 const HADRIAN_RESTORE_SET: WrapperSpec[] = [
-  { key: "SPL_ERC20_MSOL",     mintBase58: LST_MINTS_DEVNET.MSOL_MARINADE,                name: "msol",                 symbol: "msol"     },
-  { key: "SPL_ERC20_WJITOSOL", mintBase58: LST_MINTS_DEVNET.JITOSOL_WORMHOLE,             name: "Rome Wrapped JitoSOL", symbol: "wJitoSOL" },
-  { key: "SPL_ERC20_WBTC",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BTC_TEST,     name: "Rome Wrapped BTC",     symbol: "wBTC"     },
-  { key: "SPL_ERC20_WJUP",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.JUP_TEST,     name: "Rome Wrapped JUP",     symbol: "wJUP"     },
-  { key: "SPL_ERC20_WBONK",    mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BONK_TEST,    name: "Rome Wrapped BONK",    symbol: "wBONK"    },
+  { slot: "SPL_ERC20_MSOL",     mintBase58: LST_MINTS_DEVNET.MSOL_MARINADE },
+  { slot: "SPL_ERC20_WJITOSOL", mintBase58: LST_MINTS_DEVNET.JITOSOL_WORMHOLE },
+  { slot: "SPL_ERC20_WBTC",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BTC_TEST },
+  { slot: "SPL_ERC20_WJUP",     mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.JUP_TEST },
+  { slot: "SPL_ERC20_WBONK",    mintBase58: COMPOUND_COLLATERAL_MINTS_DEVNET.BONK_TEST },
 ];
 
 // tROME wrapper set: the devnet test copy of the ROME token, so EVM users can trade
-// it too. Same name and symbol as the mint's Metaplex metadata. Select with
+// it too, named from the mint's Metaplex metadata. Select with
 // `WRAPPER_SET=trome` (hadrian, martius).
 const TROME_SET: WrapperSpec[] = [
-  { key: "SPL_ERC20_TROME", mintBase58: TROME_MINT_DEVNET, name: "Rome (test)", symbol: "tROME" },
+  { slot: "SPL_ERC20_TROME", mintBase58: TROME_MINT_DEVNET },
 ];
 
 // Which mint set a network gets follows the Solana cluster it settles on — the
@@ -139,48 +142,58 @@ async function main() {
   const [deployer] = await viem.getWalletClients();
   if (!deployer?.account) throw new Error("No deployer wallet — set <NETWORK>_PRIVATE_KEY in the keystore");
 
-  const factoryAddress = resolveERC20SPLFactoryAddress(networkName);
-  const factory = await viem.getContractAt("ERC20SPLFactory", factoryAddress);
+  // The chain's live named factory (E1), or a refusal before anything is sent. An address handed in through
+  // ERC20_SPL_FACTORY_ADDRESS must be that same factory: a legacy one is refused.
+  const factoryAddress = resolveLiveNamedFactory(networkName, undefined, process.env.ERC20_SPL_FACTORY_ADDRESS);
+  const factory = await viem.getContractAt("ERC20SPLNamedFactory", factoryAddress);
   const publicClient = await viem.getPublicClient();
   await assertTestnetSend(publicClient, `${networkName} bootstrap-bridged-wrappers`);
   const set = resolveSet(networkName);
 
   console.log(`[${networkName}] deployer: ${deployer.account.address}`);
-  console.log(`[${networkName}] factory:  ${factoryAddress}`);
+  console.log(`[${networkName}] factory:  ${factoryAddress} (named, live)`);
   const setLabel = set === TROME_SET ? "trome (devnet)" : set === HADRIAN_RESTORE_SET ? "hadrian-restore (devnet)" : set === COLLATERAL_SET_DEVNET ? "collateral (devnet)" : set === DEVNET_SET ? "devnet" : "mainnet";
   console.log(`[${networkName}] mint set: ${setLabel} (${set.length} entries)\n`);
 
   const deploymentsPath = `deployments/${networkName}.json`;
   const deployments = loadJson(deploymentsPath);
 
-  for (const { key, mintBase58, name, symbol } of set) {
+  for (const { slot, mintBase58 } of set) {
     const mint = base58ToBytes32(mintBase58);
     const existing = (await factory.read.token_by_mint([mint])) as `0x${string}`;
+    // What E1 would name it, from the same function the add runs; a revert is the add's refusal.
+    const preview = await previewOutcome(() => factory.read.preview([mint]));
+    const action = planEntry(existing, preview);
 
-    if (existing.toLowerCase() !== ZERO_ADDRESS) {
-      console.log(`  ${symbol}: already registered → ${existing}`);
-      deployments[key] = { address: existing, mintId: mintBase58, name, symbol };
+    if (action.kind === "existing") {
+      console.log(`  ${mintBase58}: already registered → ${action.wrapper}`);
+      const w = await viem.getContractAt("SPL_ERC20_cached", action.wrapper);
+      deployments[slot] = { address: action.wrapper, mintId: mintBase58, name: await w.read.name(), symbol: await w.read.symbol() };
+      continue;
+    }
+    if (action.kind === "skip") {
+      console.log(`  ${mintBase58}: SKIPPED. ${action.reason}`);
       continue;
     }
 
-    console.log(`  ${symbol}: registering mint ${mintBase58} ...`);
-    const txHash = await factory.write.add_spl_token_no_metadata([mint, name, symbol]);
+    console.log(`  ${mintBase58}: registering as "${action.name}" · ${action.symbol} ...`);
+    const txHash = await factory.write.add_spl_token_with_metadata([mint]);
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     const wrapperAddress = (await factory.read.token_by_mint([mint])) as `0x${string}`;
     if (wrapperAddress.toLowerCase() === ZERO_ADDRESS) {
-      throw new Error(`add_spl_token_no_metadata for ${symbol} landed but token_by_mint is still zero`);
+      throw new Error(`add_spl_token_with_metadata for ${mintBase58} landed but token_by_mint is still zero`);
     }
     console.log(`           tx: ${txHash}`);
     console.log(`           wrapper: ${wrapperAddress}`);
 
-    deployments[key] = {
+    deployments[slot] = {
       address: wrapperAddress,
       mintId: mintBase58,
-      name,
-      symbol,
+      name: action.name,
+      symbol: action.symbol,
       deployedAt: Math.floor(Date.now() / 1000),
       deployTx: txHash,
-      via: "ERC20SPLFactory.add_spl_token_no_metadata",
+      via: "ERC20SPLNamedFactory.add_spl_token_with_metadata",
     };
     saveJson(deploymentsPath, deployments); // keep each wrapper's tx hash if a later one fails
   }

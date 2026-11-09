@@ -1,6 +1,7 @@
 import hardhat from "hardhat";
 import { isAddress, isHex } from "viem";
 import { readDeployments, writeDeployments } from "../lib/deployments.js";
+import { assertDirectWrapperDeployAllowed } from "../lib/wrapper-factory.js";
 
 // Deploy SPL_ERC20_cached against an existing mint.
 //
@@ -19,6 +20,8 @@ import { readDeployments, writeDeployments } from "../lib/deployments.js";
 
 async function main() {
     const networkName = process.env.HARDHAT_NETWORK ?? "hadrian";
+    // No wrapper is deployed directly on a chain where the named wrapper factory (E1) is live.
+    assertDirectWrapperDeployAllowed(networkName, "deploy a wrapper directly (deploy_cached)");
     const deployments = readDeployments(networkName);
 
     const usersAddress =

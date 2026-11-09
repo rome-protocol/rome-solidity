@@ -14,6 +14,7 @@
 // methods AND that approve auto-creates the owner ATA when missing.
 
 import hardhat from "hardhat";
+import { assertDirectWrapperDeployAllowed } from "./lib/wrapper-factory.js";
 
 const WUSDC_MINT_ID =
     "0x3b442cb3912157f13a933d0134282d032b5ffecd01a2dbf1b7790608df002ea7" as const;
@@ -45,6 +46,8 @@ async function main() {
     };
 
     const [deployer] = await viem.getWalletClients();
+    // No wrapper is deployed directly on a chain where the named wrapper factory (E1) is live.
+    assertDirectWrapperDeployAllowed(networkName, "deploy a wrapper directly (fb2d-smoke)");
     if (!deployer?.account) {
         throw new Error("No deployer wallet found.");
     }
