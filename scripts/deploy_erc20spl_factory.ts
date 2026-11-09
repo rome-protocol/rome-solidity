@@ -1,6 +1,7 @@
 import hardhat from "hardhat";
 import { getAddress, isAddress } from "viem";
 import { saveERC20SPLFactoryDeployment } from "./lib/deployments.js";
+import { assertDirectWrapperDeployAllowed } from "./lib/wrapper-factory.js";
 
 const DEFAULT_CPI_CONTRACT_ADDRESS = "0xFF00000000000000000000000000000000000008";
 
@@ -30,6 +31,8 @@ async function main() {
         networkName: string;
     };
 
+    // A second legacy factory is not deployed on a chain where the named wrapper factory is live.
+    assertDirectWrapperDeployAllowed(networkName, "deploy a legacy ERC20SPLFactory (deploy_erc20spl_factory)");
     const [deployer] = await viem.getWalletClients();
     if (!deployer?.account) {
         throw new Error("No deployer wallet found. Configure a funded account for this network.");

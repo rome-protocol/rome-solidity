@@ -3,6 +3,8 @@ import { Connection } from "@solana/web3.js";
 import { isAddress, parseAbi, decodeEventLog } from "viem";
 import fs from "node:fs";
 import { readDeployments } from "../lib/deployments.js";
+import { resolveLiveNamedFactory } from "../lib/wrapper-factory.js";
+import { registerOnNamedFactory } from "./lib/register-named.js";
 
 // Apples-to-apples Solana CU + heap benchmark for SPL_ERC20_cached vs the
 // CPI-based SPL_ERC20, both against the SAME deployer-authored test mint
@@ -16,9 +18,12 @@ import { readDeployments } from "../lib/deployments.js";
 //     (scripts/erc20spl/deploy_cached.ts, recorded in deployments.SPL_ERC20_cached)
 //
 // What this script does:
-//   1. Deploys a CPI-based SPL_ERC20 against the SAME test mint via
-//      factory.add_spl_token_no_metadata (idempotent — reuses existing if
-//      already registered)
+//   1. Registers the SAME test mint on the chain's live named factory so
+//      it deploys a wrapper (idempotent — reuses existing if already
+//      registered). Through the named factory's metadata path when the mint carries a name
+//      of its own; else through its authority path, since the bencher made
+//      the mint (the factory names the wrapper by rule either way: "<name> (Rome)").
+//      A chain with no live named factory stops the script before anything is sent.
 //   2. Runs the same set of operations on both wrappers:
 //        mint_to, transfer, approve, transferFrom, ensure_token_account
 //   3. For each op, captures: EVM gas, Solana sig(s), summed Solana CU,
@@ -138,10 +143,8 @@ async function main() {
     if (!cachedAddress || !isAddress(cachedAddress) || !cachedMint) {
         throw new Error("SPL_ERC20_cached not found in deployments. Run create_test_mint.ts + deploy_cached.ts first.");
     }
-    const factoryAddress = dep.ERC20SPLFactory?.address as `0x${string}` | undefined;
-    if (!factoryAddress || !isAddress(factoryAddress)) {
-        throw new Error("ERC20SPLFactory not deployed.");
-    }
+    // The chain's live named factory, or a stop before anything is sent.
+    const factoryAddress = resolveLiveNamedFactory(networkName, dep);
 
     const { viem } = await hardhat.network.connect();
     const publicClient = await viem.getPublicClient();
@@ -150,10 +153,8 @@ async function main() {
     const me = wallet.account.address;
 
     // 1. Ensure a CPI-based SPL_ERC20 exists for the SAME test mint
-    const factoryAbi = parseAbi([
-        "function token_by_mint(bytes32) external view returns (address)",
-        "function add_spl_token_no_metadata(bytes32 mint, string name, string symbol) external returns (address)",
-    ]);
+    // the factory's own ABI, errors included, so a refusal in `preview` decodes to its name
+    const factoryAbi = (await hardhat.artifacts.readArtifact("ERC20SPLNamedFactory")).abi;
     let cpiAddress = (await publicClient.readContract({
         address: factoryAddress,
         abi: factoryAbi,
@@ -161,12 +162,16 @@ async function main() {
         args: [cachedMint],
     })) as `0x${string}`;
     if (cpiAddress === "0x0000000000000000000000000000000000000000") {
-        console.log("Registering test mint with factory (deploys CPI-based SPL_ERC20)...");
-        const txHash = await wallet.writeContract({
-            address: factoryAddress,
+        console.log("Registering test mint with the named factory (deploys CPI-based SPL_ERC20)...");
+        // the mint has no name of its own when the bencher made it: the authority path, named by the same rule
+        const { hash: txHash } = await registerOnNamedFactory({
+            publicClient,
+            wallet,
+            factory: factoryAddress,
             abi: factoryAbi,
-            functionName: "add_spl_token_no_metadata",
-            args: [cachedMint, "CPI Test Token", "wTESTcpi"],
+            mint: cachedMint,
+            authorityName: "CPI Test Token",
+            authoritySymbol: "TESTcpi",
         });
         await publicClient.waitForTransactionReceipt({ hash: txHash });
         cpiAddress = (await publicClient.readContract({

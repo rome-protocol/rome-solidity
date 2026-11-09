@@ -76,17 +76,18 @@ Builder-facing Solidity libraries layered over the CPI precompile — the ergono
 | CU cost | cheaper (2–10%) | higher |
 | **Use it for** | **the default** — all standard ERC-20 flows, anything composing in the iterative VM (multi-hop DEX, bulkers), anything needing EVM-revert atomicity | operations the cached track can't do — pushing SPL out to an **arbitrary raw Solana wallet** (`bridgeOutToSolana` / `ensureRecipientAta`, which need the **permanently-CPI-only** `create_ata_for_key`) |
 
-The factory deploys the **cached** wrapper for every token (`new SPL_ERC20_cached(...)`); the cached header states it *"replaces the CPI-based SPL_ERC20 on devnet."* Reach for the CPI wrapper only when you specifically need its Solana-wallet exit path.
+The factories deploy the **cached** wrapper for every token (`new SPL_ERC20_cached(...)`); the cached header states it *"replaces the CPI-based SPL_ERC20 on devnet."* Reach for the CPI wrapper only when you specifically need its Solana-wallet exit path.
 
 | Contract | What | Key surface |
 |---|---|---|
 | `SPL_ERC20_cached` | Cached-track ERC-20 wrapper (default); no CPI Invoke, overlay-aware reads | `transfer`/`transferFrom`/`approve`/`mint_to` → `SplCached` |
 | `SPL_ERC20` | CPI-track ERC-20 wrapper; can push SPL to a raw Solana wallet | `bridgeOutToSolana(bytes32,uint256)`, `transfer`/`approve` via `HelperProgram` |
 | `ERC20Users` | Legacy registry: EVM `address` → its `external_auth` Solana PDA. Written only by `SimpleActivator`; the wrappers no longer register callers on transfer (nothing reads it, and the CALL + SSTORE cost every transfer) | `ensure_user` / `get_user` |
-| `ERC20SPLFactory` | Wrap existing SPL mints (with/without metadata) + mint brand-new SPL tokens; deploys the cached wrapper | `add_spl_token_with_metadata` / `add_spl_token_no_metadata` / `create_token_mint` |
+| `ERC20SPLNamedFactory` | The one factory for new wrappers. Wraps an existing SPL mint and **names it by rule**: "<origin name cut to 25 bytes> (Rome)" · "ro" + the origin symbol cut to 8 bytes, from the mint's own metadata, read fail-closed. No caller picks a name; no symbol table; a grandfather list fixed at deploy; `preview(mint)` shows the result or the refusal | `add_spl_token_with_metadata` / `add_spl_token_by_authority` (a mint the caller made) / `preview` / `create_token_mint` |
+| `ERC20SPLFactory` | Legacy (3.0.0, 9.0.0 and earlier): stays deployed and callable, chosen names and a first-come symbol table; no script here makes a wrapper through it | `add_spl_token_with_metadata` / `add_spl_token_no_metadata` / `create_token_mint` |
 | `cached_revert_demo` | Executable proof of the cached track's revert / iterative / one-track properties | (demos) |
 
-**Where used:** the AMM & lending forks trade against the **cached** wrappers — Uniswap-style AMM forks, `rome-aave-v3` (reserves = wUSDC/wETH/wSOL cached), `compound-on-rome-comet` (collateral/base, wired by address); UIs `aerarium`, `cardo`, `rome-aave-v3-demo` read/transfer them; `ERC20SPLFactory` is deployed/reused by the AMM forks and `cardo`. The non-cached `SPL_ERC20` has no public app consumer by name — it's superseded by the cached track on devnet and retained for its CPI-only exit path.
+**Where used:** the AMM & lending forks trade against the **cached** wrappers — Uniswap-style AMM forks, `rome-aave-v3` (reserves = wUSDC/wETH/wSOL cached), `compound-on-rome-comet` (collateral/base, wired by address); UIs `aerarium`, `cardo`, `rome-aave-v3-demo` read/transfer them; the wrapper factory (`ERC20SPLNamedFactory` on a chain where it is live, else the legacy `ERC20SPLFactory`) is used by the AMM forks and `cardo`. The non-cached `SPL_ERC20` has no public app consumer by name — it's superseded by the cached track on devnet and retained for its CPI-only exit path.
 
 ---
 
@@ -181,7 +182,7 @@ import {ISystemProgram, ICrossProgramInvocation, IHelperProgram, IWithdraw,
 
 // SPL ↔ ERC-20
 import {SPL_ERC20_cached} from "@rome-protocol/rome-solidity/contracts/erc20spl/erc20spl_cached.sol";
-import {ERC20SPLFactory}  from "@rome-protocol/rome-solidity/contracts/erc20spl/erc20spl_factory.sol";
+import {ERC20SPLNamedFactory} from "@rome-protocol/rome-solidity/contracts/erc20spl/erc20spl_named_factory.sol";
 
 // Account model
 import {RomeEVMAccount} from "@rome-protocol/rome-solidity/contracts/rome_evm_account.sol";

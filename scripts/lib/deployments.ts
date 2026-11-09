@@ -24,6 +24,20 @@ export type RouterDeployment = {
 export type ERC20SPLFactoryDeployment = {
     address?: string;
     cpiContractAddress?: string;
+    /// Set once the registry marks this legacy factory version deprecated (the named factory is the live one). A script
+    /// never makes a wrapper through a factory marked so.
+    deprecated?: boolean;
+};
+
+/// The named wrapper factory (ERC20SPLNamedFactory). `live` is false from the deploy until the registry's
+/// record marks it the chain's live ERC20SPLFactory; it is set by hand then, never by a deploy script.
+export type ERC20SPLNamedFactoryDeployment = {
+    address?: string;
+    cpiContractAddress?: string;
+    grandfatherHash?: string;
+    live?: boolean;
+    deployTx?: string;
+    deployedAt?: number;
 };
 
 export type WrapperDeployment = {
@@ -49,6 +63,7 @@ export type DeploymentsFile = {
     MeteoraDAMMv1Router?: RouterDeployment;
     MeteoraDAMMv1Pools?: PoolDeployment[];
     ERC20SPLFactory?: ERC20SPLFactoryDeployment;
+    ERC20SPLNamedFactory?: ERC20SPLNamedFactoryDeployment;
     SimpleActivator?: SimpleActivatorDeployment;
     // Canonical bridged-asset wrapper keys written by
     // scripts/bridge/bootstrap-bridged-wrappers.ts. Names match what other

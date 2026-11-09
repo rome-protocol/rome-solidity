@@ -1,6 +1,7 @@
 import hardhat from "hardhat";
 import { assertTestnetSend } from "./lib/testnet-guard.js";
 import { readDeployments } from "../lib/deployments.js";
+import { assertDirectWrapperDeployAllowed } from "../lib/wrapper-factory.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
 const CPI = "0xFF00000000000000000000000000000000000008" as const;
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
@@ -11,6 +12,8 @@ async function main() {
   };
   const [admin] = await viem.getWalletClients();
   if (!admin?.account) throw new Error("no deployer");
+  // No wrapper is deployed directly on a chain where the named wrapper factory is live.
+  assertDirectWrapperDeployAllowed(networkName, "deploy a wrapper directly (deploy-wsol-v9)");
   await assertTestnetSend(await (viem as any).getPublicClient(), `${networkName} deploy-wsol-v9`);
   const d = readDeployments(networkName) as Record<string, { address?: `0x${string}` }>;
   const usersAddr = d["ERC20Users"]?.address;
