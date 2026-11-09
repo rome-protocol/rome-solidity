@@ -1,30 +1,31 @@
 // scripts/bridge/bootstrap-bridged-wrappers.ts
 //
 // Registers the canonical bridged-asset SPL mints (USDC, WETH, ...) on the
-// chain's LIVE named wrapper factory (E1, ERC20SPLNamedFactory), through its
-// metadata path (`add_spl_token_with_metadata`). Run once after E1 is live on
+// chain's LIVE named wrapper factory (ERC20SPLNamedFactory), through its
+// metadata path (`add_spl_token_with_metadata`). Run once after the named factory is live on
 // a chain — the resulting `TokenCreated` events are what the the Rome app
 // backend's token watcher consumes to populate Portfolio / Swap /
 // TokenSelectModal. Wrappers deployed via direct `new SPL_ERC20(...)` bypass
 // this event and never appear in the UI.
 //
-// Nobody chooses a name here. A wrapper's name and symbol are D1's rule applied
+// Nobody chooses a name here. A wrapper's name and symbol are the naming rule applied
 // to the metadata the mint itself carries ("<name> (Rome)", "ro" + symbol), as
-// E1's `preview` reports them. A mint E1 refuses (on the grandfather list, no
+// the named factory's `preview` reports them. A mint the named factory refuses (on the grandfather list, no
 // name of its own, a metadata pointer it does not accept, a name or symbol its
 // checks refuse) is skipped with the reason and registered under no other name.
-// A chain with no live E1, and any factory the chain's record marks deprecated,
+// A chain with no live named factory, and any factory the chain's record marks deprecated,
 // is refused before anything is sent (scripts/lib/wrapper-factory.ts).
 //
 // Idempotent: records mints that already have a wrapper
-// (`factory.token_by_mint(mint) != 0`).
+// (`factory.token_by_mint(mint) != 0`). A deployments slot that already holds a different (legacy) wrapper is
+// never overwritten: the named factory's wrapper is recorded under `<slot>_NAMED`.
 
 import fs from "node:fs";
 import { isSolanaDevnetNetwork } from "./lib/wormhole-target-chain.js";
 import hardhat from "hardhat";
 import { assertTestnetSend } from "./lib/testnet-guard.js";
 import { resolveLiveNamedFactory } from "../lib/wrapper-factory.js";
-import { planEntry, previewOutcome } from "./lib/bootstrap-plan.js";
+import { planEntry, previewOutcome, recordKey } from "./lib/bootstrap-plan.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
 import { SPL_MINTS_DEVNET, SPL_MINTS_MAINNET, COMPOUND_COLLATERAL_MINTS_DEVNET, LST_MINTS_DEVNET, TROME_MINT_DEVNET } from "./constants.js";
 
@@ -35,7 +36,7 @@ type WrapperSpec = {
   mintBase58: string;   // SPL mint
 };
 
-// Canonical bridged set. The name and symbol of each wrapper are E1's, from
+// Canonical bridged set. The name and symbol of each wrapper are the named factory's, from
 // the mint's own metadata; this table names no one. Tracked separately for
 // devnet / mainnet because the mint addresses differ.
 const DEVNET_SET: WrapperSpec[] = [
@@ -66,7 +67,7 @@ const COLLATERAL_SET_DEVNET: WrapperSpec[] = [
 
 // Hadrian restore set: the wrappers the 2026-09 rotation (factory 9.0.0) did not
 // recreate, on the same mints. The Marinade test mint has no Metaplex metadata, so
-// E1 refuses it (no name of its own: it is not carried) and the run skips it.
+// the named factory refuses it (no name of its own: it is not carried) and the run skips it.
 // Select with `WRAPPER_SET=hadrian-restore`.
 const HADRIAN_RESTORE_SET: WrapperSpec[] = [
   { slot: "SPL_ERC20_MSOL",     mintBase58: LST_MINTS_DEVNET.MSOL_MARINADE },
@@ -142,7 +143,7 @@ async function main() {
   const [deployer] = await viem.getWalletClients();
   if (!deployer?.account) throw new Error("No deployer wallet — set <NETWORK>_PRIVATE_KEY in the keystore");
 
-  // The chain's live named factory (E1), or a refusal before anything is sent. An address handed in through
+  // The chain's live named factory, or a refusal before anything is sent. An address handed in through
   // ERC20_SPL_FACTORY_ADDRESS must be that same factory: a legacy one is refused.
   const factoryAddress = resolveLiveNamedFactory(networkName, undefined, process.env.ERC20_SPL_FACTORY_ADDRESS);
   const factory = await viem.getContractAt("ERC20SPLNamedFactory", factoryAddress);
@@ -161,14 +162,14 @@ async function main() {
   for (const { slot, mintBase58 } of set) {
     const mint = base58ToBytes32(mintBase58);
     const existing = (await factory.read.token_by_mint([mint])) as `0x${string}`;
-    // What E1 would name it, from the same function the add runs; a revert is the add's refusal.
+    // What the named factory would name it, from the same function the add runs; a revert is the add's refusal.
     const preview = await previewOutcome(() => factory.read.preview([mint]));
     const action = planEntry(existing, preview);
 
     if (action.kind === "existing") {
       console.log(`  ${mintBase58}: already registered → ${action.wrapper}`);
       const w = await viem.getContractAt("SPL_ERC20_cached", action.wrapper);
-      deployments[slot] = { address: action.wrapper, mintId: mintBase58, name: await w.read.name(), symbol: await w.read.symbol() };
+      deployments[recordKey(deployments, slot, action.wrapper)] = { address: action.wrapper, mintId: mintBase58, name: await w.read.name(), symbol: await w.read.symbol() };
       continue;
     }
     if (action.kind === "skip") {
@@ -186,7 +187,7 @@ async function main() {
     console.log(`           tx: ${txHash}`);
     console.log(`           wrapper: ${wrapperAddress}`);
 
-    deployments[slot] = {
+    deployments[recordKey(deployments, slot, wrapperAddress)] = {
       address: wrapperAddress,
       mintId: mintBase58,
       name: action.name,

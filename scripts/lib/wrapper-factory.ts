@@ -1,15 +1,15 @@
 // scripts/lib/wrapper-factory.ts
 //
-// Which wrapper factory a script may use. One factory makes new wrappers on a chain: the named factory (E1,
-// `ERC20SPLNamedFactory`), which names every wrapper by rule. The legacy `ERC20SPLFactory` versions stay
+// Which wrapper factory a script may use. One factory makes new wrappers on a chain: the named factory
+// (`ERC20SPLNamedFactory`), which names every wrapper by rule. The legacy `ERC20SPLFactory` versions stay
 // deployed and callable, but no script here makes a wrapper through one, and no script deploys a wrapper
 // directly (a wrapper deployed outside a factory emits no `TokenCreated`, so the indexers never see it) or a
-// second legacy factory, on a chain where E1 is live.
+// second legacy factory, on a chain where the named factory is live.
 //
 // "Live" is the chain's record in deployments/<network>.json: `ERC20SPLNamedFactory.live === true`. A deploy
-// writes the record with `live: false`; the lead sets it when the registry's record marks E1 the chain's live
-// `ERC20SPLFactory` and the legacy version deprecated, never a deploy script. A chain without a live E1 keeps
-// its legacy factory, not deprecated, and no wrapper-making script runs there until E1 is.
+// writes the record with `live: false`; it is set by hand, in the same change as the chain's registry record that marks the named factory the chain's live
+// `ERC20SPLFactory` and the legacy version deprecated, never a deploy script. A chain without a live named factory keeps
+// its legacy factory, not deprecated, and no wrapper-making script runs there until the named factory is.
 
 import { getAddress, isAddress } from "viem";
 import { readDeployments, type DeploymentsFile } from "./deployments.js";
@@ -37,9 +37,9 @@ export class NotLiveNamedFactoryError extends Error {
 }
 
 export class DirectWrapperDeployRetiredError extends Error {
-    constructor(networkName: string, what: string, e1: string) {
+    constructor(networkName: string, what: string, factory: string) {
         super(
-            `[${networkName}] refusing to ${what}: the named wrapper factory ${e1} is live on this chain, and new ` +
+            `[${networkName}] refusing to ${what}: the named wrapper factory ${factory} is live on this chain, and new ` +
             `wrappers are made only through it (add_spl_token_with_metadata, or add_spl_token_by_authority for ` +
             `a mint you made). Nothing was sent.`,
         );
@@ -47,7 +47,7 @@ export class DirectWrapperDeployRetiredError extends Error {
     }
 }
 
-/** The live E1 recorded for a chain, or null. */
+/** The live named factory recorded for a chain, or null. */
 export function liveNamedFactoryAddress(dep: DeploymentsFile): `0x${string}` | null {
     const rec = dep.ERC20SPLNamedFactory;
     if (!rec || rec.live !== true || !rec.address || !isAddress(rec.address)) return null;
@@ -75,7 +75,7 @@ export function resolveLiveNamedFactory(
 
 /**
  * Call first in a script that deploys a wrapper directly, or a legacy factory: it throws, before anything is
- * sent, on a chain where E1 is live.
+ * sent, on a chain where the named factory is live.
  */
 export function assertDirectWrapperDeployAllowed(
     networkName: string,

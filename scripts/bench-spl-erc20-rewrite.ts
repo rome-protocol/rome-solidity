@@ -74,7 +74,7 @@ async function main() {
     if (networkName !== "hadrian") {
         throw new Error(`Expected --network hadrian, got ${networkName}`);
     }
-    // No wrapper is deployed directly on a chain where the named wrapper factory (E1) is live.
+    // No wrapper is deployed directly on a chain where the named wrapper factory is live.
     assertDirectWrapperDeployAllowed(networkName, "deploy a wrapper directly (bench-spl-erc20-rewrite)");
 
     const [deployer] = await viem.getWalletClients();

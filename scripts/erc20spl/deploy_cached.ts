@@ -20,7 +20,7 @@ import { assertDirectWrapperDeployAllowed } from "../lib/wrapper-factory.js";
 
 async function main() {
     const networkName = process.env.HARDHAT_NETWORK ?? "hadrian";
-    // No wrapper is deployed directly on a chain where the named wrapper factory (E1) is live.
+    // No wrapper is deployed directly on a chain where the named wrapper factory is live.
     assertDirectWrapperDeployAllowed(networkName, "deploy a wrapper directly (deploy_cached)");
     const deployments = readDeployments(networkName);
 

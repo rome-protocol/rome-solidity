@@ -28,8 +28,8 @@ import {AccountReader} from "../cpi/AccountReader.sol";
 ///           - `preview` answers what the add would, from the same function, without writing.
 ///           - A grandfather list, fixed at deploy: mints that already have a Rome token on this chain under an
 ///             old name. Nobody can make another token of one of them here. Its hash is keccak256(abi.encode(list))
-///             and the list's entries are `(uint32 network, bytes32 mint, address wrapper)`, the preimage the asset
-///             book uses, so the two can be compared.
+///             and the list's entries are `(uint32 network, bytes32 mint, address wrapper)`, the preimage other tools that
+///             take the same list use, so the hashes can be compared.
 ///         No owner, no upgrade, no setter. The name is read once, at registration, and a wrapper has no rename path.
 ///         It never consults another factory: a name taken in a legacy factory blocks nothing here.
 contract ERC20SPLNamedFactory {
@@ -39,7 +39,7 @@ contract ERC20SPLNamedFactory {
         Token2022HookedCpi
     }
 
-    /// @dev One entry of the grandfather list. Same layout as the asset book's `Grandfathered` struct.
+    /// @dev One entry of the grandfather list. Same layout as the list's entries in other tools that take it.
     struct GrandfatherEntry {
         uint32 network;
         bytes32 mint;

@@ -1,4 +1,4 @@
-// Helpers for the script tests: a live E1 on the simulated chain with a store of Solana accounts, and a Metaplex
+// Helpers for the script tests: a live named factory on the simulated chain with a store of Solana accounts, and a Metaplex
 // account to put in it.
 import { concatHex, toHex, type Hex } from "viem";
 import {

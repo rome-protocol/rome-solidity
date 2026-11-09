@@ -31,7 +31,7 @@ async function main() {
         networkName: string;
     };
 
-    // A second legacy factory is not deployed on a chain where the named wrapper factory (E1) is live.
+    // A second legacy factory is not deployed on a chain where the named wrapper factory is live.
     assertDirectWrapperDeployAllowed(networkName, "deploy a legacy ERC20SPLFactory (deploy_erc20spl_factory)");
     const [deployer] = await viem.getWalletClients();
     if (!deployer?.account) {

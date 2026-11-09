@@ -12,7 +12,7 @@ async function main() {
   };
   const [admin] = await viem.getWalletClients();
   if (!admin?.account) throw new Error("no deployer");
-  // No wrapper is deployed directly on a chain where the named wrapper factory (E1) is live.
+  // No wrapper is deployed directly on a chain where the named wrapper factory is live.
   assertDirectWrapperDeployAllowed(networkName, "deploy a wrapper directly (deploy-wsol-v9)");
   await assertTestnetSend(await (viem as any).getPublicClient(), `${networkName} deploy-wsol-v9`);
   const d = readDeployments(networkName) as Record<string, { address?: `0x${string}` }>;

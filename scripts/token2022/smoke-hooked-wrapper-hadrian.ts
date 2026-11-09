@@ -2,10 +2,10 @@
  * Hadrian smoke for the production hook-aware wrapper path:
  * factory -> SPL_ERC20_Token2022Hooked -> generic CPI -> Token-2022 -> hook.
  *
- * The wrapper is made by the chain's live named factory (E1, deployments/hadrian.json
+ * The wrapper is made by the chain's live named factory (deployments/hadrian.json
  * ERC20SPLNamedFactory with live: true) through its metadata path, so the fixture mint must
  * carry a name of its own; the wrapper is named by rule ("<name> (Rome)", "ro" + symbol).
- * Without a live E1 the script stops before sending anything.
+ * Without a live named factory the script stops before sending anything.
  *
  * Required environment (public fixture identifiers only):
  *   LEAF2_MINT, LEAF2_HOOK_PROGRAM, LEAF2_VALIDATION

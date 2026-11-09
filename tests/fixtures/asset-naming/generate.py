@@ -4,8 +4,8 @@
 The vectors pin one rule: how a mint's name and symbol become a Rome token's name
 ("<name cut to 25 bytes> (Rome)") and symbol ("ro" + the symbol cut to 8 bytes), the
 checks that run on the WHOLE text before the cut, and how a mint's name is read from
-its accounts. Every implementation of the rule (the wrapper factory in this repository,
-and the readers and name functions in rome-agglayer) runs its own code over this file and
+its accounts. Every implementation of the rule (the wrapper factory in this repository
+and any other that applies the rule) runs its own code over this file and
 must return the same strings or the same refusal on every entry.
 
 The expected values come from the independent reference below, written with Python's
@@ -369,7 +369,7 @@ def read_expect(source, name=None, symbol=None):
     return r
 
 def verdict(read_name, read_symbol, source):
-    """What E1's metadata path gives for a mint whose name was read as (read_name, read_symbol)."""
+    """What the named factory's metadata path gives for a mint whose name was read as (read_name, read_symbol)."""
     if source in ("None",):
         return {"ok": False, "error": "NoName"}, read_expect("None")
     if source == "ExternalPointer":

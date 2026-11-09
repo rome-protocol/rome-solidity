@@ -21,11 +21,11 @@ import {
 } from "../precompile-addresses";
 import { METAPLEX_PROGRAM, mockMetadataPda, mockPda, revertName, utf8, vectors, type MintVector } from "./naming-helpers";
 
-// E1: the wrapper factory that names every wrapper by rule. Its name is "<origin name cut to 25 bytes> (Rome)"
+// the named factory: the wrapper factory that names every wrapper by rule. Its name is "<origin name cut to 25 bytes> (Rome)"
 // and its symbol "ro" + the origin symbol cut to 8 bytes; it reads the origin's name from the mint's own
 // accounts and fails closed; no caller picks a name; there is no symbol table. Every mint vector of the shared
 // file is planted in a store of Solana accounts and run through the factory.
-describe("E1, the named wrapper factory", async () => {
+describe("the named wrapper factory", async () => {
     const conn = await network.connect();
     const { viem } = conn;
     const publicClient = await viem.getPublicClient();
@@ -62,7 +62,7 @@ describe("E1, the named wrapper factory", async () => {
         }
     }
 
-    it("has the interface of section 6: no caller picks a name, no symbol table, E1's own lookups", async () => {
+    it("has the interface it documents: no caller picks a name, no symbol table, its own lookups", async () => {
         const f = await newFactory();
         const names = new Set(f.abi.filter((x: any) => x.type === "function").map((x: any) => x.name));
         for (const gone of ["add_spl_token_no_metadata", "token_by_symbol_hash", "mint_by_symbol_hash"]) {
@@ -118,6 +118,35 @@ describe("E1, the named wrapper factory", async () => {
         assert.deepEqual(bad, []);
     });
 
+    it("a mint with an armed transfer hook gets the hook-aware wrapper, named by the same rule", async () => {
+        const v = vectors.mints.find((m) => m.id === "metaplex/plain")!;
+        // byte 1 of the mint id arms the hook in the precompile mock
+        const hookedMint = `0x${v.mint.slice(2, 4)}01${v.mint.slice(6)}` as Hex;
+        // the Metaplex account names its mint, so the copy of the vector carries the new id inside the data too
+        const accounts = v.accounts.map((a) => ({ ...a, data: a.data.split(v.mint.slice(2)).join(hookedMint.slice(2)) as Hex }));
+        await plant({ ...v, mint: hookedMint, accounts });
+        const f = await newFactory();
+        await f.write.add_spl_token_with_metadata([hookedMint]);
+        assert.equal(await f.read.wrapper_kind_by_mint([hookedMint]), 2, "the Token-2022 hooked wrapper");
+        const w = await viem.getContractAt("SPL_ERC20_Token2022Hooked", (await f.read.token_by_mint([hookedMint])) as `0x${string}`);
+        assert.equal(await w.read.name(), "Wrapped SOL (Rome)");
+        assert.equal(await w.read.symbol(), "roSOL");
+    });
+
+    it("a real Token-2022 mint (ai16z, dumped from mainnet) is named from its own metadata", async () => {
+        const fixtureMint = await mock.read.FIXTURE_MINT();
+        const data = (await mock.read.FIXTURE_MINT_DATA()) as Hex;
+        for (const k of [fixtureMint, mockMetadataPda(fixtureMint), K.otherAccount]) await store.write.clear([k]);
+        await store.write.set([fixtureMint, PROGRAM.p2022, data]);
+        const f = await newFactory();
+        const [name, symbol] = (await f.read.preview([fixtureMint])) as [string, string];
+        assert.equal(name, "ai16z (Rome)");
+        assert.equal(symbol, "roai16z");
+        await f.write.add_spl_token_with_metadata([fixtureMint]);
+        const w = await viem.getContractAt("SPL_ERC20_cached", (await f.read.token_by_mint([fixtureMint])) as `0x${string}`);
+        assert.equal(await w.read.name(), "ai16z (Rome)");
+    });
+
     it("TokenCreated carries the creator, the mint, the wrapper, both strings and the creator's nonce", async () => {
         const v = vectors.mints.find((m) => m.id === "metaplex/plain")!;
         await plant(v);
@@ -170,7 +199,7 @@ describe("E1, the named wrapper factory", async () => {
             { network: 74, mint: K.otherMint, wrapper: "0x00000000000000000000000000000000000000a2" },
         ];
 
-        it("stores the hash of abi.encode(list), the preimage the book uses", async () => {
+        it("stores the hash of abi.encode(list), the preimage other tools that take the list use", async () => {
             const f = await newFactory(list);
             const want = keccak256(encodeAbiParameters(grandfatherAbi, [list.map((e) => [e.network, e.mint, e.wrapper] as const)]));
             assert.equal(await f.read.grandfatherHash(), want);
@@ -304,7 +333,7 @@ describe("E1, the named wrapper factory", async () => {
         });
 
         it("does not consult any other factory: a name taken elsewhere blocks nothing", async () => {
-            // E1 has no factory to ask: its constructor takes only the CPI address and the list
+            // the factory has no factory to ask: its constructor takes only the CPI address and the list
             const f = await newFactory();
             const ctor = f.abi.find((x: any) => x.type === "constructor") as any;
             assert.deepEqual(ctor.inputs.map((i: any) => i.type), ["address", "tuple[]"]);

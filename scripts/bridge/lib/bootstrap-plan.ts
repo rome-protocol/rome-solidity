@@ -1,8 +1,8 @@
 // scripts/bridge/lib/bootstrap-plan.ts
 //
-// What the bootstrap does with each canonical mint on a chain with a live named factory (E1). Nothing here
-// chooses a name: the wrapper's name and symbol are the ones E1's `preview` gives, which are D1's rule applied
-// to what the mint itself carries. A mint E1 refuses (grandfathered, no name of its own, a pointer it does not
+// What the bootstrap does with each canonical mint on a chain with a live named factory. Nothing here
+// chooses a name: the wrapper's name and symbol are the ones the named factory's `preview` gives, which are the naming rule applied
+// to what the mint itself carries. A mint the named factory refuses (grandfathered, no name of its own, a pointer it does not
 // accept, a name or symbol its checks refuse) is skipped with the reason, never registered under another name.
 
 import { BaseError, ContractFunctionRevertedError, type Address } from "viem";
@@ -19,7 +19,7 @@ export type EntryAction =
 const ZERO = "0x0000000000000000000000000000000000000000";
 
 /**
- * Runs E1's `preview` and turns a revert into the error's name. Anything that is not a revert of a named custom
+ * Runs the named factory's `preview` and turns a revert into the error's name. Anything that is not a revert of a named custom
  * error (an RPC failure, an unknown revert) is thrown, never read as a refusal.
  */
 export async function previewOutcome(call: () => Promise<unknown>): Promise<PreviewOutcome> {
@@ -37,7 +37,7 @@ export async function previewOutcome(call: () => Promise<unknown>): Promise<Prev
     }
 }
 
-/** What to do with one mint, given its existing wrapper (zero when none) and E1's preview. */
+/** What to do with one mint, given its existing wrapper (zero when none) and the named factory's preview. */
 export function planEntry(existingWrapper: string, preview: PreviewOutcome): EntryAction {
     if (existingWrapper.toLowerCase() !== ZERO) return { kind: "existing", wrapper: existingWrapper as Address };
     if (preview.kind === "ok") return { kind: "register", name: preview.name, symbol: preview.symbol };
@@ -45,5 +45,16 @@ export function planEntry(existingWrapper: string, preview: PreviewOutcome): Ent
         // registered between the read and the preview: the caller re-reads token_by_mint
         return { kind: "skip", reason: "AlreadyRegistered (re-run to record it)" };
     }
-    return { kind: "skip", reason: `E1 refuses this mint: ${preview.error}` };
+    return { kind: "skip", reason: `the named factory refuses this mint: ${preview.error}` };
+}
+
+/**
+ * Where to record a wrapper in the deployments file. A slot that already holds a different wrapper (a legacy one,
+ * which stays the record other scripts read) is never overwritten: the named factory's wrapper goes under
+ * `<slot>_NAMED`.
+ */
+export function recordKey(deployments: Record<string, unknown>, slot: string, wrapper: string): string {
+    const current = deployments[slot] as { address?: string } | undefined;
+    if (!current?.address || current.address.toLowerCase() === wrapper.toLowerCase()) return slot;
+    return `${slot}_NAMED`;
 }

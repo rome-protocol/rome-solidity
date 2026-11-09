@@ -46,7 +46,7 @@ async function main() {
     };
 
     const [deployer] = await viem.getWalletClients();
-    // No wrapper is deployed directly on a chain where the named wrapper factory (E1) is live.
+    // No wrapper is deployed directly on a chain where the named wrapper factory is live.
     assertDirectWrapperDeployAllowed(networkName, "deploy a wrapper directly (fb2d-smoke)");
     if (!deployer?.account) {
         throw new Error("No deployer wallet found.");

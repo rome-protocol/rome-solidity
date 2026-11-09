@@ -22,9 +22,8 @@ import {MplTokenMetadataLib} from "../mpl_token_metadata/lib.sol";
 ///
 ///         The layouts are the Token program's (82-byte mint) and Token-2022's (the mint padded to 165 bytes, an
 ///         account type byte at 165, then entries of a u16 type, a u16 length and the value, little endian). The
-///         extension numbers are those of spl-token-2022's `ExtensionType`. The rule and the walk are the same
-///         as rome-agglayer's `MintReader`, held equal by the shared vectors
-///         (tests/fixtures/asset-naming/vectors.json).
+///         extension numbers are those of spl-token-2022's `ExtensionType`. The rule and the walk are held equal
+///         across implementations by the shared vectors (tests/fixtures/asset-naming/vectors.json).
 library MintNameReader {
     enum Source {
         None, // no name: the mint was not walked clean, or has no entry, or its Metaplex account failed a check

@@ -4,7 +4,7 @@ import { isAddress, parseAbi, decodeEventLog } from "viem";
 import fs from "node:fs";
 import { readDeployments } from "../lib/deployments.js";
 import { resolveLiveNamedFactory } from "../lib/wrapper-factory.js";
-import { previewOutcome } from "../bridge/lib/bootstrap-plan.js";
+import { registerOnNamedFactory } from "./lib/register-named.js";
 
 // Apples-to-apples Solana CU + heap benchmark for SPL_ERC20_cached vs the
 // CPI-based SPL_ERC20, both against the SAME deployer-authored test mint
@@ -18,12 +18,12 @@ import { previewOutcome } from "../bridge/lib/bootstrap-plan.js";
 //     (scripts/erc20spl/deploy_cached.ts, recorded in deployments.SPL_ERC20_cached)
 //
 // What this script does:
-//   1. Registers the SAME test mint on the chain's live named factory (E1) so
+//   1. Registers the SAME test mint on the chain's live named factory so
 //      it deploys a wrapper (idempotent — reuses existing if already
-//      registered). Through E1's metadata path when the mint carries a name
+//      registered). Through the named factory's metadata path when the mint carries a name
 //      of its own; else through its authority path, since the bencher made
-//      the mint (E1 names the wrapper by rule either way: "<name> (Rome)").
-//      A chain with no live E1 stops the script before anything is sent.
+//      the mint (the factory names the wrapper by rule either way: "<name> (Rome)").
+//      A chain with no live named factory stops the script before anything is sent.
 //   2. Runs the same set of operations on both wrappers:
 //        mint_to, transfer, approve, transferFrom, ensure_token_account
 //   3. For each op, captures: EVM gas, Solana sig(s), summed Solana CU,
@@ -143,7 +143,7 @@ async function main() {
     if (!cachedAddress || !isAddress(cachedAddress) || !cachedMint) {
         throw new Error("SPL_ERC20_cached not found in deployments. Run create_test_mint.ts + deploy_cached.ts first.");
     }
-    // The chain's live named factory (E1), or a stop before anything is sent.
+    // The chain's live named factory, or a stop before anything is sent.
     const factoryAddress = resolveLiveNamedFactory(networkName, dep);
 
     const { viem } = await hardhat.network.connect();
@@ -153,12 +153,8 @@ async function main() {
     const me = wallet.account.address;
 
     // 1. Ensure a CPI-based SPL_ERC20 exists for the SAME test mint
-    const factoryAbi = parseAbi([
-        "function token_by_mint(bytes32) external view returns (address)",
-        "function add_spl_token_with_metadata(bytes32 mint) external returns (address)",
-        "function add_spl_token_by_authority(bytes32 mint, string originName, string originSymbol) external returns (address)",
-        "function preview(bytes32 mint) external view returns (string name, string symbol)",
-    ]);
+    // the factory's own ABI, errors included, so a refusal in `preview` decodes to its name
+    const factoryAbi = (await hardhat.artifacts.readArtifact("ERC20SPLNamedFactory")).abi;
     let cpiAddress = (await publicClient.readContract({
         address: factoryAddress,
         abi: factoryAbi,
@@ -167,23 +163,16 @@ async function main() {
     })) as `0x${string}`;
     if (cpiAddress === "0x0000000000000000000000000000000000000000") {
         console.log("Registering test mint with the named factory (deploys CPI-based SPL_ERC20)...");
-        const named = await previewOutcome(() =>
-            publicClient.readContract({ address: factoryAddress, abi: factoryAbi, functionName: "preview", args: [cachedMint] }),
-        );
-        const txHash = named.kind === "ok"
-            ? await wallet.writeContract({
-                address: factoryAddress,
-                abi: factoryAbi,
-                functionName: "add_spl_token_with_metadata",
-                args: [cachedMint],
-            })
-            : await wallet.writeContract({
-                // the mint has no name of its own and the bencher made it: the authority path, named by the same rule
-                address: factoryAddress,
-                abi: factoryAbi,
-                functionName: "add_spl_token_by_authority",
-                args: [cachedMint, "CPI Test Token", "TESTcpi"],
-            });
+        // the mint has no name of its own when the bencher made it: the authority path, named by the same rule
+        const { hash: txHash } = await registerOnNamedFactory({
+            publicClient,
+            wallet,
+            factory: factoryAddress,
+            abi: factoryAbi,
+            mint: cachedMint,
+            authorityName: "CPI Test Token",
+            authoritySymbol: "TESTcpi",
+        });
         await publicClient.waitForTransactionReceipt({ hash: txHash });
         cpiAddress = (await publicClient.readContract({
             address: factoryAddress,

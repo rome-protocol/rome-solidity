@@ -7,7 +7,7 @@ pragma solidity ^0.8.20;
 ///         symbol cut to 8 bytes. Both are at most what Metaplex allows (32 bytes and 10), so one string serves
 ///         Solana wallets and EVM wallets alike.
 ///
-/// @dev    Fail closed, on the WHOLE text, before the cut. A check on the kept part cannot see AggLayer's fallback
+/// @dev    Fail closed, on the WHOLE text, before the cut. A check on the kept part cannot see the placeholder fallback
 ///         texts for a name or symbol it could not read ("NO_NAME", "NO_SYMBOL", "NOT_VALID_ENCODING"), which are
 ///         longer than the kept part, and would pass their cuts. The order, for the name and for the symbol:
 ///           1. the text as read, whole;
@@ -31,8 +31,7 @@ pragma solidity ^0.8.20;
 ///         bytes of characters that can be in it. A text too long to check inside a transaction's budget makes
 ///         the call revert, which is fail closed.
 ///
-///         The same rule, by the same vectors (tests/fixtures/asset-naming/vectors.json), is MplMetadata's
-///         `romeName` and `romeSymbol` in rome-agglayer.
+///         Other implementations of the same rule run the same vectors (tests/fixtures/asset-naming/vectors.json).
 library RomeNaming {
     error BadName();
     error BadSymbol();
@@ -90,7 +89,7 @@ library RomeNaming {
     // ---- the checks on the whole text ----
 
     /// @notice Step 2: true when `b` is a name or symbol Rome will carry. `fallbackLength` and `fallbackHash` are
-    ///         the byte length and keccak256 of AggLayer's fallback text for the kind ("NO_NAME", "NO_SYMBOL").
+    ///         the byte length and keccak256 of the placeholder text for the kind ("NO_NAME", "NO_SYMBOL").
     function acceptable(bytes memory b, uint256 fallbackLength, bytes32 fallbackHash) internal pure returns (bool) {
         uint256 n = b.length;
         if (n == 0) return false;

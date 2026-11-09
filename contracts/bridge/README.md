@@ -2,7 +2,7 @@
 
 Cross-chain bridge between **Ethereum Sepolia** and **Rome rome devnet** using **Circle CCTP** for USDC and **Wormhole Token Bridge** for ETH (Phase 1 — Ethereum-origin assets), plus a **generic Rome → Solana SPL outbound** for any wrapper deployed by `ERC20SPLFactory` (Phase 2 — Solana-native and Solana-bridged SPLs).
 
-Token nomenclature follows the canonical W-prefix standard. Native gas keeps its bare symbol (`USDC` on Rome); ERC20-SPL wrappers get `W` (e.g. `WUSDC`, `WETH`, `WSOL`).
+Native gas keeps its bare symbol (`USDC` on Rome). Wrappers deployed before the named wrapper factory carry the `W` prefix (e.g. `WUSDC`, `WETH`, `WSOL`) and keep it. A wrapper made by the named wrapper factory is named by that factory's rule: "<origin name> (Rome)" with the symbol `ro` + the origin symbol (e.g. `roSOL`); no caller picks the name.
 
 This document covers what the bridge does, how it's wired, how to redeploy it, and — most importantly — the non-obvious problems that came up during bring-up and the fixes that unblocked them. Read the "Problems faced and fixes" section before touching the code.
 

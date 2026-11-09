@@ -18,7 +18,7 @@ const CHAIN_ID = Number(process.env.ROME_CHAIN_ID ?? "121302");
 const CPI = (process.env.CPI_CONTRACT_ADDRESS ?? "0xFF00000000000000000000000000000000000008") as `0x${string}`;
 
 async function main() {
-    // A second legacy factory is not deployed on a chain where the named wrapper factory (E1) is live. The record
+    // A second legacy factory is not deployed on a chain where the named wrapper factory is live. The record
     // is deployments/<network>.json; a chain id no one has named has no record, so it is not stopped.
     const networkName = CHAIN_ID === 7531 ? "rubicon" : (TESTNET_CHAIN_IDS.get(CHAIN_ID) ?? `chain-${CHAIN_ID}`);
     assertDirectWrapperDeployAllowed(networkName, "deploy a legacy ERC20SPLFactory (deploy-ledger)");
