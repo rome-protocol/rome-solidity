@@ -1,7 +1,8 @@
 {
   "ERC20SPLFactory": {
     "address": "0x37c13e4ff21fb914eb24014dcbd0f8dbeaa31078",
-    "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008",
+    "deprecated": true
   },
   "OracleGatewayV2": {
     "deployedAt": "2026-09-11T09:34:20.009Z",
@@ -529,5 +530,13 @@
     "deployedAt": 1793694093,
     "deployTx": "0xe43255b35e6b7f8f91f7a7118d62af5cbddcea4803c08f2ef047b550c89e7ed1",
     "via": "ERC20SPLFactory.add_spl_token_no_metadata"
+  },
+  "ERC20SPLNamedFactory": {
+    "address": "0x3b1a41f1df45200f16d35fa5788d251d9fb92d92",
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008",
+    "grandfatherHash": "0x6562c19f6a449e1833c1174fccd7ac0ea685ff2299480fd008f9c9062fe5c620",
+    "live": true,
+    "deployTx": "0xcda625dd4aa457c69d287c33e9146583e1ea19d7bf55afc8215524a5107000df",
+    "deployedAt": 1794248839
   }
 }
