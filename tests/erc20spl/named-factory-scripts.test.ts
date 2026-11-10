@@ -56,6 +56,14 @@ describe("the live named factory record", () => {
         assert.throws(() => resolveLiveNamedFactory("x", dep, "0x00000000000000000000000000000000000000f1"), NotLiveNamedFactoryError);
     });
 
+    it("the committed hadrian record resolves the named factory, and its legacy factory is marked deprecated", () => {
+        const E1 = "0x3B1a41F1dF45200f16d35FA5788d251d9Fb92d92";
+        const dep = JSON.parse(src("deployments/hadrian.json"));
+        assert.equal(resolveLiveNamedFactory("hadrian", dep), E1);
+        assert.equal(dep.ERC20SPLFactory.deprecated, true);
+        assert.throws(() => resolveLiveNamedFactory("hadrian", dep, dep.ERC20SPLFactory.address), NotLiveNamedFactoryError);
+    });
+
     it("direct wrapper deploys and a second legacy factory stop on a chain where the named factory is live", () => {
         assert.doesNotThrow(() => assertDirectWrapperDeployAllowed("x", "deploy a wrapper", {}));
         assert.doesNotThrow(() =>
