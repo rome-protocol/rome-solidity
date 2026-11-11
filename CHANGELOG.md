@@ -11,7 +11,7 @@ exactly the origin token's on every chain.
   the same grandfather list; the naming is compiled in, so it is a redeploy, not an upgrade.
 - `tests/fixtures/asset-naming/vectors.json` and `generate.py`: the expected output is the input; every passing
   vector also carries the Metaplex cut (`metaplex`, `metaplexName`, `metaplexSymbol`), and new vectors cross the 32
-  and 10 byte limits. The file's sha256 changed (was `9a33...c16e`): every implementation that pins it updates its pin.
+  and 10 byte limits. The file's sha256 changed (was `9a333738798c73765ce23048ea6a17c8e75a243455f24a5a74b8465be35dc16e`, now `0b57f4b5f8b228fed30fbeed0d810dd3558fb7443d5fc047ad83ea0dbf3d6a8e`): every implementation that pins it updates its pin.
 - `scripts/erc20spl/deploy-named-factory.ts --replace <recorded address>`: deploys a successor over a recorded
   factory. The old record is kept under `ERC20SPLNamedFactoryDeprecated_<first 8 hex>` with `deprecated: true` and
   `replacedBy`, never live; the slot holds the successor with `live: false` until it is marked live by hand with the
