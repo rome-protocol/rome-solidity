@@ -1,17 +1,22 @@
-## 2026-11-11 — Wrapper names are the origin's own: no "ro", no "(Rome)"
+## 2026-11-11 — Wrapper symbols are the origin's own: no "ro" prefix; names keep "(Rome)"
 
-Source only: nothing is deployed by this change. Operator ruling 2026-11-11: a bridged token's name and symbol are
-exactly the origin token's on every chain.
+Source only: nothing is deployed by this change. Operator ruling 2026-11-11 (corrected): drop only the `ro` symbol
+prefix. A bridged token's symbol is the origin token's own symbol (USDT stays "USDT"); its name stays
+"<origin name cut to 25 bytes> (Rome)". This matches Wormhole's Token Bridge, which carries the origin's symbol and a
+name that says whose bridge made it.
 
-- `contracts/erc20spl/RomeNaming.sol`: `romeName` and `romeSymbol` keep the checks on the whole text (not empty, not
-  a placeholder text, valid UTF-8, no Unicode 16.0.0 Cc or Cf character) and return the text unchanged. The 25 and 8
-  byte cuts, " (Rome)" and "ro" are gone. `cut` stays, with the limits Metaplex holds (`METAPLEX_NAME_MAX` 32,
-  `METAPLEX_SYMBOL_MAX` 10), for the one place that must cut: the Solana metadata of a mint Rome makes.
-  `ERC20SPLNamedFactory`'s code and interface are otherwise unchanged, so the successor (E1') has the same API and
-  the same grandfather list; the naming is compiled in, so it is a redeploy, not an upgrade.
-- `tests/fixtures/asset-naming/vectors.json` and `generate.py`: the expected output is the input; every passing
-  vector also carries the Metaplex cut (`metaplex`, `metaplexName`, `metaplexSymbol`), and new vectors cross the 32
-  and 10 byte limits. The file's sha256 changed (was `9a333738798c73765ce23048ea6a17c8e75a243455f24a5a74b8465be35dc16e`, now `0b57f4b5f8b228fed30fbeed0d810dd3558fb7443d5fc047ad83ea0dbf3d6a8e`): every implementation that pins it updates its pin.
+- `contracts/erc20spl/RomeNaming.sol`: `romeName` is unchanged. `romeSymbol` keeps the checks on the whole text (not
+  empty, not a placeholder text, valid UTF-8, no Unicode 16.0.0 Cc or Cf character) and returns the symbol cut to
+  10 bytes on a UTF-8 boundary, with no `ro` in front. `SYMBOL_CUT` is 10 (it was 8, to leave room for `ro`): the
+  most Metaplex holds, so one string serves EVM and Solana wallets. Symbols are immutable on a wrapper, so the
+  new rule reaches only wrappers a new `ERC20SPLNamedFactory` makes: a redeploy, not an upgrade (the factory has
+  no owner and no upgrade). Its code and interface are otherwise unchanged, so the successor has the same API and
+  the same grandfather list.
+- `tests/fixtures/asset-naming/vectors.json` and `generate.py`: the expected symbols have no `ro`, and the symbol
+  cut vectors move from the 8-byte boundary to the 10-byte one. The file's sha256 changed (was
+  `9a333738798c73765ce23048ea6a17c8e75a243455f24a5a74b8465be35dc16e`, now
+  `e74ef40f8b38e5cfe1209c511ee2a8fafe70055de1e8f57a3de3912e2800f80a`): every implementation that pins it updates
+  its pin.
 - `scripts/erc20spl/deploy-named-factory.ts --replace <recorded address>`: deploys a successor over a recorded
   factory. The old record is kept under `ERC20SPLNamedFactoryDeprecated_<first 8 hex>` with `deprecated: true` and
   `replacedBy`, never live; the slot holds the successor with `live: false` until it is marked live by hand with the

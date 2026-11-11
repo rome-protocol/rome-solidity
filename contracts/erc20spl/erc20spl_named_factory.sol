@@ -14,14 +14,14 @@ import {AccountReader} from "../cpi/AccountReader.sol";
 /// @title ERC20SPLNamedFactory
 /// @notice The wrapper factory that names every wrapper by rule. Anyone can register a Solana mint once, and
 ///         nobody chooses its name: a wrapper's name is "<origin name cut to 25 bytes> (Rome)" and its symbol
-///         "ro" + the origin's symbol cut to 8 bytes (RomeNaming), from the metadata the mint itself carries
+///         the origin's symbol cut to 10 bytes, no prefix (RomeNaming), from the metadata the mint itself carries
 ///         (`add_spl_token_with_metadata`) or, for a mint made by the caller's own PDA, from the strings the
 ///         caller gives, put through the same rule (`add_spl_token_by_authority`).
 ///
 /// @dev    Compared with ERC20SPLFactory (3.0.0, 9.0.0, which stay deployed and callable):
 ///           - `add_spl_token_no_metadata` is gone: no caller picks a name.
 ///           - There is no symbol table: `token_by_symbol_hash` and `mint_by_symbol_hash` are gone, and a symbol is
-///             never an identity. Two origins may give one ro-symbol; the key is the mint.
+///             never an identity. Two origins may give one symbol; the key is the mint.
 ///           - The metadata read fails closed (MintNameReader): a pointer to an account outside Token-2022 and
 ///             Metaplex is refused, a mint that asserts no name gets no wrapper, and so does a name or symbol that
 ///             RomeNaming refuses. Every check runs before the wrapper is deployed.
@@ -106,7 +106,7 @@ contract ERC20SPLNamedFactory {
     // ----- registering -----
 
     /// @notice Registers an existing SPL mint and deploys its ERC-20 wrapper, named from the metadata the mint
-    ///         carries: "<name cut to 25 bytes> (Rome)" and "ro" + the symbol cut to 8 bytes. Anyone may call.
+    ///         carries: "<name cut to 25 bytes> (Rome)" and the symbol cut to 10 bytes (no prefix). Anyone may call.
     ///         A mint that asserts no name is refused: use `add_spl_token_by_authority` if you made it.
     function add_spl_token_with_metadata(bytes32 mint) public returns (address) {
         (string memory name, string memory symbol) = _fromMetadata(mint);
@@ -114,8 +114,8 @@ contract ERC20SPLNamedFactory {
     }
 
     /// @notice Registers a mint made by the caller's own PDA (`create_token_mint`) under the name and symbol the
-    ///         caller gives, put through the same rule: "<originName cut to 25 bytes> (Rome)" and "ro" +
-    ///         `originSymbol` cut to 8 bytes. Only the mint's own authority may call, and only for a mint that
+    ///         caller gives, put through the same rule: "<originName cut to 25 bytes> (Rome)" and
+    ///         `originSymbol` cut to 10 bytes (no prefix). Only the mint's own authority may call, and only for a mint that
     ///         asserts no name of its own. The strings are checked whole before the wrapper is deployed.
     function add_spl_token_by_authority(bytes32 mint, string calldata originName, string calldata originSymbol)
         public

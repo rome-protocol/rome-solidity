@@ -3,9 +3,10 @@ pragma solidity ^0.8.20;
 
 /// @title RomeNaming
 /// @notice How Rome names a token it makes for a Solana mint (or for an EVM token's Solana mint): the name is
-///         the origin's name cut to 25 bytes, then " (Rome)", and the symbol is "ro" followed by the origin's
-///         symbol cut to 8 bytes. Both are at most what Metaplex allows (32 bytes and 10), so one string serves
-///         Solana wallets and EVM wallets alike.
+///         the origin's name cut to 25 bytes, then " (Rome)", and the symbol is the origin's own symbol, cut to
+///         10 bytes and nothing added (no prefix). Both are at most what Metaplex allows (32 bytes and 10), so one
+///         string serves Solana wallets and EVM wallets alike. This is how Wormhole's Token Bridge names a wrapped
+///         token on chain: the origin's symbol, and a name that says whose bridge made it.
 ///
 /// @dev    Fail closed, on the WHOLE text, before the cut. A check on the kept part cannot see the placeholder fallback
 ///         texts for a name or symbol it could not read ("NO_NAME", "NO_SYMBOL", "NOT_VALID_ENCODING"), which are
@@ -19,9 +20,9 @@ pragma solidity ^0.8.20;
 ///           3. cut it on a UTF-8 boundary;
 ///           4. refuse a cut that left nothing (after step 2 it cannot, since a character is at most 4 bytes: a
 ///              guard that a test reaches by cutting a 4-byte character at 2);
-///           5. add "ro" in front, or " (Rome)" behind.
-///         Only the exact fallback texts are refused: "NO_SYMBOLS" is a symbol. "ro" is always lowercase, the
-///         origin's own case is kept, and an origin that already starts with "ro" becomes "roro...".
+///           5. add " (Rome)" behind a name; a symbol gets nothing added.
+///         Only the exact fallback texts are refused: "NO_SYMBOLS" is a symbol. The origin's own case and
+///         letters are kept: "USDT" stays "USDT", and "roETH" stays "roETH".
 ///
 ///         The table is fixed at Unicode 16.0.0: a character a later version adds to Cf passes until a successor
 ///         factory is deployed. Every other character passes, unassigned ones included.
@@ -37,7 +38,7 @@ library RomeNaming {
     error BadSymbol();
 
     uint256 internal constant NAME_CUT = 25;
-    uint256 internal constant SYMBOL_CUT = 8;
+    uint256 internal constant SYMBOL_CUT = 10;
 
     bytes32 private constant NO_NAME = keccak256("NO_NAME");
     bytes32 private constant NO_SYMBOL = keccak256("NO_SYMBOL");
@@ -63,7 +64,7 @@ library RomeNaming {
         return romeNameCut(name, NAME_CUT);
     }
 
-    /// @notice "ro" + the symbol cut to 8 bytes, or `BadSymbol` when the whole symbol fails the checks.
+    /// @notice The symbol cut to 10 bytes, with nothing added, or `BadSymbol` when the whole symbol fails the checks.
     function romeSymbol(string memory symbol) internal pure returns (string memory) {
         return romeSymbolCut(symbol, SYMBOL_CUT);
     }
@@ -83,7 +84,7 @@ library RomeNaming {
         if (!acceptable(b, 9, NO_SYMBOL)) revert BadSymbol();
         bytes memory kept = cut(b, cutBytes);
         if (kept.length == 0) revert BadSymbol();
-        return string.concat("ro", string(kept));
+        return string(kept);
     }
 
     // ---- the checks on the whole text ----
