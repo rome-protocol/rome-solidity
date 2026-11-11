@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { concatHex, keccak256, toFunctionSelector, toHex, hexToString, type Hex } from "viem";
 
-export type TextExpect = { ok: true; output: Hex; metaplex: Hex } | { ok: false; error: "BadName" | "BadSymbol" };
+export type TextExpect = { ok: true; output: Hex } | { ok: false; error: "BadName" | "BadSymbol" };
 export type TextVector = { id: string; kind: "name" | "symbol"; input: Hex; expect: TextExpect };
 export type MintAccount = {
     at: "mint" | "metaplex" | "other";
@@ -15,14 +15,14 @@ export type MintVector = {
     id: string;
     mint: Hex;
     accounts: MintAccount[];
-    expect: { ok: true; name: Hex; symbol: Hex; metaplexName: Hex; metaplexSymbol: Hex } | { ok: false; error: string };
+    expect: { ok: true; name: Hex; symbol: Hex } | { ok: false; error: string };
     read: { source: string; name?: Hex; symbol?: Hex };
 };
 export type AuthorityVector = {
     id: string;
     originName: Hex;
     originSymbol: Hex;
-    expect: { ok: true; name: Hex; symbol: Hex; metaplexName: Hex; metaplexSymbol: Hex } | { ok: false; error: string };
+    expect: { ok: true; name: Hex; symbol: Hex } | { ok: false; error: string };
 };
 export type Vectors = {
     unicodeVersion: string;

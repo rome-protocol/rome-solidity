@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Generates vectors.json, the shared test vectors for Rome's wrapper naming rule.
 
-The vectors pin one rule: a Rome token's name and symbol are exactly the origin's, unchanged
-(no prefix, no suffix, no cut), after the checks on the WHOLE text, and how a mint's name is
-read from its accounts. The one cut is the Solana Metaplex metadata of a mint Rome makes,
-which holds at most 32 bytes of name and 10 of symbol: each vector that passes also carries
-that cut (`metaplex`, on a UTF-8 boundary, nothing added). Every implementation of the rule (the wrapper factory in this repository
+The vectors pin one rule: how a mint's name and symbol become a Rome token's name
+("<name cut to 25 bytes> (Rome)") and symbol (the origin's symbol cut to 10 bytes, with no prefix), the
+checks that run on the WHOLE text before the cut, and how a mint's name is read from
+its accounts. Every implementation of the rule (the wrapper factory in this repository
 and any other that applies the rule) runs its own code over this file and
 must return the same strings or the same refusal on every entry.
 
@@ -27,7 +26,8 @@ TOKEN_2022 = bytes.fromhex("06ddf6e1ee758fde18425dbce46ccddab61afc4d83b90d27febd
 METAPLEX = bytes.fromhex("0b7065b1e3d17c45389d527f6b04c3cd58b86c731aa0fdb549b6d1bc03f82946")
 OTHER_PROGRAM = bytes.fromhex("11" * 32)
 
-METAPLEX_NAME_MAX, METAPLEX_SYMBOL_MAX = 32, 10
+NAME_CUT, SYMBOL_CUT = 25, 10
+NAME_SUFFIX = b" (Rome)"
 
 # ---- the table: Unicode 16.0.0 general categories Cc and Cf --------------------------
 
@@ -69,30 +69,22 @@ def refused(b, fallback):
 def rome_name(b):
     if refused(b, b"NO_NAME"):
         return None
-    return b
+    kept = cut(b, NAME_CUT)
+    assert kept
+    return kept + NAME_SUFFIX
 
 def rome_symbol(b):
     if refused(b, b"NO_SYMBOL"):
         return None
-    return b
-
-def metaplex_name(b):
-    return cut(b, METAPLEX_NAME_MAX)
-
-def metaplex_symbol(b):
-    return cut(b, METAPLEX_SYMBOL_MAX)
+    kept = cut(b, SYMBOL_CUT)
+    assert kept
+    return kept
 
 def hx(b):
     return "0x" + b.hex()
 
-def expect(out, error, meta=None):
-    if out is None:
-        return {"ok": False, "error": error}
-    e = {"ok": True, "output": hx(out)}
-    if meta is not None:
-        assert len(meta(out)) > 0
-        e["metaplex"] = hx(meta(out))
-    return e
+def expect(out, error):
+    return {"ok": True, "output": hx(out)} if out is not None else {"ok": False, "error": error}
 
 # ---- text vectors -------------------------------------------------------------------------
 
@@ -161,21 +153,16 @@ def text_inputs():
     # the cut
     for n in (24, 25, 26, 32, 33, 40):
         add("cut/ascii-%d" % n, (b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"[:n]))
-    add("cut/name-multibyte-across-32", b"A" * 31 + "é".encode() + b"Z")
-    add("cut/name-3byte-across-32", b"A" * 30 + "€".encode() + b"Z")
-    add("cut/name-4byte-across-32", b"A" * 29 + "\U0001F600".encode() + b"Z")
-    add("cut/name-multibyte-ends-at-32", b"A" * 30 + "é".encode() + b"Z")
-    add("cut/symbol-multibyte-across-10", b"ABCDEFGHI" + "é".encode())
-    add("cut/symbol-4byte-across-10", b"ABCDEFGH" + "\U0001F600".encode())
     add("cut/name-multibyte-across-25", b"A" * 24 + "é".encode() + b"Z")
     add("cut/name-3byte-across-25", b"A" * 23 + "€".encode() + b"Z")
     add("cut/name-4byte-across-25", b"A" * 22 + "\U0001F600".encode() + b"Z")
     add("cut/name-multibyte-ends-at-25", b"A" * 23 + "é".encode() + b"Z")
-    for n in (7, 8, 9, 10, 11):
-        add("cut/symbol-ascii-%d" % n, b"ABCDEFGHIJK"[:n])
-    add("cut/symbol-multibyte-across-8", b"ABCDEFG" + "é".encode())
-    add("cut/symbol-4byte-across-8", b"ABCDEF" + "\U0001F600".encode() + b"Z")
-    add("cut/symbol-4byte-before-8", b"ABCD" + "\U0001F600".encode())
+    for n in (9, 10, 11, 12):
+        add("cut/symbol-ascii-%d" % n, b"ABCDEFGHIJKL"[:n])
+    add("cut/symbol-multibyte-across-10", b"ABCDEFGHI" + "é".encode())
+    add("cut/symbol-multibyte-ends-at-10", b"ABCDEFGH" + "é".encode() + b"Z")
+    add("cut/symbol-4byte-across-10", b"ABCDEFGH" + "\U0001F600".encode() + b"Z")
+    add("cut/symbol-4byte-before-10", b"ABCDEF" + "\U0001F600".encode())
     add("cut/symbol-cjk", "日本語です".encode())
     add("cut/symbol-two-byte-all", "ÅÄÖÅÄÖ".encode())
     # lengths for the cost record: ASCII, CJK (lead bytes e3..e9) and e2-led characters throughout
@@ -192,9 +179,9 @@ def text_vectors():
     for i, b in text_inputs():
         for kind in ("name", "symbol"):
             if kind == "name":
-                out.append({"id": "name/" + i, "kind": "name", "input": hx(b), "expect": expect(rome_name(b), "BadName", metaplex_name)})
+                out.append({"id": "name/" + i, "kind": "name", "input": hx(b), "expect": expect(rome_name(b), "BadName")})
             else:
-                out.append({"id": "symbol/" + i, "kind": "symbol", "input": hx(b), "expect": expect(rome_symbol(b), "BadSymbol", metaplex_symbol)})
+                out.append({"id": "symbol/" + i, "kind": "symbol", "input": hx(b), "expect": expect(rome_symbol(b), "BadSymbol")})
     return out
 
 # ---- mint accounts -----------------------------------------------------------------------
@@ -397,7 +384,7 @@ def verdict(read_name, read_symbol, source):
     s = rome_symbol(read_symbol)
     if s is None:
         return {"ok": False, "error": "BadSymbol"}, read
-    return {"ok": True, "name": hx(n), "symbol": hx(s), "metaplexName": hx(metaplex_name(n)), "metaplexSymbol": hx(metaplex_symbol(s))}, read
+    return {"ok": True, "name": hx(n), "symbol": hx(s)}, read
 
 def mint_vectors():
     out = []
@@ -476,7 +463,7 @@ def mint_vectors():
         "t2022/self/NO_NAME": (b"NO_NAME", b"SYM"),
         "t2022/self/NOT_VALID_ENCODING-symbol": (b"Name", b"NOT_VALID_ENCODING"),
         "t2022/self/zero-embedded-symbol": (b"Name", b"SY\x00M"),
-        "t2022/self/bidi-symbol-past-8": (b"Name", b"ABCDEFGH" + bytes.fromhex("e280ae")),
+        "t2022/self/bidi-symbol-past-10": (b"Name", b"ABCDEFGHIJ" + bytes.fromhex("e280ae")),
         "t2022/self/c1-name": (b"Wrapped" + bytes.fromhex("c285") + b" SOL", b"SOL"),
         "t2022/self/zwsp-name": (b"A\xe2\x80\x8bB", b"SOL"),
         "t2022/self/tag-symbol": (b"Name", "AB\U000e0041".encode()),
@@ -531,7 +518,7 @@ def mint_vectors():
 # ---- the authority path ------------------------------------------------------------------
 
 def authority_vectors():
-    """The authority path names by the same rule: its two strings are the caller's, unchanged."""
+    """The authority path names by the same rule: its two strings are the caller's."""
     out = []
     for i, n, s in [
         ("plain", b"My Token", b"MYT"),
@@ -542,7 +529,7 @@ def authority_vectors():
         ("NO_NAME", b"NO_NAME", b"SYM"),
         ("NO_SYMBOL", b"Name", b"NO_SYMBOL"),
         ("bidi-name", b"A" * 25 + bytes.fromhex("e280ae"), b"SYM"),
-        ("bidi-symbol", b"Name", b"ABCDEFGH" + bytes.fromhex("e280ae")),
+        ("bidi-symbol", b"Name", b"ABCDEFGHIJ" + bytes.fromhex("e280ae")),
         ("bad-utf8-name", b"AB\xc3", b"SYM"),
         ("bad-utf8-symbol", b"Name", b"\xe2\x82"),
     ]:
@@ -552,19 +539,18 @@ def authority_vectors():
         elif symbol is None:
             e = {"ok": False, "error": "BadSymbol"}
         else:
-            e = {"ok": True, "name": hx(name), "symbol": hx(symbol), "metaplexName": hx(metaplex_name(name)), "metaplexSymbol": hx(metaplex_symbol(symbol))}
+            e = {"ok": True, "name": hx(name), "symbol": hx(symbol)}
         out.append({"id": "authority/" + i, "originName": hx(n), "originSymbol": hx(s), "expect": e})
     return out
 
 doc = {
-    "description": "Shared vectors for the Rome wrapper naming rule (the origin's strings, unchanged). See generate.py. 'at' says which account an entry is: "
+    "description": "Shared vectors for the Rome wrapper naming rule. See generate.py. 'at' says which account an entry is: "
                    "'mint', 'metaplex' (the mint's own Metaplex metadata account, wherever the consumer derives it) or "
                    "'other' (OTHER_ACCOUNT). An owner of 'classic', 'p2022', 'metaplex' or 'other' maps to the "
                    "programs below ('other' is OTHER_PROGRAM). An entry with `patch` has 32 bytes at `offset` overwritten with the "
                    "address named ('metaplex': the mint's own Metaplex account, derived by the consumer). `read` is what a mint reader returns as the "
                    "mint's own name (source None, ExternalPointer, Token2022 or Metaplex, and the strings as stored); "
-                   "`expect` is the wrapper factory's verdict: the two strings (the origin's own, unchanged) or one refusal; "
-                   "`metaplex` / `metaplexName` / `metaplexSymbol` are the same strings cut to Metaplex's 32 and 10 bytes on a UTF-8 boundary.",
+                   "`expect` is the wrapper factory's verdict: the two Rome strings or one refusal.",
     "unicodeVersion": unicodedata.unidata_version,
     "constants": {
         "classicProgram": hx(TOKEN), "program2022": hx(TOKEN_2022), "metaplexProgram": hx(METAPLEX), "otherProgram": hx(OTHER_PROGRAM),

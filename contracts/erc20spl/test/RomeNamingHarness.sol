@@ -14,13 +14,12 @@ contract RomeNamingHarness {
         return bytes(RomeNaming.romeSymbol(string(symbol)));
     }
 
-    /// @dev The cut a Metaplex metadata writer makes, to the limits the library names.
-    function cut(bytes calldata text, uint256 maxBytes) external pure returns (bytes memory) {
-        return RomeNaming.cut(text, maxBytes);
+    function keepName(bytes calldata name, uint256 cutBytes) external pure returns (bytes memory) {
+        return bytes(RomeNaming.romeNameCut(string(name), cutBytes));
     }
 
-    function metaplexLimits() external pure returns (uint256 nameMax, uint256 symbolMax) {
-        return (RomeNaming.METAPLEX_NAME_MAX, RomeNaming.METAPLEX_SYMBOL_MAX);
+    function keepSymbol(bytes calldata symbol, uint256 cutBytes) external pure returns (bytes memory) {
+        return bytes(RomeNaming.romeSymbolCut(string(symbol), cutBytes));
     }
 
     /// @dev How many code points in [from, to) are in the table, and a hash chaining them in order.

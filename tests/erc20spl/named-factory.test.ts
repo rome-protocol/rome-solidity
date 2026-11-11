@@ -21,8 +21,8 @@ import {
 } from "../precompile-addresses";
 import { METAPLEX_PROGRAM, mockMetadataPda, mockPda, revertName, utf8, vectors, type MintVector } from "./naming-helpers";
 
-// the named factory: the wrapper factory that names every wrapper by rule. Its name and symbol are exactly the
-// origin's, unchanged; it reads the origin's name from the mint's own
+// the named factory: the wrapper factory that names every wrapper by rule. Its name is "<origin name cut to 25 bytes> (Rome)"
+// and its symbol the origin symbol cut to 10 bytes (no prefix); it reads the origin's name from the mint's own
 // accounts and fails closed; no caller picks a name; there is no symbol table. Every mint vector of the shared
 // file is planted in a store of Solana accounts and run through the factory.
 describe("the named wrapper factory", async () => {
@@ -129,7 +129,7 @@ describe("the named wrapper factory", async () => {
         await f.write.add_spl_token_with_metadata([hookedMint]);
         assert.equal(await f.read.wrapper_kind_by_mint([hookedMint]), 2, "the Token-2022 hooked wrapper");
         const w = await viem.getContractAt("SPL_ERC20_Token2022Hooked", (await f.read.token_by_mint([hookedMint])) as `0x${string}`);
-        assert.equal(await w.read.name(), "Wrapped SOL");
+        assert.equal(await w.read.name(), "Wrapped SOL (Rome)");
         assert.equal(await w.read.symbol(), "SOL");
     });
 
@@ -140,11 +140,11 @@ describe("the named wrapper factory", async () => {
         await store.write.set([fixtureMint, PROGRAM.p2022, data]);
         const f = await newFactory();
         const [name, symbol] = (await f.read.preview([fixtureMint])) as [string, string];
-        assert.equal(name, "ai16z");
+        assert.equal(name, "ai16z (Rome)");
         assert.equal(symbol, "ai16z");
         await f.write.add_spl_token_with_metadata([fixtureMint]);
         const w = await viem.getContractAt("SPL_ERC20_cached", (await f.read.token_by_mint([fixtureMint])) as `0x${string}`);
-        assert.equal(await w.read.name(), "ai16z");
+        assert.equal(await w.read.name(), "ai16z (Rome)");
     });
 
     it("TokenCreated carries the creator, the mint, the wrapper, both strings and the creator's nonce", async () => {
@@ -159,7 +159,7 @@ describe("the named wrapper factory", async () => {
         assert.equal(ev.args.creator.toLowerCase(), wallet.account.address.toLowerCase());
         assert.equal(ev.args.mint, v.mint);
         assert.equal(ev.args.wrapper, await f.read.token_by_mint([v.mint]));
-        assert.equal(ev.args.name, "Wrapped SOL");
+        assert.equal(ev.args.name, "Wrapped SOL (Rome)");
         assert.equal(ev.args.symbol, "SOL");
         assert.equal(ev.args.nonce, 0n);
         assert.equal(await f.read.wrapper_kind_by_mint([v.mint]), 1, "the cached wrapper");
@@ -183,11 +183,11 @@ describe("the named wrapper factory", async () => {
         const f = await newFactory();
         await f.write.add_spl_token_with_metadata([v.mint]);
         const w = await viem.getContractAt("SPL_ERC20_cached", (await f.read.token_by_mint([v.mint])) as `0x${string}`);
-        assert.equal(await w.read.name(), "Wrapped SOL");
+        assert.equal(await w.read.name(), "Wrapped SOL (Rome)");
         // the issuer renames: a new Metaplex account for the same mint
         const other = vectors.mints.find((m) => m.id === "metaplex/cut-name-25")!;
         await plant({ ...other, mint: v.mint });
-        assert.equal(await w.read.name(), "Wrapped SOL");
+        assert.equal(await w.read.name(), "Wrapped SOL (Rome)");
         assert.equal(await w.read.symbol(), "SOL");
         assert.equal(await revertName(f.write.add_spl_token_with_metadata([v.mint])), "AlreadyRegistered");
         assert.equal(await f.read.token_by_mint([v.mint]), w.address);
@@ -328,7 +328,7 @@ describe("the named wrapper factory", async () => {
             assert.equal(await revertName(send(f, calldata(MINT, toHex("My Token"), toHex("MYT")))), null);
             assert.equal(await revertName(send(f, calldata(MINT, toHex("My Token"), toHex("MYT")))), "AlreadyRegistered");
             const w = await viem.getContractAt("SPL_ERC20_cached", (await f.read.token_by_mint([MINT])) as `0x${string}`);
-            assert.equal(await w.read.name(), "My Token");
+            assert.equal(await w.read.name(), "My Token (Rome)");
             assert.equal(await w.read.symbol(), "MYT");
         });
 

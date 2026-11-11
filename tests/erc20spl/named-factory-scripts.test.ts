@@ -151,8 +151,8 @@ describe("the bootstrap's names are the named factory's", async () => {
     it("an unregistered mint is registered under the strings preview gives, never a name from a table", async () => {
         await plantMetaplex(store, "Wrapped SOL", "SOL");
         const out = await previewOutcome(() => f.read.preview([MINT_FOR_SCRIPTS.mint]));
-        assert.deepEqual(out, { kind: "ok", name: "Wrapped SOL", symbol: "SOL" });
-        assert.deepEqual(planEntry(zeroAddress, out), { kind: "register", name: "Wrapped SOL", symbol: "SOL" });
+        assert.deepEqual(out, { kind: "ok", name: "Wrapped SOL (Rome)", symbol: "SOL" });
+        assert.deepEqual(planEntry(zeroAddress, out), { kind: "register", name: "Wrapped SOL (Rome)", symbol: "SOL" });
     });
 
     it("a mint the named factory refuses is skipped with its reason, not registered, and does not stop the run", async () => {
@@ -353,7 +353,7 @@ describe("registering a mint the script made", async () => {
         assert.equal(done.path, "authority");
         await publicClient.waitForTransactionReceipt({ hash: done.hash });
         const w = await viem.getContractAt("SPL_ERC20_cached", (await f.read.token_by_mint([mint])) as `0x${string}`);
-        assert.equal(await w.read.name(), "CPI Test Token");
+        assert.equal(await w.read.name(), "CPI Test Token (Rome)");
         assert.equal(await w.read.symbol(), "TESTcpi");
     });
 
@@ -372,7 +372,7 @@ describe("registering a mint the script made", async () => {
         assert.equal(done.path, "metadata");
         await publicClient.waitForTransactionReceipt({ hash: done.hash });
         const w = await viem.getContractAt("SPL_ERC20_cached", (await g.read.token_by_mint([mint])) as `0x${string}`);
-        assert.equal(await w.read.name(), "Wrapped SOL");
+        assert.equal(await w.read.name(), "Wrapped SOL (Rome)");
     });
 
     it("any other refusal stops the run instead of trying the authority path", async () => {

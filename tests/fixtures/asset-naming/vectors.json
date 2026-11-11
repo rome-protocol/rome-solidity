@@ -1,5 +1,5 @@
 {
- "description": "Shared vectors for the Rome wrapper naming rule (the origin's strings, unchanged). See generate.py. 'at' says which account an entry is: 'mint', 'metaplex' (the mint's own Metaplex metadata account, wherever the consumer derives it) or 'other' (OTHER_ACCOUNT). An owner of 'classic', 'p2022', 'metaplex' or 'other' maps to the programs below ('other' is OTHER_PROGRAM). An entry with `patch` has 32 bytes at `offset` overwritten with the address named ('metaplex': the mint's own Metaplex account, derived by the consumer). `read` is what a mint reader returns as the mint's own name (source None, ExternalPointer, Token2022 or Metaplex, and the strings as stored); `expect` is the wrapper factory's verdict: the two strings (the origin's own, unchanged) or one refusal; `metaplex` / `metaplexName` / `metaplexSymbol` are the same strings cut to Metaplex's 32 and 10 bytes on a UTF-8 boundary.",
+ "description": "Shared vectors for the Rome wrapper naming rule. See generate.py. 'at' says which account an entry is: 'mint', 'metaplex' (the mint's own Metaplex metadata account, wherever the consumer derives it) or 'other' (OTHER_ACCOUNT). An owner of 'classic', 'p2022', 'metaplex' or 'other' maps to the programs below ('other' is OTHER_PROGRAM). An entry with `patch` has 32 bytes at `offset` overwritten with the address named ('metaplex': the mint's own Metaplex account, derived by the consumer). `read` is what a mint reader returns as the mint's own name (source None, ExternalPointer, Token2022 or Metaplex, and the strings as stored); `expect` is the wrapper factory's verdict: the two Rome strings or one refusal.",
  "unicodeVersion": "16.0.0",
  "constants": {
   "classicProgram": "0x06ddf6e1d765a193d9cbe146ceeb79ac1cb485ed5f5b37913a8cf5857eff00a9",
@@ -112,8 +112,7 @@
    "input": "0x534f4c",
    "expect": {
     "ok": true,
-    "output": "0x534f4c",
-    "metaplex": "0x534f4c"
+    "output": "0x534f4c2028526f6d6529"
    }
   },
   {
@@ -122,8 +121,7 @@
    "input": "0x534f4c",
    "expect": {
     "ok": true,
-    "output": "0x534f4c",
-    "metaplex": "0x534f4c"
+    "output": "0x534f4c"
    }
   },
   {
@@ -132,8 +130,7 @@
    "input": "0x5772617070656420534f4c",
    "expect": {
     "ok": true,
-    "output": "0x5772617070656420534f4c",
-    "metaplex": "0x5772617070656420534f4c"
+    "output": "0x5772617070656420534f4c2028526f6d6529"
    }
   },
   {
@@ -142,8 +139,7 @@
    "input": "0x5772617070656420534f4c",
    "expect": {
     "ok": true,
-    "output": "0x5772617070656420534f4c",
-    "metaplex": "0x5772617070656420534f"
+    "output": "0x5772617070656420534f"
    }
   },
   {
@@ -152,8 +148,7 @@
    "input": "0x4a69746f534f4c",
    "expect": {
     "ok": true,
-    "output": "0x4a69746f534f4c",
-    "metaplex": "0x4a69746f534f4c"
+    "output": "0x4a69746f534f4c2028526f6d6529"
    }
   },
   {
@@ -162,8 +157,7 @@
    "input": "0x4a69746f534f4c",
    "expect": {
     "ok": true,
-    "output": "0x4a69746f534f4c",
-    "metaplex": "0x4a69746f534f4c"
+    "output": "0x4a69746f534f4c"
    }
   },
   {
@@ -172,8 +166,7 @@
    "input": "0x426f6e6b",
    "expect": {
     "ok": true,
-    "output": "0x426f6e6b",
-    "metaplex": "0x426f6e6b"
+    "output": "0x426f6e6b2028526f6d6529"
    }
   },
   {
@@ -182,8 +175,7 @@
    "input": "0x426f6e6b",
    "expect": {
     "ok": true,
-    "output": "0x426f6e6b",
-    "metaplex": "0x426f6e6b"
+    "output": "0x426f6e6b"
    }
   },
   {
@@ -192,8 +184,7 @@
    "input": "0x455448",
    "expect": {
     "ok": true,
-    "output": "0x455448",
-    "metaplex": "0x455448"
+    "output": "0x4554482028526f6d6529"
    }
   },
   {
@@ -202,8 +193,7 @@
    "input": "0x455448",
    "expect": {
     "ok": true,
-    "output": "0x455448",
-    "metaplex": "0x455448"
+    "output": "0x455448"
    }
   },
   {
@@ -212,8 +202,7 @@
    "input": "0x4574686572",
    "expect": {
     "ok": true,
-    "output": "0x4574686572",
-    "metaplex": "0x4574686572"
+    "output": "0x45746865722028526f6d6529"
    }
   },
   {
@@ -222,8 +211,7 @@
    "input": "0x4574686572",
    "expect": {
     "ok": true,
-    "output": "0x4574686572",
-    "metaplex": "0x4574686572"
+    "output": "0x4574686572"
    }
   },
   {
@@ -232,8 +220,7 @@
    "input": "0x44616920537461626c65636f696e",
    "expect": {
     "ok": true,
-    "output": "0x44616920537461626c65636f696e",
-    "metaplex": "0x44616920537461626c65636f696e"
+    "output": "0x44616920537461626c65636f696e2028526f6d6529"
    }
   },
   {
@@ -242,8 +229,7 @@
    "input": "0x44616920537461626c65636f696e",
    "expect": {
     "ok": true,
-    "output": "0x44616920537461626c65636f696e",
-    "metaplex": "0x44616920537461626c65"
+    "output": "0x44616920537461626c65"
    }
   },
   {
@@ -252,8 +238,7 @@
    "input": "0x777374455448",
    "expect": {
     "ok": true,
-    "output": "0x777374455448",
-    "metaplex": "0x777374455448"
+    "output": "0x7773744554482028526f6d6529"
    }
   },
   {
@@ -262,8 +247,7 @@
    "input": "0x777374455448",
    "expect": {
     "ok": true,
-    "output": "0x777374455448",
-    "metaplex": "0x777374455448"
+    "output": "0x777374455448"
    }
   },
   {
@@ -272,8 +256,7 @@
    "input": "0x726f455448",
    "expect": {
     "ok": true,
-    "output": "0x726f455448",
-    "metaplex": "0x726f455448"
+    "output": "0x726f4554482028526f6d6529"
    }
   },
   {
@@ -282,8 +265,7 @@
    "input": "0x726f455448",
    "expect": {
     "ok": true,
-    "output": "0x726f455448",
-    "metaplex": "0x726f455448"
+    "output": "0x726f455448"
    }
   },
   {
@@ -292,8 +274,7 @@
    "input": "0x55534443",
    "expect": {
     "ok": true,
-    "output": "0x55534443",
-    "metaplex": "0x55534443"
+    "output": "0x555344432028526f6d6529"
    }
   },
   {
@@ -302,8 +283,7 @@
    "input": "0x55534443",
    "expect": {
     "ok": true,
-    "output": "0x55534443",
-    "metaplex": "0x55534443"
+    "output": "0x55534443"
    }
   },
   {
@@ -312,8 +292,7 @@
    "input": "0x4a69746f205374616b656420534f4c",
    "expect": {
     "ok": true,
-    "output": "0x4a69746f205374616b656420534f4c",
-    "metaplex": "0x4a69746f205374616b656420534f4c"
+    "output": "0x4a69746f205374616b656420534f4c2028526f6d6529"
    }
   },
   {
@@ -322,8 +301,7 @@
    "input": "0x4a69746f205374616b656420534f4c",
    "expect": {
     "ok": true,
-    "output": "0x4a69746f205374616b656420534f4c",
-    "metaplex": "0x4a69746f205374616b65"
+    "output": "0x4a69746f205374616b65"
    }
   },
   {
@@ -332,8 +310,7 @@
    "input": "0x6a49744f734f6c",
    "expect": {
     "ok": true,
-    "output": "0x6a49744f734f6c",
-    "metaplex": "0x6a49744f734f6c"
+    "output": "0x6a49744f734f6c2028526f6d6529"
    }
   },
   {
@@ -342,8 +319,7 @@
    "input": "0x6a49744f734f6c",
    "expect": {
     "ok": true,
-    "output": "0x6a49744f734f6c",
-    "metaplex": "0x6a49744f734f6c"
+    "output": "0x6a49744f734f6c"
    }
   },
   {
@@ -370,8 +346,7 @@
    "input": "0x4e4f5f53594d424f4c",
    "expect": {
     "ok": true,
-    "output": "0x4e4f5f53594d424f4c",
-    "metaplex": "0x4e4f5f53594d424f4c"
+    "output": "0x4e4f5f53594d424f4c2028526f6d6529"
    }
   },
   {
@@ -398,8 +373,7 @@
    "input": "0x4e4f5f4e414d45",
    "expect": {
     "ok": true,
-    "output": "0x4e4f5f4e414d45",
-    "metaplex": "0x4e4f5f4e414d45"
+    "output": "0x4e4f5f4e414d45"
    }
   },
   {
@@ -426,8 +400,7 @@
    "input": "0x4e4f5f53594d424f4c53",
    "expect": {
     "ok": true,
-    "output": "0x4e4f5f53594d424f4c53",
-    "metaplex": "0x4e4f5f53594d424f4c53"
+    "output": "0x4e4f5f53594d424f4c532028526f6d6529"
    }
   },
   {
@@ -436,8 +409,7 @@
    "input": "0x4e4f5f53594d424f4c53",
    "expect": {
     "ok": true,
-    "output": "0x4e4f5f53594d424f4c53",
-    "metaplex": "0x4e4f5f53594d424f4c53"
+    "output": "0x4e4f5f53594d424f4c53"
    }
   },
   {
@@ -446,8 +418,7 @@
    "input": "0x4e4f5f4e414d4553",
    "expect": {
     "ok": true,
-    "output": "0x4e4f5f4e414d4553",
-    "metaplex": "0x4e4f5f4e414d4553"
+    "output": "0x4e4f5f4e414d45532028526f6d6529"
    }
   },
   {
@@ -456,8 +427,7 @@
    "input": "0x4e4f5f4e414d4553",
    "expect": {
     "ok": true,
-    "output": "0x4e4f5f4e414d4553",
-    "metaplex": "0x4e4f5f4e414d4553"
+    "output": "0x4e4f5f4e414d4553"
    }
   },
   {
@@ -466,8 +436,7 @@
    "input": "0x4e4f5f53594d424f",
    "expect": {
     "ok": true,
-    "output": "0x4e4f5f53594d424f",
-    "metaplex": "0x4e4f5f53594d424f"
+    "output": "0x4e4f5f53594d424f2028526f6d6529"
    }
   },
   {
@@ -476,8 +445,7 @@
    "input": "0x4e4f5f53594d424f",
    "expect": {
     "ok": true,
-    "output": "0x4e4f5f53594d424f",
-    "metaplex": "0x4e4f5f53594d424f"
+    "output": "0x4e4f5f53594d424f"
    }
   },
   {
@@ -486,8 +454,7 @@
    "input": "0x4e4f545f56414c49",
    "expect": {
     "ok": true,
-    "output": "0x4e4f545f56414c49",
-    "metaplex": "0x4e4f545f56414c49"
+    "output": "0x4e4f545f56414c492028526f6d6529"
    }
   },
   {
@@ -496,8 +463,7 @@
    "input": "0x4e4f545f56414c49",
    "expect": {
     "ok": true,
-    "output": "0x4e4f545f56414c49",
-    "metaplex": "0x4e4f545f56414c49"
+    "output": "0x4e4f545f56414c49"
    }
   },
   {
@@ -506,8 +472,7 @@
    "input": "0x6e6f5f73796d626f6c",
    "expect": {
     "ok": true,
-    "output": "0x6e6f5f73796d626f6c",
-    "metaplex": "0x6e6f5f73796d626f6c"
+    "output": "0x6e6f5f73796d626f6c2028526f6d6529"
    }
   },
   {
@@ -516,8 +481,7 @@
    "input": "0x6e6f5f73796d626f6c",
    "expect": {
     "ok": true,
-    "output": "0x6e6f5f73796d626f6c",
-    "metaplex": "0x6e6f5f73796d626f6c"
+    "output": "0x6e6f5f73796d626f6c"
    }
   },
   {
@@ -526,8 +490,7 @@
    "input": "0x4e6f5f4e616d65",
    "expect": {
     "ok": true,
-    "output": "0x4e6f5f4e616d65",
-    "metaplex": "0x4e6f5f4e616d65"
+    "output": "0x4e6f5f4e616d652028526f6d6529"
    }
   },
   {
@@ -536,8 +499,7 @@
    "input": "0x4e6f5f4e616d65",
    "expect": {
     "ok": true,
-    "output": "0x4e6f5f4e616d65",
-    "metaplex": "0x4e6f5f4e616d65"
+    "output": "0x4e6f5f4e616d65"
    }
   },
   {
@@ -1770,8 +1732,7 @@
    "input": "0x4142c2a04344",
    "expect": {
     "ok": true,
-    "output": "0x4142c2a04344",
-    "metaplex": "0x4142c2a04344"
+    "output": "0x4142c2a043442028526f6d6529"
    }
   },
   {
@@ -1780,8 +1741,7 @@
    "input": "0x4142c2a04344",
    "expect": {
     "ok": true,
-    "output": "0x4142c2a04344",
-    "metaplex": "0x4142c2a04344"
+    "output": "0x4142c2a04344"
    }
   },
   {
@@ -1790,8 +1750,7 @@
    "input": "0x4142c2a04344",
    "expect": {
     "ok": true,
-    "output": "0x4142c2a04344",
-    "metaplex": "0x4142c2a04344"
+    "output": "0x4142c2a043442028526f6d6529"
    }
   },
   {
@@ -1800,8 +1759,7 @@
    "input": "0x4142c2a04344",
    "expect": {
     "ok": true,
-    "output": "0x4142c2a04344",
-    "metaplex": "0x4142c2a04344"
+    "output": "0x4142c2a04344"
    }
   },
   {
@@ -1810,8 +1768,7 @@
    "input": "0x4142c3bf4344",
    "expect": {
     "ok": true,
-    "output": "0x4142c3bf4344",
-    "metaplex": "0x4142c3bf4344"
+    "output": "0x4142c3bf43442028526f6d6529"
    }
   },
   {
@@ -1820,8 +1777,7 @@
    "input": "0x4142c3bf4344",
    "expect": {
     "ok": true,
-    "output": "0x4142c3bf4344",
-    "metaplex": "0x4142c3bf4344"
+    "output": "0x4142c3bf4344"
    }
   },
   {
@@ -1830,8 +1786,7 @@
    "input": "0x4142dfbf4344",
    "expect": {
     "ok": true,
-    "output": "0x4142dfbf4344",
-    "metaplex": "0x4142dfbf4344"
+    "output": "0x4142dfbf43442028526f6d6529"
    }
   },
   {
@@ -1840,8 +1795,7 @@
    "input": "0x4142dfbf4344",
    "expect": {
     "ok": true,
-    "output": "0x4142dfbf4344",
-    "metaplex": "0x4142dfbf4344"
+    "output": "0x4142dfbf4344"
    }
   },
   {
@@ -1850,8 +1804,7 @@
    "input": "0x4142e0a0804344",
    "expect": {
     "ok": true,
-    "output": "0x4142e0a0804344",
-    "metaplex": "0x4142e0a0804344"
+    "output": "0x4142e0a08043442028526f6d6529"
    }
   },
   {
@@ -1860,8 +1813,7 @@
    "input": "0x4142e0a0804344",
    "expect": {
     "ok": true,
-    "output": "0x4142e0a0804344",
-    "metaplex": "0x4142e0a0804344"
+    "output": "0x4142e0a0804344"
    }
   },
   {
@@ -1870,8 +1822,7 @@
    "input": "0x4142efbfbd4344",
    "expect": {
     "ok": true,
-    "output": "0x4142efbfbd4344",
-    "metaplex": "0x4142efbfbd4344"
+    "output": "0x4142efbfbd43442028526f6d6529"
    }
   },
   {
@@ -1880,8 +1831,7 @@
    "input": "0x4142efbfbd4344",
    "expect": {
     "ok": true,
-    "output": "0x4142efbfbd4344",
-    "metaplex": "0x4142efbfbd4344"
+    "output": "0x4142efbfbd4344"
    }
   },
   {
@@ -1890,8 +1840,7 @@
    "input": "0x4142f09080804344",
    "expect": {
     "ok": true,
-    "output": "0x4142f09080804344",
-    "metaplex": "0x4142f09080804344"
+    "output": "0x4142f090808043442028526f6d6529"
    }
   },
   {
@@ -1900,8 +1849,7 @@
    "input": "0x4142f09080804344",
    "expect": {
     "ok": true,
-    "output": "0x4142f09080804344",
-    "metaplex": "0x4142f09080804344"
+    "output": "0x4142f09080804344"
    }
   },
   {
@@ -1910,8 +1858,7 @@
    "input": "0x4142f48fbfbf4344",
    "expect": {
     "ok": true,
-    "output": "0x4142f48fbfbf4344",
-    "metaplex": "0x4142f48fbfbf4344"
+    "output": "0x4142f48fbfbf43442028526f6d6529"
    }
   },
   {
@@ -1920,8 +1867,7 @@
    "input": "0x4142f48fbfbf4344",
    "expect": {
     "ok": true,
-    "output": "0x4142f48fbfbf4344",
-    "metaplex": "0x4142f48fbfbf4344"
+    "output": "0x4142f48fbfbf4344"
    }
   },
   {
@@ -1930,8 +1876,7 @@
    "input": "0x4142f09f98804344",
    "expect": {
     "ok": true,
-    "output": "0x4142f09f98804344",
-    "metaplex": "0x4142f09f98804344"
+    "output": "0x4142f09f988043442028526f6d6529"
    }
   },
   {
@@ -1940,8 +1885,7 @@
    "input": "0x4142f09f98804344",
    "expect": {
     "ok": true,
-    "output": "0x4142f09f98804344",
-    "metaplex": "0x4142f09f98804344"
+    "output": "0x4142f09f98804344"
    }
   },
   {
@@ -2022,8 +1966,7 @@
    "input": "0x412042",
    "expect": {
     "ok": true,
-    "output": "0x412042",
-    "metaplex": "0x412042"
+    "output": "0x4120422028526f6d6529"
    }
   },
   {
@@ -2032,8 +1975,7 @@
    "input": "0x412042",
    "expect": {
     "ok": true,
-    "output": "0x412042",
-    "metaplex": "0x412042"
+    "output": "0x412042"
    }
   },
   {
@@ -2042,8 +1984,7 @@
    "input": "0x20",
    "expect": {
     "ok": true,
-    "output": "0x20",
-    "metaplex": "0x20"
+    "output": "0x202028526f6d6529"
    }
   },
   {
@@ -2052,8 +1993,7 @@
    "input": "0x20",
    "expect": {
     "ok": true,
-    "output": "0x20",
-    "metaplex": "0x20"
+    "output": "0x20"
    }
   },
   {
@@ -2134,8 +2074,7 @@
    "input": "0x417e42",
    "expect": {
     "ok": true,
-    "output": "0x417e42",
-    "metaplex": "0x417e42"
+    "output": "0x417e422028526f6d6529"
    }
   },
   {
@@ -2144,8 +2083,7 @@
    "input": "0x417e42",
    "expect": {
     "ok": true,
-    "output": "0x417e42",
-    "metaplex": "0x417e42"
+    "output": "0x417e42"
    }
   },
   {
@@ -2154,8 +2092,7 @@
    "input": "0x7e",
    "expect": {
     "ok": true,
-    "output": "0x7e",
-    "metaplex": "0x7e"
+    "output": "0x7e2028526f6d6529"
    }
   },
   {
@@ -2164,8 +2101,7 @@
    "input": "0x7e",
    "expect": {
     "ok": true,
-    "output": "0x7e",
-    "metaplex": "0x7e"
+    "output": "0x7e"
    }
   },
   {
@@ -2174,8 +2110,7 @@
    "input": "0x41c2a042",
    "expect": {
     "ok": true,
-    "output": "0x41c2a042",
-    "metaplex": "0x41c2a042"
+    "output": "0x41c2a0422028526f6d6529"
    }
   },
   {
@@ -2184,8 +2119,7 @@
    "input": "0x41c2a042",
    "expect": {
     "ok": true,
-    "output": "0x41c2a042",
-    "metaplex": "0x41c2a042"
+    "output": "0x41c2a042"
    }
   },
   {
@@ -2194,8 +2128,7 @@
    "input": "0xc2a0",
    "expect": {
     "ok": true,
-    "output": "0xc2a0",
-    "metaplex": "0xc2a0"
+    "output": "0xc2a02028526f6d6529"
    }
   },
   {
@@ -2204,8 +2137,7 @@
    "input": "0xc2a0",
    "expect": {
     "ok": true,
-    "output": "0xc2a0",
-    "metaplex": "0xc2a0"
+    "output": "0xc2a0"
    }
   },
   {
@@ -2286,8 +2218,7 @@
    "input": "0x41c2ac42",
    "expect": {
     "ok": true,
-    "output": "0x41c2ac42",
-    "metaplex": "0x41c2ac42"
+    "output": "0x41c2ac422028526f6d6529"
    }
   },
   {
@@ -2296,8 +2227,7 @@
    "input": "0x41c2ac42",
    "expect": {
     "ok": true,
-    "output": "0x41c2ac42",
-    "metaplex": "0x41c2ac42"
+    "output": "0x41c2ac42"
    }
   },
   {
@@ -2306,8 +2236,7 @@
    "input": "0xc2ac",
    "expect": {
     "ok": true,
-    "output": "0xc2ac",
-    "metaplex": "0xc2ac"
+    "output": "0xc2ac2028526f6d6529"
    }
   },
   {
@@ -2316,8 +2245,7 @@
    "input": "0xc2ac",
    "expect": {
     "ok": true,
-    "output": "0xc2ac",
-    "metaplex": "0xc2ac"
+    "output": "0xc2ac"
    }
   },
   {
@@ -2326,8 +2254,7 @@
    "input": "0x41c2ae42",
    "expect": {
     "ok": true,
-    "output": "0x41c2ae42",
-    "metaplex": "0x41c2ae42"
+    "output": "0x41c2ae422028526f6d6529"
    }
   },
   {
@@ -2336,8 +2263,7 @@
    "input": "0x41c2ae42",
    "expect": {
     "ok": true,
-    "output": "0x41c2ae42",
-    "metaplex": "0x41c2ae42"
+    "output": "0x41c2ae42"
    }
   },
   {
@@ -2346,8 +2272,7 @@
    "input": "0xc2ae",
    "expect": {
     "ok": true,
-    "output": "0xc2ae",
-    "metaplex": "0xc2ae"
+    "output": "0xc2ae2028526f6d6529"
    }
   },
   {
@@ -2356,8 +2281,7 @@
    "input": "0xc2ae",
    "expect": {
     "ok": true,
-    "output": "0xc2ae",
-    "metaplex": "0xc2ae"
+    "output": "0xc2ae"
    }
   },
   {
@@ -2438,8 +2362,7 @@
    "input": "0x41d7bf42",
    "expect": {
     "ok": true,
-    "output": "0x41d7bf42",
-    "metaplex": "0x41d7bf42"
+    "output": "0x41d7bf422028526f6d6529"
    }
   },
   {
@@ -2448,8 +2371,7 @@
    "input": "0x41d7bf42",
    "expect": {
     "ok": true,
-    "output": "0x41d7bf42",
-    "metaplex": "0x41d7bf42"
+    "output": "0x41d7bf42"
    }
   },
   {
@@ -2458,8 +2380,7 @@
    "input": "0xd7bf",
    "expect": {
     "ok": true,
-    "output": "0xd7bf",
-    "metaplex": "0xd7bf"
+    "output": "0xd7bf2028526f6d6529"
    }
   },
   {
@@ -2468,8 +2389,7 @@
    "input": "0xd7bf",
    "expect": {
     "ok": true,
-    "output": "0xd7bf",
-    "metaplex": "0xd7bf"
+    "output": "0xd7bf"
    }
   },
   {
@@ -2478,8 +2398,7 @@
    "input": "0x41d88642",
    "expect": {
     "ok": true,
-    "output": "0x41d88642",
-    "metaplex": "0x41d88642"
+    "output": "0x41d886422028526f6d6529"
    }
   },
   {
@@ -2488,8 +2407,7 @@
    "input": "0x41d88642",
    "expect": {
     "ok": true,
-    "output": "0x41d88642",
-    "metaplex": "0x41d88642"
+    "output": "0x41d88642"
    }
   },
   {
@@ -2498,8 +2416,7 @@
    "input": "0xd886",
    "expect": {
     "ok": true,
-    "output": "0xd886",
-    "metaplex": "0xd886"
+    "output": "0xd8862028526f6d6529"
    }
   },
   {
@@ -2508,8 +2425,7 @@
    "input": "0xd886",
    "expect": {
     "ok": true,
-    "output": "0xd886",
-    "metaplex": "0xd886"
+    "output": "0xd886"
    }
   },
   {
@@ -2590,8 +2506,7 @@
    "input": "0x41d89b42",
    "expect": {
     "ok": true,
-    "output": "0x41d89b42",
-    "metaplex": "0x41d89b42"
+    "output": "0x41d89b422028526f6d6529"
    }
   },
   {
@@ -2600,8 +2515,7 @@
    "input": "0x41d89b42",
    "expect": {
     "ok": true,
-    "output": "0x41d89b42",
-    "metaplex": "0x41d89b42"
+    "output": "0x41d89b42"
    }
   },
   {
@@ -2610,8 +2524,7 @@
    "input": "0xd89b",
    "expect": {
     "ok": true,
-    "output": "0xd89b",
-    "metaplex": "0xd89b"
+    "output": "0xd89b2028526f6d6529"
    }
   },
   {
@@ -2620,8 +2533,7 @@
    "input": "0xd89b",
    "expect": {
     "ok": true,
-    "output": "0xd89b",
-    "metaplex": "0xd89b"
+    "output": "0xd89b"
    }
   },
   {
@@ -2630,8 +2542,7 @@
    "input": "0x41d89d42",
    "expect": {
     "ok": true,
-    "output": "0x41d89d42",
-    "metaplex": "0x41d89d42"
+    "output": "0x41d89d422028526f6d6529"
    }
   },
   {
@@ -2640,8 +2551,7 @@
    "input": "0x41d89d42",
    "expect": {
     "ok": true,
-    "output": "0x41d89d42",
-    "metaplex": "0x41d89d42"
+    "output": "0x41d89d42"
    }
   },
   {
@@ -2650,8 +2560,7 @@
    "input": "0xd89d",
    "expect": {
     "ok": true,
-    "output": "0xd89d",
-    "metaplex": "0xd89d"
+    "output": "0xd89d2028526f6d6529"
    }
   },
   {
@@ -2660,8 +2569,7 @@
    "input": "0xd89d",
    "expect": {
     "ok": true,
-    "output": "0xd89d",
-    "metaplex": "0xd89d"
+    "output": "0xd89d"
    }
   },
   {
@@ -2742,8 +2650,7 @@
    "input": "0x41db9c42",
    "expect": {
     "ok": true,
-    "output": "0x41db9c42",
-    "metaplex": "0x41db9c42"
+    "output": "0x41db9c422028526f6d6529"
    }
   },
   {
@@ -2752,8 +2659,7 @@
    "input": "0x41db9c42",
    "expect": {
     "ok": true,
-    "output": "0x41db9c42",
-    "metaplex": "0x41db9c42"
+    "output": "0x41db9c42"
    }
   },
   {
@@ -2762,8 +2668,7 @@
    "input": "0xdb9c",
    "expect": {
     "ok": true,
-    "output": "0xdb9c",
-    "metaplex": "0xdb9c"
+    "output": "0xdb9c2028526f6d6529"
    }
   },
   {
@@ -2772,8 +2677,7 @@
    "input": "0xdb9c",
    "expect": {
     "ok": true,
-    "output": "0xdb9c",
-    "metaplex": "0xdb9c"
+    "output": "0xdb9c"
    }
   },
   {
@@ -2782,8 +2686,7 @@
    "input": "0x41db9e42",
    "expect": {
     "ok": true,
-    "output": "0x41db9e42",
-    "metaplex": "0x41db9e42"
+    "output": "0x41db9e422028526f6d6529"
    }
   },
   {
@@ -2792,8 +2695,7 @@
    "input": "0x41db9e42",
    "expect": {
     "ok": true,
-    "output": "0x41db9e42",
-    "metaplex": "0x41db9e42"
+    "output": "0x41db9e42"
    }
   },
   {
@@ -2802,8 +2704,7 @@
    "input": "0xdb9e",
    "expect": {
     "ok": true,
-    "output": "0xdb9e",
-    "metaplex": "0xdb9e"
+    "output": "0xdb9e2028526f6d6529"
    }
   },
   {
@@ -2812,8 +2713,7 @@
    "input": "0xdb9e",
    "expect": {
     "ok": true,
-    "output": "0xdb9e",
-    "metaplex": "0xdb9e"
+    "output": "0xdb9e"
    }
   },
   {
@@ -2894,8 +2794,7 @@
    "input": "0x41dc8e42",
    "expect": {
     "ok": true,
-    "output": "0x41dc8e42",
-    "metaplex": "0x41dc8e42"
+    "output": "0x41dc8e422028526f6d6529"
    }
   },
   {
@@ -2904,8 +2803,7 @@
    "input": "0x41dc8e42",
    "expect": {
     "ok": true,
-    "output": "0x41dc8e42",
-    "metaplex": "0x41dc8e42"
+    "output": "0x41dc8e42"
    }
   },
   {
@@ -2914,8 +2812,7 @@
    "input": "0xdc8e",
    "expect": {
     "ok": true,
-    "output": "0xdc8e",
-    "metaplex": "0xdc8e"
+    "output": "0xdc8e2028526f6d6529"
    }
   },
   {
@@ -2924,8 +2821,7 @@
    "input": "0xdc8e",
    "expect": {
     "ok": true,
-    "output": "0xdc8e",
-    "metaplex": "0xdc8e"
+    "output": "0xdc8e"
    }
   },
   {
@@ -2934,8 +2830,7 @@
    "input": "0x41dc9042",
    "expect": {
     "ok": true,
-    "output": "0x41dc9042",
-    "metaplex": "0x41dc9042"
+    "output": "0x41dc90422028526f6d6529"
    }
   },
   {
@@ -2944,8 +2839,7 @@
    "input": "0x41dc9042",
    "expect": {
     "ok": true,
-    "output": "0x41dc9042",
-    "metaplex": "0x41dc9042"
+    "output": "0x41dc9042"
    }
   },
   {
@@ -2954,8 +2848,7 @@
    "input": "0xdc90",
    "expect": {
     "ok": true,
-    "output": "0xdc90",
-    "metaplex": "0xdc90"
+    "output": "0xdc902028526f6d6529"
    }
   },
   {
@@ -2964,8 +2857,7 @@
    "input": "0xdc90",
    "expect": {
     "ok": true,
-    "output": "0xdc90",
-    "metaplex": "0xdc90"
+    "output": "0xdc90"
    }
   },
   {
@@ -3046,8 +2938,7 @@
    "input": "0x41e0a28f42",
    "expect": {
     "ok": true,
-    "output": "0x41e0a28f42",
-    "metaplex": "0x41e0a28f42"
+    "output": "0x41e0a28f422028526f6d6529"
    }
   },
   {
@@ -3056,8 +2947,7 @@
    "input": "0x41e0a28f42",
    "expect": {
     "ok": true,
-    "output": "0x41e0a28f42",
-    "metaplex": "0x41e0a28f42"
+    "output": "0x41e0a28f42"
    }
   },
   {
@@ -3066,8 +2956,7 @@
    "input": "0xe0a28f",
    "expect": {
     "ok": true,
-    "output": "0xe0a28f",
-    "metaplex": "0xe0a28f"
+    "output": "0xe0a28f2028526f6d6529"
    }
   },
   {
@@ -3076,8 +2965,7 @@
    "input": "0xe0a28f",
    "expect": {
     "ok": true,
-    "output": "0xe0a28f",
-    "metaplex": "0xe0a28f"
+    "output": "0xe0a28f"
    }
   },
   {
@@ -3086,8 +2974,7 @@
    "input": "0x41e0a29242",
    "expect": {
     "ok": true,
-    "output": "0x41e0a29242",
-    "metaplex": "0x41e0a29242"
+    "output": "0x41e0a292422028526f6d6529"
    }
   },
   {
@@ -3096,8 +2983,7 @@
    "input": "0x41e0a29242",
    "expect": {
     "ok": true,
-    "output": "0x41e0a29242",
-    "metaplex": "0x41e0a29242"
+    "output": "0x41e0a29242"
    }
   },
   {
@@ -3106,8 +2992,7 @@
    "input": "0xe0a292",
    "expect": {
     "ok": true,
-    "output": "0xe0a292",
-    "metaplex": "0xe0a292"
+    "output": "0xe0a2922028526f6d6529"
    }
   },
   {
@@ -3116,8 +3001,7 @@
    "input": "0xe0a292",
    "expect": {
     "ok": true,
-    "output": "0xe0a292",
-    "metaplex": "0xe0a292"
+    "output": "0xe0a292"
    }
   },
   {
@@ -3198,8 +3082,7 @@
    "input": "0x41e0a3a142",
    "expect": {
     "ok": true,
-    "output": "0x41e0a3a142",
-    "metaplex": "0x41e0a3a142"
+    "output": "0x41e0a3a1422028526f6d6529"
    }
   },
   {
@@ -3208,8 +3091,7 @@
    "input": "0x41e0a3a142",
    "expect": {
     "ok": true,
-    "output": "0x41e0a3a142",
-    "metaplex": "0x41e0a3a142"
+    "output": "0x41e0a3a142"
    }
   },
   {
@@ -3218,8 +3100,7 @@
    "input": "0xe0a3a1",
    "expect": {
     "ok": true,
-    "output": "0xe0a3a1",
-    "metaplex": "0xe0a3a1"
+    "output": "0xe0a3a12028526f6d6529"
    }
   },
   {
@@ -3228,8 +3109,7 @@
    "input": "0xe0a3a1",
    "expect": {
     "ok": true,
-    "output": "0xe0a3a1",
-    "metaplex": "0xe0a3a1"
+    "output": "0xe0a3a1"
    }
   },
   {
@@ -3238,8 +3118,7 @@
    "input": "0x41e0a3a342",
    "expect": {
     "ok": true,
-    "output": "0x41e0a3a342",
-    "metaplex": "0x41e0a3a342"
+    "output": "0x41e0a3a3422028526f6d6529"
    }
   },
   {
@@ -3248,8 +3127,7 @@
    "input": "0x41e0a3a342",
    "expect": {
     "ok": true,
-    "output": "0x41e0a3a342",
-    "metaplex": "0x41e0a3a342"
+    "output": "0x41e0a3a342"
    }
   },
   {
@@ -3258,8 +3136,7 @@
    "input": "0xe0a3a3",
    "expect": {
     "ok": true,
-    "output": "0xe0a3a3",
-    "metaplex": "0xe0a3a3"
+    "output": "0xe0a3a32028526f6d6529"
    }
   },
   {
@@ -3268,8 +3145,7 @@
    "input": "0xe0a3a3",
    "expect": {
     "ok": true,
-    "output": "0xe0a3a3",
-    "metaplex": "0xe0a3a3"
+    "output": "0xe0a3a3"
    }
   },
   {
@@ -3350,8 +3226,7 @@
    "input": "0x41e1a08d42",
    "expect": {
     "ok": true,
-    "output": "0x41e1a08d42",
-    "metaplex": "0x41e1a08d42"
+    "output": "0x41e1a08d422028526f6d6529"
    }
   },
   {
@@ -3360,8 +3235,7 @@
    "input": "0x41e1a08d42",
    "expect": {
     "ok": true,
-    "output": "0x41e1a08d42",
-    "metaplex": "0x41e1a08d42"
+    "output": "0x41e1a08d42"
    }
   },
   {
@@ -3370,8 +3244,7 @@
    "input": "0xe1a08d",
    "expect": {
     "ok": true,
-    "output": "0xe1a08d",
-    "metaplex": "0xe1a08d"
+    "output": "0xe1a08d2028526f6d6529"
    }
   },
   {
@@ -3380,8 +3253,7 @@
    "input": "0xe1a08d",
    "expect": {
     "ok": true,
-    "output": "0xe1a08d",
-    "metaplex": "0xe1a08d"
+    "output": "0xe1a08d"
    }
   },
   {
@@ -3390,8 +3262,7 @@
    "input": "0x41e1a08f42",
    "expect": {
     "ok": true,
-    "output": "0x41e1a08f42",
-    "metaplex": "0x41e1a08f42"
+    "output": "0x41e1a08f422028526f6d6529"
    }
   },
   {
@@ -3400,8 +3271,7 @@
    "input": "0x41e1a08f42",
    "expect": {
     "ok": true,
-    "output": "0x41e1a08f42",
-    "metaplex": "0x41e1a08f42"
+    "output": "0x41e1a08f42"
    }
   },
   {
@@ -3410,8 +3280,7 @@
    "input": "0xe1a08f",
    "expect": {
     "ok": true,
-    "output": "0xe1a08f",
-    "metaplex": "0xe1a08f"
+    "output": "0xe1a08f2028526f6d6529"
    }
   },
   {
@@ -3420,8 +3289,7 @@
    "input": "0xe1a08f",
    "expect": {
     "ok": true,
-    "output": "0xe1a08f",
-    "metaplex": "0xe1a08f"
+    "output": "0xe1a08f"
    }
   },
   {
@@ -3502,8 +3370,7 @@
    "input": "0x41e2808a42",
    "expect": {
     "ok": true,
-    "output": "0x41e2808a42",
-    "metaplex": "0x41e2808a42"
+    "output": "0x41e2808a422028526f6d6529"
    }
   },
   {
@@ -3512,8 +3379,7 @@
    "input": "0x41e2808a42",
    "expect": {
     "ok": true,
-    "output": "0x41e2808a42",
-    "metaplex": "0x41e2808a42"
+    "output": "0x41e2808a42"
    }
   },
   {
@@ -3522,8 +3388,7 @@
    "input": "0xe2808a",
    "expect": {
     "ok": true,
-    "output": "0xe2808a",
-    "metaplex": "0xe2808a"
+    "output": "0xe2808a2028526f6d6529"
    }
   },
   {
@@ -3532,8 +3397,7 @@
    "input": "0xe2808a",
    "expect": {
     "ok": true,
-    "output": "0xe2808a",
-    "metaplex": "0xe2808a"
+    "output": "0xe2808a"
    }
   },
   {
@@ -3542,8 +3406,7 @@
    "input": "0x41e2809042",
    "expect": {
     "ok": true,
-    "output": "0x41e2809042",
-    "metaplex": "0x41e2809042"
+    "output": "0x41e28090422028526f6d6529"
    }
   },
   {
@@ -3552,8 +3415,7 @@
    "input": "0x41e2809042",
    "expect": {
     "ok": true,
-    "output": "0x41e2809042",
-    "metaplex": "0x41e2809042"
+    "output": "0x41e2809042"
    }
   },
   {
@@ -3562,8 +3424,7 @@
    "input": "0xe28090",
    "expect": {
     "ok": true,
-    "output": "0xe28090",
-    "metaplex": "0xe28090"
+    "output": "0xe280902028526f6d6529"
    }
   },
   {
@@ -3572,8 +3433,7 @@
    "input": "0xe28090",
    "expect": {
     "ok": true,
-    "output": "0xe28090",
-    "metaplex": "0xe28090"
+    "output": "0xe28090"
    }
   },
   {
@@ -3654,8 +3514,7 @@
    "input": "0x41e280a942",
    "expect": {
     "ok": true,
-    "output": "0x41e280a942",
-    "metaplex": "0x41e280a942"
+    "output": "0x41e280a9422028526f6d6529"
    }
   },
   {
@@ -3664,8 +3523,7 @@
    "input": "0x41e280a942",
    "expect": {
     "ok": true,
-    "output": "0x41e280a942",
-    "metaplex": "0x41e280a942"
+    "output": "0x41e280a942"
    }
   },
   {
@@ -3674,8 +3532,7 @@
    "input": "0xe280a9",
    "expect": {
     "ok": true,
-    "output": "0xe280a9",
-    "metaplex": "0xe280a9"
+    "output": "0xe280a92028526f6d6529"
    }
   },
   {
@@ -3684,8 +3541,7 @@
    "input": "0xe280a9",
    "expect": {
     "ok": true,
-    "output": "0xe280a9",
-    "metaplex": "0xe280a9"
+    "output": "0xe280a9"
    }
   },
   {
@@ -3694,8 +3550,7 @@
    "input": "0x41e280af42",
    "expect": {
     "ok": true,
-    "output": "0x41e280af42",
-    "metaplex": "0x41e280af42"
+    "output": "0x41e280af422028526f6d6529"
    }
   },
   {
@@ -3704,8 +3559,7 @@
    "input": "0x41e280af42",
    "expect": {
     "ok": true,
-    "output": "0x41e280af42",
-    "metaplex": "0x41e280af42"
+    "output": "0x41e280af42"
    }
   },
   {
@@ -3714,8 +3568,7 @@
    "input": "0xe280af",
    "expect": {
     "ok": true,
-    "output": "0xe280af",
-    "metaplex": "0xe280af"
+    "output": "0xe280af2028526f6d6529"
    }
   },
   {
@@ -3724,8 +3577,7 @@
    "input": "0xe280af",
    "expect": {
     "ok": true,
-    "output": "0xe280af",
-    "metaplex": "0xe280af"
+    "output": "0xe280af"
    }
   },
   {
@@ -3806,8 +3658,7 @@
    "input": "0x41e2819f42",
    "expect": {
     "ok": true,
-    "output": "0x41e2819f42",
-    "metaplex": "0x41e2819f42"
+    "output": "0x41e2819f422028526f6d6529"
    }
   },
   {
@@ -3816,8 +3667,7 @@
    "input": "0x41e2819f42",
    "expect": {
     "ok": true,
-    "output": "0x41e2819f42",
-    "metaplex": "0x41e2819f42"
+    "output": "0x41e2819f42"
    }
   },
   {
@@ -3826,8 +3676,7 @@
    "input": "0xe2819f",
    "expect": {
     "ok": true,
-    "output": "0xe2819f",
-    "metaplex": "0xe2819f"
+    "output": "0xe2819f2028526f6d6529"
    }
   },
   {
@@ -3836,8 +3685,7 @@
    "input": "0xe2819f",
    "expect": {
     "ok": true,
-    "output": "0xe2819f",
-    "metaplex": "0xe2819f"
+    "output": "0xe2819f"
    }
   },
   {
@@ -3846,8 +3694,7 @@
    "input": "0x41e281a542",
    "expect": {
     "ok": true,
-    "output": "0x41e281a542",
-    "metaplex": "0x41e281a542"
+    "output": "0x41e281a5422028526f6d6529"
    }
   },
   {
@@ -3856,8 +3703,7 @@
    "input": "0x41e281a542",
    "expect": {
     "ok": true,
-    "output": "0x41e281a542",
-    "metaplex": "0x41e281a542"
+    "output": "0x41e281a542"
    }
   },
   {
@@ -3866,8 +3712,7 @@
    "input": "0xe281a5",
    "expect": {
     "ok": true,
-    "output": "0xe281a5",
-    "metaplex": "0xe281a5"
+    "output": "0xe281a52028526f6d6529"
    }
   },
   {
@@ -3876,8 +3721,7 @@
    "input": "0xe281a5",
    "expect": {
     "ok": true,
-    "output": "0xe281a5",
-    "metaplex": "0xe281a5"
+    "output": "0xe281a5"
    }
   },
   {
@@ -3958,8 +3802,7 @@
    "input": "0x41e281a542",
    "expect": {
     "ok": true,
-    "output": "0x41e281a542",
-    "metaplex": "0x41e281a542"
+    "output": "0x41e281a5422028526f6d6529"
    }
   },
   {
@@ -3968,8 +3811,7 @@
    "input": "0x41e281a542",
    "expect": {
     "ok": true,
-    "output": "0x41e281a542",
-    "metaplex": "0x41e281a542"
+    "output": "0x41e281a542"
    }
   },
   {
@@ -3978,8 +3820,7 @@
    "input": "0xe281a5",
    "expect": {
     "ok": true,
-    "output": "0xe281a5",
-    "metaplex": "0xe281a5"
+    "output": "0xe281a52028526f6d6529"
    }
   },
   {
@@ -3988,8 +3829,7 @@
    "input": "0xe281a5",
    "expect": {
     "ok": true,
-    "output": "0xe281a5",
-    "metaplex": "0xe281a5"
+    "output": "0xe281a5"
    }
   },
   {
@@ -3998,8 +3838,7 @@
    "input": "0x41e281b042",
    "expect": {
     "ok": true,
-    "output": "0x41e281b042",
-    "metaplex": "0x41e281b042"
+    "output": "0x41e281b0422028526f6d6529"
    }
   },
   {
@@ -4008,8 +3847,7 @@
    "input": "0x41e281b042",
    "expect": {
     "ok": true,
-    "output": "0x41e281b042",
-    "metaplex": "0x41e281b042"
+    "output": "0x41e281b042"
    }
   },
   {
@@ -4018,8 +3856,7 @@
    "input": "0xe281b0",
    "expect": {
     "ok": true,
-    "output": "0xe281b0",
-    "metaplex": "0xe281b0"
+    "output": "0xe281b02028526f6d6529"
    }
   },
   {
@@ -4028,8 +3865,7 @@
    "input": "0xe281b0",
    "expect": {
     "ok": true,
-    "output": "0xe281b0",
-    "metaplex": "0xe281b0"
+    "output": "0xe281b0"
    }
   },
   {
@@ -4110,8 +3946,7 @@
    "input": "0x41efbbbe42",
    "expect": {
     "ok": true,
-    "output": "0x41efbbbe42",
-    "metaplex": "0x41efbbbe42"
+    "output": "0x41efbbbe422028526f6d6529"
    }
   },
   {
@@ -4120,8 +3955,7 @@
    "input": "0x41efbbbe42",
    "expect": {
     "ok": true,
-    "output": "0x41efbbbe42",
-    "metaplex": "0x41efbbbe42"
+    "output": "0x41efbbbe42"
    }
   },
   {
@@ -4130,8 +3964,7 @@
    "input": "0xefbbbe",
    "expect": {
     "ok": true,
-    "output": "0xefbbbe",
-    "metaplex": "0xefbbbe"
+    "output": "0xefbbbe2028526f6d6529"
    }
   },
   {
@@ -4140,8 +3973,7 @@
    "input": "0xefbbbe",
    "expect": {
     "ok": true,
-    "output": "0xefbbbe",
-    "metaplex": "0xefbbbe"
+    "output": "0xefbbbe"
    }
   },
   {
@@ -4150,8 +3982,7 @@
    "input": "0x41efbc8042",
    "expect": {
     "ok": true,
-    "output": "0x41efbc8042",
-    "metaplex": "0x41efbc8042"
+    "output": "0x41efbc80422028526f6d6529"
    }
   },
   {
@@ -4160,8 +3991,7 @@
    "input": "0x41efbc8042",
    "expect": {
     "ok": true,
-    "output": "0x41efbc8042",
-    "metaplex": "0x41efbc8042"
+    "output": "0x41efbc8042"
    }
   },
   {
@@ -4170,8 +4000,7 @@
    "input": "0xefbc80",
    "expect": {
     "ok": true,
-    "output": "0xefbc80",
-    "metaplex": "0xefbc80"
+    "output": "0xefbc802028526f6d6529"
    }
   },
   {
@@ -4180,8 +4009,7 @@
    "input": "0xefbc80",
    "expect": {
     "ok": true,
-    "output": "0xefbc80",
-    "metaplex": "0xefbc80"
+    "output": "0xefbc80"
    }
   },
   {
@@ -4262,8 +4090,7 @@
    "input": "0x41efbfb842",
    "expect": {
     "ok": true,
-    "output": "0x41efbfb842",
-    "metaplex": "0x41efbfb842"
+    "output": "0x41efbfb8422028526f6d6529"
    }
   },
   {
@@ -4272,8 +4099,7 @@
    "input": "0x41efbfb842",
    "expect": {
     "ok": true,
-    "output": "0x41efbfb842",
-    "metaplex": "0x41efbfb842"
+    "output": "0x41efbfb842"
    }
   },
   {
@@ -4282,8 +4108,7 @@
    "input": "0xefbfb8",
    "expect": {
     "ok": true,
-    "output": "0xefbfb8",
-    "metaplex": "0xefbfb8"
+    "output": "0xefbfb82028526f6d6529"
    }
   },
   {
@@ -4292,8 +4117,7 @@
    "input": "0xefbfb8",
    "expect": {
     "ok": true,
-    "output": "0xefbfb8",
-    "metaplex": "0xefbfb8"
+    "output": "0xefbfb8"
    }
   },
   {
@@ -4302,8 +4126,7 @@
    "input": "0x41efbfbc42",
    "expect": {
     "ok": true,
-    "output": "0x41efbfbc42",
-    "metaplex": "0x41efbfbc42"
+    "output": "0x41efbfbc422028526f6d6529"
    }
   },
   {
@@ -4312,8 +4135,7 @@
    "input": "0x41efbfbc42",
    "expect": {
     "ok": true,
-    "output": "0x41efbfbc42",
-    "metaplex": "0x41efbfbc42"
+    "output": "0x41efbfbc42"
    }
   },
   {
@@ -4322,8 +4144,7 @@
    "input": "0xefbfbc",
    "expect": {
     "ok": true,
-    "output": "0xefbfbc",
-    "metaplex": "0xefbfbc"
+    "output": "0xefbfbc2028526f6d6529"
    }
   },
   {
@@ -4332,8 +4153,7 @@
    "input": "0xefbfbc",
    "expect": {
     "ok": true,
-    "output": "0xefbfbc",
-    "metaplex": "0xefbfbc"
+    "output": "0xefbfbc"
    }
   },
   {
@@ -4414,8 +4234,7 @@
    "input": "0x41f09182bc42",
    "expect": {
     "ok": true,
-    "output": "0x41f09182bc42",
-    "metaplex": "0x41f09182bc42"
+    "output": "0x41f09182bc422028526f6d6529"
    }
   },
   {
@@ -4424,8 +4243,7 @@
    "input": "0x41f09182bc42",
    "expect": {
     "ok": true,
-    "output": "0x41f09182bc42",
-    "metaplex": "0x41f09182bc42"
+    "output": "0x41f09182bc42"
    }
   },
   {
@@ -4434,8 +4252,7 @@
    "input": "0xf09182bc",
    "expect": {
     "ok": true,
-    "output": "0xf09182bc",
-    "metaplex": "0xf09182bc"
+    "output": "0xf09182bc2028526f6d6529"
    }
   },
   {
@@ -4444,8 +4261,7 @@
    "input": "0xf09182bc",
    "expect": {
     "ok": true,
-    "output": "0xf09182bc",
-    "metaplex": "0xf09182bc"
+    "output": "0xf09182bc"
    }
   },
   {
@@ -4454,8 +4270,7 @@
    "input": "0x41f09182be42",
    "expect": {
     "ok": true,
-    "output": "0x41f09182be42",
-    "metaplex": "0x41f09182be42"
+    "output": "0x41f09182be422028526f6d6529"
    }
   },
   {
@@ -4464,8 +4279,7 @@
    "input": "0x41f09182be42",
    "expect": {
     "ok": true,
-    "output": "0x41f09182be42",
-    "metaplex": "0x41f09182be42"
+    "output": "0x41f09182be42"
    }
   },
   {
@@ -4474,8 +4288,7 @@
    "input": "0xf09182be",
    "expect": {
     "ok": true,
-    "output": "0xf09182be",
-    "metaplex": "0xf09182be"
+    "output": "0xf09182be2028526f6d6529"
    }
   },
   {
@@ -4484,8 +4297,7 @@
    "input": "0xf09182be",
    "expect": {
     "ok": true,
-    "output": "0xf09182be",
-    "metaplex": "0xf09182be"
+    "output": "0xf09182be"
    }
   },
   {
@@ -4566,8 +4378,7 @@
    "input": "0x41f091838c42",
    "expect": {
     "ok": true,
-    "output": "0x41f091838c42",
-    "metaplex": "0x41f091838c42"
+    "output": "0x41f091838c422028526f6d6529"
    }
   },
   {
@@ -4576,8 +4387,7 @@
    "input": "0x41f091838c42",
    "expect": {
     "ok": true,
-    "output": "0x41f091838c42",
-    "metaplex": "0x41f091838c42"
+    "output": "0x41f091838c42"
    }
   },
   {
@@ -4586,8 +4396,7 @@
    "input": "0xf091838c",
    "expect": {
     "ok": true,
-    "output": "0xf091838c",
-    "metaplex": "0xf091838c"
+    "output": "0xf091838c2028526f6d6529"
    }
   },
   {
@@ -4596,8 +4405,7 @@
    "input": "0xf091838c",
    "expect": {
     "ok": true,
-    "output": "0xf091838c",
-    "metaplex": "0xf091838c"
+    "output": "0xf091838c"
    }
   },
   {
@@ -4606,8 +4414,7 @@
    "input": "0x41f091838e42",
    "expect": {
     "ok": true,
-    "output": "0x41f091838e42",
-    "metaplex": "0x41f091838e42"
+    "output": "0x41f091838e422028526f6d6529"
    }
   },
   {
@@ -4616,8 +4423,7 @@
    "input": "0x41f091838e42",
    "expect": {
     "ok": true,
-    "output": "0x41f091838e42",
-    "metaplex": "0x41f091838e42"
+    "output": "0x41f091838e42"
    }
   },
   {
@@ -4626,8 +4432,7 @@
    "input": "0xf091838e",
    "expect": {
     "ok": true,
-    "output": "0xf091838e",
-    "metaplex": "0xf091838e"
+    "output": "0xf091838e2028526f6d6529"
    }
   },
   {
@@ -4636,8 +4441,7 @@
    "input": "0xf091838e",
    "expect": {
     "ok": true,
-    "output": "0xf091838e",
-    "metaplex": "0xf091838e"
+    "output": "0xf091838e"
    }
   },
   {
@@ -4718,8 +4522,7 @@
    "input": "0x41f09390af42",
    "expect": {
     "ok": true,
-    "output": "0x41f09390af42",
-    "metaplex": "0x41f09390af42"
+    "output": "0x41f09390af422028526f6d6529"
    }
   },
   {
@@ -4728,8 +4531,7 @@
    "input": "0x41f09390af42",
    "expect": {
     "ok": true,
-    "output": "0x41f09390af42",
-    "metaplex": "0x41f09390af42"
+    "output": "0x41f09390af42"
    }
   },
   {
@@ -4738,8 +4540,7 @@
    "input": "0xf09390af",
    "expect": {
     "ok": true,
-    "output": "0xf09390af",
-    "metaplex": "0xf09390af"
+    "output": "0xf09390af2028526f6d6529"
    }
   },
   {
@@ -4748,8 +4549,7 @@
    "input": "0xf09390af",
    "expect": {
     "ok": true,
-    "output": "0xf09390af",
-    "metaplex": "0xf09390af"
+    "output": "0xf09390af"
    }
   },
   {
@@ -4758,8 +4558,7 @@
    "input": "0x41f093918042",
    "expect": {
     "ok": true,
-    "output": "0x41f093918042",
-    "metaplex": "0x41f093918042"
+    "output": "0x41f0939180422028526f6d6529"
    }
   },
   {
@@ -4768,8 +4567,7 @@
    "input": "0x41f093918042",
    "expect": {
     "ok": true,
-    "output": "0x41f093918042",
-    "metaplex": "0x41f093918042"
+    "output": "0x41f093918042"
    }
   },
   {
@@ -4778,8 +4576,7 @@
    "input": "0xf0939180",
    "expect": {
     "ok": true,
-    "output": "0xf0939180",
-    "metaplex": "0xf0939180"
+    "output": "0xf09391802028526f6d6529"
    }
   },
   {
@@ -4788,8 +4585,7 @@
    "input": "0xf0939180",
    "expect": {
     "ok": true,
-    "output": "0xf0939180",
-    "metaplex": "0xf0939180"
+    "output": "0xf0939180"
    }
   },
   {
@@ -4870,8 +4666,7 @@
    "input": "0x41f09bb29f42",
    "expect": {
     "ok": true,
-    "output": "0x41f09bb29f42",
-    "metaplex": "0x41f09bb29f42"
+    "output": "0x41f09bb29f422028526f6d6529"
    }
   },
   {
@@ -4880,8 +4675,7 @@
    "input": "0x41f09bb29f42",
    "expect": {
     "ok": true,
-    "output": "0x41f09bb29f42",
-    "metaplex": "0x41f09bb29f42"
+    "output": "0x41f09bb29f42"
    }
   },
   {
@@ -4890,8 +4684,7 @@
    "input": "0xf09bb29f",
    "expect": {
     "ok": true,
-    "output": "0xf09bb29f",
-    "metaplex": "0xf09bb29f"
+    "output": "0xf09bb29f2028526f6d6529"
    }
   },
   {
@@ -4900,8 +4693,7 @@
    "input": "0xf09bb29f",
    "expect": {
     "ok": true,
-    "output": "0xf09bb29f",
-    "metaplex": "0xf09bb29f"
+    "output": "0xf09bb29f"
    }
   },
   {
@@ -4910,8 +4702,7 @@
    "input": "0x41f09bb2a442",
    "expect": {
     "ok": true,
-    "output": "0x41f09bb2a442",
-    "metaplex": "0x41f09bb2a442"
+    "output": "0x41f09bb2a4422028526f6d6529"
    }
   },
   {
@@ -4920,8 +4711,7 @@
    "input": "0x41f09bb2a442",
    "expect": {
     "ok": true,
-    "output": "0x41f09bb2a442",
-    "metaplex": "0x41f09bb2a442"
+    "output": "0x41f09bb2a442"
    }
   },
   {
@@ -4930,8 +4720,7 @@
    "input": "0xf09bb2a4",
    "expect": {
     "ok": true,
-    "output": "0xf09bb2a4",
-    "metaplex": "0xf09bb2a4"
+    "output": "0xf09bb2a42028526f6d6529"
    }
   },
   {
@@ -4940,8 +4729,7 @@
    "input": "0xf09bb2a4",
    "expect": {
     "ok": true,
-    "output": "0xf09bb2a4",
-    "metaplex": "0xf09bb2a4"
+    "output": "0xf09bb2a4"
    }
   },
   {
@@ -5022,8 +4810,7 @@
    "input": "0x41f09d85b242",
    "expect": {
     "ok": true,
-    "output": "0x41f09d85b242",
-    "metaplex": "0x41f09d85b242"
+    "output": "0x41f09d85b2422028526f6d6529"
    }
   },
   {
@@ -5032,8 +4819,7 @@
    "input": "0x41f09d85b242",
    "expect": {
     "ok": true,
-    "output": "0x41f09d85b242",
-    "metaplex": "0x41f09d85b242"
+    "output": "0x41f09d85b242"
    }
   },
   {
@@ -5042,8 +4828,7 @@
    "input": "0xf09d85b2",
    "expect": {
     "ok": true,
-    "output": "0xf09d85b2",
-    "metaplex": "0xf09d85b2"
+    "output": "0xf09d85b22028526f6d6529"
    }
   },
   {
@@ -5052,8 +4837,7 @@
    "input": "0xf09d85b2",
    "expect": {
     "ok": true,
-    "output": "0xf09d85b2",
-    "metaplex": "0xf09d85b2"
+    "output": "0xf09d85b2"
    }
   },
   {
@@ -5062,8 +4846,7 @@
    "input": "0x41f09d85bb42",
    "expect": {
     "ok": true,
-    "output": "0x41f09d85bb42",
-    "metaplex": "0x41f09d85bb42"
+    "output": "0x41f09d85bb422028526f6d6529"
    }
   },
   {
@@ -5072,8 +4855,7 @@
    "input": "0x41f09d85bb42",
    "expect": {
     "ok": true,
-    "output": "0x41f09d85bb42",
-    "metaplex": "0x41f09d85bb42"
+    "output": "0x41f09d85bb42"
    }
   },
   {
@@ -5082,8 +4864,7 @@
    "input": "0xf09d85bb",
    "expect": {
     "ok": true,
-    "output": "0xf09d85bb",
-    "metaplex": "0xf09d85bb"
+    "output": "0xf09d85bb2028526f6d6529"
    }
   },
   {
@@ -5092,8 +4873,7 @@
    "input": "0xf09d85bb",
    "expect": {
     "ok": true,
-    "output": "0xf09d85bb",
-    "metaplex": "0xf09d85bb"
+    "output": "0xf09d85bb"
    }
   },
   {
@@ -5174,8 +4954,7 @@
    "input": "0x41f3a0808042",
    "expect": {
     "ok": true,
-    "output": "0x41f3a0808042",
-    "metaplex": "0x41f3a0808042"
+    "output": "0x41f3a08080422028526f6d6529"
    }
   },
   {
@@ -5184,8 +4963,7 @@
    "input": "0x41f3a0808042",
    "expect": {
     "ok": true,
-    "output": "0x41f3a0808042",
-    "metaplex": "0x41f3a0808042"
+    "output": "0x41f3a0808042"
    }
   },
   {
@@ -5194,8 +4972,7 @@
    "input": "0xf3a08080",
    "expect": {
     "ok": true,
-    "output": "0xf3a08080",
-    "metaplex": "0xf3a08080"
+    "output": "0xf3a080802028526f6d6529"
    }
   },
   {
@@ -5204,8 +4981,7 @@
    "input": "0xf3a08080",
    "expect": {
     "ok": true,
-    "output": "0xf3a08080",
-    "metaplex": "0xf3a08080"
+    "output": "0xf3a08080"
    }
   },
   {
@@ -5214,8 +4990,7 @@
    "input": "0x41f3a0808242",
    "expect": {
     "ok": true,
-    "output": "0x41f3a0808242",
-    "metaplex": "0x41f3a0808242"
+    "output": "0x41f3a08082422028526f6d6529"
    }
   },
   {
@@ -5224,8 +4999,7 @@
    "input": "0x41f3a0808242",
    "expect": {
     "ok": true,
-    "output": "0x41f3a0808242",
-    "metaplex": "0x41f3a0808242"
+    "output": "0x41f3a0808242"
    }
   },
   {
@@ -5234,8 +5008,7 @@
    "input": "0xf3a08082",
    "expect": {
     "ok": true,
-    "output": "0xf3a08082",
-    "metaplex": "0xf3a08082"
+    "output": "0xf3a080822028526f6d6529"
    }
   },
   {
@@ -5244,8 +5017,7 @@
    "input": "0xf3a08082",
    "expect": {
     "ok": true,
-    "output": "0xf3a08082",
-    "metaplex": "0xf3a08082"
+    "output": "0xf3a08082"
    }
   },
   {
@@ -5326,8 +5098,7 @@
    "input": "0x41f3a0809f42",
    "expect": {
     "ok": true,
-    "output": "0x41f3a0809f42",
-    "metaplex": "0x41f3a0809f42"
+    "output": "0x41f3a0809f422028526f6d6529"
    }
   },
   {
@@ -5336,8 +5107,7 @@
    "input": "0x41f3a0809f42",
    "expect": {
     "ok": true,
-    "output": "0x41f3a0809f42",
-    "metaplex": "0x41f3a0809f42"
+    "output": "0x41f3a0809f42"
    }
   },
   {
@@ -5346,8 +5116,7 @@
    "input": "0xf3a0809f",
    "expect": {
     "ok": true,
-    "output": "0xf3a0809f",
-    "metaplex": "0xf3a0809f"
+    "output": "0xf3a0809f2028526f6d6529"
    }
   },
   {
@@ -5356,8 +5125,7 @@
    "input": "0xf3a0809f",
    "expect": {
     "ok": true,
-    "output": "0xf3a0809f",
-    "metaplex": "0xf3a0809f"
+    "output": "0xf3a0809f"
    }
   },
   {
@@ -5366,8 +5134,7 @@
    "input": "0x41f3a0828042",
    "expect": {
     "ok": true,
-    "output": "0x41f3a0828042",
-    "metaplex": "0x41f3a0828042"
+    "output": "0x41f3a08280422028526f6d6529"
    }
   },
   {
@@ -5376,8 +5143,7 @@
    "input": "0x41f3a0828042",
    "expect": {
     "ok": true,
-    "output": "0x41f3a0828042",
-    "metaplex": "0x41f3a0828042"
+    "output": "0x41f3a0828042"
    }
   },
   {
@@ -5386,8 +5152,7 @@
    "input": "0xf3a08280",
    "expect": {
     "ok": true,
-    "output": "0xf3a08280",
-    "metaplex": "0xf3a08280"
+    "output": "0xf3a082802028526f6d6529"
    }
   },
   {
@@ -5396,8 +5161,7 @@
    "input": "0xf3a08280",
    "expect": {
     "ok": true,
-    "output": "0xf3a08280",
-    "metaplex": "0xf3a08280"
+    "output": "0xf3a08280"
    }
   },
   {
@@ -5406,8 +5170,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f707172737475767778",
    "expect": {
     "ok": true,
-    "output": "0x6162636465666768696a6b6c6d6e6f707172737475767778",
-    "metaplex": "0x6162636465666768696a6b6c6d6e6f707172737475767778"
+    "output": "0x6162636465666768696a6b6c6d6e6f7071727374757677782028526f6d6529"
    }
   },
   {
@@ -5416,8 +5179,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f707172737475767778",
    "expect": {
     "ok": true,
-    "output": "0x6162636465666768696a6b6c6d6e6f707172737475767778",
-    "metaplex": "0x6162636465666768696a"
+    "output": "0x6162636465666768696a"
    }
   },
   {
@@ -5426,8 +5188,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f70717273747576777879",
    "expect": {
     "ok": true,
-    "output": "0x6162636465666768696a6b6c6d6e6f70717273747576777879",
-    "metaplex": "0x6162636465666768696a6b6c6d6e6f70717273747576777879"
+    "output": "0x6162636465666768696a6b6c6d6e6f707172737475767778792028526f6d6529"
    }
   },
   {
@@ -5436,8 +5197,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f70717273747576777879",
    "expect": {
     "ok": true,
-    "output": "0x6162636465666768696a6b6c6d6e6f70717273747576777879",
-    "metaplex": "0x6162636465666768696a"
+    "output": "0x6162636465666768696a"
    }
   },
   {
@@ -5446,8 +5206,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a",
    "expect": {
     "ok": true,
-    "output": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a",
-    "metaplex": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a"
+    "output": "0x6162636465666768696a6b6c6d6e6f707172737475767778792028526f6d6529"
    }
   },
   {
@@ -5456,8 +5215,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a",
    "expect": {
     "ok": true,
-    "output": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a",
-    "metaplex": "0x6162636465666768696a"
+    "output": "0x6162636465666768696a"
    }
   },
   {
@@ -5466,8 +5224,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a414243444546",
    "expect": {
     "ok": true,
-    "output": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a414243444546",
-    "metaplex": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a414243444546"
+    "output": "0x6162636465666768696a6b6c6d6e6f707172737475767778792028526f6d6529"
    }
   },
   {
@@ -5476,8 +5233,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a414243444546",
    "expect": {
     "ok": true,
-    "output": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a414243444546",
-    "metaplex": "0x6162636465666768696a"
+    "output": "0x6162636465666768696a"
    }
   },
   {
@@ -5486,8 +5242,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a41424344454647",
    "expect": {
     "ok": true,
-    "output": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a41424344454647",
-    "metaplex": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a414243444546"
+    "output": "0x6162636465666768696a6b6c6d6e6f707172737475767778792028526f6d6529"
    }
   },
   {
@@ -5496,8 +5251,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a41424344454647",
    "expect": {
     "ok": true,
-    "output": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a41424344454647",
-    "metaplex": "0x6162636465666768696a"
+    "output": "0x6162636465666768696a"
    }
   },
   {
@@ -5506,8 +5260,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a4142434445464748494a4b4c4d4e",
    "expect": {
     "ok": true,
-    "output": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a4142434445464748494a4b4c4d4e",
-    "metaplex": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a414243444546"
+    "output": "0x6162636465666768696a6b6c6d6e6f707172737475767778792028526f6d6529"
    }
   },
   {
@@ -5516,128 +5269,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a4142434445464748494a4b4c4d4e",
    "expect": {
     "ok": true,
-    "output": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a4142434445464748494a4b4c4d4e",
-    "metaplex": "0x6162636465666768696a"
-   }
-  },
-  {
-   "id": "name/cut/name-multibyte-across-32",
-   "kind": "name",
-   "input": "0x41414141414141414141414141414141414141414141414141414141414141c3a95a",
-   "expect": {
-    "ok": true,
-    "output": "0x41414141414141414141414141414141414141414141414141414141414141c3a95a",
-    "metaplex": "0x41414141414141414141414141414141414141414141414141414141414141"
-   }
-  },
-  {
-   "id": "symbol/cut/name-multibyte-across-32",
-   "kind": "symbol",
-   "input": "0x41414141414141414141414141414141414141414141414141414141414141c3a95a",
-   "expect": {
-    "ok": true,
-    "output": "0x41414141414141414141414141414141414141414141414141414141414141c3a95a",
-    "metaplex": "0x41414141414141414141"
-   }
-  },
-  {
-   "id": "name/cut/name-3byte-across-32",
-   "kind": "name",
-   "input": "0x414141414141414141414141414141414141414141414141414141414141e282ac5a",
-   "expect": {
-    "ok": true,
-    "output": "0x414141414141414141414141414141414141414141414141414141414141e282ac5a",
-    "metaplex": "0x414141414141414141414141414141414141414141414141414141414141"
-   }
-  },
-  {
-   "id": "symbol/cut/name-3byte-across-32",
-   "kind": "symbol",
-   "input": "0x414141414141414141414141414141414141414141414141414141414141e282ac5a",
-   "expect": {
-    "ok": true,
-    "output": "0x414141414141414141414141414141414141414141414141414141414141e282ac5a",
-    "metaplex": "0x41414141414141414141"
-   }
-  },
-  {
-   "id": "name/cut/name-4byte-across-32",
-   "kind": "name",
-   "input": "0x4141414141414141414141414141414141414141414141414141414141f09f98805a",
-   "expect": {
-    "ok": true,
-    "output": "0x4141414141414141414141414141414141414141414141414141414141f09f98805a",
-    "metaplex": "0x4141414141414141414141414141414141414141414141414141414141"
-   }
-  },
-  {
-   "id": "symbol/cut/name-4byte-across-32",
-   "kind": "symbol",
-   "input": "0x4141414141414141414141414141414141414141414141414141414141f09f98805a",
-   "expect": {
-    "ok": true,
-    "output": "0x4141414141414141414141414141414141414141414141414141414141f09f98805a",
-    "metaplex": "0x41414141414141414141"
-   }
-  },
-  {
-   "id": "name/cut/name-multibyte-ends-at-32",
-   "kind": "name",
-   "input": "0x414141414141414141414141414141414141414141414141414141414141c3a95a",
-   "expect": {
-    "ok": true,
-    "output": "0x414141414141414141414141414141414141414141414141414141414141c3a95a",
-    "metaplex": "0x414141414141414141414141414141414141414141414141414141414141c3a9"
-   }
-  },
-  {
-   "id": "symbol/cut/name-multibyte-ends-at-32",
-   "kind": "symbol",
-   "input": "0x414141414141414141414141414141414141414141414141414141414141c3a95a",
-   "expect": {
-    "ok": true,
-    "output": "0x414141414141414141414141414141414141414141414141414141414141c3a95a",
-    "metaplex": "0x41414141414141414141"
-   }
-  },
-  {
-   "id": "name/cut/symbol-multibyte-across-10",
-   "kind": "name",
-   "input": "0x414243444546474849c3a9",
-   "expect": {
-    "ok": true,
-    "output": "0x414243444546474849c3a9",
-    "metaplex": "0x414243444546474849c3a9"
-   }
-  },
-  {
-   "id": "symbol/cut/symbol-multibyte-across-10",
-   "kind": "symbol",
-   "input": "0x414243444546474849c3a9",
-   "expect": {
-    "ok": true,
-    "output": "0x414243444546474849c3a9",
-    "metaplex": "0x414243444546474849"
-   }
-  },
-  {
-   "id": "name/cut/symbol-4byte-across-10",
-   "kind": "name",
-   "input": "0x4142434445464748f09f9880",
-   "expect": {
-    "ok": true,
-    "output": "0x4142434445464748f09f9880",
-    "metaplex": "0x4142434445464748f09f9880"
-   }
-  },
-  {
-   "id": "symbol/cut/symbol-4byte-across-10",
-   "kind": "symbol",
-   "input": "0x4142434445464748f09f9880",
-   "expect": {
-    "ok": true,
-    "output": "0x4142434445464748f09f9880",
-    "metaplex": "0x4142434445464748"
+    "output": "0x6162636465666768696a"
    }
   },
   {
@@ -5646,8 +5278,7 @@
    "input": "0x414141414141414141414141414141414141414141414141c3a95a",
    "expect": {
     "ok": true,
-    "output": "0x414141414141414141414141414141414141414141414141c3a95a",
-    "metaplex": "0x414141414141414141414141414141414141414141414141c3a95a"
+    "output": "0x4141414141414141414141414141414141414141414141412028526f6d6529"
    }
   },
   {
@@ -5656,8 +5287,7 @@
    "input": "0x414141414141414141414141414141414141414141414141c3a95a",
    "expect": {
     "ok": true,
-    "output": "0x414141414141414141414141414141414141414141414141c3a95a",
-    "metaplex": "0x41414141414141414141"
+    "output": "0x41414141414141414141"
    }
   },
   {
@@ -5666,8 +5296,7 @@
    "input": "0x4141414141414141414141414141414141414141414141e282ac5a",
    "expect": {
     "ok": true,
-    "output": "0x4141414141414141414141414141414141414141414141e282ac5a",
-    "metaplex": "0x4141414141414141414141414141414141414141414141e282ac5a"
+    "output": "0x41414141414141414141414141414141414141414141412028526f6d6529"
    }
   },
   {
@@ -5676,8 +5305,7 @@
    "input": "0x4141414141414141414141414141414141414141414141e282ac5a",
    "expect": {
     "ok": true,
-    "output": "0x4141414141414141414141414141414141414141414141e282ac5a",
-    "metaplex": "0x41414141414141414141"
+    "output": "0x41414141414141414141"
    }
   },
   {
@@ -5686,8 +5314,7 @@
    "input": "0x41414141414141414141414141414141414141414141f09f98805a",
    "expect": {
     "ok": true,
-    "output": "0x41414141414141414141414141414141414141414141f09f98805a",
-    "metaplex": "0x41414141414141414141414141414141414141414141f09f98805a"
+    "output": "0x414141414141414141414141414141414141414141412028526f6d6529"
    }
   },
   {
@@ -5696,8 +5323,7 @@
    "input": "0x41414141414141414141414141414141414141414141f09f98805a",
    "expect": {
     "ok": true,
-    "output": "0x41414141414141414141414141414141414141414141f09f98805a",
-    "metaplex": "0x41414141414141414141"
+    "output": "0x41414141414141414141"
    }
   },
   {
@@ -5706,8 +5332,7 @@
    "input": "0x4141414141414141414141414141414141414141414141c3a95a",
    "expect": {
     "ok": true,
-    "output": "0x4141414141414141414141414141414141414141414141c3a95a",
-    "metaplex": "0x4141414141414141414141414141414141414141414141c3a95a"
+    "output": "0x4141414141414141414141414141414141414141414141c3a92028526f6d6529"
    }
   },
   {
@@ -5716,48 +5341,7 @@
    "input": "0x4141414141414141414141414141414141414141414141c3a95a",
    "expect": {
     "ok": true,
-    "output": "0x4141414141414141414141414141414141414141414141c3a95a",
-    "metaplex": "0x41414141414141414141"
-   }
-  },
-  {
-   "id": "name/cut/symbol-ascii-7",
-   "kind": "name",
-   "input": "0x41424344454647",
-   "expect": {
-    "ok": true,
-    "output": "0x41424344454647",
-    "metaplex": "0x41424344454647"
-   }
-  },
-  {
-   "id": "symbol/cut/symbol-ascii-7",
-   "kind": "symbol",
-   "input": "0x41424344454647",
-   "expect": {
-    "ok": true,
-    "output": "0x41424344454647",
-    "metaplex": "0x41424344454647"
-   }
-  },
-  {
-   "id": "name/cut/symbol-ascii-8",
-   "kind": "name",
-   "input": "0x4142434445464748",
-   "expect": {
-    "ok": true,
-    "output": "0x4142434445464748",
-    "metaplex": "0x4142434445464748"
-   }
-  },
-  {
-   "id": "symbol/cut/symbol-ascii-8",
-   "kind": "symbol",
-   "input": "0x4142434445464748",
-   "expect": {
-    "ok": true,
-    "output": "0x4142434445464748",
-    "metaplex": "0x4142434445464748"
+    "output": "0x41414141414141414141"
    }
   },
   {
@@ -5766,8 +5350,7 @@
    "input": "0x414243444546474849",
    "expect": {
     "ok": true,
-    "output": "0x414243444546474849",
-    "metaplex": "0x414243444546474849"
+    "output": "0x4142434445464748492028526f6d6529"
    }
   },
   {
@@ -5776,8 +5359,7 @@
    "input": "0x414243444546474849",
    "expect": {
     "ok": true,
-    "output": "0x414243444546474849",
-    "metaplex": "0x414243444546474849"
+    "output": "0x414243444546474849"
    }
   },
   {
@@ -5786,8 +5368,7 @@
    "input": "0x4142434445464748494a",
    "expect": {
     "ok": true,
-    "output": "0x4142434445464748494a",
-    "metaplex": "0x4142434445464748494a"
+    "output": "0x4142434445464748494a2028526f6d6529"
    }
   },
   {
@@ -5796,8 +5377,7 @@
    "input": "0x4142434445464748494a",
    "expect": {
     "ok": true,
-    "output": "0x4142434445464748494a",
-    "metaplex": "0x4142434445464748494a"
+    "output": "0x4142434445464748494a"
    }
   },
   {
@@ -5806,8 +5386,7 @@
    "input": "0x4142434445464748494a4b",
    "expect": {
     "ok": true,
-    "output": "0x4142434445464748494a4b",
-    "metaplex": "0x4142434445464748494a4b"
+    "output": "0x4142434445464748494a4b2028526f6d6529"
    }
   },
   {
@@ -5816,68 +5395,97 @@
    "input": "0x4142434445464748494a4b",
    "expect": {
     "ok": true,
-    "output": "0x4142434445464748494a4b",
-    "metaplex": "0x4142434445464748494a"
+    "output": "0x4142434445464748494a"
    }
   },
   {
-   "id": "name/cut/symbol-multibyte-across-8",
+   "id": "name/cut/symbol-ascii-12",
    "kind": "name",
-   "input": "0x41424344454647c3a9",
+   "input": "0x4142434445464748494a4b4c",
    "expect": {
     "ok": true,
-    "output": "0x41424344454647c3a9",
-    "metaplex": "0x41424344454647c3a9"
+    "output": "0x4142434445464748494a4b4c2028526f6d6529"
    }
   },
   {
-   "id": "symbol/cut/symbol-multibyte-across-8",
+   "id": "symbol/cut/symbol-ascii-12",
    "kind": "symbol",
-   "input": "0x41424344454647c3a9",
+   "input": "0x4142434445464748494a4b4c",
    "expect": {
     "ok": true,
-    "output": "0x41424344454647c3a9",
-    "metaplex": "0x41424344454647c3a9"
+    "output": "0x4142434445464748494a"
    }
   },
   {
-   "id": "name/cut/symbol-4byte-across-8",
+   "id": "name/cut/symbol-multibyte-across-10",
    "kind": "name",
-   "input": "0x414243444546f09f98805a",
+   "input": "0x414243444546474849c3a9",
    "expect": {
     "ok": true,
-    "output": "0x414243444546f09f98805a",
-    "metaplex": "0x414243444546f09f98805a"
+    "output": "0x414243444546474849c3a92028526f6d6529"
    }
   },
   {
-   "id": "symbol/cut/symbol-4byte-across-8",
+   "id": "symbol/cut/symbol-multibyte-across-10",
    "kind": "symbol",
-   "input": "0x414243444546f09f98805a",
+   "input": "0x414243444546474849c3a9",
    "expect": {
     "ok": true,
-    "output": "0x414243444546f09f98805a",
-    "metaplex": "0x414243444546f09f9880"
+    "output": "0x414243444546474849"
    }
   },
   {
-   "id": "name/cut/symbol-4byte-before-8",
+   "id": "name/cut/symbol-multibyte-ends-at-10",
    "kind": "name",
-   "input": "0x41424344f09f9880",
+   "input": "0x4142434445464748c3a95a",
    "expect": {
     "ok": true,
-    "output": "0x41424344f09f9880",
-    "metaplex": "0x41424344f09f9880"
+    "output": "0x4142434445464748c3a95a2028526f6d6529"
    }
   },
   {
-   "id": "symbol/cut/symbol-4byte-before-8",
+   "id": "symbol/cut/symbol-multibyte-ends-at-10",
    "kind": "symbol",
-   "input": "0x41424344f09f9880",
+   "input": "0x4142434445464748c3a95a",
    "expect": {
     "ok": true,
-    "output": "0x41424344f09f9880",
-    "metaplex": "0x41424344f09f9880"
+    "output": "0x4142434445464748c3a9"
+   }
+  },
+  {
+   "id": "name/cut/symbol-4byte-across-10",
+   "kind": "name",
+   "input": "0x4142434445464748f09f98805a",
+   "expect": {
+    "ok": true,
+    "output": "0x4142434445464748f09f98805a2028526f6d6529"
+   }
+  },
+  {
+   "id": "symbol/cut/symbol-4byte-across-10",
+   "kind": "symbol",
+   "input": "0x4142434445464748f09f98805a",
+   "expect": {
+    "ok": true,
+    "output": "0x4142434445464748"
+   }
+  },
+  {
+   "id": "name/cut/symbol-4byte-before-10",
+   "kind": "name",
+   "input": "0x414243444546f09f9880",
+   "expect": {
+    "ok": true,
+    "output": "0x414243444546f09f98802028526f6d6529"
+   }
+  },
+  {
+   "id": "symbol/cut/symbol-4byte-before-10",
+   "kind": "symbol",
+   "input": "0x414243444546f09f9880",
+   "expect": {
+    "ok": true,
+    "output": "0x414243444546f09f9880"
    }
   },
   {
@@ -5886,8 +5494,7 @@
    "input": "0xe697a5e69cace8aa9ee381a7e38199",
    "expect": {
     "ok": true,
-    "output": "0xe697a5e69cace8aa9ee381a7e38199",
-    "metaplex": "0xe697a5e69cace8aa9ee381a7e38199"
+    "output": "0xe697a5e69cace8aa9ee381a7e381992028526f6d6529"
    }
   },
   {
@@ -5896,8 +5503,7 @@
    "input": "0xe697a5e69cace8aa9ee381a7e38199",
    "expect": {
     "ok": true,
-    "output": "0xe697a5e69cace8aa9ee381a7e38199",
-    "metaplex": "0xe697a5e69cace8aa9e"
+    "output": "0xe697a5e69cace8aa9e"
    }
   },
   {
@@ -5906,8 +5512,7 @@
    "input": "0xc385c384c396c385c384c396",
    "expect": {
     "ok": true,
-    "output": "0xc385c384c396c385c384c396",
-    "metaplex": "0xc385c384c396c385c384c396"
+    "output": "0xc385c384c396c385c384c3962028526f6d6529"
    }
   },
   {
@@ -5916,8 +5521,7 @@
    "input": "0xc385c384c396c385c384c396",
    "expect": {
     "ok": true,
-    "output": "0xc385c384c396c385c384c396",
-    "metaplex": "0xc385c384c396c385c384"
+    "output": "0xc385c384c396c385c384"
    }
   },
   {
@@ -5926,8 +5530,7 @@
    "input": "0x4142434445464748494a",
    "expect": {
     "ok": true,
-    "output": "0x4142434445464748494a",
-    "metaplex": "0x4142434445464748494a"
+    "output": "0x4142434445464748494a2028526f6d6529"
    }
   },
   {
@@ -5936,8 +5539,7 @@
    "input": "0x4142434445464748494a",
    "expect": {
     "ok": true,
-    "output": "0x4142434445464748494a",
-    "metaplex": "0x4142434445464748494a"
+    "output": "0x4142434445464748494a"
    }
   },
   {
@@ -5946,8 +5548,7 @@
    "input": "0xe697a5e69cace8aa9e",
    "expect": {
     "ok": true,
-    "output": "0xe697a5e69cace8aa9e",
-    "metaplex": "0xe697a5e69cace8aa9e"
+    "output": "0xe697a5e69cace8aa9e2028526f6d6529"
    }
   },
   {
@@ -5956,8 +5557,7 @@
    "input": "0xe697a5e69cace8aa9e",
    "expect": {
     "ok": true,
-    "output": "0xe697a5e69cace8aa9e",
-    "metaplex": "0xe697a5e69cace8aa9e"
+    "output": "0xe697a5e69cace8aa9e"
    }
   },
   {
@@ -5966,8 +5566,7 @@
    "input": "0xe28690e28690e28690",
    "expect": {
     "ok": true,
-    "output": "0xe28690e28690e28690",
-    "metaplex": "0xe28690e28690e28690"
+    "output": "0xe28690e28690e286902028526f6d6529"
    }
   },
   {
@@ -5976,8 +5575,7 @@
    "input": "0xe28690e28690e28690",
    "expect": {
     "ok": true,
-    "output": "0xe28690e28690e28690",
-    "metaplex": "0xe28690e28690e28690"
+    "output": "0xe28690e28690e28690"
    }
   },
   {
@@ -5986,8 +5584,7 @@
    "input": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142",
    "expect": {
     "ok": true,
-    "output": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142",
-    "metaplex": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142"
+    "output": "0x4142434445464748494a4142434445464748494a41424344452028526f6d6529"
    }
   },
   {
@@ -5996,8 +5593,7 @@
    "input": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142",
    "expect": {
     "ok": true,
-    "output": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142",
-    "metaplex": "0x4142434445464748494a"
+    "output": "0x4142434445464748494a"
    }
   },
   {
@@ -6006,8 +5602,7 @@
    "input": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5",
    "expect": {
     "ok": true,
-    "output": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5",
-    "metaplex": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5"
+    "output": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cac2028526f6d6529"
    }
   },
   {
@@ -6016,8 +5611,7 @@
    "input": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5",
    "expect": {
     "ok": true,
-    "output": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5",
-    "metaplex": "0xe697a5e69cace8aa9e"
+    "output": "0xe697a5e69cace8aa9e"
    }
   },
   {
@@ -6026,8 +5620,7 @@
    "input": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690",
    "expect": {
     "ok": true,
-    "output": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690",
-    "metaplex": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690"
+    "output": "0xe28690e28690e28690e28690e28690e28690e28690e286902028526f6d6529"
    }
   },
   {
@@ -6036,8 +5629,7 @@
    "input": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690",
    "expect": {
     "ok": true,
-    "output": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690",
-    "metaplex": "0xe28690e28690e28690"
+    "output": "0xe28690e28690e28690"
    }
   },
   {
@@ -6046,8 +5638,7 @@
    "input": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a41424344",
    "expect": {
     "ok": true,
-    "output": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a41424344",
-    "metaplex": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142"
+    "output": "0x4142434445464748494a4142434445464748494a41424344452028526f6d6529"
    }
   },
   {
@@ -6056,8 +5647,7 @@
    "input": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a41424344",
    "expect": {
     "ok": true,
-    "output": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a41424344",
-    "metaplex": "0x4142434445464748494a"
+    "output": "0x4142434445464748494a"
    }
   },
   {
@@ -6066,8 +5656,7 @@
    "input": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9e",
    "expect": {
     "ok": true,
-    "output": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9e",
-    "metaplex": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5"
+    "output": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cac2028526f6d6529"
    }
   },
   {
@@ -6076,8 +5665,7 @@
    "input": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9e",
    "expect": {
     "ok": true,
-    "output": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9e",
-    "metaplex": "0xe697a5e69cace8aa9e"
+    "output": "0xe697a5e69cace8aa9e"
    }
   },
   {
@@ -6086,8 +5674,7 @@
    "input": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690",
    "expect": {
     "ok": true,
-    "output": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690",
-    "metaplex": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690"
+    "output": "0xe28690e28690e28690e28690e28690e28690e28690e286902028526f6d6529"
    }
   },
   {
@@ -6096,8 +5683,7 @@
    "input": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690",
    "expect": {
     "ok": true,
-    "output": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690",
-    "metaplex": "0xe28690e28690e28690"
+    "output": "0xe28690e28690e28690"
    }
   },
   {
@@ -6106,8 +5692,7 @@
    "input": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a",
    "expect": {
     "ok": true,
-    "output": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a",
-    "metaplex": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142"
+    "output": "0x4142434445464748494a4142434445464748494a41424344452028526f6d6529"
    }
   },
   {
@@ -6116,8 +5701,7 @@
    "input": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a",
    "expect": {
     "ok": true,
-    "output": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a",
-    "metaplex": "0x4142434445464748494a"
+    "output": "0x4142434445464748494a"
    }
   },
   {
@@ -6126,8 +5710,7 @@
    "input": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9e",
    "expect": {
     "ok": true,
-    "output": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9e",
-    "metaplex": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5"
+    "output": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cac2028526f6d6529"
    }
   },
   {
@@ -6136,8 +5719,7 @@
    "input": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9e",
    "expect": {
     "ok": true,
-    "output": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9e",
-    "metaplex": "0xe697a5e69cace8aa9e"
+    "output": "0xe697a5e69cace8aa9e"
    }
   },
   {
@@ -6146,8 +5728,7 @@
    "input": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690",
    "expect": {
     "ok": true,
-    "output": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690",
-    "metaplex": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690"
+    "output": "0xe28690e28690e28690e28690e28690e28690e28690e286902028526f6d6529"
    }
   },
   {
@@ -6156,8 +5737,7 @@
    "input": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690",
    "expect": {
     "ok": true,
-    "output": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690",
-    "metaplex": "0xe28690e28690e28690"
+    "output": "0xe28690e28690e28690"
    }
   }
  ],
@@ -6179,10 +5759,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x5772617070656420534f4c",
-    "symbol": "0x534f4c",
-    "metaplexName": "0x5772617070656420534f4c",
-    "metaplexSymbol": "0x534f4c"
+    "name": "0x5772617070656420534f4c2028526f6d6529",
+    "symbol": "0x534f4c"
    },
    "read": {
     "source": "Metaplex",
@@ -6207,10 +5785,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x41414141414141414141414141414141414141414141414141",
-    "symbol": "0x4a69746f534f4c",
-    "metaplexName": "0x41414141414141414141414141414141414141414141414141",
-    "metaplexSymbol": "0x4a69746f534f4c"
+    "name": "0x414141414141414141414141414141414141414141414141412028526f6d6529",
+    "symbol": "0x4a69746f534f4c"
    },
    "read": {
     "source": "Metaplex",
@@ -6235,10 +5811,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x4242424242424242424242424242424242424242424242424242",
-    "symbol": "0x4142434445464748",
-    "metaplexName": "0x4242424242424242424242424242424242424242424242424242",
-    "metaplexSymbol": "0x4142434445464748"
+    "name": "0x424242424242424242424242424242424242424242424242422028526f6d6529",
+    "symbol": "0x4142434445464748"
    },
    "read": {
     "source": "Metaplex",
@@ -6263,10 +5837,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x4343434343434343434343434343434343434343434343434343434343434343",
-    "symbol": "0x414243444546474849",
-    "metaplexName": "0x4343434343434343434343434343434343434343434343434343434343434343",
-    "metaplexSymbol": "0x414243444546474849"
+    "name": "0x434343434343434343434343434343434343434343434343432028526f6d6529",
+    "symbol": "0x414243444546474849"
    },
    "read": {
     "source": "Metaplex",
@@ -6291,10 +5863,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x4e616d65",
-    "symbol": "0x4142434445464748494a",
-    "metaplexName": "0x4e616d65",
-    "metaplexSymbol": "0x4142434445464748494a"
+    "name": "0x4e616d652028526f6d6529",
+    "symbol": "0x4142434445464748494a"
    },
    "read": {
     "source": "Metaplex",
@@ -6319,10 +5889,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x414141414141414141414141414141414141414141414141c3a95a",
-    "symbol": "0x41424344454647c3a9",
-    "metaplexName": "0x414141414141414141414141414141414141414141414141c3a95a",
-    "metaplexSymbol": "0x41424344454647c3a9"
+    "name": "0x4141414141414141414141414141414141414141414141412028526f6d6529",
+    "symbol": "0x41424344454647c3a9"
    },
    "read": {
     "source": "Metaplex",
@@ -6347,10 +5915,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x4e616d65",
-    "symbol": "0x414243444546f09f9880",
-    "metaplexName": "0x4e616d65",
-    "metaplexSymbol": "0x414243444546f09f9880"
+    "name": "0x4e616d652028526f6d6529",
+    "symbol": "0x414243444546f09f9880"
    },
    "read": {
     "source": "Metaplex",
@@ -6450,10 +6016,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x4e4f5f4e414d4553",
-    "symbol": "0x4e4f5f53594d424f4c53",
-    "metaplexName": "0x4e4f5f4e414d4553",
-    "metaplexSymbol": "0x4e4f5f53594d424f4c53"
+    "name": "0x4e4f5f4e414d45532028526f6d6529",
+    "symbol": "0x4e4f5f53594d424f4c53"
    },
    "read": {
     "source": "Metaplex",
@@ -6653,10 +6217,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x4574686572",
-    "symbol": "0x726f455448",
-    "metaplexName": "0x4574686572",
-    "metaplexSymbol": "0x726f455448"
+    "name": "0x45746865722028526f6d6529",
+    "symbol": "0x726f455448"
    },
    "read": {
     "source": "Metaplex",
@@ -7308,10 +6870,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x616931367a",
-    "symbol": "0x616931367a",
-    "metaplexName": "0x616931367a",
-    "metaplexSymbol": "0x616931367a"
+    "name": "0x616931367a2028526f6d6529",
+    "symbol": "0x616931367a"
    },
    "read": {
     "source": "Token2022",
@@ -7331,10 +6891,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x412076657279206c6f6e6720746f6b656e206e616d65206f6620343020627974657321212121212121",
-    "symbol": "0x4c4f4e4753594d424f4c313233",
-    "metaplexName": "0x412076657279206c6f6e6720746f6b656e206e616d65206f6620343020627974",
-    "metaplexSymbol": "0x4c4f4e4753594d424f4c"
+    "name": "0x412076657279206c6f6e6720746f6b656e206e616d65206f662028526f6d6529",
+    "symbol": "0x4c4f4e4753594d424f4c"
    },
    "read": {
     "source": "Token2022",
@@ -7354,10 +6912,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x414141414141414141414141414141414141414141414141c3a95a",
-    "symbol": "0x414243444546f09f9880",
-    "metaplexName": "0x414141414141414141414141414141414141414141414141c3a95a",
-    "metaplexSymbol": "0x414243444546f09f9880"
+    "name": "0x4141414141414141414141414141414141414141414141412028526f6d6529",
+    "symbol": "0x414243444546f09f9880"
    },
    "read": {
     "source": "Token2022",
@@ -7446,13 +7002,13 @@
    }
   },
   {
-   "id": "t2022/self/bidi-symbol-past-8",
+   "id": "t2022/self/bidi-symbol-past-10",
    "mint": "0x0900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
    "accounts": [
     {
      "at": "mint",
      "owner": "p2022",
-     "data": "0x010000002222222222222222222222222222222222222222222222222222222222222222000000000000000009010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011200400000000000000000000000000000000000000000000000000000000000000000000900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a13005f0033333333333333333333333333333333333333333333333333333333333333330900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a040000004e616d650b0000004142434445464748e280ae0000000000000000"
+     "data": "0x010000002222222222222222222222222222222222222222222222222222222222222222000000000000000009010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011200400000000000000000000000000000000000000000000000000000000000000000000900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a1300610033333333333333333333333333333333333333333333333333333333333333330900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a040000004e616d650d0000004142434445464748494ae280ae0000000000000000"
     }
    ],
    "expect": {
@@ -7462,7 +7018,7 @@
    "read": {
     "source": "Token2022",
     "name": "0x4e616d65",
-    "symbol": "0x4142434445464748e280ae"
+    "symbol": "0x4142434445464748494ae280ae"
    }
   },
   {
@@ -7597,10 +7153,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x4e616d65",
-    "symbol": "0x5353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353",
-    "metaplexName": "0x4e616d65",
-    "metaplexSymbol": "0x53535353535353535353"
+    "name": "0x4e616d652028526f6d6529",
+    "symbol": "0x53535353535353535353"
    },
    "read": {
     "source": "Token2022",
@@ -7620,10 +7174,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e",
-    "symbol": "0x53594d",
-    "metaplexName": "0x4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e",
-    "metaplexSymbol": "0x53594d"
+    "name": "0x4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e2028526f6d6529",
+    "symbol": "0x53594d"
    },
    "read": {
     "source": "Token2022",
@@ -7714,10 +7266,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x5772617070656420534f4c",
-    "symbol": "0x534f4c",
-    "metaplexName": "0x5772617070656420534f4c",
-    "metaplexSymbol": "0x534f4c"
+    "name": "0x5772617070656420534f4c2028526f6d6529",
+    "symbol": "0x534f4c"
    },
    "read": {
     "source": "Metaplex",
@@ -7742,10 +7292,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x426573696465",
-    "symbol": "0x425344",
-    "metaplexName": "0x426573696465",
-    "metaplexSymbol": "0x425344"
+    "name": "0x4265736964652028526f6d6529",
+    "symbol": "0x425344"
    },
    "read": {
     "source": "Metaplex",
@@ -7788,10 +7336,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x5772617070656420534f4c",
-    "symbol": "0x534f4c",
-    "metaplexName": "0x5772617070656420534f4c",
-    "metaplexSymbol": "0x534f4c"
+    "name": "0x5772617070656420534f4c2028526f6d6529",
+    "symbol": "0x534f4c"
    },
    "read": {
     "source": "Metaplex",
@@ -7822,10 +7368,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x5772617070656420534f4c",
-    "symbol": "0x534f4c",
-    "metaplexName": "0x5772617070656420534f4c",
-    "metaplexSymbol": "0x534f4c"
+    "name": "0x5772617070656420534f4c2028526f6d6529",
+    "symbol": "0x534f4c"
    },
    "read": {
     "source": "Metaplex",
@@ -7937,10 +7481,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x426573696465",
-    "symbol": "0x425344",
-    "metaplexName": "0x426573696465",
-    "metaplexSymbol": "0x425344"
+    "name": "0x4265736964652028526f6d6529",
+    "symbol": "0x425344"
    },
    "read": {
     "source": "Metaplex",
@@ -8462,10 +8004,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x4e616d65",
-    "symbol": "0x53594d",
-    "metaplexName": "0x4e616d65",
-    "metaplexSymbol": "0x53594d"
+    "name": "0x4e616d652028526f6d6529",
+    "symbol": "0x53594d"
    },
    "read": {
     "source": "Token2022",
@@ -8521,10 +8061,8 @@
    ],
    "expect": {
     "ok": true,
-    "name": "0x4e616d65",
-    "symbol": "0x53594d",
-    "metaplexName": "0x4e616d65",
-    "metaplexSymbol": "0x53594d"
+    "name": "0x4e616d652028526f6d6529",
+    "symbol": "0x53594d"
    },
    "read": {
     "source": "Token2022",
@@ -8540,10 +8078,8 @@
    "originSymbol": "0x4d5954",
    "expect": {
     "ok": true,
-    "name": "0x4d7920546f6b656e",
-    "symbol": "0x4d5954",
-    "metaplexName": "0x4d7920546f6b656e",
-    "metaplexSymbol": "0x4d5954"
+    "name": "0x4d7920546f6b656e2028526f6d6529",
+    "symbol": "0x4d5954"
    }
   },
   {
@@ -8552,10 +8088,8 @@
    "originSymbol": "0x5353535353535353535353535353535353535353",
    "expect": {
     "ok": true,
-    "name": "0x4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e",
-    "symbol": "0x5353535353535353535353535353535353535353",
-    "metaplexName": "0x4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e",
-    "metaplexSymbol": "0x53535353535353535353"
+    "name": "0x4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e2028526f6d6529",
+    "symbol": "0x53535353535353535353"
    }
   },
   {
@@ -8564,10 +8098,8 @@
    "originSymbol": "0x41424344454647c3a9",
    "expect": {
     "ok": true,
-    "name": "0x414141414141414141414141414141414141414141414141c3a9",
-    "symbol": "0x41424344454647c3a9",
-    "metaplexName": "0x414141414141414141414141414141414141414141414141c3a9",
-    "metaplexSymbol": "0x41424344454647c3a9"
+    "name": "0x4141414141414141414141414141414141414141414141412028526f6d6529",
+    "symbol": "0x41424344454647c3a9"
    }
   },
   {
@@ -8618,7 +8150,7 @@
   {
    "id": "authority/bidi-symbol",
    "originName": "0x4e616d65",
-   "originSymbol": "0x4142434445464748e280ae",
+   "originSymbol": "0x4142434445464748494ae280ae",
    "expect": {
     "ok": false,
     "error": "BadSymbol"
