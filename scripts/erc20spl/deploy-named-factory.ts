@@ -15,9 +15,19 @@
 // helper contracts) and fails loudly on any difference. `live` is set by hand, in the same change as the chain's
 // registry record. If a record already exists the script only reads it back and sends nothing.
 //
+// REPLACING a recorded factory with a successor (a new naming rule, say: the factory has no owner and no upgrade):
+// add `--replace <address of the recorded factory>`. The dry run and the gates are the same. After the receipt the
+// old record is kept under `ERC20SPLNamedFactoryDeprecated_<first 8 hex of its address>` with `deprecated: true`
+// and `replacedBy`, never live, and the slot holds the successor with `live: false`; both are written in one
+// file write, before the readback. Until the successor is marked live by hand, in the same change as the
+// registry release, no wrapper-making script runs on the chain (the named-factory callers fail closed on the
+// missing live record; the direct and legacy deploy scripts refuse on the Deprecated record).
+//
 //   npx tsx scripts/erc20spl/deploy-named-factory.ts --network <name> --grandfather list.json
 //   npx tsx scripts/erc20spl/deploy-named-factory.ts --network <name> --grandfather list.json --send \
 //       --expect-nonce <n> --expect-grandfather-hash <hash>
+//   npx tsx scripts/erc20spl/deploy-named-factory.ts --network <name> --grandfather list.json --replace <recorded address> \
+//       [--send --expect-nonce <n> --expect-grandfather-hash <hash>]
 //
 // The grandfather list is JSON: [{ "network": <chain id>, "mint": "<base58>", "wrapper": "0x..." }, ...];
 // `--no-grandfather` deploys with an empty list (not on a mainnet chain). The deploy key is the one behind the
@@ -28,7 +38,7 @@ import hardhat from "hardhat";
 import { getContractAddress, getAddress } from "viem";
 import { readDeployments, writeDeployments } from "../lib/deployments.js";
 import { MAINNET_CHAIN_IDS } from "../bridge/lib/testnet-guard.js";
-import { assertListAllowed, buildDeploy, gateSend, grandfatherHash, parseGrandfatherList, planDeploy, type GrandfatherEntry } from "./lib/named-factory-deploy.js";
+import { assertListAllowed, buildDeploy, gateSend, grandfatherHash, parseGrandfatherList, planDeploy, planReplace, replaceNamedFactory, type GrandfatherEntry } from "./lib/named-factory-deploy.js";
 
 const CPI_PROGRAM = "0xFF00000000000000000000000000000000000008" as const;
 const ZERO = "0x0000000000000000000000000000000000000000";
@@ -68,9 +78,10 @@ async function main() {
     console.log(`[${networkName}] chain ${chainId}; deployer ${deployer}`);
     console.log(plan.lines.join("\n"));
 
-    // A record already there: read it back, send nothing.
+    // A record already there: read it back, send nothing, unless --replace names it as the one to retire.
     const recorded = dep.ERC20SPLNamedFactory?.address;
-    if (recorded) {
+    const mode0 = planReplace(recorded, value("--replace"));
+    if (mode0 === "read-back" && recorded) {
         console.log(`[${networkName}] a record exists (${recorded}); reading it back, sending nothing.`);
         await readBack(viem, publicClient, getAddress(recorded), list, hash);
         return;
@@ -82,6 +93,9 @@ async function main() {
     const artifact = await hardhat.artifacts.readArtifact("ERC20SPLNamedFactory");
     const built = buildDeploy({ abi: artifact.abi as any, bytecode: artifact.bytecode as `0x${string}`, args: plan.args });
     console.log(built.lines.join("\n"));
+    // --replace: its refusals (a deprecated key already recorded, a successor equal to the recorded factory) run
+    // here, once, before the estimate and the send, so the dry run fails on them and no deploy lands unrecorded.
+    if (mode0 === "replace") replaceNamedFactory(dep, { address: predicted });
     console.log(`deployer nonce ${nonce} (pending included); the deploy would create ${predicted}`);
     // Simulate the deploy: a revert fails the dry run too.
     const gas = await publicClient.estimateGas({ account: deployer, data: built.data });
@@ -97,7 +111,7 @@ async function main() {
     });
     if (mode === "dry-run") {
         console.log(
-            `DRY RUN: nothing sent. Run again with --send --expect-nonce ${nonce} --expect-grandfather-hash ${hash} to deploy.`,
+            `DRY RUN: nothing sent. Run again with ${mode0 === "replace" ? `--replace ${recorded} ` : ""}--send --expect-nonce ${nonce} --expect-grandfather-hash ${hash} to deploy.`,
         );
         return;
     }
@@ -108,7 +122,7 @@ async function main() {
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
     if (receipt.status !== "success" || !receipt.contractAddress) throw new Error(`deploy failed: ${txHash}`);
     // Record at once, before any readback: a failure after a landed deploy must not leave a second deploy to be made.
-    dep.ERC20SPLNamedFactory = {
+    const record = {
         address: receipt.contractAddress,
         cpiContractAddress: CPI_PROGRAM,
         grandfatherHash: hash,
@@ -116,8 +130,15 @@ async function main() {
         deployTx: txHash,
         deployedAt: Math.floor(Date.now() / 1000),
     };
+    if (mode0 === "replace") {
+        // The old record moves to its own key and the slot takes the successor, in one write.
+        Object.assign(dep, replaceNamedFactory(dep, record));
+    } else {
+        dep.ERC20SPLNamedFactory = record;
+    }
     writeDeployments(networkName, dep);
     console.log(`[${networkName}] recorded ERC20SPLNamedFactory ${receipt.contractAddress} (live: false) in deployments/${networkName}.json`);
+    if (mode0 === "replace") console.log(`[${networkName}] the replaced factory ${recorded} is kept under its own key, deprecated, not live`);
     if (getAddress(receipt.contractAddress) !== getAddress(predicted)) {
         throw new Error(`deployed at ${receipt.contractAddress}, not the predicted ${predicted}`);
     }

@@ -2,7 +2,7 @@
 """Generates vectors.json, the shared test vectors for Rome's wrapper naming rule.
 
 The vectors pin one rule: how a mint's name and symbol become a Rome token's name
-("<name cut to 25 bytes> (Rome)") and symbol ("ro" + the symbol cut to 8 bytes), the
+("<name cut to 25 bytes> (Rome)") and symbol (the origin's symbol cut to 10 bytes, with no prefix), the
 checks that run on the WHOLE text before the cut, and how a mint's name is read from
 its accounts. Every implementation of the rule (the wrapper factory in this repository
 and any other that applies the rule) runs its own code over this file and
@@ -26,7 +26,7 @@ TOKEN_2022 = bytes.fromhex("06ddf6e1ee758fde18425dbce46ccddab61afc4d83b90d27febd
 METAPLEX = bytes.fromhex("0b7065b1e3d17c45389d527f6b04c3cd58b86c731aa0fdb549b6d1bc03f82946")
 OTHER_PROGRAM = bytes.fromhex("11" * 32)
 
-NAME_CUT, SYMBOL_CUT = 25, 8
+NAME_CUT, SYMBOL_CUT = 25, 10
 NAME_SUFFIX = b" (Rome)"
 
 # ---- the table: Unicode 16.0.0 general categories Cc and Cf --------------------------
@@ -78,7 +78,7 @@ def rome_symbol(b):
         return None
     kept = cut(b, SYMBOL_CUT)
     assert kept
-    return b"ro" + kept
+    return kept
 
 def hx(b):
     return "0x" + b.hex()
@@ -157,11 +157,12 @@ def text_inputs():
     add("cut/name-3byte-across-25", b"A" * 23 + "€".encode() + b"Z")
     add("cut/name-4byte-across-25", b"A" * 22 + "\U0001F600".encode() + b"Z")
     add("cut/name-multibyte-ends-at-25", b"A" * 23 + "é".encode() + b"Z")
-    for n in (7, 8, 9, 10, 11):
-        add("cut/symbol-ascii-%d" % n, b"ABCDEFGHIJK"[:n])
-    add("cut/symbol-multibyte-across-8", b"ABCDEFG" + "é".encode())
-    add("cut/symbol-4byte-across-8", b"ABCDEF" + "\U0001F600".encode() + b"Z")
-    add("cut/symbol-4byte-before-8", b"ABCD" + "\U0001F600".encode())
+    for n in (9, 10, 11, 12):
+        add("cut/symbol-ascii-%d" % n, b"ABCDEFGHIJKL"[:n])
+    add("cut/symbol-multibyte-across-10", b"ABCDEFGHI" + "é".encode())
+    add("cut/symbol-multibyte-ends-at-10", b"ABCDEFGH" + "é".encode() + b"Z")
+    add("cut/symbol-4byte-across-10", b"ABCDEFGH" + "\U0001F600".encode() + b"Z")
+    add("cut/symbol-4byte-before-10", b"ABCDEF" + "\U0001F600".encode())
     add("cut/symbol-cjk", "日本語です".encode())
     add("cut/symbol-two-byte-all", "ÅÄÖÅÄÖ".encode())
     # lengths for the cost record: ASCII, CJK (lead bytes e3..e9) and e2-led characters throughout
@@ -416,7 +417,7 @@ def mint_vectors():
         "metaplex/name-32": (b"C" * 32, b"ABCDEFGHI"),
         "metaplex/symbol-10": (b"Name", b"ABCDEFGHIJ"),
         "metaplex/multibyte-across-25": (b"A" * 24 + "é".encode() + b"Z", b"ABCDEFG" + "é".encode()),
-        "metaplex/four-byte-across-8": (b"Name", b"ABCDEF" + "\U0001F600".encode()),
+        "metaplex/four-byte-symbol-fits-10": (b"Name", b"ABCDEF" + "\U0001F600".encode()),
         "metaplex/NO_NAME": (b"NO_NAME", b"SYM"),
         "metaplex/NO_SYMBOL": (b"Name", b"NO_SYMBOL"),
         "metaplex/NOT_VALID_ENCODING-name": (b"NOT_VALID_ENCODING", b"SYM"),
@@ -458,11 +459,13 @@ def mint_vectors():
         "t2022/self/plain": (b"ai16z", b"ai16z"),
         "t2022/self/long-name": (b"A very long token name of 40 bytes!!!!!!!", b"LONGSYMBOL123"),
         "t2022/self/multibyte-across-25": (b"A" * 24 + "é".encode() + b"Z", b"ABCDEF" + "\U0001F600".encode()),
+        "t2022/self/multibyte-symbol-across-10": (b"Name", b"ABCDEFGHI" + "é".encode()),
+        "t2022/self/four-byte-symbol-across-10": (b"Name", b"ABCDEFGH" + "\U0001F600".encode()),
         "t2022/self/NO_SYMBOL": (b"Name", b"NO_SYMBOL"),
         "t2022/self/NO_NAME": (b"NO_NAME", b"SYM"),
         "t2022/self/NOT_VALID_ENCODING-symbol": (b"Name", b"NOT_VALID_ENCODING"),
         "t2022/self/zero-embedded-symbol": (b"Name", b"SY\x00M"),
-        "t2022/self/bidi-symbol-past-8": (b"Name", b"ABCDEFGH" + bytes.fromhex("e280ae")),
+        "t2022/self/bidi-symbol-past-10": (b"Name", b"ABCDEFGHIJ" + bytes.fromhex("e280ae")),
         "t2022/self/c1-name": (b"Wrapped" + bytes.fromhex("c285") + b" SOL", b"SOL"),
         "t2022/self/zwsp-name": (b"A\xe2\x80\x8bB", b"SOL"),
         "t2022/self/tag-symbol": (b"Name", "AB\U000e0041".encode()),
@@ -523,12 +526,13 @@ def authority_vectors():
         ("plain", b"My Token", b"MYT"),
         ("long-name", b"N" * 40, b"S" * 20),
         ("multibyte", b"A" * 24 + "é".encode(), b"ABCDEFG" + "é".encode()),
+        ("multibyte-symbol-across-10", b"Name", b"ABCDEFGHI" + "é".encode()),
         ("empty-name", b"", b"SYM"),
         ("empty-symbol", b"Name", b""),
         ("NO_NAME", b"NO_NAME", b"SYM"),
         ("NO_SYMBOL", b"Name", b"NO_SYMBOL"),
         ("bidi-name", b"A" * 25 + bytes.fromhex("e280ae"), b"SYM"),
-        ("bidi-symbol", b"Name", b"ABCDEFGH" + bytes.fromhex("e280ae")),
+        ("bidi-symbol", b"Name", b"ABCDEFGHIJ" + bytes.fromhex("e280ae")),
         ("bad-utf8-name", b"AB\xc3", b"SYM"),
         ("bad-utf8-symbol", b"Name", b"\xe2\x82"),
     ]:

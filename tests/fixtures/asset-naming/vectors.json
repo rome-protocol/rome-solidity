@@ -121,7 +121,7 @@
    "input": "0x534f4c",
    "expect": {
     "ok": true,
-    "output": "0x726f534f4c"
+    "output": "0x534f4c"
    }
   },
   {
@@ -139,7 +139,7 @@
    "input": "0x5772617070656420534f4c",
    "expect": {
     "ok": true,
-    "output": "0x726f5772617070656420"
+    "output": "0x5772617070656420534f"
    }
   },
   {
@@ -157,7 +157,7 @@
    "input": "0x4a69746f534f4c",
    "expect": {
     "ok": true,
-    "output": "0x726f4a69746f534f4c"
+    "output": "0x4a69746f534f4c"
    }
   },
   {
@@ -175,7 +175,7 @@
    "input": "0x426f6e6b",
    "expect": {
     "ok": true,
-    "output": "0x726f426f6e6b"
+    "output": "0x426f6e6b"
    }
   },
   {
@@ -193,7 +193,7 @@
    "input": "0x455448",
    "expect": {
     "ok": true,
-    "output": "0x726f455448"
+    "output": "0x455448"
    }
   },
   {
@@ -211,7 +211,7 @@
    "input": "0x4574686572",
    "expect": {
     "ok": true,
-    "output": "0x726f4574686572"
+    "output": "0x4574686572"
    }
   },
   {
@@ -229,7 +229,7 @@
    "input": "0x44616920537461626c65636f696e",
    "expect": {
     "ok": true,
-    "output": "0x726f4461692053746162"
+    "output": "0x44616920537461626c65"
    }
   },
   {
@@ -247,7 +247,7 @@
    "input": "0x777374455448",
    "expect": {
     "ok": true,
-    "output": "0x726f777374455448"
+    "output": "0x777374455448"
    }
   },
   {
@@ -265,7 +265,7 @@
    "input": "0x726f455448",
    "expect": {
     "ok": true,
-    "output": "0x726f726f455448"
+    "output": "0x726f455448"
    }
   },
   {
@@ -283,7 +283,7 @@
    "input": "0x55534443",
    "expect": {
     "ok": true,
-    "output": "0x726f55534443"
+    "output": "0x55534443"
    }
   },
   {
@@ -301,7 +301,7 @@
    "input": "0x4a69746f205374616b656420534f4c",
    "expect": {
     "ok": true,
-    "output": "0x726f4a69746f20537461"
+    "output": "0x4a69746f205374616b65"
    }
   },
   {
@@ -319,7 +319,7 @@
    "input": "0x6a49744f734f6c",
    "expect": {
     "ok": true,
-    "output": "0x726f6a49744f734f6c"
+    "output": "0x6a49744f734f6c"
    }
   },
   {
@@ -373,7 +373,7 @@
    "input": "0x4e4f5f4e414d45",
    "expect": {
     "ok": true,
-    "output": "0x726f4e4f5f4e414d45"
+    "output": "0x4e4f5f4e414d45"
    }
   },
   {
@@ -409,7 +409,7 @@
    "input": "0x4e4f5f53594d424f4c53",
    "expect": {
     "ok": true,
-    "output": "0x726f4e4f5f53594d424f"
+    "output": "0x4e4f5f53594d424f4c53"
    }
   },
   {
@@ -427,7 +427,7 @@
    "input": "0x4e4f5f4e414d4553",
    "expect": {
     "ok": true,
-    "output": "0x726f4e4f5f4e414d4553"
+    "output": "0x4e4f5f4e414d4553"
    }
   },
   {
@@ -445,7 +445,7 @@
    "input": "0x4e4f5f53594d424f",
    "expect": {
     "ok": true,
-    "output": "0x726f4e4f5f53594d424f"
+    "output": "0x4e4f5f53594d424f"
    }
   },
   {
@@ -463,7 +463,7 @@
    "input": "0x4e4f545f56414c49",
    "expect": {
     "ok": true,
-    "output": "0x726f4e4f545f56414c49"
+    "output": "0x4e4f545f56414c49"
    }
   },
   {
@@ -481,7 +481,7 @@
    "input": "0x6e6f5f73796d626f6c",
    "expect": {
     "ok": true,
-    "output": "0x726f6e6f5f73796d626f"
+    "output": "0x6e6f5f73796d626f6c"
    }
   },
   {
@@ -499,7 +499,7 @@
    "input": "0x4e6f5f4e616d65",
    "expect": {
     "ok": true,
-    "output": "0x726f4e6f5f4e616d65"
+    "output": "0x4e6f5f4e616d65"
    }
   },
   {
@@ -1741,7 +1741,7 @@
    "input": "0x4142c2a04344",
    "expect": {
     "ok": true,
-    "output": "0x726f4142c2a04344"
+    "output": "0x4142c2a04344"
    }
   },
   {
@@ -1759,7 +1759,7 @@
    "input": "0x4142c2a04344",
    "expect": {
     "ok": true,
-    "output": "0x726f4142c2a04344"
+    "output": "0x4142c2a04344"
    }
   },
   {
@@ -1777,7 +1777,7 @@
    "input": "0x4142c3bf4344",
    "expect": {
     "ok": true,
-    "output": "0x726f4142c3bf4344"
+    "output": "0x4142c3bf4344"
    }
   },
   {
@@ -1795,7 +1795,7 @@
    "input": "0x4142dfbf4344",
    "expect": {
     "ok": true,
-    "output": "0x726f4142dfbf4344"
+    "output": "0x4142dfbf4344"
    }
   },
   {
@@ -1813,7 +1813,7 @@
    "input": "0x4142e0a0804344",
    "expect": {
     "ok": true,
-    "output": "0x726f4142e0a0804344"
+    "output": "0x4142e0a0804344"
    }
   },
   {
@@ -1831,7 +1831,7 @@
    "input": "0x4142efbfbd4344",
    "expect": {
     "ok": true,
-    "output": "0x726f4142efbfbd4344"
+    "output": "0x4142efbfbd4344"
    }
   },
   {
@@ -1849,7 +1849,7 @@
    "input": "0x4142f09080804344",
    "expect": {
     "ok": true,
-    "output": "0x726f4142f09080804344"
+    "output": "0x4142f09080804344"
    }
   },
   {
@@ -1867,7 +1867,7 @@
    "input": "0x4142f48fbfbf4344",
    "expect": {
     "ok": true,
-    "output": "0x726f4142f48fbfbf4344"
+    "output": "0x4142f48fbfbf4344"
    }
   },
   {
@@ -1885,7 +1885,7 @@
    "input": "0x4142f09f98804344",
    "expect": {
     "ok": true,
-    "output": "0x726f4142f09f98804344"
+    "output": "0x4142f09f98804344"
    }
   },
   {
@@ -1975,7 +1975,7 @@
    "input": "0x412042",
    "expect": {
     "ok": true,
-    "output": "0x726f412042"
+    "output": "0x412042"
    }
   },
   {
@@ -1993,7 +1993,7 @@
    "input": "0x20",
    "expect": {
     "ok": true,
-    "output": "0x726f20"
+    "output": "0x20"
    }
   },
   {
@@ -2083,7 +2083,7 @@
    "input": "0x417e42",
    "expect": {
     "ok": true,
-    "output": "0x726f417e42"
+    "output": "0x417e42"
    }
   },
   {
@@ -2101,7 +2101,7 @@
    "input": "0x7e",
    "expect": {
     "ok": true,
-    "output": "0x726f7e"
+    "output": "0x7e"
    }
   },
   {
@@ -2119,7 +2119,7 @@
    "input": "0x41c2a042",
    "expect": {
     "ok": true,
-    "output": "0x726f41c2a042"
+    "output": "0x41c2a042"
    }
   },
   {
@@ -2137,7 +2137,7 @@
    "input": "0xc2a0",
    "expect": {
     "ok": true,
-    "output": "0x726fc2a0"
+    "output": "0xc2a0"
    }
   },
   {
@@ -2227,7 +2227,7 @@
    "input": "0x41c2ac42",
    "expect": {
     "ok": true,
-    "output": "0x726f41c2ac42"
+    "output": "0x41c2ac42"
    }
   },
   {
@@ -2245,7 +2245,7 @@
    "input": "0xc2ac",
    "expect": {
     "ok": true,
-    "output": "0x726fc2ac"
+    "output": "0xc2ac"
    }
   },
   {
@@ -2263,7 +2263,7 @@
    "input": "0x41c2ae42",
    "expect": {
     "ok": true,
-    "output": "0x726f41c2ae42"
+    "output": "0x41c2ae42"
    }
   },
   {
@@ -2281,7 +2281,7 @@
    "input": "0xc2ae",
    "expect": {
     "ok": true,
-    "output": "0x726fc2ae"
+    "output": "0xc2ae"
    }
   },
   {
@@ -2371,7 +2371,7 @@
    "input": "0x41d7bf42",
    "expect": {
     "ok": true,
-    "output": "0x726f41d7bf42"
+    "output": "0x41d7bf42"
    }
   },
   {
@@ -2389,7 +2389,7 @@
    "input": "0xd7bf",
    "expect": {
     "ok": true,
-    "output": "0x726fd7bf"
+    "output": "0xd7bf"
    }
   },
   {
@@ -2407,7 +2407,7 @@
    "input": "0x41d88642",
    "expect": {
     "ok": true,
-    "output": "0x726f41d88642"
+    "output": "0x41d88642"
    }
   },
   {
@@ -2425,7 +2425,7 @@
    "input": "0xd886",
    "expect": {
     "ok": true,
-    "output": "0x726fd886"
+    "output": "0xd886"
    }
   },
   {
@@ -2515,7 +2515,7 @@
    "input": "0x41d89b42",
    "expect": {
     "ok": true,
-    "output": "0x726f41d89b42"
+    "output": "0x41d89b42"
    }
   },
   {
@@ -2533,7 +2533,7 @@
    "input": "0xd89b",
    "expect": {
     "ok": true,
-    "output": "0x726fd89b"
+    "output": "0xd89b"
    }
   },
   {
@@ -2551,7 +2551,7 @@
    "input": "0x41d89d42",
    "expect": {
     "ok": true,
-    "output": "0x726f41d89d42"
+    "output": "0x41d89d42"
    }
   },
   {
@@ -2569,7 +2569,7 @@
    "input": "0xd89d",
    "expect": {
     "ok": true,
-    "output": "0x726fd89d"
+    "output": "0xd89d"
    }
   },
   {
@@ -2659,7 +2659,7 @@
    "input": "0x41db9c42",
    "expect": {
     "ok": true,
-    "output": "0x726f41db9c42"
+    "output": "0x41db9c42"
    }
   },
   {
@@ -2677,7 +2677,7 @@
    "input": "0xdb9c",
    "expect": {
     "ok": true,
-    "output": "0x726fdb9c"
+    "output": "0xdb9c"
    }
   },
   {
@@ -2695,7 +2695,7 @@
    "input": "0x41db9e42",
    "expect": {
     "ok": true,
-    "output": "0x726f41db9e42"
+    "output": "0x41db9e42"
    }
   },
   {
@@ -2713,7 +2713,7 @@
    "input": "0xdb9e",
    "expect": {
     "ok": true,
-    "output": "0x726fdb9e"
+    "output": "0xdb9e"
    }
   },
   {
@@ -2803,7 +2803,7 @@
    "input": "0x41dc8e42",
    "expect": {
     "ok": true,
-    "output": "0x726f41dc8e42"
+    "output": "0x41dc8e42"
    }
   },
   {
@@ -2821,7 +2821,7 @@
    "input": "0xdc8e",
    "expect": {
     "ok": true,
-    "output": "0x726fdc8e"
+    "output": "0xdc8e"
    }
   },
   {
@@ -2839,7 +2839,7 @@
    "input": "0x41dc9042",
    "expect": {
     "ok": true,
-    "output": "0x726f41dc9042"
+    "output": "0x41dc9042"
    }
   },
   {
@@ -2857,7 +2857,7 @@
    "input": "0xdc90",
    "expect": {
     "ok": true,
-    "output": "0x726fdc90"
+    "output": "0xdc90"
    }
   },
   {
@@ -2947,7 +2947,7 @@
    "input": "0x41e0a28f42",
    "expect": {
     "ok": true,
-    "output": "0x726f41e0a28f42"
+    "output": "0x41e0a28f42"
    }
   },
   {
@@ -2965,7 +2965,7 @@
    "input": "0xe0a28f",
    "expect": {
     "ok": true,
-    "output": "0x726fe0a28f"
+    "output": "0xe0a28f"
    }
   },
   {
@@ -2983,7 +2983,7 @@
    "input": "0x41e0a29242",
    "expect": {
     "ok": true,
-    "output": "0x726f41e0a29242"
+    "output": "0x41e0a29242"
    }
   },
   {
@@ -3001,7 +3001,7 @@
    "input": "0xe0a292",
    "expect": {
     "ok": true,
-    "output": "0x726fe0a292"
+    "output": "0xe0a292"
    }
   },
   {
@@ -3091,7 +3091,7 @@
    "input": "0x41e0a3a142",
    "expect": {
     "ok": true,
-    "output": "0x726f41e0a3a142"
+    "output": "0x41e0a3a142"
    }
   },
   {
@@ -3109,7 +3109,7 @@
    "input": "0xe0a3a1",
    "expect": {
     "ok": true,
-    "output": "0x726fe0a3a1"
+    "output": "0xe0a3a1"
    }
   },
   {
@@ -3127,7 +3127,7 @@
    "input": "0x41e0a3a342",
    "expect": {
     "ok": true,
-    "output": "0x726f41e0a3a342"
+    "output": "0x41e0a3a342"
    }
   },
   {
@@ -3145,7 +3145,7 @@
    "input": "0xe0a3a3",
    "expect": {
     "ok": true,
-    "output": "0x726fe0a3a3"
+    "output": "0xe0a3a3"
    }
   },
   {
@@ -3235,7 +3235,7 @@
    "input": "0x41e1a08d42",
    "expect": {
     "ok": true,
-    "output": "0x726f41e1a08d42"
+    "output": "0x41e1a08d42"
    }
   },
   {
@@ -3253,7 +3253,7 @@
    "input": "0xe1a08d",
    "expect": {
     "ok": true,
-    "output": "0x726fe1a08d"
+    "output": "0xe1a08d"
    }
   },
   {
@@ -3271,7 +3271,7 @@
    "input": "0x41e1a08f42",
    "expect": {
     "ok": true,
-    "output": "0x726f41e1a08f42"
+    "output": "0x41e1a08f42"
    }
   },
   {
@@ -3289,7 +3289,7 @@
    "input": "0xe1a08f",
    "expect": {
     "ok": true,
-    "output": "0x726fe1a08f"
+    "output": "0xe1a08f"
    }
   },
   {
@@ -3379,7 +3379,7 @@
    "input": "0x41e2808a42",
    "expect": {
     "ok": true,
-    "output": "0x726f41e2808a42"
+    "output": "0x41e2808a42"
    }
   },
   {
@@ -3397,7 +3397,7 @@
    "input": "0xe2808a",
    "expect": {
     "ok": true,
-    "output": "0x726fe2808a"
+    "output": "0xe2808a"
    }
   },
   {
@@ -3415,7 +3415,7 @@
    "input": "0x41e2809042",
    "expect": {
     "ok": true,
-    "output": "0x726f41e2809042"
+    "output": "0x41e2809042"
    }
   },
   {
@@ -3433,7 +3433,7 @@
    "input": "0xe28090",
    "expect": {
     "ok": true,
-    "output": "0x726fe28090"
+    "output": "0xe28090"
    }
   },
   {
@@ -3523,7 +3523,7 @@
    "input": "0x41e280a942",
    "expect": {
     "ok": true,
-    "output": "0x726f41e280a942"
+    "output": "0x41e280a942"
    }
   },
   {
@@ -3541,7 +3541,7 @@
    "input": "0xe280a9",
    "expect": {
     "ok": true,
-    "output": "0x726fe280a9"
+    "output": "0xe280a9"
    }
   },
   {
@@ -3559,7 +3559,7 @@
    "input": "0x41e280af42",
    "expect": {
     "ok": true,
-    "output": "0x726f41e280af42"
+    "output": "0x41e280af42"
    }
   },
   {
@@ -3577,7 +3577,7 @@
    "input": "0xe280af",
    "expect": {
     "ok": true,
-    "output": "0x726fe280af"
+    "output": "0xe280af"
    }
   },
   {
@@ -3667,7 +3667,7 @@
    "input": "0x41e2819f42",
    "expect": {
     "ok": true,
-    "output": "0x726f41e2819f42"
+    "output": "0x41e2819f42"
    }
   },
   {
@@ -3685,7 +3685,7 @@
    "input": "0xe2819f",
    "expect": {
     "ok": true,
-    "output": "0x726fe2819f"
+    "output": "0xe2819f"
    }
   },
   {
@@ -3703,7 +3703,7 @@
    "input": "0x41e281a542",
    "expect": {
     "ok": true,
-    "output": "0x726f41e281a542"
+    "output": "0x41e281a542"
    }
   },
   {
@@ -3721,7 +3721,7 @@
    "input": "0xe281a5",
    "expect": {
     "ok": true,
-    "output": "0x726fe281a5"
+    "output": "0xe281a5"
    }
   },
   {
@@ -3811,7 +3811,7 @@
    "input": "0x41e281a542",
    "expect": {
     "ok": true,
-    "output": "0x726f41e281a542"
+    "output": "0x41e281a542"
    }
   },
   {
@@ -3829,7 +3829,7 @@
    "input": "0xe281a5",
    "expect": {
     "ok": true,
-    "output": "0x726fe281a5"
+    "output": "0xe281a5"
    }
   },
   {
@@ -3847,7 +3847,7 @@
    "input": "0x41e281b042",
    "expect": {
     "ok": true,
-    "output": "0x726f41e281b042"
+    "output": "0x41e281b042"
    }
   },
   {
@@ -3865,7 +3865,7 @@
    "input": "0xe281b0",
    "expect": {
     "ok": true,
-    "output": "0x726fe281b0"
+    "output": "0xe281b0"
    }
   },
   {
@@ -3955,7 +3955,7 @@
    "input": "0x41efbbbe42",
    "expect": {
     "ok": true,
-    "output": "0x726f41efbbbe42"
+    "output": "0x41efbbbe42"
    }
   },
   {
@@ -3973,7 +3973,7 @@
    "input": "0xefbbbe",
    "expect": {
     "ok": true,
-    "output": "0x726fefbbbe"
+    "output": "0xefbbbe"
    }
   },
   {
@@ -3991,7 +3991,7 @@
    "input": "0x41efbc8042",
    "expect": {
     "ok": true,
-    "output": "0x726f41efbc8042"
+    "output": "0x41efbc8042"
    }
   },
   {
@@ -4009,7 +4009,7 @@
    "input": "0xefbc80",
    "expect": {
     "ok": true,
-    "output": "0x726fefbc80"
+    "output": "0xefbc80"
    }
   },
   {
@@ -4099,7 +4099,7 @@
    "input": "0x41efbfb842",
    "expect": {
     "ok": true,
-    "output": "0x726f41efbfb842"
+    "output": "0x41efbfb842"
    }
   },
   {
@@ -4117,7 +4117,7 @@
    "input": "0xefbfb8",
    "expect": {
     "ok": true,
-    "output": "0x726fefbfb8"
+    "output": "0xefbfb8"
    }
   },
   {
@@ -4135,7 +4135,7 @@
    "input": "0x41efbfbc42",
    "expect": {
     "ok": true,
-    "output": "0x726f41efbfbc42"
+    "output": "0x41efbfbc42"
    }
   },
   {
@@ -4153,7 +4153,7 @@
    "input": "0xefbfbc",
    "expect": {
     "ok": true,
-    "output": "0x726fefbfbc"
+    "output": "0xefbfbc"
    }
   },
   {
@@ -4243,7 +4243,7 @@
    "input": "0x41f09182bc42",
    "expect": {
     "ok": true,
-    "output": "0x726f41f09182bc42"
+    "output": "0x41f09182bc42"
    }
   },
   {
@@ -4261,7 +4261,7 @@
    "input": "0xf09182bc",
    "expect": {
     "ok": true,
-    "output": "0x726ff09182bc"
+    "output": "0xf09182bc"
    }
   },
   {
@@ -4279,7 +4279,7 @@
    "input": "0x41f09182be42",
    "expect": {
     "ok": true,
-    "output": "0x726f41f09182be42"
+    "output": "0x41f09182be42"
    }
   },
   {
@@ -4297,7 +4297,7 @@
    "input": "0xf09182be",
    "expect": {
     "ok": true,
-    "output": "0x726ff09182be"
+    "output": "0xf09182be"
    }
   },
   {
@@ -4387,7 +4387,7 @@
    "input": "0x41f091838c42",
    "expect": {
     "ok": true,
-    "output": "0x726f41f091838c42"
+    "output": "0x41f091838c42"
    }
   },
   {
@@ -4405,7 +4405,7 @@
    "input": "0xf091838c",
    "expect": {
     "ok": true,
-    "output": "0x726ff091838c"
+    "output": "0xf091838c"
    }
   },
   {
@@ -4423,7 +4423,7 @@
    "input": "0x41f091838e42",
    "expect": {
     "ok": true,
-    "output": "0x726f41f091838e42"
+    "output": "0x41f091838e42"
    }
   },
   {
@@ -4441,7 +4441,7 @@
    "input": "0xf091838e",
    "expect": {
     "ok": true,
-    "output": "0x726ff091838e"
+    "output": "0xf091838e"
    }
   },
   {
@@ -4531,7 +4531,7 @@
    "input": "0x41f09390af42",
    "expect": {
     "ok": true,
-    "output": "0x726f41f09390af42"
+    "output": "0x41f09390af42"
    }
   },
   {
@@ -4549,7 +4549,7 @@
    "input": "0xf09390af",
    "expect": {
     "ok": true,
-    "output": "0x726ff09390af"
+    "output": "0xf09390af"
    }
   },
   {
@@ -4567,7 +4567,7 @@
    "input": "0x41f093918042",
    "expect": {
     "ok": true,
-    "output": "0x726f41f093918042"
+    "output": "0x41f093918042"
    }
   },
   {
@@ -4585,7 +4585,7 @@
    "input": "0xf0939180",
    "expect": {
     "ok": true,
-    "output": "0x726ff0939180"
+    "output": "0xf0939180"
    }
   },
   {
@@ -4675,7 +4675,7 @@
    "input": "0x41f09bb29f42",
    "expect": {
     "ok": true,
-    "output": "0x726f41f09bb29f42"
+    "output": "0x41f09bb29f42"
    }
   },
   {
@@ -4693,7 +4693,7 @@
    "input": "0xf09bb29f",
    "expect": {
     "ok": true,
-    "output": "0x726ff09bb29f"
+    "output": "0xf09bb29f"
    }
   },
   {
@@ -4711,7 +4711,7 @@
    "input": "0x41f09bb2a442",
    "expect": {
     "ok": true,
-    "output": "0x726f41f09bb2a442"
+    "output": "0x41f09bb2a442"
    }
   },
   {
@@ -4729,7 +4729,7 @@
    "input": "0xf09bb2a4",
    "expect": {
     "ok": true,
-    "output": "0x726ff09bb2a4"
+    "output": "0xf09bb2a4"
    }
   },
   {
@@ -4819,7 +4819,7 @@
    "input": "0x41f09d85b242",
    "expect": {
     "ok": true,
-    "output": "0x726f41f09d85b242"
+    "output": "0x41f09d85b242"
    }
   },
   {
@@ -4837,7 +4837,7 @@
    "input": "0xf09d85b2",
    "expect": {
     "ok": true,
-    "output": "0x726ff09d85b2"
+    "output": "0xf09d85b2"
    }
   },
   {
@@ -4855,7 +4855,7 @@
    "input": "0x41f09d85bb42",
    "expect": {
     "ok": true,
-    "output": "0x726f41f09d85bb42"
+    "output": "0x41f09d85bb42"
    }
   },
   {
@@ -4873,7 +4873,7 @@
    "input": "0xf09d85bb",
    "expect": {
     "ok": true,
-    "output": "0x726ff09d85bb"
+    "output": "0xf09d85bb"
    }
   },
   {
@@ -4963,7 +4963,7 @@
    "input": "0x41f3a0808042",
    "expect": {
     "ok": true,
-    "output": "0x726f41f3a0808042"
+    "output": "0x41f3a0808042"
    }
   },
   {
@@ -4981,7 +4981,7 @@
    "input": "0xf3a08080",
    "expect": {
     "ok": true,
-    "output": "0x726ff3a08080"
+    "output": "0xf3a08080"
    }
   },
   {
@@ -4999,7 +4999,7 @@
    "input": "0x41f3a0808242",
    "expect": {
     "ok": true,
-    "output": "0x726f41f3a0808242"
+    "output": "0x41f3a0808242"
    }
   },
   {
@@ -5017,7 +5017,7 @@
    "input": "0xf3a08082",
    "expect": {
     "ok": true,
-    "output": "0x726ff3a08082"
+    "output": "0xf3a08082"
    }
   },
   {
@@ -5107,7 +5107,7 @@
    "input": "0x41f3a0809f42",
    "expect": {
     "ok": true,
-    "output": "0x726f41f3a0809f42"
+    "output": "0x41f3a0809f42"
    }
   },
   {
@@ -5125,7 +5125,7 @@
    "input": "0xf3a0809f",
    "expect": {
     "ok": true,
-    "output": "0x726ff3a0809f"
+    "output": "0xf3a0809f"
    }
   },
   {
@@ -5143,7 +5143,7 @@
    "input": "0x41f3a0828042",
    "expect": {
     "ok": true,
-    "output": "0x726f41f3a0828042"
+    "output": "0x41f3a0828042"
    }
   },
   {
@@ -5161,7 +5161,7 @@
    "input": "0xf3a08280",
    "expect": {
     "ok": true,
-    "output": "0x726ff3a08280"
+    "output": "0xf3a08280"
    }
   },
   {
@@ -5179,7 +5179,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f707172737475767778",
    "expect": {
     "ok": true,
-    "output": "0x726f6162636465666768"
+    "output": "0x6162636465666768696a"
    }
   },
   {
@@ -5197,7 +5197,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f70717273747576777879",
    "expect": {
     "ok": true,
-    "output": "0x726f6162636465666768"
+    "output": "0x6162636465666768696a"
    }
   },
   {
@@ -5215,7 +5215,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a",
    "expect": {
     "ok": true,
-    "output": "0x726f6162636465666768"
+    "output": "0x6162636465666768696a"
    }
   },
   {
@@ -5233,7 +5233,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a414243444546",
    "expect": {
     "ok": true,
-    "output": "0x726f6162636465666768"
+    "output": "0x6162636465666768696a"
    }
   },
   {
@@ -5251,7 +5251,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a41424344454647",
    "expect": {
     "ok": true,
-    "output": "0x726f6162636465666768"
+    "output": "0x6162636465666768696a"
    }
   },
   {
@@ -5269,7 +5269,7 @@
    "input": "0x6162636465666768696a6b6c6d6e6f707172737475767778797a4142434445464748494a4b4c4d4e",
    "expect": {
     "ok": true,
-    "output": "0x726f6162636465666768"
+    "output": "0x6162636465666768696a"
    }
   },
   {
@@ -5287,7 +5287,7 @@
    "input": "0x414141414141414141414141414141414141414141414141c3a95a",
    "expect": {
     "ok": true,
-    "output": "0x726f4141414141414141"
+    "output": "0x41414141414141414141"
    }
   },
   {
@@ -5305,7 +5305,7 @@
    "input": "0x4141414141414141414141414141414141414141414141e282ac5a",
    "expect": {
     "ok": true,
-    "output": "0x726f4141414141414141"
+    "output": "0x41414141414141414141"
    }
   },
   {
@@ -5323,7 +5323,7 @@
    "input": "0x41414141414141414141414141414141414141414141f09f98805a",
    "expect": {
     "ok": true,
-    "output": "0x726f4141414141414141"
+    "output": "0x41414141414141414141"
    }
   },
   {
@@ -5341,43 +5341,7 @@
    "input": "0x4141414141414141414141414141414141414141414141c3a95a",
    "expect": {
     "ok": true,
-    "output": "0x726f4141414141414141"
-   }
-  },
-  {
-   "id": "name/cut/symbol-ascii-7",
-   "kind": "name",
-   "input": "0x41424344454647",
-   "expect": {
-    "ok": true,
-    "output": "0x414243444546472028526f6d6529"
-   }
-  },
-  {
-   "id": "symbol/cut/symbol-ascii-7",
-   "kind": "symbol",
-   "input": "0x41424344454647",
-   "expect": {
-    "ok": true,
-    "output": "0x726f41424344454647"
-   }
-  },
-  {
-   "id": "name/cut/symbol-ascii-8",
-   "kind": "name",
-   "input": "0x4142434445464748",
-   "expect": {
-    "ok": true,
-    "output": "0x41424344454647482028526f6d6529"
-   }
-  },
-  {
-   "id": "symbol/cut/symbol-ascii-8",
-   "kind": "symbol",
-   "input": "0x4142434445464748",
-   "expect": {
-    "ok": true,
-    "output": "0x726f4142434445464748"
+    "output": "0x41414141414141414141"
    }
   },
   {
@@ -5395,7 +5359,7 @@
    "input": "0x414243444546474849",
    "expect": {
     "ok": true,
-    "output": "0x726f4142434445464748"
+    "output": "0x414243444546474849"
    }
   },
   {
@@ -5413,7 +5377,7 @@
    "input": "0x4142434445464748494a",
    "expect": {
     "ok": true,
-    "output": "0x726f4142434445464748"
+    "output": "0x4142434445464748494a"
    }
   },
   {
@@ -5431,61 +5395,97 @@
    "input": "0x4142434445464748494a4b",
    "expect": {
     "ok": true,
-    "output": "0x726f4142434445464748"
+    "output": "0x4142434445464748494a"
    }
   },
   {
-   "id": "name/cut/symbol-multibyte-across-8",
+   "id": "name/cut/symbol-ascii-12",
    "kind": "name",
-   "input": "0x41424344454647c3a9",
+   "input": "0x4142434445464748494a4b4c",
    "expect": {
     "ok": true,
-    "output": "0x41424344454647c3a92028526f6d6529"
+    "output": "0x4142434445464748494a4b4c2028526f6d6529"
    }
   },
   {
-   "id": "symbol/cut/symbol-multibyte-across-8",
+   "id": "symbol/cut/symbol-ascii-12",
    "kind": "symbol",
-   "input": "0x41424344454647c3a9",
+   "input": "0x4142434445464748494a4b4c",
    "expect": {
     "ok": true,
-    "output": "0x726f41424344454647"
+    "output": "0x4142434445464748494a"
    }
   },
   {
-   "id": "name/cut/symbol-4byte-across-8",
+   "id": "name/cut/symbol-multibyte-across-10",
    "kind": "name",
-   "input": "0x414243444546f09f98805a",
+   "input": "0x414243444546474849c3a9",
    "expect": {
     "ok": true,
-    "output": "0x414243444546f09f98805a2028526f6d6529"
+    "output": "0x414243444546474849c3a92028526f6d6529"
    }
   },
   {
-   "id": "symbol/cut/symbol-4byte-across-8",
+   "id": "symbol/cut/symbol-multibyte-across-10",
    "kind": "symbol",
-   "input": "0x414243444546f09f98805a",
+   "input": "0x414243444546474849c3a9",
    "expect": {
     "ok": true,
-    "output": "0x726f414243444546"
+    "output": "0x414243444546474849"
    }
   },
   {
-   "id": "name/cut/symbol-4byte-before-8",
+   "id": "name/cut/symbol-multibyte-ends-at-10",
    "kind": "name",
-   "input": "0x41424344f09f9880",
+   "input": "0x4142434445464748c3a95a",
    "expect": {
     "ok": true,
-    "output": "0x41424344f09f98802028526f6d6529"
+    "output": "0x4142434445464748c3a95a2028526f6d6529"
    }
   },
   {
-   "id": "symbol/cut/symbol-4byte-before-8",
+   "id": "symbol/cut/symbol-multibyte-ends-at-10",
    "kind": "symbol",
-   "input": "0x41424344f09f9880",
+   "input": "0x4142434445464748c3a95a",
    "expect": {
     "ok": true,
-    "output": "0x726f41424344f09f9880"
+    "output": "0x4142434445464748c3a9"
+   }
+  },
+  {
+   "id": "name/cut/symbol-4byte-across-10",
+   "kind": "name",
+   "input": "0x4142434445464748f09f98805a",
+   "expect": {
+    "ok": true,
+    "output": "0x4142434445464748f09f98805a2028526f6d6529"
+   }
+  },
+  {
+   "id": "symbol/cut/symbol-4byte-across-10",
+   "kind": "symbol",
+   "input": "0x4142434445464748f09f98805a",
+   "expect": {
+    "ok": true,
+    "output": "0x4142434445464748"
+   }
+  },
+  {
+   "id": "name/cut/symbol-4byte-before-10",
+   "kind": "name",
+   "input": "0x414243444546f09f9880",
+   "expect": {
+    "ok": true,
+    "output": "0x414243444546f09f98802028526f6d6529"
+   }
+  },
+  {
+   "id": "symbol/cut/symbol-4byte-before-10",
+   "kind": "symbol",
+   "input": "0x414243444546f09f9880",
+   "expect": {
+    "ok": true,
+    "output": "0x414243444546f09f9880"
    }
   },
   {
@@ -5503,7 +5503,7 @@
    "input": "0xe697a5e69cace8aa9ee381a7e38199",
    "expect": {
     "ok": true,
-    "output": "0x726fe697a5e69cac"
+    "output": "0xe697a5e69cace8aa9e"
    }
   },
   {
@@ -5521,7 +5521,7 @@
    "input": "0xc385c384c396c385c384c396",
    "expect": {
     "ok": true,
-    "output": "0x726fc385c384c396c385"
+    "output": "0xc385c384c396c385c384"
    }
   },
   {
@@ -5539,7 +5539,7 @@
    "input": "0x4142434445464748494a",
    "expect": {
     "ok": true,
-    "output": "0x726f4142434445464748"
+    "output": "0x4142434445464748494a"
    }
   },
   {
@@ -5557,7 +5557,7 @@
    "input": "0xe697a5e69cace8aa9e",
    "expect": {
     "ok": true,
-    "output": "0x726fe697a5e69cac"
+    "output": "0xe697a5e69cace8aa9e"
    }
   },
   {
@@ -5575,7 +5575,7 @@
    "input": "0xe28690e28690e28690",
    "expect": {
     "ok": true,
-    "output": "0x726fe28690e28690"
+    "output": "0xe28690e28690e28690"
    }
   },
   {
@@ -5593,7 +5593,7 @@
    "input": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142",
    "expect": {
     "ok": true,
-    "output": "0x726f4142434445464748"
+    "output": "0x4142434445464748494a"
    }
   },
   {
@@ -5611,7 +5611,7 @@
    "input": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5",
    "expect": {
     "ok": true,
-    "output": "0x726fe697a5e69cac"
+    "output": "0xe697a5e69cace8aa9e"
    }
   },
   {
@@ -5629,7 +5629,7 @@
    "input": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690",
    "expect": {
     "ok": true,
-    "output": "0x726fe28690e28690"
+    "output": "0xe28690e28690e28690"
    }
   },
   {
@@ -5647,7 +5647,7 @@
    "input": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a41424344",
    "expect": {
     "ok": true,
-    "output": "0x726f4142434445464748"
+    "output": "0x4142434445464748494a"
    }
   },
   {
@@ -5665,7 +5665,7 @@
    "input": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9e",
    "expect": {
     "ok": true,
-    "output": "0x726fe697a5e69cac"
+    "output": "0xe697a5e69cace8aa9e"
    }
   },
   {
@@ -5683,7 +5683,7 @@
    "input": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690",
    "expect": {
     "ok": true,
-    "output": "0x726fe28690e28690"
+    "output": "0xe28690e28690e28690"
    }
   },
   {
@@ -5701,7 +5701,7 @@
    "input": "0x4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a4142434445464748494a",
    "expect": {
     "ok": true,
-    "output": "0x726f4142434445464748"
+    "output": "0x4142434445464748494a"
    }
   },
   {
@@ -5719,7 +5719,7 @@
    "input": "0xe697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9ee697a5e69cace8aa9e",
    "expect": {
     "ok": true,
-    "output": "0x726fe697a5e69cac"
+    "output": "0xe697a5e69cace8aa9e"
    }
   },
   {
@@ -5737,7 +5737,7 @@
    "input": "0xe28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690e28690",
    "expect": {
     "ok": true,
-    "output": "0x726fe28690e28690"
+    "output": "0xe28690e28690e28690"
    }
   }
  ],
@@ -5760,7 +5760,7 @@
    "expect": {
     "ok": true,
     "name": "0x5772617070656420534f4c2028526f6d6529",
-    "symbol": "0x726f534f4c"
+    "symbol": "0x534f4c"
    },
    "read": {
     "source": "Metaplex",
@@ -5786,7 +5786,7 @@
    "expect": {
     "ok": true,
     "name": "0x414141414141414141414141414141414141414141414141412028526f6d6529",
-    "symbol": "0x726f4a69746f534f4c"
+    "symbol": "0x4a69746f534f4c"
    },
    "read": {
     "source": "Metaplex",
@@ -5812,7 +5812,7 @@
    "expect": {
     "ok": true,
     "name": "0x424242424242424242424242424242424242424242424242422028526f6d6529",
-    "symbol": "0x726f4142434445464748"
+    "symbol": "0x4142434445464748"
    },
    "read": {
     "source": "Metaplex",
@@ -5838,7 +5838,7 @@
    "expect": {
     "ok": true,
     "name": "0x434343434343434343434343434343434343434343434343432028526f6d6529",
-    "symbol": "0x726f4142434445464748"
+    "symbol": "0x414243444546474849"
    },
    "read": {
     "source": "Metaplex",
@@ -5864,7 +5864,7 @@
    "expect": {
     "ok": true,
     "name": "0x4e616d652028526f6d6529",
-    "symbol": "0x726f4142434445464748"
+    "symbol": "0x4142434445464748494a"
    },
    "read": {
     "source": "Metaplex",
@@ -5890,7 +5890,7 @@
    "expect": {
     "ok": true,
     "name": "0x4141414141414141414141414141414141414141414141412028526f6d6529",
-    "symbol": "0x726f41424344454647"
+    "symbol": "0x41424344454647c3a9"
    },
    "read": {
     "source": "Metaplex",
@@ -5899,7 +5899,7 @@
    }
   },
   {
-   "id": "metaplex/four-byte-across-8",
+   "id": "metaplex/four-byte-symbol-fits-10",
    "mint": "0x0900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
    "accounts": [
     {
@@ -5916,7 +5916,7 @@
    "expect": {
     "ok": true,
     "name": "0x4e616d652028526f6d6529",
-    "symbol": "0x726f414243444546"
+    "symbol": "0x414243444546f09f9880"
    },
    "read": {
     "source": "Metaplex",
@@ -6017,7 +6017,7 @@
    "expect": {
     "ok": true,
     "name": "0x4e4f5f4e414d45532028526f6d6529",
-    "symbol": "0x726f4e4f5f53594d424f"
+    "symbol": "0x4e4f5f53594d424f4c53"
    },
    "read": {
     "source": "Metaplex",
@@ -6218,7 +6218,7 @@
    "expect": {
     "ok": true,
     "name": "0x45746865722028526f6d6529",
-    "symbol": "0x726f726f455448"
+    "symbol": "0x726f455448"
    },
    "read": {
     "source": "Metaplex",
@@ -6871,7 +6871,7 @@
    "expect": {
     "ok": true,
     "name": "0x616931367a2028526f6d6529",
-    "symbol": "0x726f616931367a"
+    "symbol": "0x616931367a"
    },
    "read": {
     "source": "Token2022",
@@ -6892,7 +6892,7 @@
    "expect": {
     "ok": true,
     "name": "0x412076657279206c6f6e6720746f6b656e206e616d65206f662028526f6d6529",
-    "symbol": "0x726f4c4f4e4753594d42"
+    "symbol": "0x4c4f4e4753594d424f4c"
    },
    "read": {
     "source": "Token2022",
@@ -6913,12 +6913,54 @@
    "expect": {
     "ok": true,
     "name": "0x4141414141414141414141414141414141414141414141412028526f6d6529",
-    "symbol": "0x726f414243444546"
+    "symbol": "0x414243444546f09f9880"
    },
    "read": {
     "source": "Token2022",
     "name": "0x414141414141414141414141414141414141414141414141c3a95a",
     "symbol": "0x414243444546f09f9880"
+   }
+  },
+  {
+   "id": "t2022/self/multibyte-symbol-across-10",
+   "mint": "0x0900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+   "accounts": [
+    {
+     "at": "mint",
+     "owner": "p2022",
+     "data": "0x010000002222222222222222222222222222222222222222222222222222222222222222000000000000000009010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011200400000000000000000000000000000000000000000000000000000000000000000000900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a13005f0033333333333333333333333333333333333333333333333333333333333333330900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a040000004e616d650b000000414243444546474849c3a90000000000000000"
+    }
+   ],
+   "expect": {
+    "ok": true,
+    "name": "0x4e616d652028526f6d6529",
+    "symbol": "0x414243444546474849"
+   },
+   "read": {
+    "source": "Token2022",
+    "name": "0x4e616d65",
+    "symbol": "0x414243444546474849c3a9"
+   }
+  },
+  {
+   "id": "t2022/self/four-byte-symbol-across-10",
+   "mint": "0x0900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+   "accounts": [
+    {
+     "at": "mint",
+     "owner": "p2022",
+     "data": "0x010000002222222222222222222222222222222222222222222222222222222222222222000000000000000009010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011200400000000000000000000000000000000000000000000000000000000000000000000900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a1300600033333333333333333333333333333333333333333333333333333333333333330900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a040000004e616d650c0000004142434445464748f09f98800000000000000000"
+    }
+   ],
+   "expect": {
+    "ok": true,
+    "name": "0x4e616d652028526f6d6529",
+    "symbol": "0x4142434445464748"
+   },
+   "read": {
+    "source": "Token2022",
+    "name": "0x4e616d65",
+    "symbol": "0x4142434445464748f09f9880"
    }
   },
   {
@@ -7002,13 +7044,13 @@
    }
   },
   {
-   "id": "t2022/self/bidi-symbol-past-8",
+   "id": "t2022/self/bidi-symbol-past-10",
    "mint": "0x0900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
    "accounts": [
     {
      "at": "mint",
      "owner": "p2022",
-     "data": "0x010000002222222222222222222222222222222222222222222222222222222222222222000000000000000009010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011200400000000000000000000000000000000000000000000000000000000000000000000900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a13005f0033333333333333333333333333333333333333333333333333333333333333330900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a040000004e616d650b0000004142434445464748e280ae0000000000000000"
+     "data": "0x010000002222222222222222222222222222222222222222222222222222222222222222000000000000000009010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011200400000000000000000000000000000000000000000000000000000000000000000000900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a1300610033333333333333333333333333333333333333333333333333333333333333330900000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a040000004e616d650d0000004142434445464748494ae280ae0000000000000000"
     }
    ],
    "expect": {
@@ -7018,7 +7060,7 @@
    "read": {
     "source": "Token2022",
     "name": "0x4e616d65",
-    "symbol": "0x4142434445464748e280ae"
+    "symbol": "0x4142434445464748494ae280ae"
    }
   },
   {
@@ -7154,7 +7196,7 @@
    "expect": {
     "ok": true,
     "name": "0x4e616d652028526f6d6529",
-    "symbol": "0x726f5353535353535353"
+    "symbol": "0x53535353535353535353"
    },
    "read": {
     "source": "Token2022",
@@ -7175,7 +7217,7 @@
    "expect": {
     "ok": true,
     "name": "0x4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e2028526f6d6529",
-    "symbol": "0x726f53594d"
+    "symbol": "0x53594d"
    },
    "read": {
     "source": "Token2022",
@@ -7267,7 +7309,7 @@
    "expect": {
     "ok": true,
     "name": "0x5772617070656420534f4c2028526f6d6529",
-    "symbol": "0x726f534f4c"
+    "symbol": "0x534f4c"
    },
    "read": {
     "source": "Metaplex",
@@ -7293,7 +7335,7 @@
    "expect": {
     "ok": true,
     "name": "0x4265736964652028526f6d6529",
-    "symbol": "0x726f425344"
+    "symbol": "0x425344"
    },
    "read": {
     "source": "Metaplex",
@@ -7337,7 +7379,7 @@
    "expect": {
     "ok": true,
     "name": "0x5772617070656420534f4c2028526f6d6529",
-    "symbol": "0x726f534f4c"
+    "symbol": "0x534f4c"
    },
    "read": {
     "source": "Metaplex",
@@ -7369,7 +7411,7 @@
    "expect": {
     "ok": true,
     "name": "0x5772617070656420534f4c2028526f6d6529",
-    "symbol": "0x726f534f4c"
+    "symbol": "0x534f4c"
    },
    "read": {
     "source": "Metaplex",
@@ -7482,7 +7524,7 @@
    "expect": {
     "ok": true,
     "name": "0x4265736964652028526f6d6529",
-    "symbol": "0x726f425344"
+    "symbol": "0x425344"
    },
    "read": {
     "source": "Metaplex",
@@ -8005,7 +8047,7 @@
    "expect": {
     "ok": true,
     "name": "0x4e616d652028526f6d6529",
-    "symbol": "0x726f53594d"
+    "symbol": "0x53594d"
    },
    "read": {
     "source": "Token2022",
@@ -8062,7 +8104,7 @@
    "expect": {
     "ok": true,
     "name": "0x4e616d652028526f6d6529",
-    "symbol": "0x726f53594d"
+    "symbol": "0x53594d"
    },
    "read": {
     "source": "Token2022",
@@ -8079,7 +8121,7 @@
    "expect": {
     "ok": true,
     "name": "0x4d7920546f6b656e2028526f6d6529",
-    "symbol": "0x726f4d5954"
+    "symbol": "0x4d5954"
    }
   },
   {
@@ -8089,7 +8131,7 @@
    "expect": {
     "ok": true,
     "name": "0x4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e2028526f6d6529",
-    "symbol": "0x726f5353535353535353"
+    "symbol": "0x53535353535353535353"
    }
   },
   {
@@ -8099,7 +8141,17 @@
    "expect": {
     "ok": true,
     "name": "0x4141414141414141414141414141414141414141414141412028526f6d6529",
-    "symbol": "0x726f41424344454647"
+    "symbol": "0x41424344454647c3a9"
+   }
+  },
+  {
+   "id": "authority/multibyte-symbol-across-10",
+   "originName": "0x4e616d65",
+   "originSymbol": "0x414243444546474849c3a9",
+   "expect": {
+    "ok": true,
+    "name": "0x4e616d652028526f6d6529",
+    "symbol": "0x414243444546474849"
    }
   },
   {
@@ -8150,7 +8202,7 @@
   {
    "id": "authority/bidi-symbol",
    "originName": "0x4e616d65",
-   "originSymbol": "0x4142434445464748e280ae",
+   "originSymbol": "0x4142434445464748494ae280ae",
    "expect": {
     "ok": false,
     "error": "BadSymbol"
