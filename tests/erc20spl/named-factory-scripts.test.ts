@@ -10,6 +10,7 @@ import {
     NoLiveNamedFactoryError,
     NotLiveNamedFactoryError,
     assertDirectWrapperDeployAllowed,
+    liveNamedFactoryAddress,
     resolveLiveNamedFactory,
 } from "../../scripts/lib/wrapper-factory";
 import { planEntry, previewOutcome, recordKey } from "../../scripts/bridge/lib/bootstrap-plan";
@@ -17,10 +18,13 @@ import { registerOnNamedFactory } from "../../scripts/erc20spl/lib/register-name
 import {
     assertListAllowed,
     buildDeploy,
+    deprecatedKey,
     gateSend,
     grandfatherHash,
     parseGrandfatherList,
     planDeploy,
+    planReplace,
+    replaceNamedFactory,
 } from "../../scripts/erc20spl/lib/named-factory-deploy";
 import { base58ToBytes32 } from "../../scripts/lib/pubkey";
 import { MINT_FOR_SCRIPTS, plantMetaplex } from "./naming-script-helpers";
@@ -147,8 +151,8 @@ describe("the bootstrap's names are the named factory's", async () => {
     it("an unregistered mint is registered under the strings preview gives, never a name from a table", async () => {
         await plantMetaplex(store, "Wrapped SOL", "SOL");
         const out = await previewOutcome(() => f.read.preview([MINT_FOR_SCRIPTS.mint]));
-        assert.deepEqual(out, { kind: "ok", name: "Wrapped SOL (Rome)", symbol: "roSOL" });
-        assert.deepEqual(planEntry(zeroAddress, out), { kind: "register", name: "Wrapped SOL (Rome)", symbol: "roSOL" });
+        assert.deepEqual(out, { kind: "ok", name: "Wrapped SOL", symbol: "SOL" });
+        assert.deepEqual(planEntry(zeroAddress, out), { kind: "register", name: "Wrapped SOL", symbol: "SOL" });
     });
 
     it("a mint the named factory refuses is skipped with its reason, not registered, and does not stop the run", async () => {
@@ -259,6 +263,55 @@ describe("the named factory deploy command", async () => {
         assert.ok(send > 0 && record > send && after > record, "send, then the record, then the readback");
     });
 
+    it("replacing a recorded factory: --replace must name the recorded address, and a record without it is only read back", () => {
+        const rec = "0x3b1a41f1df45200f16d35fa5788d251d9fb92d92";
+        assert.equal(planReplace(undefined, undefined), "deploy");
+        assert.equal(planReplace(rec, undefined), "read-back");
+        assert.equal(planReplace(rec, "0x3B1A41F1DF45200F16D35FA5788D251D9FB92D92"), "replace");
+        assert.throws(() => planReplace(undefined, rec), /no recorded named factory/);
+        assert.throws(() => planReplace(rec, "0x00000000000000000000000000000000000000b1"), /recorded named factory is/);
+        assert.throws(() => planReplace(rec, "not-an-address"), /--replace/);
+    });
+
+    it("a successor keeps the old record under its own key as deprecated and not live, and takes the slot not live", () => {
+        const old = {
+            address: "0x3b1a41f1df45200f16d35fa5788d251d9fb92d92",
+            cpiContractAddress: "0xFF00000000000000000000000000000000000008",
+            grandfatherHash: "0x6562c19f6a449e1833c1174fccd7ac0ea685ff2299480fd008f9c9062fe5c620",
+            live: true,
+            deployTx: "0xcda6",
+            deployedAt: 1794248839,
+        };
+        const dep = { ERC20SPLFactory: { address: "0x00000000000000000000000000000000000000a0", deprecated: true }, ERC20SPLNamedFactory: old };
+        const successor = { address: "0x00000000000000000000000000000000000000c2", live: true, grandfatherHash: old.grandfatherHash };
+        const out = replaceNamedFactory(dep as any, successor) as any;
+        const key = deprecatedKey(old.address);
+        assert.equal(key, "ERC20SPLNamedFactoryDeprecated_3b1a41f1");
+        assert.deepEqual(out[key], { ...old, live: false, deprecated: true, replacedBy: "0x00000000000000000000000000000000000000c2" });
+        assert.equal(out.ERC20SPLNamedFactory.address, successor.address);
+        assert.equal(out.ERC20SPLNamedFactory.live, false, "never live from a deploy");
+        assert.deepEqual(out.ERC20SPLFactory, dep.ERC20SPLFactory);
+        assert.equal(dep.ERC20SPLNamedFactory.live, true, "the input is not changed");
+        // nothing makes a wrapper in between: no live named factory resolves
+        assert.equal(liveNamedFactoryAddress(out), null);
+        assert.throws(() => replaceNamedFactory(out, { address: "0x00000000000000000000000000000000000000c3" }), /already recorded|is the recorded/);
+        assert.throws(() => replaceNamedFactory(dep as any, { address: old.address }), /is the recorded factory/);
+        assert.throws(() => replaceNamedFactory({} as any, successor), /no recorded named factory/);
+    });
+
+    it("the command takes --replace, records the successor through replaceNamedFactory, and still writes not live", () => {
+        const text = src("scripts/erc20spl/deploy-named-factory.ts");
+        assert.match(text, /--replace/);
+        assert.match(text, /planReplace\(/);
+        assert.match(text, /replaceNamedFactory\(/);
+        assert.doesNotMatch(text, /live: true/);
+        const code = text.split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n");
+        const send = code.indexOf("sendTransaction(");
+        const replace = code.indexOf("replaceNamedFactory(", send);
+        const write = code.indexOf("writeDeployments(networkName, dep)", replace);
+        assert.ok(send > 0 && replace > send && write > replace, "send, then the replacing record, then the one write");
+    });
+
     it("the send carries the nonce the gate checked (pending count), and the dry run simulates the deploy", () => {
         const text = src("scripts/erc20spl/deploy-named-factory.ts");
         assert.match(text, /blockTag: "pending"/);
@@ -300,8 +353,8 @@ describe("registering a mint the script made", async () => {
         assert.equal(done.path, "authority");
         await publicClient.waitForTransactionReceipt({ hash: done.hash });
         const w = await viem.getContractAt("SPL_ERC20_cached", (await f.read.token_by_mint([mint])) as `0x${string}`);
-        assert.equal(await w.read.name(), "CPI Test Token (Rome)");
-        assert.equal(await w.read.symbol(), "roTESTcpi");
+        assert.equal(await w.read.name(), "CPI Test Token");
+        assert.equal(await w.read.symbol(), "TESTcpi");
     });
 
     it("a mint with a name of its own takes the metadata path", async () => {
@@ -319,7 +372,7 @@ describe("registering a mint the script made", async () => {
         assert.equal(done.path, "metadata");
         await publicClient.waitForTransactionReceipt({ hash: done.hash });
         const w = await viem.getContractAt("SPL_ERC20_cached", (await g.read.token_by_mint([mint])) as `0x${string}`);
-        assert.equal(await w.read.name(), "Wrapped SOL (Rome)");
+        assert.equal(await w.read.name(), "Wrapped SOL");
     });
 
     it("any other refusal stops the run instead of trying the authority path", async () => {
