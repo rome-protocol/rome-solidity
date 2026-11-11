@@ -294,6 +294,8 @@ describe("the named factory deploy command", async () => {
         assert.equal(dep.ERC20SPLNamedFactory.live, true, "the input is not changed");
         // nothing makes a wrapper in between: no live named factory resolves
         assert.equal(liveNamedFactoryAddress(out), null);
+        // and no direct or legacy wrapper deploy runs either: a chain that has had a named factory never reopens them
+        assert.throws(() => assertDirectWrapperDeployAllowed("x", "deploy a wrapper", out), DirectWrapperDeployRetiredError);
         // a key already recorded for that address is never overwritten
         const taken = { ...out, [deprecatedKey(successor.address)]: { address: "0x00000000000000000000000000000000000000d0" } };
         assert.throws(() => replaceNamedFactory(taken as any, { address: "0x00000000000000000000000000000000000000c3" }), /is already recorded/);
@@ -315,6 +317,9 @@ describe("the named factory deploy command", async () => {
         const replace = code.indexOf("replaceNamedFactory(", send);
         const write = code.indexOf("writeDeployments(networkName, dep)", replace);
         assert.ok(send > 0 && replace > send && write > replace, "send, then the replacing record, then the one write");
+        // the replace refusals run once before anything is sent, so the dry run fails on them too
+        const check = code.indexOf("replaceNamedFactory(dep, { address: predicted })");
+        assert.ok(check > 0 && check < code.indexOf("estimateGas(") && check < send, "the replace check comes before the estimate and the send");
     });
 
     it("the send carries the nonce the gate checked (pending count), and the dry run simulates the deploy", () => {
