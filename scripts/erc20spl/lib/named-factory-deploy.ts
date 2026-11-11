@@ -3,8 +3,9 @@
 // The pure parts of the named-factory deploy command: the grandfather list, its hash, the plan the command prints, and the
 // gate on --send.
 
-import { decodeDeployData, encodeAbiParameters, encodeDeployData, isAddress, keccak256, type Abi, type Hex } from "viem";
+import { decodeDeployData, encodeAbiParameters, encodeDeployData, getAddress, isAddress, keccak256, type Abi, type Hex } from "viem";
 import { base58ToBytes32 } from "../../lib/pubkey.js";
+import type { DeploymentsFile, ERC20SPLNamedFactoryDeployment } from "../../lib/deployments.js";
 
 export type GrandfatherEntry = { network: number; mint: Hex; wrapper: `0x${string}` };
 
@@ -113,4 +114,50 @@ export function gateSend(opts: {
         throw new Error("this is a mainnet chain: --send also needs --i-understand-mainnet");
     }
     return "send";
+}
+
+/**
+ * Whether this run deploys a successor over the chain's recorded named factory.
+ *
+ * - No record: a plain deploy (`--replace` is refused: there is nothing to replace).
+ * - A record and no `--replace`: "read-back", the record is read and nothing is sent.
+ * - A record and `--replace <address>`: "replace" when the address is the recorded factory's, the one the
+ *   caller means to retire. A different address is refused, so a stale command cannot retire the wrong record.
+ */
+export function planReplace(recorded: string | undefined, replace: string | undefined): "deploy" | "read-back" | "replace" {
+    if (replace !== undefined) {
+        if (!isAddress(replace)) throw new Error(`--replace needs the address of the recorded named factory, not ${replace}`);
+        if (!recorded) throw new Error("--replace: the chain has no recorded named factory to replace");
+        if (getAddress(recorded) !== getAddress(replace)) {
+            throw new Error(`--replace ${replace}: the recorded named factory is ${recorded}`);
+        }
+        return "replace";
+    }
+    return recorded ? "read-back" : "deploy";
+}
+
+/** The key a retired named factory's record is kept under. */
+export function deprecatedKey(address: string): `ERC20SPLNamedFactoryDeprecated_${string}` {
+    return `ERC20SPLNamedFactoryDeprecated_${getAddress(address).slice(2, 10).toLowerCase()}`;
+}
+
+/**
+ * The deployments file after a successor named factory E1' replaces the recorded one: the old record is kept under
+ * its own key with `deprecated: true`, `live: false` and `replacedBy`, and the slot holds the new record with
+ * `live: false`, until the registry release that makes it the chain's live factory (set by hand, as for the first
+ * one). With no live record in the slot, no wrapper-making script runs on the chain in between (fail closed).
+ * Returns a new object; `dep` is not changed.
+ */
+export function replaceNamedFactory(dep: DeploymentsFile, successor: ERC20SPLNamedFactoryDeployment): DeploymentsFile {
+    const old = dep.ERC20SPLNamedFactory;
+    if (!old?.address) throw new Error("replaceNamedFactory: there is no recorded named factory to replace");
+    if (!successor.address) throw new Error("replaceNamedFactory: the successor has no address");
+    if (getAddress(old.address) === getAddress(successor.address)) throw new Error("replaceNamedFactory: the successor is the recorded factory");
+    const key = deprecatedKey(old.address);
+    if (dep[key]) throw new Error(`replaceNamedFactory: ${key} is already recorded`);
+    return {
+        ...dep,
+        [key]: { ...old, live: false, deprecated: true, replacedBy: getAddress(successor.address) },
+        ERC20SPLNamedFactory: { ...successor, live: false },
+    };
 }

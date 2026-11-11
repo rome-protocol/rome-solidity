@@ -2,7 +2,7 @@
 
 Deploy and ops scripts for the Rome Bridge contracts: paymaster (legacy), SPL_ERC20 wrappers (`WUSDC`, `WETH`, `WSOL`, plus per-asset `W{Symbol}` deploys), and `RomeBridgeWithdraw`.
 
-Legacy wrappers carry the `W` prefix and keep it; a wrapper made by the named wrapper factory is named by that factory's rule ("<origin name> (Rome)" · `ro` + the origin symbol).
+Legacy wrappers carry the `W` prefix and keep it; a wrapper made by the named wrapper factory carries exactly the origin's name and symbol, unchanged (no `ro`, no "(Rome)").
 
 **Read `contracts/bridge/README.md` first** — it covers the architecture, the four bridge flows, and the non-obvious problems that shaped the design (single-tx compute-budget limit, missing SPL Approve, stale canonical mints, etc.). This file is the operational companion.
 
@@ -105,7 +105,7 @@ The path differs by asset origin:
 
 For tokens that originate on Solana (USDT-on-Solana, JUP, BONK, custom long-tail, etc.), you only need an `SPL_ERC20` wrapper on Rome. No `RomeBridgeWithdraw` change, no new burn entrypoint, no paymaster allowlist update — `SPL_ERC20.bridgeOutToSolana` is the generic outbound for all of them.
 
-1. Call `ERC20SPLNamedFactory.add_spl_token_with_metadata(mint)` on the chain's live named factory. Nobody picks the name: the wrapper is "<the mint's name> (Rome)" with the symbol "ro" + the mint's symbol, read from the mint's own metadata (`preview(mint)` shows both before you send, or the reason the named factory refuses the mint). A mint you made yourself with `create_token_mint` and that carries no name goes through `add_spl_token_by_authority(mint, name, symbol)`, named by the same rule. `bootstrap-bridged-wrappers.ts` does the first for the canonical set and refuses a chain with no live named factory.
+1. Call `ERC20SPLNamedFactory.add_spl_token_with_metadata(mint)` on the chain's live named factory. Nobody picks the name: the wrapper carries exactly the mint's own name and symbol, unchanged, read from the mint's own metadata (`preview(mint)` shows both before you send, or the reason the named factory refuses the mint). A mint you made yourself with `create_token_mint` and that carries no name goes through `add_spl_token_by_authority(mint, name, symbol)`, with the same rule (the strings you give, checked whole, unchanged). `bootstrap-bridged-wrappers.ts` does the first for the canonical set and refuses a chain with no live named factory.
 2. The backend's `TokenCreated` event indexer picks up the new wrapper and surfaces it in `the app`'s portfolio + bridge picker. The bridge picker auto-includes it because `useRomeHoldings` filters on `kind === "wrap"`.
 
 That's it. One CPI per outbound transfer, same code path as WETH/WSOL today.

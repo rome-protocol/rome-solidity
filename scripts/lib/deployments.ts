@@ -38,6 +38,10 @@ export type ERC20SPLNamedFactoryDeployment = {
     live?: boolean;
     deployTx?: string;
     deployedAt?: number;
+    /// Set on a record a successor replaced (deploy-named-factory.ts --replace): it is kept under its own key,
+    /// never live, and no script makes a wrapper through it.
+    deprecated?: boolean;
+    replacedBy?: string;
 };
 
 export type WrapperDeployment = {
@@ -64,6 +68,8 @@ export type DeploymentsFile = {
     MeteoraDAMMv1Pools?: PoolDeployment[];
     ERC20SPLFactory?: ERC20SPLFactoryDeployment;
     ERC20SPLNamedFactory?: ERC20SPLNamedFactoryDeployment;
+    /// Named factories a successor replaced, each under `ERC20SPLNamedFactoryDeprecated_<first 8 hex of its address>`.
+    [deprecatedNamedFactory: `ERC20SPLNamedFactoryDeprecated_${string}`]: ERC20SPLNamedFactoryDeployment | undefined;
     SimpleActivator?: SimpleActivatorDeployment;
     // Canonical bridged-asset wrapper keys written by
     // scripts/bridge/bootstrap-bridged-wrappers.ts. Names match what other

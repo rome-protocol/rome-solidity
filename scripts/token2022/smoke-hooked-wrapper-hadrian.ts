@@ -4,7 +4,7 @@
  *
  * The wrapper is made by the chain's live named factory (deployments/hadrian.json
  * ERC20SPLNamedFactory with live: true) through its metadata path, so the fixture mint must
- * carry a name of its own; the wrapper is named by rule ("<name> (Rome)", "ro" + symbol).
+ * carry a name of its own; the wrapper is named by rule (the origin's own name and symbol, unchanged).
  * Without a live named factory the script stops before sending anything.
  *
  * Required environment (public fixture identifiers only):

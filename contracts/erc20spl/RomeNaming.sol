@@ -2,26 +2,25 @@
 pragma solidity ^0.8.20;
 
 /// @title RomeNaming
-/// @notice How Rome names a token it makes for a Solana mint (or for an EVM token's Solana mint): the name is
-///         the origin's name cut to 25 bytes, then " (Rome)", and the symbol is "ro" followed by the origin's
-///         symbol cut to 8 bytes. Both are at most what Metaplex allows (32 bytes and 10), so one string serves
-///         Solana wallets and EVM wallets alike.
+/// @notice How Rome names a token it makes for a Solana mint (or for an EVM token's Solana mint): the name and the
+///         symbol are exactly the origin's, unchanged. No prefix, no suffix and no cut: a bridged token reads the
+///         same on every chain as the token it comes from.
 ///
-/// @dev    Fail closed, on the WHOLE text, before the cut. A check on the kept part cannot see the placeholder fallback
-///         texts for a name or symbol it could not read ("NO_NAME", "NO_SYMBOL", "NOT_VALID_ENCODING"), which are
-///         longer than the kept part, and would pass their cuts. The order, for the name and for the symbol:
+/// @dev    Fail closed, on the WHOLE text. The order, for the name and for the symbol:
 ///           1. the text as read, whole;
-///           2. refuse it when it is empty, is one of the fallback texts byte for byte, is not valid UTF-8 (a
-///              stray continuation byte, a sequence cut short, an overlong form, a surrogate, a code point above
+///           2. refuse it when it is empty, is one of the placeholder texts for a name or symbol it could not read
+///              ("NO_NAME", "NO_SYMBOL", "NOT_VALID_ENCODING") byte for byte, is not valid UTF-8 (a stray
+///              continuation byte, a sequence cut short, an overlong form, a surrogate, a code point above
 ///              U+10FFFF), or holds a code point of Unicode 16.0.0's general categories Cc or Cf (235 code points
 ///              in 23 ranges: C0, DEL and C1 controls, bidi controls, zero-width and tag characters, the byte-order
 ///              mark and the soft hyphen);
-///           3. cut it on a UTF-8 boundary;
-///           4. refuse a cut that left nothing (after step 2 it cannot, since a character is at most 4 bytes: a
-///              guard that a test reaches by cutting a 4-byte character at 2);
-///           5. add "ro" in front, or " (Rome)" behind.
-///         Only the exact fallback texts are refused: "NO_SYMBOLS" is a symbol. "ro" is always lowercase, the
-///         origin's own case is kept, and an origin that already starts with "ro" becomes "roro...".
+///           3. return it as it is.
+///         Only the exact placeholder texts are refused: "NO_SYMBOLS" is a symbol. The origin's own case and
+///         letters are kept, "roETH" stays "roETH", and "USDT" stays "USDT".
+///
+///         `cut` stays for the one place that must cut: the Solana Metaplex metadata of a mint Rome makes holds
+///         at most 32 bytes of name and 10 of symbol, so a caller that writes it cuts there, on a UTF-8 boundary,
+///         with nothing added. No EVM side cuts.
 ///
 ///         The table is fixed at Unicode 16.0.0: a character a later version adds to Cf passes until a successor
 ///         factory is deployed. Every other character passes, unassigned ones included.
@@ -36,8 +35,10 @@ library RomeNaming {
     error BadName();
     error BadSymbol();
 
-    uint256 internal constant NAME_CUT = 25;
-    uint256 internal constant SYMBOL_CUT = 8;
+    /// @dev What Metaplex's token metadata holds: a name of at most 32 bytes and a symbol of at most 10. Only the
+    ///      Solana-side metadata of a mint Rome makes is cut to these (see `cut`).
+    uint256 internal constant METAPLEX_NAME_MAX = 32;
+    uint256 internal constant METAPLEX_SYMBOL_MAX = 10;
 
     bytes32 private constant NO_NAME = keccak256("NO_NAME");
     bytes32 private constant NO_SYMBOL = keccak256("NO_SYMBOL");
@@ -58,32 +59,16 @@ library RomeNaming {
 
     // ---- the two names ----
 
-    /// @notice "<name cut to 25 bytes> (Rome)", or `BadName` when the whole name fails the checks.
+    /// @notice The name as it is, or `BadName` when the whole name fails the checks.
     function romeName(string memory name) internal pure returns (string memory) {
-        return romeNameCut(name, NAME_CUT);
+        if (!acceptable(bytes(name), 7, NO_NAME)) revert BadName();
+        return name;
     }
 
-    /// @notice "ro" + the symbol cut to 8 bytes, or `BadSymbol` when the whole symbol fails the checks.
+    /// @notice The symbol as it is, or `BadSymbol` when the whole symbol fails the checks.
     function romeSymbol(string memory symbol) internal pure returns (string memory) {
-        return romeSymbolCut(symbol, SYMBOL_CUT);
-    }
-
-    /// @dev `romeName` with the cut as a parameter, so a test can reach the kept-part guard.
-    function romeNameCut(string memory name, uint256 cutBytes) internal pure returns (string memory) {
-        bytes memory b = bytes(name);
-        if (!acceptable(b, 7, NO_NAME)) revert BadName();
-        bytes memory kept = cut(b, cutBytes);
-        if (kept.length == 0) revert BadName();
-        return string.concat(string(kept), " (Rome)");
-    }
-
-    /// @dev `romeSymbol` with the cut as a parameter, so a test can reach the kept-part guard.
-    function romeSymbolCut(string memory symbol, uint256 cutBytes) internal pure returns (string memory) {
-        bytes memory b = bytes(symbol);
-        if (!acceptable(b, 9, NO_SYMBOL)) revert BadSymbol();
-        bytes memory kept = cut(b, cutBytes);
-        if (kept.length == 0) revert BadSymbol();
-        return string.concat("ro", string(kept));
+        if (!acceptable(bytes(symbol), 9, NO_SYMBOL)) revert BadSymbol();
+        return symbol;
     }
 
     // ---- the checks on the whole text ----

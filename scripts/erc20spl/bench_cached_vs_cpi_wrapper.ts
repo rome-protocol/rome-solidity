@@ -22,7 +22,7 @@ import { registerOnNamedFactory } from "./lib/register-named.js";
 //      it deploys a wrapper (idempotent — reuses existing if already
 //      registered). Through the named factory's metadata path when the mint carries a name
 //      of its own; else through its authority path, since the bencher made
-//      the mint (the factory names the wrapper by rule either way: "<name> (Rome)").
+//      the mint (the factory names the wrapper by rule either way: the origin's own name and symbol).
 //      A chain with no live named factory stops the script before anything is sent.
 //   2. Runs the same set of operations on both wrappers:
 //        mint_to, transfer, approve, transferFrom, ensure_token_account

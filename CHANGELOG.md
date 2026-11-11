@@ -1,3 +1,22 @@
+## 2026-11-11 — Wrapper names are the origin's own: no "ro", no "(Rome)"
+
+Source only: nothing is deployed by this change. Operator ruling 2026-11-11: a bridged token's name and symbol are
+exactly the origin token's on every chain.
+
+- `contracts/erc20spl/RomeNaming.sol`: `romeName` and `romeSymbol` keep the checks on the whole text (not empty, not
+  a placeholder text, valid UTF-8, no Unicode 16.0.0 Cc or Cf character) and return the text unchanged. The 25 and 8
+  byte cuts, " (Rome)" and "ro" are gone. `cut` stays, with the limits Metaplex holds (`METAPLEX_NAME_MAX` 32,
+  `METAPLEX_SYMBOL_MAX` 10), for the one place that must cut: the Solana metadata of a mint Rome makes.
+  `ERC20SPLNamedFactory`'s code and interface are otherwise unchanged, so the successor (E1') has the same API and
+  the same grandfather list; the naming is compiled in, so it is a redeploy, not an upgrade.
+- `tests/fixtures/asset-naming/vectors.json` and `generate.py`: the expected output is the input; every passing
+  vector also carries the Metaplex cut (`metaplex`, `metaplexName`, `metaplexSymbol`), and new vectors cross the 32
+  and 10 byte limits. The file's sha256 changed (was `9a33...c16e`): every implementation that pins it updates its pin.
+- `scripts/erc20spl/deploy-named-factory.ts --replace <recorded address>`: deploys a successor over a recorded
+  factory. The old record is kept under `ERC20SPLNamedFactoryDeprecated_<first 8 hex>` with `deprecated: true` and
+  `replacedBy`, never live; the slot holds the successor with `live: false` until it is marked live by hand with the
+  registry release. Without `--replace`, a record still means "read it back, send nothing".
+
 ## 2026-11-09 — The named wrapper factory: every wrapper is named by rule
 
 Source only: nothing is deployed by this change. A new factory at a new address, because the legacy

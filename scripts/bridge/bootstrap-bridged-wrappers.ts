@@ -9,7 +9,7 @@
 // this event and never appear in the UI.
 //
 // Nobody chooses a name here. A wrapper's name and symbol are the naming rule applied
-// to the metadata the mint itself carries ("<name> (Rome)", "ro" + symbol), as
+// to the metadata the mint itself carries (the origin's own name and symbol, unchanged), as
 // the named factory's `preview` reports them. A mint the named factory refuses (on the grandfather list, no
 // name of its own, a metadata pointer it does not accept, a name or symbol its
 // checks refuse) is skipped with the reason and registered under no other name.
