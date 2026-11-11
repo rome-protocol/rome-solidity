@@ -532,11 +532,21 @@
     "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   },
   "ERC20SPLNamedFactory": {
-    "address": "0x3b1a41f1df45200f16d35fa5788d251d9fb92d92",
+    "address": "0x0335129633949207492d32e935976211526e4ca0",
     "cpiContractAddress": "0xFF00000000000000000000000000000000000008",
     "grandfatherHash": "0x6562c19f6a449e1833c1174fccd7ac0ea685ff2299480fd008f9c9062fe5c620",
     "live": true,
+    "deployTx": "0xcd47194f6ac0377eb5fb49e0983415eb2a53d4c9b656f601fdcdad0bfe0a98e0",
+    "deployedAt": 1794406593
+  },
+  "ERC20SPLNamedFactoryDeprecated_3b1a41f1": {
+    "address": "0x3b1a41f1df45200f16d35fa5788d251d9fb92d92",
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008",
+    "grandfatherHash": "0x6562c19f6a449e1833c1174fccd7ac0ea685ff2299480fd008f9c9062fe5c620",
+    "live": false,
     "deployTx": "0xcda625dd4aa457c69d287c33e9146583e1ea19d7bf55afc8215524a5107000df",
-    "deployedAt": 1794248839
+    "deployedAt": 1794248839,
+    "deprecated": true,
+    "replacedBy": "0x0335129633949207492d32E935976211526E4CA0"
   }
 }
