@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import hardhat, { network } from "hardhat";
-import { encodeAbiParameters, keccak256, zeroAddress, type Hex } from "viem";
+import { encodeAbiParameters, getAddress, keccak256, zeroAddress, type Hex } from "viem";
 import {
     DirectWrapperDeployRetiredError,
     NoLiveNamedFactoryError,
@@ -267,7 +267,7 @@ describe("the named factory deploy command", async () => {
         const rec = "0x3b1a41f1df45200f16d35fa5788d251d9fb92d92";
         assert.equal(planReplace(undefined, undefined), "deploy");
         assert.equal(planReplace(rec, undefined), "read-back");
-        assert.equal(planReplace(rec, "0x3B1A41F1DF45200F16D35FA5788D251D9FB92D92"), "replace");
+        assert.equal(planReplace(rec, getAddress(rec)), "replace");
         assert.throws(() => planReplace(undefined, rec), /no recorded named factory/);
         assert.throws(() => planReplace(rec, "0x00000000000000000000000000000000000000b1"), /recorded named factory is/);
         assert.throws(() => planReplace(rec, "not-an-address"), /--replace/);
@@ -294,7 +294,12 @@ describe("the named factory deploy command", async () => {
         assert.equal(dep.ERC20SPLNamedFactory.live, true, "the input is not changed");
         // nothing makes a wrapper in between: no live named factory resolves
         assert.equal(liveNamedFactoryAddress(out), null);
-        assert.throws(() => replaceNamedFactory(out, { address: "0x00000000000000000000000000000000000000c3" }), /already recorded|is the recorded/);
+        // a key already recorded for that address is never overwritten
+        const taken = { ...out, [deprecatedKey(successor.address)]: { address: "0x00000000000000000000000000000000000000d0" } };
+        assert.throws(() => replaceNamedFactory(taken as any, { address: "0x00000000000000000000000000000000000000c3" }), /is already recorded/);
+        const chained = replaceNamedFactory({ ...out, ERC20SPLNamedFactory: { ...out.ERC20SPLNamedFactory, live: true } } as any, { address: "0x00000000000000000000000000000000000000c3" }) as any;
+        assert.equal(chained.ERC20SPLNamedFactory.address, "0x00000000000000000000000000000000000000c3");
+        assert.equal(chained[key].replacedBy, out[key].replacedBy, "the first retired record is untouched");
         assert.throws(() => replaceNamedFactory(dep as any, { address: old.address }), /is the recorded factory/);
         assert.throws(() => replaceNamedFactory({} as any, successor), /no recorded named factory/);
     });
