@@ -13,14 +13,19 @@ name that says whose bridge made it.
   no owner and no upgrade). Its code and interface are otherwise unchanged, so the successor has the same API and
   the same grandfather list.
 - `tests/fixtures/asset-naming/vectors.json` and `generate.py`: the expected symbols have no `ro`, and the symbol
-  cut vectors move from the 8-byte boundary to the 10-byte one. The file's sha256 changed (was
+  cut vectors move from the 8-byte boundary to the 10-byte one; three new factory-path vectors cut a 2- or 4-byte
+  symbol character across byte 10 (`t2022/self/multibyte-symbol-across-10`, `t2022/self/four-byte-symbol-across-10`,
+  `authority/multibyte-symbol-across-10`). The file's sha256 changed (was
   `9a333738798c73765ce23048ea6a17c8e75a243455f24a5a74b8465be35dc16e`, now
-  `e74ef40f8b38e5cfe1209c511ee2a8fafe70055de1e8f57a3de3912e2800f80a`): every implementation that pins it updates
+  `2b740dfcde3f5cfb525e8a0ca6ef8c6a541415fd7bc157aa9b996cfe2d56e727`): every implementation that pins it updates
   its pin.
 - `scripts/erc20spl/deploy-named-factory.ts --replace <recorded address>`: deploys a successor over a recorded
   factory. The old record is kept under `ERC20SPLNamedFactoryDeprecated_<first 8 hex>` with `deprecated: true` and
   `replacedBy`, never live; the slot holds the successor with `live: false` until it is marked live by hand with the
-  registry release. Without `--replace`, a record still means "read it back, send nothing".
+  registry release. Without `--replace`, a record still means "read it back, send nothing". The replace refusals
+  (a deprecated key already recorded, a successor equal to the recorded factory) run before the estimate and the
+  send, so the dry run fails on them. A chain with an `ERC20SPLNamedFactoryDeprecated_*` record never reopens direct
+  or legacy wrapper deploys (`assertDirectWrapperDeployAllowed` refuses), live successor or not.
 
 ## 2026-11-09 — The named wrapper factory: every wrapper is named by rule
 

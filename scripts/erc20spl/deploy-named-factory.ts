@@ -20,7 +20,8 @@
 // old record is kept under `ERC20SPLNamedFactoryDeprecated_<first 8 hex of its address>` with `deprecated: true`
 // and `replacedBy`, never live, and the slot holds the successor with `live: false`; both are written in one
 // file write, before the readback. Until the successor is marked live by hand, in the same change as the
-// registry release, no wrapper-making script runs on the chain (the live-factory guard fails closed).
+// registry release, no wrapper-making script runs on the chain (the named-factory callers fail closed on the
+// missing live record; the direct and legacy deploy scripts refuse on the Deprecated record).
 //
 //   npx tsx scripts/erc20spl/deploy-named-factory.ts --network <name> --grandfather list.json
 //   npx tsx scripts/erc20spl/deploy-named-factory.ts --network <name> --grandfather list.json --send \
@@ -92,6 +93,9 @@ async function main() {
     const artifact = await hardhat.artifacts.readArtifact("ERC20SPLNamedFactory");
     const built = buildDeploy({ abi: artifact.abi as any, bytecode: artifact.bytecode as `0x${string}`, args: plan.args });
     console.log(built.lines.join("\n"));
+    // --replace: its refusals (a deprecated key already recorded, a successor equal to the recorded factory) run
+    // here, once, before the estimate and the send, so the dry run fails on them and no deploy lands unrecorded.
+    if (mode0 === "replace") replaceNamedFactory(dep, { address: predicted });
     console.log(`deployer nonce ${nonce} (pending included); the deploy would create ${predicted}`);
     // Simulate the deploy: a revert fails the dry run too.
     const gas = await publicClient.estimateGas({ account: deployer, data: built.data });

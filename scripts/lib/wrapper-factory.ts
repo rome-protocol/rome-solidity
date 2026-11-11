@@ -37,9 +37,11 @@ export class NotLiveNamedFactoryError extends Error {
 }
 
 export class DirectWrapperDeployRetiredError extends Error {
-    constructor(networkName: string, what: string, factory: string) {
+    constructor(networkName: string, what: string, factory: string, replaced = false) {
         super(
-            `[${networkName}] refusing to ${what}: the named wrapper factory ${factory} is live on this chain, and new ` +
+            `[${networkName}] refusing to ${what}: the named wrapper factory ${factory} ` +
+            (replaced ? "was replaced on this chain and its successor is not live yet" : "is live on this chain") +
+            `, and new ` +
             `wrappers are made only through it (add_spl_token_with_metadata, or add_spl_token_by_authority for ` +
             `a mint you made). Nothing was sent.`,
         );
@@ -75,7 +77,9 @@ export function resolveLiveNamedFactory(
 
 /**
  * Call first in a script that deploys a wrapper directly, or a legacy factory: it throws, before anything is
- * sent, on a chain where the named factory is live.
+ * sent, on a chain where the named factory is live, and on a chain that has had one replaced
+ * (an `ERC20SPLNamedFactoryDeprecated_*` record): between the replace and the successor going live nothing
+ * deploys a wrapper, and a chain that has had a named factory never reopens direct or legacy deploys.
  */
 export function assertDirectWrapperDeployAllowed(
     networkName: string,
@@ -84,4 +88,9 @@ export function assertDirectWrapperDeployAllowed(
 ): void {
     const live = liveNamedFactoryAddress(dep);
     if (live) throw new DirectWrapperDeployRetiredError(networkName, what, live);
+    const replaced = Object.keys(dep).find((k) => k.startsWith("ERC20SPLNamedFactoryDeprecated_"));
+    if (replaced) {
+        const rec = (dep as Record<string, { address?: string } | undefined>)[replaced];
+        throw new DirectWrapperDeployRetiredError(networkName, what, rec?.address ?? replaced, true);
+    }
 }
