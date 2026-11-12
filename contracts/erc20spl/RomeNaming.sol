@@ -2,37 +2,12 @@
 pragma solidity ^0.8.20;
 
 /// @title RomeNaming
-/// @notice How Rome names a token it makes for a Solana mint (or for an EVM token's Solana mint): the name is
-///         the origin's name cut to 25 bytes, then " (Rome)", and the symbol is the origin's own symbol, cut to
-///         10 bytes and nothing added (no prefix). Both are at most what Metaplex allows (32 bytes and 10), so one
-///         string serves Solana wallets and EVM wallets alike. This is how Wormhole's Token Bridge names a wrapped
-///         token on chain: the origin's symbol, and a name that says whose bridge made it.
-///
-/// @dev    Fail closed, on the WHOLE text, before the cut. A check on the kept part cannot see the placeholder fallback
-///         texts for a name or symbol it could not read ("NO_NAME", "NO_SYMBOL", "NOT_VALID_ENCODING"), which are
-///         longer than the kept part, and would pass their cuts. The order, for the name and for the symbol:
-///           1. the text as read, whole;
-///           2. refuse it when it is empty, is one of the fallback texts byte for byte, is not valid UTF-8 (a
-///              stray continuation byte, a sequence cut short, an overlong form, a surrogate, a code point above
-///              U+10FFFF), or holds a code point of Unicode 16.0.0's general categories Cc or Cf (235 code points
-///              in 23 ranges: C0, DEL and C1 controls, bidi controls, zero-width and tag characters, the byte-order
-///              mark and the soft hyphen);
-///           3. cut it on a UTF-8 boundary;
-///           4. refuse a cut that left nothing (after step 2 it cannot, since a character is at most 4 bytes: a
-///              guard that a test reaches by cutting a 4-byte character at 2);
-///           5. add " (Rome)" behind a name; a symbol gets nothing added.
-///         Only the exact fallback texts are refused: "NO_SYMBOLS" is a symbol. The origin's own case and
-///         letters are kept: "USDT" stays "USDT", and "roETH" stays "roETH".
-///
-///         The table is fixed at Unicode 16.0.0: a character a later version adds to Cf passes until a successor
-///         factory is deployed. Every other character passes, unassigned ones included.
-///
-///         Cost: step 2 is linear in the text. ASCII is checked a 32-byte word at a time, and the walk goes byte by
-///         byte only where a word holds a byte at or above 0x80; the table lookup runs only for the ten lead
-///         bytes of characters that can be in it. A text too long to check inside a transaction's budget makes
-///         the call revert, which is fail closed.
-///
-///         Other implementations of the same rule run the same vectors (tests/fixtures/asset-naming/vectors.json).
+/// @notice Rome's naming rule: name = origin name cut to 25 bytes + " (Rome)", symbol = origin
+///         symbol cut to 10 bytes. Both fit Metaplex (32 and 10 bytes).
+/// @dev Fails closed on the WHOLE text before the cut, so the placeholder texts a reader emits
+///      ("NO_NAME", "NO_SYMBOL", "NOT_VALID_ENCODING") are caught. Refused: empty, a placeholder,
+///      invalid UTF-8, or a Unicode 16.0.0 Cc/Cf code point (a later Cf addition passes until a
+///      successor factory). A text too long to check in one transaction reverts.
 library RomeNaming {
     error BadName();
     error BadSymbol();
@@ -50,26 +25,24 @@ library RomeNaming {
     uint256 private constant DELS = 0x7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f;
     uint256 private constant LETTER_A = 0x4141414141414141414141414141414141414141414141414141414141414141;
 
-    /// @dev Bit (lead - 0xC2) is set for the lead bytes of characters that can be in the table: c2, d8, db, dc,
-    ///      e0, e1, e2, ef, f0, f3. Every other character above U+007F passes without a lookup.
+    /// @dev Bit (lead - 0xC2) is set for lead bytes of characters that can be in the table: c2,
+    ///      d8, db, dc, e0, e1, e2, ef, f0, f3. Other characters above U+007F pass unlooked.
     uint256 private constant TABLE_LEADS =
         (1 << (0xC2 - 0xC2)) | (1 << (0xD8 - 0xC2)) | (1 << (0xDB - 0xC2)) | (1 << (0xDC - 0xC2))
             | (1 << (0xE0 - 0xC2)) | (1 << (0xE1 - 0xC2)) | (1 << (0xE2 - 0xC2)) | (1 << (0xEF - 0xC2))
             | (1 << (0xF0 - 0xC2)) | (1 << (0xF3 - 0xC2));
 
-    // ---- the two names ----
-
-    /// @notice "<name cut to 25 bytes> (Rome)", or `BadName` when the whole name fails the checks.
+    /// @notice "<name cut to 25 bytes> (Rome)"; reverts `BadName` if the whole name is refused.
     function romeName(string memory name) internal pure returns (string memory) {
         return romeNameCut(name, NAME_CUT);
     }
 
-    /// @notice The symbol cut to 10 bytes, with nothing added, or `BadSymbol` when the whole symbol fails the checks.
+    /// @notice The symbol cut to 10 bytes; reverts `BadSymbol` if the whole symbol is refused.
     function romeSymbol(string memory symbol) internal pure returns (string memory) {
         return romeSymbolCut(symbol, SYMBOL_CUT);
     }
 
-    /// @dev `romeName` with the cut as a parameter, so a test can reach the kept-part guard.
+    /// @dev `romeName` with the cut as a parameter, for tests.
     function romeNameCut(string memory name, uint256 cutBytes) internal pure returns (string memory) {
         bytes memory b = bytes(name);
         if (!acceptable(b, 7, NO_NAME)) revert BadName();
@@ -78,7 +51,7 @@ library RomeNaming {
         return string.concat(string(kept), " (Rome)");
     }
 
-    /// @dev `romeSymbol` with the cut as a parameter, so a test can reach the kept-part guard.
+    /// @dev `romeSymbol` with the cut as a parameter, for tests.
     function romeSymbolCut(string memory symbol, uint256 cutBytes) internal pure returns (string memory) {
         bytes memory b = bytes(symbol);
         if (!acceptable(b, 9, NO_SYMBOL)) revert BadSymbol();
@@ -87,10 +60,8 @@ library RomeNaming {
         return string(kept);
     }
 
-    // ---- the checks on the whole text ----
-
-    /// @notice Step 2: true when `b` is a name or symbol Rome will carry. `fallbackLength` and `fallbackHash` are
-    ///         the byte length and keccak256 of the placeholder text for the kind ("NO_NAME", "NO_SYMBOL").
+    /// @notice True when `b` is a name or symbol Rome will carry; `fallbackLength` and
+    ///         `fallbackHash` identify the placeholder text for this kind.
     function acceptable(bytes memory b, uint256 fallbackLength, bytes32 fallbackHash) internal pure returns (bool) {
         uint256 n = b.length;
         if (n == 0) return false;
@@ -99,8 +70,7 @@ library RomeNaming {
         return _scan(b);
     }
 
-    /// @dev Valid UTF-8 with no Cc or Cf code point. Aligned 32-byte words of plain printable ASCII are passed
-    ///      whole; everything else is decoded one character at a time.
+    /// @dev Valid UTF-8 with no Cc/Cf code point; aligned all-printable-ASCII words pass whole.
     function _scan(bytes memory b) private pure returns (bool) {
         uint256 n = b.length;
         uint256 i = 0;
@@ -112,7 +82,7 @@ library RomeNaming {
                 }
                 uint256 rem = n - i;
                 if (rem < 32) {
-                    // The bytes past the end are not the text's: make them a letter.
+                    // Bytes past the end are not the text's: make them a letter.
                     uint256 keepBits = rem * 8;
                     w = (w & ~(type(uint256).max >> keepBits)) | (LETTER_A >> keepBits);
                 }
@@ -128,9 +98,7 @@ library RomeNaming {
         return true;
     }
 
-    /// @dev True when every byte of `w` is printable ASCII, 0x20 to 0x7E. With no byte at or above 0x80, a byte
-    ///      below 0x20 and a byte equal to 0x7F are found by the usual one-subtraction tests, which are exact for
-    ///      whether such a byte exists.
+    /// @dev True when every byte of `w` is 0x20 to 0x7E.
     function _plainWord(uint256 w) private pure returns (bool) {
         if (w & HIGHS != 0) return false;
         unchecked {
@@ -141,11 +109,12 @@ library RomeNaming {
         return true;
     }
 
-    /// @dev The character starting at byte `i`: whether it is well formed and acceptable, and its length.
+    /// @dev The character at byte `i`: (well formed and acceptable, its length).
     function _character(bytes memory b, uint256 i, uint256 n) private pure returns (bool, uint256) {
         uint256 c = uint8(b[i]);
         if (c < 0x80) return (c >= 0x20 && c != 0x7F, 1);
-        if (c < 0xC2 || c > 0xF4) return (false, 1); // a continuation byte, an overlong lead, or past U+10FFFF
+        // A continuation byte, an overlong lead, or past U+10FFFF.
+        if (c < 0xC2 || c > 0xF4) return (false, 1);
         uint256 cp;
         uint256 len;
         if (c < 0xE0) {
@@ -169,7 +138,7 @@ library RomeNaming {
             uint256 c1 = uint8(b[i + 1]);
             uint256 c2 = uint8(b[i + 2]);
             uint256 c3 = uint8(b[i + 3]);
-            // F0 needs 90..BF (no overlong), F4 needs 80..8F (nothing past U+10FFFF), the rest 80..BF.
+            // F0 needs 90..BF (no overlong), F4 needs 80..8F (<= U+10FFFF), the rest 80..BF.
             uint256 lo = c == 0xF0 ? 0x90 : 0x80;
             uint256 hi = c == 0xF4 ? 0x8F : 0xBF;
             if (c1 < lo || c1 > hi || c2 & 0xC0 != 0x80 || c3 & 0xC0 != 0x80) return (false, 1);
@@ -180,10 +149,7 @@ library RomeNaming {
         return (true, len);
     }
 
-    /// @notice True when `cp` is a code point of Unicode 16.0.0's general category Cc or Cf: 235 code points in 23
-    ///         ranges, U+0000-001F, U+007F-009F, U+00AD, U+0600-0605, U+061C, U+06DD, U+070F, U+0890-0891, U+08E2,
-    ///         U+180E, U+200B-200F, U+202A-202E, U+2060-2064, U+2066-206F, U+FEFF, U+FFF9-FFFB, U+110BD, U+110CD,
-    ///         U+13430-1343F, U+1BCA0-1BCA3, U+1D173-1D17A, U+E0001 and U+E0020-E007F.
+    /// @notice True for Unicode 16.0.0 general category Cc or Cf (235 code points).
     function isControlOrFormat(uint256 cp) internal pure returns (bool) {
         if (cp < 0xA0) return cp < 0x20 || cp >= 0x7F;
         if (cp < 0x600) return cp == 0xAD;
@@ -198,15 +164,11 @@ library RomeNaming {
             || (cp >= 0x1D173 && cp <= 0x1D17A) || cp == 0xE0001 || (cp >= 0xE0020 && cp <= 0xE007F);
     }
 
-    // ---- the cut ----
-
-    /// @notice `b` cut to at most `maxBytes` bytes, on a UTF-8 boundary: a cut that would fall inside a character
-    ///         falls before it. A text already within the limit is returned as it is. Copies a word at a time:
-    ///         a byte loop is dear on Rome.
+    /// @notice `b` cut to at most `maxBytes` bytes on a UTF-8 boundary, never mid-character.
     function cut(bytes memory b, uint256 maxBytes) internal pure returns (bytes memory out) {
         if (b.length <= maxBytes) return b;
         uint256 end = maxBytes;
-        // A continuation byte is 10xxxxxx: step back to the first byte of the character the cut is inside.
+        // A continuation byte is 10xxxxxx: step back to the first byte of the cut character.
         while (end != 0 && (uint8(b[end]) & 0xC0) == 0x80) {
             end--;
         }
