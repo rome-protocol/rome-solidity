@@ -31,6 +31,8 @@ Both `SPL_ERC20_cached` and `SPL_ERC20` expose the identical `IERC20` surface ov
 
 Full explanation: [`docs/ARCHITECTURE.md` §3](docs/ARCHITECTURE.md#3-spl--erc-20-wrappers--contractserc20spl).
 
+**Known limitation.** `SPL_ERC20_cached.totalSupply()` cannot be read in the same transaction after a cached operation on that wrapper (for example a transfer): Rome refuses a legacy account read after a cached call. Read `totalSupply()` before moving the token.
+
 ## Import paths
 
 ```solidity
