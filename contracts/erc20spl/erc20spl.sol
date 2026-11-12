@@ -3,21 +3,17 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {SplTokenLib} from "../spl_token/spl_token.sol";
-import {AssociatedSplToken} from "../spl_token/associated_spl_token.sol";
-import {ISystemProgram, ICrossProgramInvocation, CpiProgram, HelperProgram} from "../interface.sol";
+import {HelperProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {UserPda} from "../cpi/UserPda.sol";
 import {AccountReader} from "../cpi/AccountReader.sol";
 import {Convert} from "../convert.sol";
 
+/// @notice Registry of EVM address to external-auth PDA, shared by the wrappers.
 contract ERC20Users {
     mapping (address => bytes32) private users;
 
-    /// @dev Idempotent PDA registration only — does NOT fund the PDA.
-    ///      Only `SimpleActivator.activate()` funds it; most operations work
-    ///      unfunded, only rent-payer flows (CCTP/Wormhole message accounts)
-    ///      need activation first.
+    /// @dev Registers `user`'s PDA, idempotently. Does not fund it.
     function ensure_user(address user) public returns (bytes32) {
         bytes32 existing_user = users[user];
         if (existing_user == bytes32(0)) {
@@ -29,9 +25,7 @@ contract ERC20Users {
         }
     }
 
-    /// @dev Reverts if `user` isn't registered. Kept for cross-contract
-    ///      back-compat; new code should prefer `HelperProgram.pda` (direct
-    ///      derivation, no revert).
+    /// @dev Reverts if `user` is not registered. Kept for existing callers.
     function get_user(address user) public view returns (bytes32) {
         bytes32 existing_user = users[user];
         require(existing_user != bytes32(0), "User does not exist");
@@ -39,57 +33,37 @@ contract ERC20Users {
     }
 }
 
-/// A mint whose transfer hook is armed cannot be wrapped: the hook requires
-/// extra accounts that no transfer path in this wrapper supplies. Unarmed hooks
-/// are inert and are accepted.
+/// An armed transfer hook needs accounts these paths do not supply, so such a mint cannot be
+/// wrapped here; a present but unarmed hook is accepted.
 error ArmedTransferHookUnsupported(bytes32 mint, bytes32 hookProgram);
 
-/// @dev Shared implementation for the fixed-account and hook-aware direct-CPI
-/// wrappers. Concrete wrappers choose their admission policy in the base
-/// constructor; callers must never deploy this abstract implementation.
+/// @dev Shared base of the fixed-account and hook-aware direct-CPI wrappers; never deployed itself.
 abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
-    // SystemProgram
     bytes32 public constant system_program_id = 0x0000000000000000000000000000000000000000000000000000000000000000;
-    // ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL
+    // Associated Token program: ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL
     bytes32 public constant associated_token_program_id = 0x8c97258f4e2489f1bb3d1029148e0d830b5a1399daff1084048e7bd8dbe9f859;
 
     address public immutable cpi_program;
     bytes32 public immutable mint_id;
     uint8 public immutable decimals;
-    // ExtensionType::TransferFeeConfig discriminant = bit index in `mint_info`'s
-    // `extensions` bitmap. Mint extensions are fixed at InitializeMint, so
-    // whether a mint can EVER charge a transfer fee is a constructor fact.
+    // TransferFeeConfig bit in `mint_info`'s extensions; fixed at mint creation, so only a
+    // fee-capable wrapper reads the live fee per transfer.
     uint32 internal constant TRANSFER_FEE_CONFIG_EXTENSION_BIT = 1;
-    // True iff the mint carries TransferFeeConfig. Only then does a transfer
-    // pay the per-call `mint_info` read for the live bps; a Tokenkeg mint or a
-    // fee-less Token-2022 mint skips it — that read was the single largest
-    // fixed cost on the warm transfer path for nothing.
     bool public immutable fee_capable;
 
     string private _name;
     string private _symbol;
-    // Legacy address → external_auth PDA registry. Retained for constructor /
-    // deploy-ABI compatibility and for `SimpleActivator`'s explicit
-    // registration; the wrapper itself no longer registers callers — nothing
-    // reads `get_user`, and the CALL + first-touch SSTORE were pure cost on
-    // every transfer.
+    // Not read by this contract; kept for the deploy ABI and SimpleActivator.
     ERC20Users internal _users;
 
-    // A direct CALL signs as external_auth(address(this)), not the user's own
-    // authority, so the wrapper must be the user's one-time SPL delegate
-    // (`approve_spl(wrapper, max, mint)` sent by the user). This mapping is a
-    // pure EVM allowance, decoupled from that SPL-level grant.
+    // Pure EVM allowance; separate from the user's one-time SPL delegate grant to this wrapper.
     mapping(address => mapping(address => uint256)) private _allowances;
 
-    // A contract can never call `approve`, so its SPL lives in this wrapper's
-    // own ATA and is tracked here (dispatch: `account.code.length`). SPL sent
-    // to a not-yet-deployed CREATE2 address lands in that address's own ATA
-    // (treated as an EOA), not `_escrow`, even after it's later deployed to.
+    // A contract cannot approve, so its SPL sits in this wrapper's own ATA and is tracked here.
+    // SPL sent to a not-yet-deployed CREATE2 address is not migrated when it deploys.
     mapping(address => uint256) private _escrow;
 
-    // Once true, ATA existence is assumed forever (ATAs are never closed on
-    // Rome). False always falls through to the same probe/create path, so an
-    // ATA created outside this wrapper is still detected on first sight.
+    // Once true, the ATA exists (never closed on Rome); false falls through to probe/create.
     mapping(address => bool) private _ataCreated;
 
     error ERC20InvalidApprover(address approver);
@@ -104,9 +78,8 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         ERC20Users users_,
         bool supports_armed_transfer_hook
     ) {
-        // mint_info also reports whether a transfer hook is ARMED; an armed
-        // hook needs accounts this wrapper's transfer paths don't supply, so
-        // admission refuses armed (not merely present) hooks.
+        // An armed hook needs accounts these paths do not supply, so admission refuses it (a
+        // present but unarmed hook is accepted).
         (, uint8 mint_decimals, bytes32 hook_program, , uint32 extensions) = HelperProgram.mint_info(_mint_id);
         if (hook_program != bytes32(0) && !supports_armed_transfer_hook) {
             revert ArmedTransferHookUnsupported(_mint_id, hook_program);
@@ -121,20 +94,14 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         fee_capable = (extensions & (uint32(1) << TRANSFER_FEE_CONFIG_EXTENSION_BIT)) != 0;
     }
 
-    /**
-     * Creates the user's associated token account (idempotent on Solana) and
-     * returns its address. Public entry kept for caller back-compat; `payer`
-     * is ignored — the operator pays ATA rent, reimbursed via gas accounting.
-     * @param user EVM address of the user for whom to create the associated token account
-     * @return associated_account_address The address of the associated token account
-     */
+    /// @notice Creates the user's ATA (idempotent) and returns its address. `payer` is ignored;
+    ///         the operator pays rent.
     function create_token_account(address user, bytes32 /* payer, unused */) public returns(bytes32) {
         _createAta(user);
         return HelperProgram.ata(user, mint_id);
     }
 
-    /// @dev The one create site. Sets the created-flag so no later transfer
-    ///      to `user` derives or probes the ATA again.
+    /// @dev The one create site; sets the created-flag.
     function _createAta(address user) internal {
         (bool success, bytes memory result) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
@@ -146,17 +113,8 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         _ataCreated[user] = true;
     }
 
-    /// @dev Hot-path form of `ensure_token_account`: returns `bytes32(0)` on
-    ///      the fast path (flag set → no derivation, no probe, no CPI) and the
-    ///      derived ATA otherwise. `_transfer` needs only the guarantee, not
-    ///      the address, so the fast path pays for neither.
-    ///
-    ///      Cold path: one derivation, one `lamportsOf` probe (skips the create
-    ///      CPI when the ATA already exists on Solana — without this every
-    ///      first transfer would pay 2 CPIs, and pair.burn's 2 outbound
-    ///      transfers would exceed Rome's per-tx CPI budget), one create only
-    ///      when missing. Either way the flag is set: ATAs are never closed on
-    ///      Rome, so existence is monotone once confirmed.
+    /// @dev Hot-path ATA guarantee: returns 0 when the flag is set; otherwise derives the ATA,
+    ///      probes `lamportsOf`, creates only if missing, and sets the flag (ATAs never close).
     function _ensureAta(address user) internal returns (bytes32) {
         if (_ataCreated[user]) {
             return bytes32(0);
@@ -170,19 +128,13 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         return ata;
     }
 
-    /**
-     * Checks if the user has an associated token account, and if not, creates one. Returns the associated token account address.
-     * @param user EVM address of the user for whom to ensure the associated token account exists
-     * @return associated_account_address The address of the associated token account created or existing for the user
-     */
+    /// @notice Creates the user's ATA if missing; returns its address.
     function ensure_token_account(address user) public returns (bytes32) {
         bytes32 ata = _ensureAta(user);
         return ata == bytes32(0) ? HelperProgram.ata(user, mint_id) : ata;
     }
 
-    /// @dev Same ATA that bridge-in deposits land in and balanceOf reads.
-    ///      Never reverts, and never creates it — call
-    ///      `ensure_token_account(user)` for that.
+    /// @notice The user's ATA address; never reverts, never creates it.
     function get_token_account(address user) public view returns (bytes32) {
         return HelperProgram.ata(user, mint_id);
     }
@@ -196,9 +148,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     }
 
     function totalSupply() public view virtual returns (uint256) {
-        // SPL Mint layout: supply is a u64 LE at offset 36.
-        // Views must never revert (ERC-20 spec) — return 0 for an
-        // uninitialized mint instead of reverting on the out-of-bounds read.
+        // Views never revert (ERC-20).
         if (AccountReader.lamportsOf(mint_id) == 0) {
             return 0;
         }
@@ -206,21 +156,16 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     }
 
     function balanceOf(address account) public view virtual returns (uint256) {
-        // A contract can't call `approve`; its balance is the escrow ledger,
-        // not an on-chain read.
         if (account.code.length > 0) {
             return _escrow[account];
         }
-        // Reads SPL TokenAccount.amount directly; returns 0 if the ATA
-        // doesn't exist.
         return uint256(HelperProgram.user_balance(account, mint_id));
     }
 
     function transfer(address to, uint256 value) public virtual returns (bool) {
         return _transfer(msg.sender, to, value);
     }
-    /// @dev The precompile derives the signer from context.caller itself; no
-    ///      registry lookup or registration happens on the transfer path.
+
     function _transfer(
         address from,
         address to,
@@ -228,13 +173,11 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     ) internal virtual returns (bool) {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
 
-        // Route by whether an endpoint holds SPL under a signable PDA (EOA,
-        // via the wrapper's delegate grant) or the wrapper's own escrow ATA
-        // (contract, which can never call `approve`) — not by caller identity.
+        // EOAs move SPL under their PDA via the delegate grant; contracts via the escrow ATA.
         bool fromIsContract = from.code.length > 0;
         bool toIsContract = to.code.length > 0;
 
-        // Both ends already escrow-held: pure ledger move, no CPI.
+        // Both ends escrow-held: ledger move only.
         if (fromIsContract && toIsContract) {
             uint256 fromBal = _escrow[from];
             require(fromBal >= value, "insufficient escrow balance");
@@ -248,40 +191,29 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
             require(_escrow[from] >= value, "insufficient escrow balance");
         }
 
-        // A transfer-fee mint credits less than requested; mint_info omits
-        // maximum_fee (computing the fee here would duplicate SPL's
-        // arithmetic and be wrong at the cap), so measure the delta instead,
-        // and only pay for it when a fee is actually armed. Reading the live
-        // bps is itself a mint load + parse, so only a fee-CAPABLE mint (a
-        // constructor fact) pays for it.
+        // A transfer-fee mint credits less than requested and `mint_info` omits maximum_fee, so
+        // measure the balance change; only fee-capable mints pay for the live-fee read.
         bool fee_armed = false;
         if (fee_capable) {
             (, , , uint16 feeBps, ) = HelperProgram.mint_info(mint_id);
             fee_armed = feeBps > 0;
         }
-        // Whichever ATA actually receives the SPL on-chain: the wrapper's
-        // own when `to` is a contract, `to`'s own otherwise.
         uint256 before = fee_armed
             ? (toIsContract ? uint256(HelperProgram.user_balance(address(this), mint_id)) : balanceOf(to))
             : 0;
 
         if (toIsContract) {
-            // The ATA that matters here is the wrapper's own, not `to`'s.
             _ensureWrapperAta();
         } else {
-            // Auto-create on first transfer — without it, sending to a fresh
-            // address reverts and MetaMask's simulation greys out Send. Flag
-            // fast path: a known recipient costs one SLOAD, no derivation.
+            // Create the recipient ATA on first transfer so sends to a fresh address do not revert.
             _ensureAta(to);
         }
 
         bool success;
         bytes memory result;
         if (!fromIsContract) {
-            // `from`'s SPL sits in `ata(external_auth(from))`; direct CALL
-            // signs as external_auth(address(this)), so the wrapper must be
-            // `from`'s SPL delegate. `to` collapses to address(this) when
-            // the recipient is a contract (lands in this wrapper's escrow).
+            // The wrapper must be `from`'s SPL delegate; a contract recipient is paid into this
+            // wrapper's escrow ATA.
             address dest = toIsContract ? address(this) : to;
             (success, result) = address(HelperProgram).call(
                 abi.encodeWithSignature(
@@ -290,9 +222,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
                 )
             );
         } else {
-            // `from`'s SPL already sits in this wrapper's own ATA; the
-            // 3-arg overload derives src_ata from context.caller, which
-            // under direct CALL is the wrapper itself. No delegate needed.
+            // `from`'s SPL is in this wrapper's own ATA; no delegate needed.
             (success, result) = address(HelperProgram).call(
                 abi.encodeWithSignature(
                     "transfer_spl(address,uint64,bytes32)",
@@ -303,11 +233,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
 
         require (success, string(Convert.revert_msg(result)));
 
-        // Self-transfer needs the other direction. Sending to yourself with an
-        // armed fee debits `value` and credits `value - fee`, so the account nets
-        // MINUS fee — `after - before` would underflow and revert, and ERC-20
-        // self-transfer must not revert. Measuring the loss gives the delivered
-        // amount in both directions.
+        // Self-transfer with an armed fee nets minus fee: measure the loss to avoid an underflow.
         uint256 delivered = value;
         if (fee_armed) {
             uint256 now_ = toIsContract
@@ -316,8 +242,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
             delivered = to == from ? value - (before - now_) : now_ - before;
         }
 
-        // `to` gains `delivered` (post-fee), never the raw request, or the
-        // ledger sum would exceed the wrapper's real escrow-ATA balance.
+        // `to` gains the post-fee amount, or the ledger would exceed the escrow ATA.
         if (fromIsContract) {
             _escrow[from] -= value;
         }
@@ -329,22 +254,14 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         return true;
     }
 
-    /// @dev Abstract so `_transfer` (shared here) has one call site to reach
-    ///      regardless of which concrete wrapper is compiled in. `SPL_ERC20`
-    ///      (below) escrows and implements it; `SPL_ERC20_Token2022Hooked`
-    ///      never reaches `_transfer` and its override is a dead-code stub.
+    /// @dev Implemented by SPL_ERC20 (escrow ATA); the hooked wrapper never calls `_transfer`.
     function _ensureWrapperAta() internal virtual returns (bytes32);
 
     function allowance(address owner, address spender) public view virtual returns (uint256) {
-        // uint256 EVM storage, not u64 SPL delegated_amount — no saturation
-        // sentinel needed.
         return _allowances[owner][spender];
     }
 
-    /// @notice Whether `user` has sent the one-time SPL-level delegate grant
-    ///         this wrapper needs to move their SPL at all. Callers use this
-    ///         to decide whether to prompt for the grant before the first
-    ///         transfer.
+    /// @notice True when `user` has granted this wrapper the SPL delegate it needs.
     function isEnabled(address user) public view returns (bool) {
         return HelperProgram.allowance_of(user, address(this), mint_id) > 0;
     }
@@ -364,11 +281,8 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         return _transfer(from, to, value);
     }
 
-    /// @dev Matches OZ's infinite-approval semantics (`type(uint256).max` is
-    ///      never decremented). This EVM-side check is the *only*
-    ///      per-spender access control — a direct CALL always signs as
-    ///      external_auth(address(this)), so SPL itself no longer
-    ///      distinguishes which caller invoked it.
+    /// @dev OZ semantics (max is never decremented). This is the only per-spender check: SPL sees
+    ///      only this wrapper as signer.
     function _spendAllowance(address owner, address spender, uint256 value) internal {
         uint256 currentAllowance = _allowances[owner][spender];
         if (currentAllowance != type(uint256).max) {
@@ -381,13 +295,9 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         }
     }
 
-    /// @notice Sends this wrapper's underlying SPL from the caller's
-    /// PDA-owned ATA to an arbitrary Solana wallet — no Rome account needed
-    /// on the receiving end. Idempotently creates the recipient's ATA first
-    /// if missing (same UX as Phantom's "send to fresh address").
+    /// @notice Sends the caller's SPL to any Solana wallet, creating the recipient ATA if missing.
     /// @param solana_recipient Receiving wallet pubkey on Solana.
     /// @param value Amount in this wrapper's smallest unit (must fit u64).
-    /// @return success Always returns true on success; reverts otherwise.
     function bridgeOutToSolana(bytes32 solana_recipient, uint256 value)
         public
         virtual
@@ -396,13 +306,8 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         require(value <= type(uint64).max, "Bridge amount exceeds uint64");
         require(solana_recipient != bytes32(0), "Solana recipient cannot be zero");
 
-        // `solana_recipient` is a raw pubkey, not an EVM address —
-        // `UserPda.ataForKey` resolves the token program from the mint so
-        // the address matches whatever `create_ata_for_key` will create.
         bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
-        // Idempotent recipient-ATA create; operator pays rent, reimbursed
-        // via Rome's gas accounting.
         (bool ataOk, bytes memory ataResult) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
                 "create_ata_for_key(bytes32,bytes32)",
@@ -411,10 +316,6 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         );
         require(ataOk, string(Convert.revert_msg(ataResult)));
 
-        // Direct CALL signs as external_auth(address(this)); the caller must
-        // already be the wrapper's delegate (same as transfer/transferFrom).
-        // `src_ata` is explicit since the recipient is a raw pubkey, not an
-        // EVM address the address-keyed overload could derive it from.
         bytes32 src_ata = HelperProgram.ata(msg.sender, mint_id);
         (bool xferOk, bytes memory xferResult) = address(HelperProgram).call(
             abi.encodeWithSignature(
@@ -428,8 +329,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         return true;
     }
 
-    /// @notice Canonical "left Rome" signal for indexers, paired with the
-    ///         on-chain Solana SPL transfer for the round-trip.
+    /// @notice Emitted when SPL leaves Rome.
     event BridgedOutToSolana(
         address indexed from,
         bytes32 indexed solana_recipient,
@@ -437,10 +337,8 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         uint256 value
     );
 
-    /// @notice Idempotently pre-warms a recipient's ATA without transferring
-    /// tokens. `bridgeOutToSolana` already creates it inline, so callers no
-    /// longer need to preflight — kept for callers that want to warm an ATA
-    /// on its own.
+    /// @notice Creates a recipient's ATA without transferring (`bridgeOutToSolana` also does it
+    ///         inline).
     /// @param solana_recipient Wallet pubkey on Solana that will own the ATA.
     /// @return The recipient's ATA address.
     function ensureRecipientAta(bytes32 solana_recipient)
@@ -450,12 +348,8 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     {
         require(solana_recipient != bytes32(0), "Solana recipient cannot be zero");
 
-        // create_ata_for_key returns nothing; the address is deterministic
-        // from (wallet, mint, spl_program), with the token program resolved
-        // from the mint rather than assumed.
         bytes32 to_ata = UserPda.ataForKey(solana_recipient, mint_id);
 
-        // Operator pays rent, reimbursed via Rome's gas accounting.
         (bool success, bytes memory result) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
                 "create_ata_for_key(bytes32,bytes32)",
@@ -468,31 +362,20 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         return to_ata;
     }
 
-    /// @notice For off-chain tracking of which wallets have a sponsored ATA
-    ///         on which mint, so subsequent bridges can skip the create step.
+    /// @notice Emitted when a recipient ATA is created for `solana_recipient`.
     event RecipientAtaEnsured(
         address indexed funder_evm,
         bytes32 indexed solana_recipient,
         bytes32 indexed mint_id,
         bytes32 ata
     );
-
-    // mint_to removed: a direct CALL can never be the mint authority
-    // (ERC20SPLFactory sets it to HelperProgram.pda(creator)). The creator
-    // mints via `mint_spl(address,uint64,bytes32)` sent directly to 0xff..09.
 }
 
 /// @title SPL_ERC20
-/// @notice Fixed-account direct-CPI wrapper for legacy SPL and Token-2022
-///         mints that do not have an armed Transfer Hook.
-/// @dev Its constructor deliberately retains the armed-hook safety gate. The
-///      hook-aware sibling is SPL_ERC20_Token2022Hooked.
+/// @notice Fixed-account direct-CPI wrapper for mints without an armed transfer hook.
 contract SPL_ERC20 is SPL_ERC20Base {
-    // Fixed for the contract's life — derived once here instead of
-    // re-deriving via HelperProgram.ata on every contract-destined transfer.
     bytes32 public immutable escrow_ata;
 
-    // Same monotone-existence argument as `_ataCreated` above.
     bool private _escrowAtaCreated;
 
     constructor(
@@ -505,8 +388,7 @@ contract SPL_ERC20 is SPL_ERC20Base {
         escrow_ata = HelperProgram.ata(address(this), _mint_id);
     }
 
-    /// @dev Ensures this wrapper's own escrow ATA exists; runs the
-    ///      existence probe at most once per instance.
+    /// @dev Creates this wrapper's escrow ATA at most once.
     function _ensureWrapperAta() internal virtual override returns (bytes32) {
         if (_escrowAtaCreated) {
             return escrow_ata;

@@ -3,7 +3,6 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {SplTokenLib} from "../spl_token/spl_token.sol";
 import {
     HelperProgram,
     SplCached,
@@ -14,27 +13,23 @@ import {AccountReader} from "../cpi/AccountReader.sol";
 import {Convert} from "../convert.sol";
 import {ERC20Users, ArmedTransferHookUnsupported} from "./erc20spl.sol";
 
-/// @title  SPL_ERC20_cached
-/// @notice Cache-based ERC20 wrapper around an SPL mint. Mutations dispatch
-///         through the cached precompile family (SplCached, AssociatedSplCached)
-///         so they revert atomically with the EVM tx.
-/// @dev    One-track-per-contract: this contract performs no CPI Invoke, so
-///         bridgeOutToSolana / ensureRecipientAta (which need the
-///         permanently-CPI-only create_ata_for_key) are not exposed here.
+/// @title SPL_ERC20_cached
+/// @notice ERC-20 wrapper over an SPL mint; every mutation goes through the cached precompiles,
+///         so it reverts atomically with the EVM transaction.
+/// @dev No raw-pubkey exits (`bridgeOutToSolana`, `ensureRecipientAta`): they need the CPI-only
+///      `create_ata_for_key`.
 contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     address public immutable cpi_program;
     bytes32 public immutable mint_id;
     uint8 public immutable decimals;
-    // ExtensionType::TransferFeeConfig discriminant (bit in `mint_info`'s
-    // `extensions`). Mint extensions are fixed at InitializeMint, so fee
-    // capability is a constructor fact; only a fee-capable wrapper pays the
-    // per-transfer `mint_info` read for the live bps.
+    // TransferFeeConfig bit in `mint_info`'s extensions; fixed at mint creation, so only a
+    // fee-capable wrapper reads the live fee per transfer.
     uint32 internal constant TRANSFER_FEE_CONFIG_EXTENSION_BIT = 1;
     bool public immutable fee_capable;
 
     string private _name;
     string private _symbol;
-    ERC20Users private _users;
+    ERC20Users private _users; // not read here; kept for the deploy ABI
 
     error ERC20InvalidApprover(address approver);
     error ERC20InvalidSpender(address spender);
@@ -44,29 +39,18 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         uint256 requiredAllowance
     );
 
-    // A direct CALL to SplCached signs as external_auth(address(this)), not
-    // the user's own authority, so the wrapper must be the user's one-time
-    // SPL delegate. This mapping is a pure EVM allowance, decoupled from
-    // that SPL-level grant.
+    // Pure EVM allowance; separate from the user's one-time SPL delegate grant to this wrapper.
     mapping(address => mapping(address => uint256)) private _allowances;
 
-    // A contract can never call `approve`, so its SPL lives in this
-    // wrapper's own ATA and is tracked here. Same CREATE2-counterfactual
-    // note as erc20spl.sol: funds sent pre-deploy are not migrated into
-    // `_escrow` if the address is later deployed to.
+    // A contract cannot approve, so its SPL sits in this wrapper's own ATA and is tracked here.
+    // SPL sent to a not-yet-deployed CREATE2 address is not migrated when it deploys.
     mapping(address => uint256) private _escrow;
 
-    // Once true, ATA existence is assumed forever (ATAs are never closed on
-    // Rome). False always falls through to the unconditional (idempotent)
-    // create_ata path, so an ATA that exists for any other reason is still
-    // handled correctly.
+    // Once true, the ATA exists (never closed on Rome); false falls through to the create.
     mapping(address => bool) private _ataCreated;
 
-    // Fixed for the contract's life — derived once instead of re-deriving
-    // via HelperProgram.ata on every contract-destined transfer.
     bytes32 public immutable escrow_ata;
 
-    // Same monotone-existence argument as `_ataCreated` above.
     bool private _escrowAtaCreated;
 
     constructor(
@@ -76,9 +60,8 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         string memory symbol_,
         ERC20Users users_
     ) {
-        // Read on this contract's own track: once a cached invoke has fired,
-        // verify_call refuses a legacy cross-state read. An armed hook is
-        // refused too — the cached track can't stage one at all.
+        // Read on this contract's own track: after a cached invoke, a legacy cross-state read is
+        // refused; an armed hook is refused too.
         (, uint8 mint_decimals, bytes32 hook_program, , uint32 extensions) = SplCached.mint_info(_mint_id);
         if (hook_program != bytes32(0)) {
             revert ArmedTransferHookUnsupported(_mint_id, hook_program);
@@ -101,10 +84,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return _symbol;
     }
 
-    // ─── Read views — CPI CrossStateEthCall + EthCall ─────────────────────
-
-    /// @notice Views must never revert (ERC-20 spec) — returns 0 for an
-    ///         uninitialized mint instead of reverting.
+    /// @notice Never reverts (ERC-20): 0 for an uninitialised mint.
     function totalSupply() external view returns (uint256) {
         if (AccountReader.lamportsOf(mint_id) == 0) {
             return 0;
@@ -112,16 +92,10 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return uint256(AccountReader.readU64At(mint_id, 36));
     }
 
-    /// @notice ERC-20: balanceOf returns 0 (not revert) for any address.
-    ///         Must use try/catch on `SplCached.account`, not a legacy
-    ///         `AccountReader.lamportsOf` short-circuit — the legacy read
-    ///         is not overlay-aware, so it can see a stale on-chain 0 in
-    ///         the same tx as a cached-track write that already credited
-    ///         the balance (breaks same-tx read-after-write callers, e.g.
-    ///         a V3 pool's post-mint balance check).
+    /// @notice Never reverts. Uses `SplCached.account`, not `AccountReader.lamportsOf`, so a
+    ///         same-transaction cached credit is visible. A contract's balance is its escrow
+    ///         ledger.
     function balanceOf(address account) public view returns (uint256) {
-        // A contract can't call `approve`; its balance is the escrow
-        // ledger, not an on-chain read.
         if (account.code.length > 0) {
             return _escrow[account];
         }
@@ -136,10 +110,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return _allowances[owner][spender];
     }
 
-    /// @notice Whether `user` has sent the one-time SPL-level delegate
-    ///         grant this wrapper needs to move their SPL. Reads via
-    ///         `SplCached.account` (stays on this contract's cached
-    ///         track) rather than the legacy `HelperProgram.allowance_of`.
+    /// @notice True when `user` has granted this wrapper the SPL delegate it needs.
     function isEnabled(address user) public view returns (bool) {
         try SplCached.account(user, mint_id) returns (ISplCached.Account memory acc) {
             return acc.delegate == HelperProgram.pda(address(this)) && acc.delegated_amount > 0;
@@ -148,18 +119,12 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         }
     }
 
-    /// @notice Pure derivation; never a track-locking event, never reverts.
+    /// @notice The user's ATA address; never reverts, never creates it.
     function get_token_account(address user) external view returns (bytes32) {
         return HelperProgram.ata(user, mint_id);
     }
 
-    // ─── Mutating ERC-20 surface — all cache-based Invokes ────────────────
-
-    /// @notice Idempotent ATA bootstrap. Flag first (one SLOAD, no derivation
-    ///         on the fast path); the create is unconditional on the cold path
-    ///         (no existence probe here) to keep this wrapper fully on the
-    ///         cached track — a legacy-precompile read would trip
-    ///         `verify_call`'s one-track rule.
+    /// @notice Creates the user's ATA if not known to exist (idempotent); returns its address.
     function ensure_token_account(address user) public returns (bytes32) {
         if (!_ataCreated[user]) {
             _createAta(user);
@@ -167,8 +132,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return HelperProgram.ata(user, mint_id);
     }
 
-    /// @dev The one create site (AssociatedSplCached, one-track rule). Sets
-    ///      the created-flag so no later transfer to `user` probes again.
+    /// @dev The one create site; sets the created-flag.
     function _createAta(address user) internal {
         (bool ok, bytes memory result) = address(AssociatedSplCached).delegatecall(
             abi.encodeWithSignature(
@@ -181,7 +145,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         _ataCreated[user] = true;
     }
 
-    /// @notice Public ATA-create entry; idempotent on repeat.
+    /// @notice Creates the user's ATA; idempotent.
     function create_token_account(address user) external returns (bytes32) {
         _createAta(user);
         return HelperProgram.ata(user, mint_id);
@@ -205,9 +169,8 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return _transfer(from, to, value);
     }
 
-    /// @dev The create must stay AssociatedSplCached (one-track rule), not
-    ///      the legacy Helper form. Existence check runs at most once per
-    ///      wrapper instance.
+    /// @dev Creates this wrapper's escrow ATA at most once; AssociatedSplCached keeps it on the
+    ///      cached track.
     function _ensureWrapperAta() internal returns (bytes32) {
         if (_escrowAtaCreated) {
             return escrow_ata;
@@ -225,8 +188,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         }
     }
 
-    /// @dev Bypasses `balanceOf`'s contract branch (`_escrow[address(this)]`,
-    ///      the wrong number for measuring the escrow ATA's own receipt).
+    /// @dev On-chain balance of this wrapper's ATA (`balanceOf` would return the ledger).
     function _wrapperOnChainBalance() internal view returns (uint256) {
         try SplCached.account(address(this), mint_id) returns (ISplCached.Account memory acc) {
             return uint256(acc.amount);
@@ -235,16 +197,15 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         }
     }
 
-    /// @dev Routes by whether an endpoint holds SPL under a signable PDA
-    ///      (EOA, via the wrapper's delegate grant) or the wrapper's own
-    ///      escrow ATA (contract) — not by caller identity.
+    /// @dev EOAs move SPL under their PDA via the delegate grant; contracts via this wrapper's
+    ///      escrow ATA.
     function _transfer(address from, address to, uint256 value) internal returns (bool) {
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
 
         bool fromIsContract = from.code.length > 0;
         bool toIsContract = to.code.length > 0;
 
-        // Both ends already escrow-held: pure ledger move, no CPI.
+        // Both ends escrow-held: ledger move only.
         if (fromIsContract && toIsContract) {
             uint256 fromBal = _escrow[from];
             require(fromBal >= value, "insufficient escrow balance");
@@ -258,10 +219,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
             require(_escrow[from] >= value, "insufficient escrow balance");
         }
 
-        // Only pay for the destination read when a fee is armed; measured off
-        // whichever ATA actually receives the SPL on-chain. Reading the live
-        // bps is a mint load + parse, so only a fee-CAPABLE mint (a
-        // constructor fact) pays for it.
+        // Only a fee-capable mint pays for the live-fee read.
         bool fee_armed = false;
         if (fee_capable) {
             (, , , uint16 feeBps, ) = SplCached.mint_info(mint_id);
@@ -272,14 +230,9 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
             : 0;
 
         if (toIsContract) {
-            // The ATA that matters here is the wrapper's own, not `to`'s.
             _ensureWrapperAta();
         } else if (!_ataCreated[to]) {
-            // Known recipient: one SLOAD, nothing else. Unknown: probe once
-            // (overlay-aware, so an ATA created earlier this tx counts) and
-            // REMEMBER the answer either way — a pre-existing ATA used to be
-            // re-probed on every transfer because only the create path set
-            // the flag.
+            // Unknown recipient: probe once (overlay-aware) and remember the answer.
             try SplCached.account(to, mint_id) returns (ISplCached.Account memory) {
                 _ataCreated[to] = true;
             } catch {
@@ -290,10 +243,8 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         bool ok;
         bytes memory result;
         if (!fromIsContract) {
-            // `from`'s SPL sits in `ata(external_auth(from))`; direct CALL
-            // signs as external_auth(address(this)), so the wrapper must be
-            // `from`'s SPL delegate. `to` collapses to address(this) when
-            // the recipient is a contract (lands in this wrapper's escrow).
+            // The wrapper must be `from`'s SPL delegate; a contract recipient is paid into this
+            // wrapper's escrow ATA.
             address dest = toIsContract ? address(this) : to;
             (ok, result) = address(SplCached).call(
                 abi.encodeWithSignature(
@@ -302,9 +253,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
                 )
             );
         } else {
-            // `from`'s SPL already sits in this wrapper's own ATA; `transfer`
-            // derives from_ata from context.caller, which under direct CALL
-            // is the wrapper itself. No delegate needed.
+            // `from`'s SPL is in this wrapper's own ATA; no delegate needed.
             (ok, result) = address(SplCached).call(
                 abi.encodeWithSignature(
                     "transfer(address,uint256,bytes32)",
@@ -314,10 +263,8 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         }
         require(ok, string(Convert.revert_msg(result)));
 
-        // Self-transfer needs the other direction: an armed fee debits
-        // `value` and credits `value - fee`, so `after - before` would
-        // underflow. Measuring the loss instead gives the delivered amount
-        // in both directions, and self-transfer must not revert.
+        // Measure the loss, not the gain: a self-transfer with an armed fee nets minus fee, so
+        // `after - before` would underflow.
         uint256 delivered = value;
         if (fee_armed) {
             uint256 now_ = toIsContract ? _wrapperOnChainBalance() : balanceOf(to);
@@ -335,8 +282,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return true;
     }
 
-    /// @notice Pure EVM storage — decoupled from the SPL-level delegate
-    ///         grant (see `isEnabled`). No u64 saturation sentinel needed.
+    /// @notice Pure EVM allowance; see `isEnabled` for the SPL-level grant.
     function approve(address spender, uint256 value) external returns (bool) {
         if (spender == address(0)) {
             revert ERC20InvalidSpender(address(0));
@@ -345,7 +291,4 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         emit Approval(msg.sender, spender, value);
         return true;
     }
-
-    // mint_to removed: a direct CALL can never be the mint authority. The
-    // creator mints via SplCached.mint(address,uint256,bytes32) directly.
 }
