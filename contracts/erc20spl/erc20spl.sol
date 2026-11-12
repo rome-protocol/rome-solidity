@@ -362,7 +362,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         return to_ata;
     }
 
-    /// @notice Emitted when a recipient ATA is created for `solana_recipient`.
+    /// @notice Emitted by every `ensureRecipientAta` call, whether or not the ATA already existed.
     event RecipientAtaEnsured(
         address indexed funder_evm,
         bytes32 indexed solana_recipient,
