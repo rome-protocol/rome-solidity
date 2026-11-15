@@ -130,6 +130,12 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return HelperProgram.ata(user, mint_id);
     }
 
+    /// @notice `ensure_token_account` without deriving or returning the ATA address.
+    function ensure_account(address user) external {
+        if (user == address(0)) revert ERC20InvalidReceiver(address(0));
+        _ensureAta(user);
+    }
+
     /// @dev Probes `user`'s token account (overlay-aware) and creates it on a miss.
     function _ensureAta(address user) internal {
         try SplCached.account(user, mint_id) returns (ISplCached.Account memory) {}
@@ -219,7 +225,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     /// @dev EOAs move SPL under their PDA via the delegate grant; contracts via this wrapper's
     ///      escrow ATA.
     function _transfer(address from, address to, uint256 value) internal returns (bool) {
-        if (to == address(0)) revert ERC20InvalidReceiver(address(0));
+        if (to == address(0) || to == address(this)) revert ERC20InvalidReceiver(to);
         if (value == 0) {
             emit Transfer(from, to, 0);
             return true;

@@ -137,10 +137,45 @@ describe("SPL_ERC20_cached — transfer path", () => {
         await assert.rejects(wrapper.write.create_token_account([zeroAddress]), /ERC20InvalidReceiver/);
     });
 
+    it("ensure_account probes, creates only when missing, answers nothing and derives no address", async () => {
+        const ata = deriveAta(addr(11), MINT);
+        await wrapper.write.ensure_account([addr(11)]);
+        assert.equal(await ledger.read.created([ata]), true);
+        await ledger.write.setCreateTrap([true]);
+        const { result } = await wrapper.simulate.ensure_account([addr(11)]);
+        assert.equal(result, undefined);
+        await ledger.write.setAccountReadTrap([true]);
+        await assert.rejects(wrapper.simulate.ensure_account([addr(11)]), /create must not run/, "the probe runs on every call");
+        await disarmAll();
+        const client = await viem.getPublicClient();
+        const quiet = await client.estimateContractGas({ address: wrapper.address, abi: wrapper.abi, functionName: "ensure_account", args: [addr(11)] });
+        const full = await client.estimateContractGas({ address: wrapper.address, abi: wrapper.abi, functionName: "ensure_token_account", args: [addr(11)] });
+        assert.ok(quiet < full, `ensure_account ${quiet} gas, ensure_token_account ${full}`);
+    });
+
+    it("ensure_account refuses the zero address and an unlisted account, and creates nothing for them", async () => {
+        await assert.rejects(wrapper.write.ensure_account([zeroAddress]), /ERC20InvalidReceiver/);
+        const ata = deriveAta(addr(12), MINT);
+        await ledger.write.setNotListed([ata, true]);
+        await assert.rejects(wrapper.write.ensure_account([addr(12)]), /SolanaAccountNotListed/);
+        assert.equal(await ledger.read.created([ata]), false);
+        await ledger.write.setNotListed([ata, false]);
+    });
+
     it("a transfer to the zero address reverts", async () => {
         const w = await as(0, wrapper);
         await assert.rejects(w.write.transfer([zeroAddress, 5n]), /ERC20InvalidReceiver/);
         await assert.rejects(w.write.transfer([zeroAddress, 0n]), /ERC20InvalidReceiver/);
+    });
+
+    it("a transfer or transferFrom to the wrapper itself reverts, for any value, and moves nothing", async () => {
+        const w = await as(0, wrapper);
+        await assert.rejects(w.write.transfer([wrapper.address, 5n]), /ERC20InvalidReceiver/);
+        await assert.rejects(w.write.transfer([wrapper.address, 0n]), /ERC20InvalidReceiver/);
+        await w.write.approve([addr(2), 100n]);
+        const w2 = await as(2, wrapper);
+        await assert.rejects(w2.write.transferFrom([addr(0), wrapper.address, 5n]), /ERC20InvalidReceiver/);
+        assert.equal(await wrapper.read.balanceOf([wrapper.address]), 0n, "the escrow ledger of the wrapper stays empty");
     });
 
     it("a zero-value transfer emits Transfer and touches no precompile", async () => {

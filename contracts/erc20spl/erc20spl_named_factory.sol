@@ -51,7 +51,7 @@ contract ERC20SPLNamedFactory {
     error AlreadyRegistered();
     error Grandfathered();
     error NoName();
-    /// @dev Metadata pointer to an account that is neither the mint nor its Metaplex account.
+    /// @dev Metadata pointer elsewhere, or the mint's own entry behind a pointer that is not the mint with no Metaplex name.
     error ExternalPointer();
     error NotMintAuthority();
     /// @dev The mint asserts a name: use `add_spl_token_with_metadata`.
@@ -86,11 +86,11 @@ contract ERC20SPLNamedFactory {
         returns (address)
     {
         _checkNew(mint);
-        (bool ok, bytes32 authority) = MintNameReader.mintAuthority(cpi_program, mint);
-        if (!ok || authority == bytes32(0) || authority != HelperProgram.pda(msg.sender)) revert NotMintAuthority();
-        (MintNameReader.Source source, bytes memory readName,) = MintNameReader.read(cpi_program, mint);
+        (bool isAuthority, MintNameReader.Source source,,) =
+            MintNameReader.readAsAuthority(cpi_program, mint, HelperProgram.pda(msg.sender));
+        if (!isAuthority) revert NotMintAuthority();
         if (source == MintNameReader.Source.ExternalPointer) revert ExternalPointer();
-        if (readName.length != 0) revert MintAssertsName();
+        if (source != MintNameReader.Source.None) revert MintAssertsName();
         string memory name = RomeNaming.romeName(originName);
         string memory symbol = RomeNaming.romeSymbol(originSymbol);
         return _register(mint, name, symbol);

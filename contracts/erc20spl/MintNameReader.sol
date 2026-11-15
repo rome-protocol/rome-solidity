@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {MplTokenMetadataLib} from "../mpl_token_metadata/lib.sol";
+import {ISystemProgram, system_program_address} from "../interface.sol";
 
 /// @title MintNameReader
 /// @notice The name and symbol a Solana mint asserts about itself, fail closed.
@@ -9,13 +10,15 @@ import {MplTokenMetadataLib} from "../mpl_token_metadata/lib.sol";
 ///      carries a TokenMetadata entry for this mint; (2) no pointer, or a pointer to the mint's
 ///      own Metaplex account (owned by Token Metadata, key MetadataV1, bytes 33-64 = this mint,
 ///      name <= 32, symbol <= 10, zero padding stripped); (3) any other pointer is
-///      `ExternalPointer`, whoever owns the target. The mint must first walk clean: owner Token
+///      `ExternalPointer`, whoever owns the target, and so is the mint's own TokenMetadata entry
+///      behind a pointer that is not the mint when no Metaplex name is read. The mint must first
+///      walk clean: owner Token
 ///      or Token-2022, exact lengths, initialised, every Token-2022 extension exactly its
 ///      length, once, none unknown.
 library MintNameReader {
     enum Source {
         None, // not walked clean, no entry, or a failed Metaplex check
-        ExternalPointer, // pointer to an account that is neither the mint nor its Metaplex account
+        ExternalPointer, // pointer elsewhere, or the mint's own entry behind a pointer that is not the mint with no Metaplex name
         Token2022, // the mint's own TokenMetadata entry
         Metaplex // the mint's own Metaplex account
     }
@@ -55,6 +58,7 @@ library MintNameReader {
 
     /// @dev The Metaplex account read failed; a listed but absent account is not a failure.
     error MetaplexUnreadable();
+    error PdaUnavailable();
 
     struct Parsed {
         bool ok; // walked clean
@@ -70,11 +74,33 @@ library MintNameReader {
         if (!ok) return (Source.None, "", "");
         Parsed memory m = parse(owner, d);
         if (!m.ok) return (Source.None, "", "");
-        (bytes32 metaplex,) = MplTokenMetadataLib.find_metadata_pda(mint, METAPLEX_PROGRAM);
-        if (m.metadataAddress != bytes32(0) && m.metadataAddress != mint && m.metadataAddress != metaplex) {
-            return (Source.ExternalPointer, "", "");
+        return _names(cpi, mint, d, m);
+    }
+
+    /// @notice `read` after one fetch and walk, for a mint whose authority is `authority`;
+    ///         `isAuthority` is false (nothing else read) unless the mint walks clean with that authority.
+    function readAsAuthority(address cpi, bytes32 mint, bytes32 authority)
+        internal
+        view
+        returns (bool isAuthority, Source source, bytes memory name, bytes memory symbol)
+    {
+        (bool ok, bytes32 owner, bytes memory d) = _fetch(cpi, mint);
+        if (!ok) return (false, Source.None, "", "");
+        Parsed memory m = parse(owner, d);
+        if (!m.ok || m.mintAuthority == bytes32(0) || m.mintAuthority != authority) {
+            return (false, Source.None, "", "");
         }
-        if (m.metadataAddress == mint) {
+        (source, name, symbol) = _names(cpi, mint, d, m);
+        isAuthority = true;
+    }
+
+    function _names(address cpi, bytes32 mint, bytes memory d, Parsed memory m)
+        private
+        view
+        returns (Source source, bytes memory name, bytes memory symbol)
+    {
+        bytes32 pointer = m.metadataAddress;
+        if (pointer == mint) {
             uint256 off = m.metadataOffset;
             // No entry, or an entry for another mint, names nothing.
             if (off == 0 || _b32(d, off + 32) != mint) return (Source.None, "", "");
@@ -84,11 +110,24 @@ library MintNameReader {
             symbol = _slice(d, symPos + 4, _u32(d, symPos));
             return (Source.Token2022, name, symbol);
         }
-        bytes32 mdOwner;
-        bytes memory md;
-        (ok, mdOwner, md) = _fetch(cpi, metaplex);
+        bytes32 metaplex = _metadataPda(mint);
+        if (pointer != bytes32(0) && pointer != metaplex) return (Source.ExternalPointer, "", "");
+        (bool ok, bytes32 mdOwner, bytes memory md) = _fetch(cpi, metaplex);
         if (!ok) revert MetaplexUnreadable();
-        if (mdOwner != METAPLEX_PROGRAM || md.length < 69 || uint8(md[0]) != MPL_KEY_METADATA_V1) {
+        (source, name, symbol) = _metaplexName(mint, mdOwner, md);
+        // The mint's own entry, with no Metaplex name behind it, is not read.
+        uint256 own = m.metadataOffset;
+        if (source == Source.None && own != 0 && _b32(d, own + 32) == mint) {
+            return (Source.ExternalPointer, "", "");
+        }
+    }
+
+    function _metaplexName(bytes32 mint, bytes32 owner, bytes memory md)
+        private
+        pure
+        returns (Source source, bytes memory name, bytes memory symbol)
+    {
+        if (owner != METAPLEX_PROGRAM || md.length < 69 || uint8(md[0]) != MPL_KEY_METADATA_V1) {
             return (Source.None, "", "");
         }
         if (_b32(md, 33) != mint) return (Source.None, "", "");
@@ -100,19 +139,74 @@ library MintNameReader {
         uint256 rawSym = _u32(md, symAt);
         if (rawSym > MPL_SYMBOL_MAX || md.length - symAt - 4 < rawSym) return (Source.None, "", "");
         // Metaplex zero-pads name (to 32) and symbol (to 10): strip trailing zeros.
-        uint256 l = rawName;
-        while (l != 0 && md[68 + l] == 0) l--;
-        uint256 sl = rawSym;
-        while (sl != 0 && md[symAt + 3 + sl] == 0) sl--;
-        return (Source.Metaplex, _slice(md, 69, l), _slice(md, symAt + 4, sl));
+        return (
+            Source.Metaplex,
+            _slice(md, 69, _stripped(md, 69, rawName)),
+            _slice(md, symAt + 4, _stripped(md, symAt + 4, rawSym))
+        );
     }
 
-    /// @notice The mint's authority; `ok` is false unless the mint walks clean, zero when none.
-    function mintAuthority(address cpi, bytes32 mint) internal view returns (bool ok, bytes32 authority) {
-        (bool fetched, bytes32 owner, bytes memory d) = _fetch(cpi, mint);
-        if (!fetched) return (false, bytes32(0));
-        Parsed memory m = parse(owner, d);
-        return (m.ok, m.mintAuthority);
+    /// @dev The length of `b[at, at + len)` without its trailing zero bytes; `len` <= 32 and the
+    ///      range is inside `b`.
+    function _stripped(bytes memory b, uint256 at, uint256 len) private pure returns (uint256 l) {
+        assembly ("memory-safe") {
+            let w := and(mload(add(add(b, 32), at)), shl(sub(256, shl(3, len)), not(0)))
+            if w {
+                let z := 0
+                if iszero(and(w, 0xffffffffffffffffffffffffffffffff)) {
+                    z := 16
+                    w := shr(128, w)
+                }
+                if iszero(and(w, 0xffffffffffffffff)) {
+                    z := add(z, 8)
+                    w := shr(64, w)
+                }
+                if iszero(and(w, 0xffffffff)) {
+                    z := add(z, 4)
+                    w := shr(32, w)
+                }
+                if iszero(and(w, 0xffff)) {
+                    z := add(z, 2)
+                    w := shr(16, w)
+                }
+                if iszero(and(w, 0xff)) { z := add(z, 1) }
+                l := sub(32, z)
+            }
+        }
+    }
+
+    /// @dev The mint's Metaplex metadata address, with hand-written call data.
+    function _metadataPda(bytes32 mint) private view returns (bytes32 pda) {
+        bytes4 selector = ISystemProgram.find_program_address.selector;
+        bytes32 program = METAPLEX_PROGRAM;
+        address precompile = system_program_address;
+        bool good;
+        assembly ("memory-safe") {
+            let m := mload(0x40)
+            // 484 bytes of call data, rounded up to 512: memory this block owns.
+            mstore(0x40, add(m, 512))
+            mstore(m, selector)
+            let a := add(m, 4)
+            mstore(a, program)
+            mstore(add(a, 0x20), 0x40)
+            mstore(add(a, 0x40), 3)
+            mstore(add(a, 0x60), 0x60)
+            mstore(add(a, 0x80), 0xc0)
+            mstore(add(a, 0xa0), 0x120)
+            mstore(add(a, 0xc0), 0x20)
+            mstore(add(a, 0xe0), 8)
+            mstore(add(a, 0x100), "metadata")
+            mstore(add(a, 0x120), 0x20)
+            mstore(add(a, 0x140), 32)
+            mstore(add(a, 0x160), program)
+            mstore(add(a, 0x180), 0x20)
+            mstore(add(a, 0x1a0), 32)
+            mstore(add(a, 0x1c0), mint)
+            let ok := staticcall(gas(), precompile, m, 484, m, 64)
+            good := and(ok, eq(returndatasize(), 64))
+            pda := mload(m)
+        }
+        if (!good) revert PdaUnavailable();
     }
 
     /// @notice Walks a mint account; `ok` stays false for anything it cannot place.
@@ -128,9 +222,13 @@ library MintNameReader {
         m.mintAuthority = authority;
         if (is2022 && n > MINT_LEN) {
             // Zero padding, then account type "mint".
-            for (uint256 i = MINT_LEN; i < BASE_ACCOUNT_LEN; i++) {
-                if (d[i] != 0) return m;
+            // Bytes 82-164 as three words, the last masked to its first 19 bytes.
+            uint256 pad;
+            assembly ("memory-safe") {
+                let p := add(add(d, 32), MINT_LEN)
+                pad := or(or(mload(p), mload(add(p, 32))), and(mload(add(p, 64)), shl(104, not(0))))
             }
+            if (pad != 0) return m;
             if (uint8(d[BASE_ACCOUNT_LEN]) != ACCOUNT_TYPE_MINT) return m;
             if (!_walk(m, d)) return m;
         }
@@ -241,12 +339,20 @@ library MintNameReader {
         return (true, _b32(d, off + 4));
     }
 
-    function _u16(bytes memory b, uint256 o) private pure returns (uint256) {
-        return uint256(uint8(b[o])) | (uint256(uint8(b[o + 1])) << 8);
+    function _u16(bytes memory b, uint256 o) private pure returns (uint256 r) {
+        require(b.length >= o + 2, "short");
+        assembly ("memory-safe") {
+            let x := shr(240, mload(add(add(b, 32), o)))
+            r := or(shr(8, x), shl(8, and(x, 0xff)))
+        }
     }
 
-    function _u32(bytes memory b, uint256 o) private pure returns (uint256) {
-        return _u16(b, o) | (_u16(b, o + 2) << 16);
+    function _u32(bytes memory b, uint256 o) private pure returns (uint256 r) {
+        require(b.length >= o + 4, "short");
+        assembly ("memory-safe") {
+            let x := shr(224, mload(add(add(b, 32), o)))
+            r := or(or(shr(24, x), and(shr(8, x), 0xff00)), or(and(shl(8, x), 0xff0000), shl(24, and(x, 0xff))))
+        }
     }
 
     function _b32(bytes memory b, uint256 o) private pure returns (bytes32 r) {
