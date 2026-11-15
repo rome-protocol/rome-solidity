@@ -61,4 +61,11 @@ describe("RomeEVMAccount.create_payer", () => {
         await ledger.write.setBalance([100n]);
         await assert.rejects(harness.write.createPayer([user, 200n]), /insufficient lamports/);
     });
+
+    it("a PDA above the target but below the rent minimum reverts and is not left below it", async () => {
+        await ledger.write.setBalance([500_000n]);
+        const before = await ledger.read.transfers();
+        await assert.rejects(harness.write.createPayer([user, 400_000n]), /insufficient lamports/);
+        assert.equal(await ledger.read.transfers(), before);
+    });
 });
