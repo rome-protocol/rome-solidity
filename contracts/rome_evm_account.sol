@@ -36,15 +36,16 @@ library RomeEVMAccount {
         return pda(user);
     }
 
-    /// @notice Tops the user's PDA up to `lamports`; the balance after must meet the rent minimum.
+    /// @notice Tops the user's PDA up to `lamports`; the balance after, and never less than the current one, must meet the rent minimum.
     function create_payer(address user, uint64 lamports) internal {
         bytes32 key = get_payer(user);
 
         uint64 current_lamports = CpiProgram.account_lamports(key);
+        uint64 resulting = current_lamports >= lamports ? current_lamports : lamports;
+        require(resulting >= minimum_balance(0), "insufficient lamports, rent-exemption value is 890880");
         if (current_lamports >= lamports) {
             return;
         }
-        require(lamports >= minimum_balance(0), "insufficient lamports, rent-exemption value is 890880");
 
         SystemProgramLib.Instruction memory ix =
                             SystemProgramLib.transfer(SystemProgram.operator(), key, lamports - current_lamports);
