@@ -13,21 +13,14 @@ import {SolanaConstants} from "../cpi/SolanaConstants.sol";
 import {Token2022HookedTransfer} from "../spl_token/token2022_hooked_transfer.sol";
 
 /// @title SPL_ERC20_Token2022Hooked
-/// @notice Direct-CPI ERC-20 surface for a Token-2022 mint with an armed
-///         Transfer Hook.
-/// @dev Transfer entrypoints take the complete, already-resolved hook account
-///      tail. The wrapper validates the invariant hook-program + validation-PDA
-///      trailer, then forwards the tail unchanged to Token-2022. Resolution is
-///      application/client work because ExtraAccountMetaList entries can depend
-///      on the instruction, endpoint accounts and account data.
+/// @notice Direct-CPI ERC-20 surface for a Token-2022 mint with an armed Transfer Hook.
+/// @dev Transfers take the caller-resolved hook account tail, check its hook-program and validation-PDA trailer, and forward it unchanged.
 contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
     bytes internal constant EXTRA_ACCOUNT_METAS_SEED = "extra-account-metas";
 
     bytes32 public immutable hook_program;
     bytes32 public immutable validation_account;
-    /// The wrapper's own external_auth PDA — the transferChecked authority under
-    /// direct CALL. Fixed for the contract's life, so derived once here instead
-    /// of a HelperProgram round-trip on every transfer.
+    /// The wrapper's own external_auth PDA, derived once at construction.
     bytes32 public immutable self_pda;
 
     error ArmedTransferHookRequired(bytes32 mint);
@@ -65,12 +58,7 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
         self_pda = RomeEVMAccount.pda(address(this));
     }
 
-    /// @notice This wrapper does not escrow — `_hookedTransfer` moves SPL
-    ///         directly to `ata(external_auth(to))` for every recipient,
-    ///         contract or not. Left un-overridden, the inherited branch
-    ///         would read `_escrow`, which is permanently zero here (also
-    ///         zeroing the fee-armed `delivered` amount) — override to
-    ///         always read the real on-chain balance instead.
+    /// @notice Always the on-chain balance; this wrapper does not escrow.
     function balanceOf(address account) public view override returns (uint256) {
         return uint256(HelperProgram.user_balance(account, mint_id));
     }

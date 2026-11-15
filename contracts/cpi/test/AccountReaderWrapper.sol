@@ -25,8 +25,4 @@ contract AccountReaderWrapper {
     {
         return AccountReader.readBytesAt(account, offset, length);
     }
-
-    function readBytes32At(bytes32 account, uint16 offset) external view returns (bytes32) {
-        return AccountReader.readBytes32At(account, offset);
-    }
 }

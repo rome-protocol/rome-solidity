@@ -3,7 +3,6 @@ pragma solidity ^0.8.20;
 
 import "../interface.sol";
 import "../convert.sol";
-import {RomeEVMAccount} from "../rome_evm_account.sol";
 
 
 library AssociatedSplToken {
@@ -50,7 +49,7 @@ library AssociatedSplToken {
 
     /**
      * Prepares instruction data and accounts for creating an associated token account. 
-     * @param funding_address EVM payer account (must contain enough SOL to pay for account creation)
+     * @param funding_address payer key (signer, writable)
      * @param wallet_address Address of the owner of the associated token account (usually a PDA derived from the user's EVM address)
      * @param token_mint_address Address of the SPL token mint for which the associated account is being created
      * @param instruction Creation instruction
@@ -63,7 +62,7 @@ library AssociatedSplToken {
      * @return associated_account_address The address of the associated token account that will be created
      */
     function _create_associated_token_account(
-        bytes32 funding_address, // EVM payer (seed PAYER)
+        bytes32 funding_address, // payer key (signer, writable)
         bytes32 wallet_address,  // SPL token account owner RomeEVMAccount.pda(user)
         bytes32 token_mint_address,
         uint8 instruction,

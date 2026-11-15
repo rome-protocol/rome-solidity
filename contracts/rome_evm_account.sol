@@ -6,14 +6,6 @@ import "./convert.sol";
 import "./system_program/system_program.sol";
 
 library RomeEVMAccount {
-    function authority_seeds(address user) internal pure returns(ISystemProgram.Seed[] memory) {
-        ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](2);
-        seeds[0] = ISystemProgram.Seed(bytes("EXTERNAL_AUTHORITY"));
-        seeds[1] = ISystemProgram.Seed(abi.encodePacked(user));
-
-        return seeds;
-    }
-
     function authority_seeds_with_salt(address user, bytes32 salt) internal pure returns(ISystemProgram.Seed[] memory) {
         bytes memory salt_ = Convert.bytes32_to_bytes(salt);
 
@@ -30,25 +22,13 @@ library RomeEVMAccount {
         return (128 + len) * 3480 * 2;
     }
 
+    /// @notice The EXTERNAL_AUTHORITY PDA of `user`, via HelperProgram.
     function pda(address user) internal view returns (bytes32) {
-        // Delegates to `HelperProgram.pda(user)` (selector `0x8854a299`).
-        // Byte-identity verified 2026-05-14 against the Rome EVM program
-        // `non_evm/helper_ix.rs:159` → `state/pda.rs:98-105` — both paths
-        // compute `find_program_address([EXTERNAL_AUTHORITY, user], rome_evm_program)`.
-        // Measured saving on Hadrian (3-sample mean, 2026-05-14): −67,083 CU
-        // per call (−36%). Spec:
-        //   the Rome design specs
         return HelperProgram.pda(user);
     }
 
+    /// @notice The EXTERNAL_AUTHORITY PDA of `user` with `salt`, via HelperProgram.
     function pda_with_salt(address user, bytes32 salt) internal view returns (bytes32) {
-        // Delegates to `HelperProgram.pda_with_salt(user, salt)` (selector
-        // `0x5c6d04b3`). Single dispatch replaces the prior 2-call composition
-        // (rome_evm_program_id() + find_program_address(seeds)). Byte-identity
-        // verified 2026-05-16 against the Rome EVM program
-        // `non_evm/helper_ix.rs::pda_with_salt` → `state/pda.rs::external_auth_with_salt`
-        // — both paths compute `find_program_address([EXTERNAL_AUTHORITY, user, salt],
-        // rome_evm_program)`. Shipped in a Rome EVM program upgrade.
         return HelperProgram.pda_with_salt(user, salt);
     }
 
@@ -67,8 +47,6 @@ library RomeEVMAccount {
         if (current_lamports >= lamports) {
             return;
         }
-
-        //require(false, string(SystemProgram.bytes32_to_base58(key)));
 
         SystemProgramLib.Instruction memory ix =
                             SystemProgramLib.transfer(SystemProgram.operator(), key, lamports);
