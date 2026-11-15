@@ -53,6 +53,9 @@ library MintNameReader {
     uint256 private constant MPL_NAME_MAX = 32;
     uint256 private constant MPL_SYMBOL_MAX = 10;
 
+    /// @dev The Metaplex account read failed; a listed but absent account is not a failure.
+    error MetaplexUnreadable();
+
     struct Parsed {
         bool ok; // walked clean
         bytes32 mintAuthority; // zero when none
@@ -61,7 +64,7 @@ library MintNameReader {
     }
 
     /// @notice Name and symbol as stored (Metaplex padding stripped) and their source; nothing
-    ///         is cut or checked.
+    ///         is cut or checked; reverts `MetaplexUnreadable` when the Metaplex read fails.
     function read(address cpi, bytes32 mint) internal view returns (Source source, bytes memory name, bytes memory symbol) {
         (bool ok, bytes32 owner, bytes memory d) = _fetch(cpi, mint);
         if (!ok) return (Source.None, "", "");
@@ -84,7 +87,8 @@ library MintNameReader {
         bytes32 mdOwner;
         bytes memory md;
         (ok, mdOwner, md) = _fetch(cpi, metaplex);
-        if (!ok || mdOwner != METAPLEX_PROGRAM || md.length < 69 || uint8(md[0]) != MPL_KEY_METADATA_V1) {
+        if (!ok) revert MetaplexUnreadable();
+        if (mdOwner != METAPLEX_PROGRAM || md.length < 69 || uint8(md[0]) != MPL_KEY_METADATA_V1) {
             return (Source.None, "", "");
         }
         if (_b32(md, 33) != mint) return (Source.None, "", "");

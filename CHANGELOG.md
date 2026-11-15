@@ -1,3 +1,31 @@
+## 2026-11-15 — Wrapper hardening: recipient probe, zero address, live hook
+
+Source only: nothing is deployed by this change. The wrapper bytecode changes, so the named wrapper factory and
+every wrapper it makes are new deployments.
+
+- `SPL_ERC20_cached`: `_ataCreated` is gone; a transfer or `ensure_token_account` probes the recipient with
+  `SplCached.account` and creates the account on a miss, so a closed account is created again. Reads and probes
+  revert `SolanaAccountNotListed` when the program does not list the account in the transaction; a listed but absent
+  account still reads 0.
+- `SPL_ERC20Base` (and the hook-aware wrapper): `_ataCreated` is gone; the probe reads `account_info` and counts an
+  account as existing only when it holds lamports and the mint's token program owns it, so a pre-funded address is
+  created.
+- All wrappers: a transfer, `ensure_token_account` or `create_token_account` to the zero address reverts
+  `ERC20InvalidReceiver`; a zero-value transfer emits `Transfer` and returns.
+- `SPL_ERC20_Token2022Hooked`: follows the live hook. With no hook a transfer is a plain `TransferChecked` and a
+  stale tail is ignored; after a rotation the tail is validated against the new hook. `HookConfigurationChanged` is
+  removed.
+- The write-only `_users` field and the `ERC20Users` constructor argument are removed from the wrappers and from
+  `ERC20SPLHookedDeployer.deploy`; `ERC20Users` itself is unchanged.
+- `MintNameReader`: a failed read of the Metaplex account reverts `MetaplexUnreadable` instead of reading as no name.
+- `ERC20SPLNamedFactory.init_token_mint`: the revert string states the current condition only.
+- `RomeEVMAccount.create_payer`: sends only the shortfall to a partly funded PDA and requires the balance after to
+  meet the rent minimum.
+- `MplTokenMetadataLib.load_metadata`: reports metadata only for an account owned by the Metaplex program, of kind
+  MetadataV1 for the mint, with a name of at most 32 bytes and a symbol of at most 10.
+- Comments: the legacy track's side effects hit Solana at call time and a revert of a frame that ran one aborts the
+  whole transaction.
+
 ## 2026-11-11 — Wrapper symbols are the origin's own: no "ro" prefix; names keep "(Rome)"
 
 Source only: nothing is deployed by this change. Operator ruling 2026-11-11 (corrected): drop only the `ro` symbol

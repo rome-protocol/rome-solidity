@@ -1,20 +1,18 @@
 import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import hardhat from "hardhat";
-import { keccak256, encodePacked } from "viem";
+import { keccak256, encodePacked, zeroAddress, parseEventLogs } from "viem";
 import {
     HELPER_PROGRAM_ADDRESS,
     SPL_CACHED_ADDRESS,
     ASSOCIATED_SPL_CACHED_ADDRESS,
 } from "../precompile-addresses";
 
-/// SPL_ERC20_cached (the canonical wrapper) — same three hot-path costs as the
-/// CPI-track sibling, plus one of its own: `_transfer` probed
-/// `SplCached.account(to)` on EVERY transfer, BEFORE consulting `_ataCreated`,
-/// and never set the flag when the probe found the account — so a recipient
-/// whose ATA pre-existed paid the probe forever. Flag first; a successful probe
-/// records the flag; the create path records it too.
-describe("SPL_ERC20_cached — warm transfer hot path", () => {
+/// SPL_ERC20_cached (the canonical wrapper) — a transfer probes the recipient's token account
+/// with `SplCached.account` (overlay-aware) on every call and creates it on a miss. Nothing is
+/// remembered per recipient, so a closed account is created again. An account the transaction
+/// does not list fails closed with `SolanaAccountNotListed`; a listed but absent one is created.
+describe("SPL_ERC20_cached — transfer path", () => {
     const HELPER = HELPER_PROGRAM_ADDRESS;
     const SPL_CACHED = SPL_CACHED_ADDRESS;
     const ASSOC = ASSOCIATED_SPL_CACHED_ADDRESS;
@@ -25,7 +23,6 @@ describe("SPL_ERC20_cached — warm transfer hot path", () => {
     let viem: any;
     let conn: any;
     let ledger: any;
-    let users: any;
     let wrapper: any;
     let feeWrapper: any;
     let wallets: any[];
@@ -36,14 +33,7 @@ describe("SPL_ERC20_cached — warm transfer hot path", () => {
     const as = (i: number, c: any) =>
         viem.getContractAt("SPL_ERC20_cached", c.address, { client: { wallet: wallets[i] } });
 
-    async function armAll() {
-        await users.write.setArmed([true]);
-        await ledger.write.setMintInfoTrap([true]);
-        await ledger.write.setAccountReadTrap([true]);
-        await ledger.write.setCreateTrap([true]);
-    }
     async function disarmAll() {
-        await users.write.setArmed([false]);
         await ledger.write.setMintInfoTrap([false]);
         await ledger.write.setAccountReadTrap([false]);
         await ledger.write.setCreateTrap([false]);
@@ -54,7 +44,6 @@ describe("SPL_ERC20_cached — warm transfer hot path", () => {
         viem = conn.viem;
         wallets = await viem.getWalletClients();
         ledger = await viem.deployContract("HotPathLedger", []);
-        users = await viem.deployContract("TrappingUsers", []);
         const mock = await viem.deployContract("HotPathPrecompileMock", [ledger.address]);
         const assoc = await viem.deployContract("HotPathAssocMock", [ledger.address]);
         const client = await viem.getPublicClient();
@@ -66,9 +55,9 @@ describe("SPL_ERC20_cached — warm transfer hot path", () => {
         }
         await conn.provider.request({ method: "hardhat_setCode", params: [ASSOC, assocCode] });
         await ledger.write.setMint([0, 0]);
-        wrapper = await viem.deployContract("SPL_ERC20_cached", [MINT, ASSOC, "Wrapped", "WRAP", users.address]);
+        wrapper = await viem.deployContract("SPL_ERC20_cached", [MINT, ASSOC, "Wrapped", "WRAP"]);
         await ledger.write.setMint([TRANSFER_FEE_CONFIG_BIT, 30]);
-        feeWrapper = await viem.deployContract("SPL_ERC20_cached", [FEE_MINT, ASSOC, "Fee", "FEE", users.address]);
+        feeWrapper = await viem.deployContract("SPL_ERC20_cached", [FEE_MINT, ASSOC, "Fee", "FEE"]);
         await ledger.write.setMint([0, 0]);
     });
 
@@ -77,59 +66,135 @@ describe("SPL_ERC20_cached — warm transfer hot path", () => {
         assert.equal(await feeWrapper.read.fee_capable(), true);
     });
 
-    it("a cold transfer creates the recipient ATA but never registers the caller", async () => {
-        await users.write.setArmed([true]);
+    it("a cold transfer creates the recipient ATA", async () => {
         const w = await as(0, wrapper);
         await w.write.transfer([addr(1), 5n]);
         assert.equal(await ledger.read.created([deriveAta(addr(1), MINT)]), true);
-        await disarmAll();
     });
 
-    it("a warm transfer reads neither the registry, nor the mint, nor the recipient account", async () => {
-        await armAll();
+    it("a warm transfer neither reads the mint nor creates, but probes the recipient", async () => {
+        await ledger.write.setMintInfoTrap([true]);
+        await ledger.write.setCreateTrap([true]);
         const w = await as(0, wrapper);
-        const tx = await w.write.transfer([addr(1), 5n]);
-        assert.ok(tx, "warm transfer must succeed with every hot-path trap armed");
+        assert.ok(await w.write.transfer([addr(1), 5n]), "warm transfer must succeed with the mint and create traps armed");
+        await ledger.write.setAccountReadTrap([true]);
+        // A probe that reverts reads as a miss, so a tripped probe shows up as the create it then attempts.
+        await assert.rejects(w.write.transfer([addr(1), 5n]), /create must not run/, "the recipient is probed on every transfer");
         await disarmAll();
     });
 
-    it("transferFrom takes the same warm path", async () => {
+    it("transferFrom takes the same path", async () => {
         const w0 = await as(0, wrapper);
         await w0.write.approve([addr(2), 100n]);
-        await armAll();
+        await ledger.write.setMintInfoTrap([true]);
+        await ledger.write.setCreateTrap([true]);
         const w2 = await as(2, wrapper);
         assert.ok(await w2.write.transferFrom([addr(0), addr(1), 5n]));
         assert.equal(await wrapper.read.allowance([addr(0), addr(2)]), 95n);
         await disarmAll();
     });
 
-    it("a recipient whose ATA pre-exists is probed once, then never again", async () => {
-        // ATA exists on chain but this wrapper has never seen it.
+    it("a recipient whose ATA pre-exists is found by the probe and not created", async () => {
         await ledger.write.recordCreated([deriveAta(addr(3), MINT)]);
-        await ledger.write.setCreateTrap([true]); // exists → must not create
+        await ledger.write.setCreateTrap([true]);
         const w = await as(0, wrapper);
-        await w.write.transfer([addr(3), 5n]); // probe fires, learns the flag
-        await ledger.write.setAccountReadTrap([true]);
-        const tx = await w.write.transfer([addr(3), 5n]);
-        assert.ok(tx, "second transfer must not re-probe an ATA the first one found");
+        assert.ok(await w.write.transfer([addr(3), 5n]));
         await disarmAll();
     });
 
-    it("a fresh recipient still creates — the flag is per-user", async () => {
+    it("a fresh recipient is created", async () => {
         await ledger.write.setCreateTrap([true]);
         const w = await as(0, wrapper);
-        await assert.rejects(w.write.transfer([addr(4), 5n]), /create_ata fired/);
+        await assert.rejects(w.write.transfer([addr(4), 5n]), /create must not run/);
         await disarmAll();
         await w.write.transfer([addr(4), 5n]);
         assert.equal(await ledger.read.created([deriveAta(addr(4), MINT)]), true);
     });
 
-    it("public ensure_token_account still answers the ATA on the fast path, without probing", async () => {
+    it("a closed recipient ATA is created again", async () => {
+        const w = await as(0, wrapper);
+        await w.write.transfer([addr(5), 5n]);
+        const ata = deriveAta(addr(5), MINT);
+        await ledger.write.close([ata]);
+        await w.write.transfer([addr(5), 5n]);
+        assert.equal(await ledger.read.created([ata]), true, "a closed ATA must be re-created, not remembered as existing");
+    });
+
+    it("ensure_token_account probes, creates only when missing and answers the ATA", async () => {
+        const ata = deriveAta(addr(6), MINT);
+        await wrapper.write.ensure_token_account([addr(6)]);
+        assert.equal(await ledger.read.created([ata]), true);
+        await ledger.write.setCreateTrap([true]);
+        const { result } = await wrapper.simulate.ensure_token_account([addr(6)]);
+        assert.equal(result, ata);
+        await ledger.write.setAccountReadTrap([true]);
+        await assert.rejects(wrapper.simulate.ensure_token_account([addr(6)]), /create must not run/, "the probe runs on every call");
+        await disarmAll();
+    });
+
+    it("ensure_token_account and create_token_account refuse the zero address", async () => {
+        await assert.rejects(wrapper.write.ensure_token_account([zeroAddress]), /ERC20InvalidReceiver/);
+        await assert.rejects(wrapper.write.create_token_account([zeroAddress]), /ERC20InvalidReceiver/);
+    });
+
+    it("a transfer to the zero address reverts", async () => {
+        const w = await as(0, wrapper);
+        await assert.rejects(w.write.transfer([zeroAddress, 5n]), /ERC20InvalidReceiver/);
+        await assert.rejects(w.write.transfer([zeroAddress, 0n]), /ERC20InvalidReceiver/);
+    });
+
+    it("a zero-value transfer emits Transfer and touches no precompile", async () => {
+        await ledger.write.setMintInfoTrap([true]);
         await ledger.write.setAccountReadTrap([true]);
         await ledger.write.setCreateTrap([true]);
-        const { result } = await wrapper.simulate.ensure_token_account([addr(1)]);
-        assert.equal(result, deriveAta(addr(1), MINT));
+        const w = await as(0, wrapper);
+        const hash = await w.write.transfer([addr(7), 0n]);
+        const receipt = await (await viem.getPublicClient()).getTransactionReceipt({ hash });
+        const logs = parseEventLogs({ abi: wrapper.abi, logs: receipt.logs, eventName: "Transfer" });
+        assert.equal(logs.length, 1);
+        assert.equal(logs[0].args.value, 0n);
+        assert.equal(await ledger.read.created([deriveAta(addr(7), MINT)]), false, "no ATA is created for a zero value");
         await disarmAll();
+    });
+
+    describe("an account the transaction does not list fails closed", () => {
+        it("balanceOf and isEnabled revert; a listed but empty account still reads 0", async () => {
+            const ata = deriveAta(addr(8), MINT);
+            assert.equal(await wrapper.read.balanceOf([addr(8)]), 0n, "absent but listed: reads 0");
+            assert.equal(await wrapper.read.isEnabled([addr(8)]), false);
+            await ledger.write.setNotListed([ata, true]);
+            await assert.rejects(wrapper.read.balanceOf([addr(8)]), /SolanaAccountNotListed/);
+            await assert.rejects(wrapper.read.isEnabled([addr(8)]), /SolanaAccountNotListed/);
+            await ledger.write.setNotListed([ata, false]);
+        });
+
+        it("a transfer to an unlisted recipient reverts and creates nothing", async () => {
+            const ata = deriveAta(addr(9), MINT);
+            await ledger.write.setNotListed([ata, true]);
+            const w = await as(0, wrapper);
+            await assert.rejects(w.write.transfer([addr(9), 5n]), /SolanaAccountNotListed/);
+            await assert.rejects(wrapper.write.ensure_token_account([addr(9)]), /SolanaAccountNotListed/);
+            assert.equal(await ledger.read.created([ata]), false);
+            await ledger.write.setNotListed([ata, false]);
+        });
+
+        it("an unlisted escrow ATA reverts a transfer to a contract holder", async () => {
+            const escrow = deriveAta(wrapper.address, MINT);
+            await ledger.write.setNotListed([escrow, true]);
+            const w = await as(0, wrapper);
+            await assert.rejects(w.write.transfer([ledger.address, 5n]), /SolanaAccountNotListed/);
+            await ledger.write.setNotListed([escrow, false]);
+        });
+
+        it("a fee-capable wrapper's pre-transfer balance read fails closed too", async () => {
+            await ledger.write.setMint([TRANSFER_FEE_CONFIG_BIT, 30]);
+            const ata = deriveAta(addr(10), FEE_MINT);
+            await ledger.write.setNotListed([ata, true]);
+            const f = await as(0, feeWrapper);
+            await assert.rejects(f.write.transfer([addr(10), 5n]), /SolanaAccountNotListed/);
+            await ledger.write.setNotListed([ata, false]);
+            await ledger.write.setMint([0, 0]);
+        });
     });
 
     it("a fee-capable wrapper still reads the live fee on every transfer", async () => {

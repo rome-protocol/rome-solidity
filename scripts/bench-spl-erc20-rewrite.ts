@@ -13,7 +13,6 @@ const SOLANA_RPC = "https://api.devnet.solana.com";
 
 // v1 contracts already on Hadrian:
 const V1_WUSDC = "0x94AC3E5e998d72088045853C1CfB910F6CE90E56" as const;
-const ERC20_USERS = "0xad2518145a7a95f2ca8a468499e4c33e10fb5dcc" as const;
 const WUSDC_MINT_B32 =
     "0x3b442cb3912157f13a933d0134282d032b5ffecd01a2dbf1b7790608df002ea7" as const;
 const CPI_PROGRAM = "0xFF00000000000000000000000000000000000008" as const;
@@ -99,7 +98,6 @@ async function main() {
         CPI_PROGRAM,
         "Rome USDC (rewrite bench)",
         "wUSDCbench",
-        ERC20_USERS,
     ]);
     console.log("bench wrapper:  ", v2.address);
 

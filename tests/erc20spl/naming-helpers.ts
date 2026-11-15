@@ -61,6 +61,7 @@ const ERROR_NAMES = [
     "MintAssertsName()",
     "BadGrandfatherList()",
     "MintAccountAlreadyExists(bytes32)",
+    "MetaplexUnreadable()",
 ];
 const bySelector = new Map(ERROR_NAMES.map((s) => [toFunctionSelector(s), s.split("(")[0]]));
 

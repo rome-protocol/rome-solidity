@@ -15,6 +15,7 @@ contract AccountStoreMock {
     }
 
     mapping(bytes32 => Account) private accounts;
+    mapping(bytes32 => bool) private unreadable;
 
     function set(bytes32 pubkey, bytes32 owner, bytes calldata data) external {
         accounts[pubkey] = Account(true, owner, data);
@@ -24,6 +25,11 @@ contract AccountStoreMock {
         delete accounts[pubkey];
     }
 
+    /// @dev Makes `account_info` revert for `pubkey`, as it does for an account the transaction does not list.
+    function setUnreadable(bytes32 pubkey, bool value) external {
+        unreadable[pubkey] = value;
+    }
+
     /// @dev Same return shape as `ICrossProgramInvocation.account_info`: lamports, owner, is_signer,
     ///      is_writable, executable, data. A missing account has no lamports and no data.
     function account_info(bytes32 pubkey)
@@ -31,6 +37,7 @@ contract AccountStoreMock {
         view
         returns (uint64, bytes32, bool, bool, bool, bytes memory)
     {
+        if (unreadable[pubkey]) revert("account not found");
         Account storage a = accounts[pubkey];
         if (!a.exists) return (0, bytes32(0), false, false, false, "");
         return (1, a.owner, false, false, false, a.data);

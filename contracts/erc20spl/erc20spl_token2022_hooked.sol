@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {SPL_ERC20Base, ERC20Users} from "./erc20spl.sol";
+import {SPL_ERC20Base} from "./erc20spl.sol";
 import {
     ICrossProgramInvocation,
     ISystemProgram,
@@ -14,7 +14,7 @@ import {Token2022HookedTransfer} from "../spl_token/token2022_hooked_transfer.so
 
 /// @title SPL_ERC20_Token2022Hooked
 /// @notice Direct-CPI ERC-20 surface for a Token-2022 mint with an armed Transfer Hook.
-/// @dev Transfers take the caller-resolved hook account tail, check its hook-program and validation-PDA trailer, and forward it unchanged.
+/// @dev Transfers take the caller-resolved hook account tail, check its hook-program and validation-PDA trailer against the mint's live hook, and forward it; with no live hook the tail is dropped.
 contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
     bytes internal constant EXTRA_ACCOUNT_METAS_SEED = "extra-account-metas";
 
@@ -26,18 +26,13 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
     error ArmedTransferHookRequired(bytes32 mint);
     error Token2022MintRequired(bytes32 mint, bytes32 tokenProgram);
     error HookAccountPlanRequired();
-    error HookConfigurationChanged(
-        bytes32 expectedHookProgram,
-        bytes32 actualHookProgram
-    );
 
     constructor(
         bytes32 _mint_id,
         address _cpi_program,
         string memory name_,
-        string memory symbol_,
-        ERC20Users users_
-    ) SPL_ERC20Base(_mint_id, _cpi_program, name_, symbol_, users_, true) {
+        string memory symbol_
+    ) SPL_ERC20Base(_mint_id, _cpi_program, name_, symbol_, true) {
         (bytes32 tokenProgram, , bytes32 hookProgram, ,) =
             HelperProgram.mint_info(_mint_id);
         if (tokenProgram != SolanaConstants.TOKEN_2022_PROGRAM) {
@@ -47,14 +42,8 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
             revert ArmedTransferHookRequired(_mint_id);
         }
 
-        ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](2);
-        seeds[0] = ISystemProgram.Seed(EXTRA_ACCOUNT_METAS_SEED);
-        seeds[1] = ISystemProgram.Seed(abi.encodePacked(_mint_id));
-        (bytes32 validation, ) =
-            SystemProgram.find_program_address(hookProgram, seeds);
-
         hook_program = hookProgram;
-        validation_account = validation;
+        validation_account = _validationAccount(_mint_id, hookProgram);
         self_pda = RomeEVMAccount.pda(address(this));
     }
 
@@ -106,21 +95,31 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
         return _hookedTransfer(from, to, value, hookMetas);
     }
 
+    function _validationAccount(bytes32 mint, bytes32 hookProgram) private view returns (bytes32 validation) {
+        ISystemProgram.Seed[] memory seeds = new ISystemProgram.Seed[](2);
+        seeds[0] = ISystemProgram.Seed(EXTRA_ACCOUNT_METAS_SEED);
+        seeds[1] = ISystemProgram.Seed(abi.encodePacked(mint));
+        (validation, ) = SystemProgram.find_program_address(hookProgram, seeds);
+    }
+
+    /// @dev Follows the live hook: none gives an empty tail (a plain TransferChecked), a rotated
+    ///      hook is validated against its own validation account.
     function _validateCurrentPlan(
         ICrossProgramInvocation.AccountMeta[] calldata hookMetas
-    ) internal view returns (uint16 feeBps) {
-        (bytes32 tokenProgram, , bytes32 currentHookProgram, uint16 currentFeeBps,) =
+    ) internal view returns (uint16 feeBps, ICrossProgramInvocation.AccountMeta[] calldata tail) {
+        (bytes32 tokenProgram, , bytes32 liveHook, uint16 currentFeeBps,) =
             HelperProgram.mint_info(mint_id);
         if (tokenProgram != SolanaConstants.TOKEN_2022_PROGRAM) {
             revert Token2022MintRequired(mint_id, tokenProgram);
         }
-        if (currentHookProgram != hook_program) {
-            revert HookConfigurationChanged(hook_program, currentHookProgram);
+        if (liveHook == bytes32(0)) {
+            return (currentFeeBps, hookMetas[:0]);
         }
-        Token2022HookedTransfer.validate(
-            hook_program, validation_account, hookMetas
-        );
-        return currentFeeBps;
+        bytes32 validation = liveHook == hook_program
+            ? validation_account
+            : _validationAccount(mint_id, liveHook);
+        Token2022HookedTransfer.validate(liveHook, validation, hookMetas);
+        return (currentFeeBps, hookMetas);
     }
 
     function _hookedTransfer(
@@ -129,8 +128,13 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
         uint256 value,
         ICrossProgramInvocation.AccountMeta[] calldata hookMetas
     ) internal returns (bool) {
+        if (to == address(0)) revert ERC20InvalidReceiver(address(0));
+        if (value == 0) {
+            emit Transfer(from, to, 0);
+            return true;
+        }
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
-        uint16 feeBps = _validateCurrentPlan(hookMetas);
+        (uint16 feeBps, ICrossProgramInvocation.AccountMeta[] calldata tail) = _validateCurrentPlan(hookMetas);
         bool feeArmed = feeBps > 0;
         uint256 beforeBalance = feeArmed ? balanceOf(to) : 0;
 
@@ -145,7 +149,7 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
             self_pda,
             uint64(value),
             decimals,
-            hookMetas
+            tail
         );
 
         uint256 delivered = value;
@@ -176,7 +180,7 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
     ) external returns (bool) {
         require(value <= type(uint64).max, "Bridge amount exceeds uint64");
         require(solanaRecipient != bytes32(0), "Solana recipient cannot be zero");
-        _validateCurrentPlan(hookMetas);
+        (, ICrossProgramInvocation.AccountMeta[] calldata tail) = _validateCurrentPlan(hookMetas);
 
         bytes32 destination = ensureRecipientAta(solanaRecipient);
         bytes32 source = HelperProgram.ata(msg.sender, mint_id);
@@ -189,7 +193,7 @@ contract SPL_ERC20_Token2022Hooked is SPL_ERC20Base {
             self_pda,
             uint64(value),
             decimals,
-            hookMetas
+            tail
         );
 
         emit BridgedOutToSolana(

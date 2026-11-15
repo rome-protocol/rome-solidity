@@ -68,7 +68,7 @@ contract ERC20SPLFactory {
         address wrapper;
         if (hook_program != bytes32(0)) {
             wrapper = hooked_wrapper_deployer.deploy(
-                mint, cpi_program, name, symbol, users
+                mint, cpi_program, name, symbol
             );
             wrapper_kind_by_mint[mint] = WrapperKind.Token2022HookedCpi;
         } else {
@@ -87,7 +87,7 @@ contract ERC20SPLFactory {
             // Constructor signature is identical, so the factory's
             // ABI / event surface is unchanged.
             SPL_ERC20_cached cached = new SPL_ERC20_cached(
-                mint, cpi_program, name, symbol, users
+                mint, cpi_program, name, symbol
             );
             wrapper = address(cached);
             wrapper_kind_by_mint[mint] = WrapperKind.Cached;

@@ -111,8 +111,7 @@ describe("SPL_ERC20_cached dispatch shape — structural, source-of-truth is the
         }
         // Two sites: `_createAta` (the single user-ATA create behind
         // ensure_token_account / create_token_account / the transfer path) and
-        // `_ensureWrapperAta` (the escrow ATA). Consolidated 2026-09 so the
-        // created-flag is set at the one place the create happens.
+        // `_ensureWrapperAta` (the escrow ATA).
         assert.equal(delegatecallBlocks.length, 2, `expected exactly 2 exempt delegatecall sites, found: ${delegatecallBlocks.map(m => m[2]).join(", ")}`);
     });
 

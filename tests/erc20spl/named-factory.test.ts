@@ -118,6 +118,19 @@ describe("the named wrapper factory", async () => {
         assert.deepEqual(bad, []);
     });
 
+    it("a Metaplex account that cannot be read reverts MetaplexUnreadable on preview and on the add", async () => {
+        const v = vectors.mints.find((m) => m.id === "metaplex/plain")!;
+        await plant(v);
+        const f = await newFactory();
+        const pda = mockMetadataPda(v.mint);
+        await store.write.setUnreadable([pda, true]);
+        assert.equal(await revertName(f.read.preview([v.mint])), "MetaplexUnreadable");
+        assert.equal(await revertName(f.write.add_spl_token_with_metadata([v.mint])), "MetaplexUnreadable");
+        assert.equal(await f.read.token_by_mint([v.mint]), zeroAddress);
+        await store.write.setUnreadable([pda, false]);
+        assert.equal(await revertName(f.write.add_spl_token_with_metadata([v.mint])), null);
+    });
+
     it("a mint with an armed transfer hook gets the hook-aware wrapper, named by the same rule", async () => {
         const v = vectors.mints.find((m) => m.id === "metaplex/plain")!;
         // byte 1 of the mint id arms the hook in the precompile mock
@@ -320,6 +333,17 @@ describe("the named wrapper factory", async () => {
             await store.write.clear([mockMetadataPda(MINT)]);
             await store.write.set([MINT, PROGRAM.p2022, withAuthority]);
             assert.equal(await revertName(send(f, data)), "ExternalPointer");
+        });
+
+        it("a Metaplex account that cannot be read refuses the registration; a listed but absent one does not", async () => {
+            const f = await newFactory();
+            const data = calldata(MINT, toHex("My Token"), toHex("MYT"));
+            await plantAuthorityMint();
+            await store.write.setUnreadable([mockMetadataPda(MINT), true]);
+            assert.equal(await revertName(send(f, data)), "MetaplexUnreadable");
+            assert.equal(await f.read.token_by_mint([MINT]), zeroAddress);
+            await store.write.setUnreadable([mockMetadataPda(MINT), false]);
+            assert.equal(await revertName(send(f, data)), null, "absent but listed: still registers");
         });
 
         it("a registered mint is refused again, and a refused call leaves no wrapper", async () => {

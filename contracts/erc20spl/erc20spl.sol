@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {HelperProgram} from "../interface.sol";
+import {HelperProgram, CpiProgram} from "../interface.sol";
 import {RomeEVMAccount} from "../rome_evm_account.sol";
 import {UserPda} from "../cpi/UserPda.sol";
 import {AccountReader} from "../cpi/AccountReader.sol";
@@ -50,11 +50,10 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     // fee-capable wrapper reads the live fee per transfer.
     uint32 internal constant TRANSFER_FEE_CONFIG_EXTENSION_BIT = 1;
     bool public immutable fee_capable;
+    bytes32 private immutable _mintOwner;
 
     string private _name;
     string private _symbol;
-    // Not read; kept for the constructor ABI.
-    ERC20Users internal _users;
 
     // Pure EVM allowance; separate from the user's one-time SPL delegate grant to this wrapper.
     mapping(address => mapping(address => uint256)) private _allowances;
@@ -63,10 +62,8 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     // SPL sent to a not-yet-deployed CREATE2 address is not migrated when it deploys.
     mapping(address => uint256) private _escrow;
 
-    // Once true, the ATA exists (never closed on Rome); false falls through to probe/create.
-    mapping(address => bool) private _ataCreated;
-
     error ERC20InvalidSpender(address spender);
+    error ERC20InvalidReceiver(address receiver);
     error ERC20InsufficientAllowance(address spender, uint256 currentAllowance, uint256 requiredAllowance);
 
     constructor(
@@ -74,10 +71,10 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         address _cpi_program,
         string memory name_,
         string memory symbol_,
-        ERC20Users users_,
         bool supports_armed_transfer_hook
     ) {
-        (, uint8 mint_decimals, bytes32 hook_program, , uint32 extensions) = HelperProgram.mint_info(_mint_id);
+        (bytes32 mintOwner, uint8 mint_decimals, bytes32 hook_program, , uint32 extensions) =
+            HelperProgram.mint_info(_mint_id);
         if (hook_program != bytes32(0) && !supports_armed_transfer_hook) {
             revert ArmedTransferHookUnsupported(_mint_id, hook_program);
         }
@@ -87,18 +84,19 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         decimals = mint_decimals;
         _name = name_;
         _symbol = symbol_;
-        _users = users_;
+        _mintOwner = mintOwner;
         fee_capable = (extensions & (uint32(1) << TRANSFER_FEE_CONFIG_EXTENSION_BIT)) != 0;
     }
 
     /// @notice Creates the user's ATA (idempotent) and returns its address. `payer` is ignored;
     ///         the operator pays rent.
     function create_token_account(address user, bytes32 /* payer, unused */) public returns(bytes32) {
+        if (user == address(0)) revert ERC20InvalidReceiver(address(0));
         _createAta(user);
         return HelperProgram.ata(user, mint_id);
     }
 
-    /// @dev Creates `user`'s ATA and sets its created-flag.
+    /// @dev Creates `user`'s ATA.
     function _createAta(address user) internal {
         (bool success, bytes memory result) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
@@ -107,28 +105,21 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
             )
         );
         require(success, string(Convert.revert_msg(result)));
-        _ataCreated[user] = true;
     }
 
-    /// @dev Hot-path ATA guarantee: returns 0 when the flag is set; otherwise derives the ATA,
-    ///      probes `lamportsOf`, creates only if missing, and sets the flag (ATAs never close).
-    function _ensureAta(address user) internal returns (bytes32) {
-        if (_ataCreated[user]) {
-            return bytes32(0);
-        }
-        bytes32 ata = HelperProgram.ata(user, mint_id);
-        if (AccountReader.lamportsOf(ata) != 0) {
-            _ataCreated[user] = true;
-        } else {
+    /// @dev Returns `user`'s ATA address, creating it unless it holds lamports under the token program.
+    function _ensureAta(address user) internal returns (bytes32 ata) {
+        ata = HelperProgram.ata(user, mint_id);
+        (uint64 lamports, bytes32 owner,,,,) = CpiProgram.account_info(ata);
+        if (lamports == 0 || owner != _mintOwner) {
             _createAta(user);
         }
-        return ata;
     }
 
     /// @notice Creates the user's ATA if missing; returns its address.
     function ensure_token_account(address user) public returns (bytes32) {
-        bytes32 ata = _ensureAta(user);
-        return ata == bytes32(0) ? HelperProgram.ata(user, mint_id) : ata;
+        if (user == address(0)) revert ERC20InvalidReceiver(address(0));
+        return _ensureAta(user);
     }
 
     /// @notice The user's ATA address; never reverts, never creates it.
@@ -168,6 +159,11 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         address to,
         uint256 value
     ) internal virtual returns (bool) {
+        if (to == address(0)) revert ERC20InvalidReceiver(address(0));
+        if (value == 0) {
+            emit Transfer(from, to, 0);
+            return true;
+        }
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
 
         // EOAs move SPL under their PDA via the delegate grant; contracts via the escrow ATA.
@@ -202,7 +198,6 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         if (toIsContract) {
             _ensureWrapperAta();
         } else {
-            // Create the recipient ATA on first transfer so sends to a fresh address do not revert.
             _ensureAta(to);
         }
 
@@ -379,9 +374,8 @@ contract SPL_ERC20 is SPL_ERC20Base {
         bytes32 _mint_id,
         address _cpi_program,
         string memory name_,
-        string memory symbol_,
-        ERC20Users users_
-    ) SPL_ERC20Base(_mint_id, _cpi_program, name_, symbol_, users_, false) {
+        string memory symbol_
+    ) SPL_ERC20Base(_mint_id, _cpi_program, name_, symbol_, false) {
         escrow_ata = HelperProgram.ata(address(this), _mint_id);
     }
 

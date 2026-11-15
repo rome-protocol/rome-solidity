@@ -205,28 +205,23 @@ library MplTokenMetadataLib {
         return SystemProgram.find_program_address(mpl_program_id, seeds);
     }
 
+    /// @notice The mint's Metaplex metadata; absent (false) unless the account is owned by `mpl_program_id`,
+    ///         is MetadataV1 for `mint` and its name and symbol fit the program's limits.
     function load_metadata(bytes32 mint, bytes32 mpl_program_id, address cpi_program)
     internal
     view
-    returns (bool, Metadata memory)
+    returns (bool, Metadata memory md)
     {
         (bytes32 metadata_pubkey,) = find_metadata_pda(mint, mpl_program_id);
-        (uint64 lamports,,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(metadata_pubkey);
-        if (lamports == 0) {
-            return (
-                false, 
-                Metadata(
-                    Key.Uninitialized, 0, 0, "", "", "", 0, false, 
-                    new Creator[](0), false, false, false, 0, false, 
-                    TokenStandard.NonFungible, false, Collection(false, 0), 
-                    false, Uses(UseMethod.Burn, 0, 0), false, 
-                    CollectionDetails(CollectionDetailsVariant.None, 0, 0), 
-                    false, ProgrammableConfig(ProgrammableConfigVariant.None, false, 0)
-                )
-            );
+        (uint64 lamports, bytes32 owner,,,, bytes memory data) = ICrossProgramInvocation(cpi_program).account_info(metadata_pubkey);
+        if (lamports == 0 || owner != mpl_program_id || data.length < 69 || uint8(data[0]) != uint8(Key.MetadataV1)) {
+            return (false, md);
         }
-
-        return (lamports > 0, parse_metadata(data));
+        Metadata memory parsed = parse_metadata(data);
+        if (parsed.mint != mint || bytes(parsed.name).length > 32 || bytes(parsed.symbol).length > 10) {
+            return (false, md);
+        }
+        return (true, parsed);
     }
 
     // =========================

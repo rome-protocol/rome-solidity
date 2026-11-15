@@ -125,10 +125,10 @@ contract ERC20SPLNamedFactory {
         (,, bytes32 hook_program,,) = HelperProgram.mint_info(mint);
         address wrapper;
         if (hook_program != bytes32(0)) {
-            wrapper = hooked_wrapper_deployer.deploy(mint, cpi_program, name, symbol, users);
+            wrapper = hooked_wrapper_deployer.deploy(mint, cpi_program, name, symbol);
             wrapper_kind_by_mint[mint] = WrapperKind.Token2022HookedCpi;
         } else {
-            wrapper = address(new SPL_ERC20_cached(mint, cpi_program, name, symbol, users));
+            wrapper = address(new SPL_ERC20_cached(mint, cpi_program, name, symbol));
             wrapper_kind_by_mint[mint] = WrapperKind.Cached;
         }
         token_by_mint[mint] = wrapper;
@@ -178,6 +178,6 @@ contract ERC20SPLNamedFactory {
     /// @notice No-op for existing clients: reverts unless `mint` is initialised.
     function init_token_mint(bytes32 mint) external view {
         bytes memory isInitialized = AccountReader.readBytesAt(mint, 45, 1);
-        require(isInitialized[0] == 0x01, "mint not initialized; create_token_mint now initializes atomically");
+        require(isInitialized[0] == 0x01, "mint not initialized");
     }
 }
