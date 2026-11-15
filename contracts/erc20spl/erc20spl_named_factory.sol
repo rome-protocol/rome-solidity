@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {ERC20Users} from "./erc20spl.sol";
 import {SPL_ERC20_cached} from "./erc20spl_cached.sol";
 import {ERC20SPLHookedDeployer} from "./erc20spl_hooked_deployer.sol";
 import {RomeNaming} from "./RomeNaming.sol";
@@ -38,7 +37,6 @@ contract ERC20SPLNamedFactory {
 
     bytes32 public immutable grandfatherHash;
     address public immutable cpi_program;
-    ERC20Users public immutable users;
     ERC20SPLHookedDeployer public immutable hooked_wrapper_deployer;
 
     event TokenCreated(
@@ -64,7 +62,6 @@ contract ERC20SPLNamedFactory {
 
     constructor(address _cpi_program, GrandfatherEntry[] memory list) {
         cpi_program = _cpi_program;
-        users = new ERC20Users();
         hooked_wrapper_deployer = new ERC20SPLHookedDeployer();
         for (uint256 i = 0; i < list.length; i++) {
             GrandfatherEntry memory g = list[i];

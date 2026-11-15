@@ -17,6 +17,8 @@ every wrapper it makes are new deployments.
   removed.
 - The write-only `_users` field and the `ERC20Users` constructor argument are removed from the wrappers and from
   `ERC20SPLHookedDeployer.deploy`; `ERC20Users` itself is unchanged.
+- `ERC20SPLNamedFactory` no longer creates an `ERC20Users` and has no `users()` getter. `ERC20Users` stays only
+  because `SimpleActivator` and the legacy `ERC20SPLFactory` use it.
 - `MintNameReader`: a failed read of the Metaplex account reverts `MetaplexUnreadable` instead of reading as no name.
 - `ERC20SPLNamedFactory.init_token_mint`: the revert string states the current condition only.
 - `RomeEVMAccount.create_payer`: sends only the shortfall to a partly funded PDA and requires the balance after to

@@ -162,7 +162,7 @@ async function readBack(viem: any, publicClient: any, address: `0x${string}`, li
         console.log(`  ${ok ? "ok " : "BAD"} ${what} = ${got}`);
         if (!ok) throw new Error(`readback: ${what} is ${got}, expected ${want}`);
     }
-    for (const getter of ["users", "hooked_wrapper_deployer"] as const) {
+    for (const getter of ["hooked_wrapper_deployer"] as const) {
         const a = (await f.read[getter]()) as `0x${string}`;
         const c = await publicClient.getCode({ address: a });
         if (a === ZERO || !c || c === "0x") throw new Error(`readback: ${getter}() ${a} has no code`);
