@@ -88,7 +88,7 @@ The factories deploy the **cached** wrapper for every token (`new SPL_ERC20_cach
 | `cached_revert_demo` | Executable proof of the cached track's revert / iterative / one-track properties | (demos) |
 
 **Wrapper behaviour.**
-- A transfer to the zero address reverts `ERC20InvalidReceiver`; so do `ensure_token_account` and `create_token_account` for it. A zero-value transfer emits `Transfer` and returns without touching a precompile.
+- A transfer to the zero address reverts `ERC20InvalidReceiver`; so do `ensure_token_account` and `create_token_account` for it. A zero-value transfer emits `Transfer` and returns without touching a precompile. The cached wrapper also refuses a transfer to itself (`ERC20InvalidReceiver`), since nothing could move that balance out of its escrow ledger. `ensure_account(user)` is `ensure_token_account` without deriving or returning the address.
 - A transfer probes the recipient's token account every time and creates it when it is missing. Nothing is remembered per recipient, so a closed account is created again. The CPI-track wrapper counts an account as existing only when it holds lamports and the mint's token program owns it.
 - The cached wrapper's reads (`balanceOf`, `isEnabled`) and its transfer probes revert `SolanaAccountNotListed` when the transaction does not list the account; a listed but absent account reads 0.
 - The hook-aware wrapper follows the mint's live hook: with no hook a transfer is a plain `TransferChecked` and the supplied tail is ignored; after a rotation the tail is validated against the new hook's validation account.

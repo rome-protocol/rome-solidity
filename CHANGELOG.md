@@ -1,3 +1,20 @@
+## 2026-11-15 — Name reader and wrapper: own-entry rule, self-transfer, cheaper reads
+
+Source only: nothing is deployed by this change. The bytecode of `ERC20SPLNamedFactory` and `SPL_ERC20_cached` changes
+(and of the legacy `ERC20SPLFactory`, which embeds the cached wrapper's creation code), so the named factory and every
+wrapper it makes are new deployments. `SPL_ERC20_Token2022Hooked` and `ERC20SPLHookedDeployer` are unchanged.
+
+- `MintNameReader.read`: a mint's own TokenMetadata entry behind a pointer that is not the mint, with no Metaplex name,
+  reads as `ExternalPointer` (it read as no name). `add_spl_token_by_authority` refuses any mint whose name source is not
+  `None` (`MintAssertsName`; `ExternalPointer` as before), so an empty name behind a source no longer lets the caller
+  choose the strings. `tests/fixtures/asset-naming` carries the new vectors.
+- `SPL_ERC20_cached`: a transfer or `transferFrom` to the wrapper itself reverts `ERC20InvalidReceiver`. New
+  `ensure_account(address)`: `ensure_token_account` without deriving or returning the token account address.
+- `MintNameReader` reads cheaper, with the same results: bytes 82 to 164 as three words, little-endian words by one load
+  and a byte swap, the Metaplex zero strip by word, the Metaplex address derived only when needed and with hand-written
+  call data (`PdaUnavailable` if the precompile does not answer), and `add_spl_token_by_authority` fetches and walks the
+  mint once (`readAsAuthority` replaces `mintAuthority`).
+
 ## 2026-11-15 — Wrapper hardening: recipient probe, zero address, live hook
 
 Source only: nothing is deployed by this change. The wrapper bytecode changes, so the named wrapper factory and

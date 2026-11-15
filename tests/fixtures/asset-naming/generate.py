@@ -338,7 +338,14 @@ def read_mint_name(accounts, derive):
         sp = moff + 68 + nl
         sl = u32(d, sp)
         return "Token2022", name, d[sp + 4: sp + 4 + sl]
-    m = by_key.get(mpl_key)
+    source, name, symbol = read_metaplex_name(by_key.get(mpl_key))
+    # the mint's own entry behind a pointer that is not the mint, with no Metaplex name, is not read
+    if source == "None" and moff != 0 and d[moff + 32: moff + 64] == MINT:
+        return "ExternalPointer", None, None
+    return source, name, symbol
+
+def read_metaplex_name(m):
+    """(source, name, symbol) of the mint's own Metaplex account `m`, or ("None", None, None)."""
     if m is None or m["owner"] != METAPLEX:
         return "None", None, None
     md = m["data"]
@@ -484,6 +491,15 @@ def mint_vectors():
     add("t2022/no-pointer/metaplex", [A("mint", "p2022", t2022([])), A("metaplex", "metaplex", mpl(MINT, b"Wrapped SOL", b"SOL"))], "Metaplex", b"Wrapped SOL", b"SOL")
     add("t2022/no-pointer/entry-ignored", [A("mint", "p2022", t2022([(19, tm_value(MINT, b"Entry", b"ENT"))])), A("metaplex", "metaplex", mpl(MINT, b"Beside", b"BSD"))], "Metaplex", b"Beside", b"BSD")
     add("t2022/no-pointer/no-metaplex", [A("mint", "p2022", t2022([]))], "None")
+    # the mint's own entry behind a pointer that is not the mint, with no Metaplex name: not read
+    entry = (19, tm_value(MINT, b"Entry", b"ENT"))
+    add("t2022/no-pointer/entry-no-metaplex", [A("mint", "p2022", t2022([entry]))], "ExternalPointer")
+    add("t2022/no-pointer/entry-metaplex-wrong-owner", [A("mint", "p2022", t2022([entry])), A("metaplex", "other", mpl(MINT, b"Beside", b"BSD"))], "ExternalPointer")
+    add("t2022/no-pointer/entry-metaplex-wrong-mint", [A("mint", "p2022", t2022([entry])), A("metaplex", "metaplex", mpl(OTHER_MINT, b"Beside", b"BSD"))], "ExternalPointer")
+    add("t2022/no-pointer/entry-metaplex-empty-name", [A("mint", "p2022", t2022([entry])), A("metaplex", "metaplex", mpl(MINT, b"", b"BSD"))], "Metaplex", b"", b"BSD")
+    add("t2022/no-pointer/entry-for-other-mint-no-metaplex", [A("mint", "p2022", t2022([(19, tm_value(OTHER_MINT, b"Name", b"SYM"))]))], "None")
+    add("t2022/zero-pointer/entry-no-metaplex", [A("mint", "p2022", t2022([pointer_entry(b"\x00" * 32), entry]))], "ExternalPointer")
+    add("t2022/pointer-to-own-metaplex/entry-no-metaplex", [dict(A("mint", "p2022", t2022([pointer_entry(b"\xee" * 32), entry])), patch=[{"offset": 202, "address": "metaplex"}])], "ExternalPointer")
     # a zero pointer is no pointer
     add("t2022/zero-pointer/metaplex", [A("mint", "p2022", t2022([pointer_entry(b"\x00" * 32)])), A("metaplex", "metaplex", mpl(MINT, b"Wrapped SOL", b"SOL"))], "Metaplex", b"Wrapped SOL", b"SOL")
     # pointer to the mint's own Metaplex account: Metaplex

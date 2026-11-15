@@ -335,6 +335,44 @@ describe("the named wrapper factory", async () => {
             assert.equal(await revertName(send(f, data)), "ExternalPointer");
         });
 
+        it("any name source refuses the authority's strings, whatever the name length; a mint with no source takes them", async () => {
+            const f = await newFactory();
+            const data = calldata(MINT, toHex("My Token"), toHex("MYT"));
+            const asAuthority = (v: MintVector) => {
+                const a = v.accounts.find((x) => x.at === "mint")!;
+                return `0x01000000${mockPda(me).slice(2)}${a.data.slice(2 + 72)}` as Hex;
+            };
+            const plantVector = async (id: string) => {
+                const v = vectors.mints.find((m) => m.id === id)!;
+                await plant(v);
+                const a = v.accounts.find((x) => x.at === "mint")!;
+                await store.write.set([MINT, PROGRAM[a.owner], asAuthority(v)]);
+            };
+            const plant = async (v: MintVector) => {
+                for (const k of [MINT, mockMetadataPda(MINT), K.otherAccount]) await store.write.clear([k]);
+                for (const a of v.accounts.filter((x) => x.at === "metaplex")) await store.write.set([mockMetadataPda(MINT), PROGRAM[a.owner], a.data]);
+            };
+            // the mint's own entry, no Metaplex name behind it: an external pointer, not a free name
+            for (const id of [
+                "t2022/no-pointer/entry-no-metaplex",
+                "t2022/no-pointer/entry-metaplex-wrong-owner",
+                "t2022/zero-pointer/entry-no-metaplex",
+            ]) {
+                await plantVector(id);
+                assert.equal(await revertName(send(f, data)), "ExternalPointer", id);
+            }
+            // a name source with an empty name still asserts a name
+            for (const id of ["metaplex/name-padding-only", "t2022/self/empty-name", "t2022/no-pointer/entry-metaplex-empty-name"]) {
+                await plantVector(id);
+                assert.equal(await revertName(send(f, data)), "MintAssertsName", id);
+            }
+            assert.equal(await f.read.token_by_mint([MINT]), zeroAddress);
+            // an entry for another mint, and nothing else, names nothing
+            await plantVector("t2022/no-pointer/entry-for-other-mint-no-metaplex");
+            assert.equal(await revertName(send(f, data)), null);
+            assert.notEqual(await f.read.token_by_mint([MINT]), zeroAddress);
+        });
+
         it("a Metaplex account that cannot be read refuses the registration; a listed but absent one does not", async () => {
             const f = await newFactory();
             const data = calldata(MINT, toHex("My Token"), toHex("MYT"));
