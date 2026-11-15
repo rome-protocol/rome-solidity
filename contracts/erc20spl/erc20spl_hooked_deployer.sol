@@ -4,8 +4,7 @@ pragma solidity 0.8.28;
 import {ERC20Users} from "./erc20spl.sol";
 import {SPL_ERC20_Token2022Hooked} from "./erc20spl_token2022_hooked.sol";
 
-/// @dev Keeps the hooked wrapper's creation code out of ERC20SPLFactory's
-/// runtime bytecode. Only the factory that created this deployer may use it.
+/// @dev Keeps the hooked wrapper's creation code out of its factory's bytecode; only the creating factory may call `deploy`.
 contract ERC20SPLHookedDeployer {
     address public immutable factory;
 

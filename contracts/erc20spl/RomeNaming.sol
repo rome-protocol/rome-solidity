@@ -4,10 +4,7 @@ pragma solidity ^0.8.20;
 /// @title RomeNaming
 /// @notice Rome's naming rule: name = origin name cut to 25 bytes + " (Rome)", symbol = origin
 ///         symbol cut to 10 bytes. Both fit Metaplex (32 and 10 bytes).
-/// @dev Fails closed on the WHOLE text before the cut, so the placeholder texts a reader emits
-///      ("NO_NAME", "NO_SYMBOL", "NOT_VALID_ENCODING") are caught. Refused: empty, a placeholder,
-///      invalid UTF-8, or a Unicode 16.0.0 Cc/Cf code point (a later Cf addition passes until a
-///      successor factory). A text too long to check in one transaction reverts.
+/// @dev Checks the whole text before the cut and refuses empty, placeholder, invalid UTF-8 and Unicode 16.0.0 Cc/Cf text; a text too long to check in one transaction reverts.
 library RomeNaming {
     error BadName();
     error BadSymbol();

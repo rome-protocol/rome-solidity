@@ -7,7 +7,6 @@ library Convert {
         bytes32 value;
     }
 
-    error SafeCastOverflowedUintDowncast(uint8 bits, uint256 value);
     error InvalidCOptionTag(uint32 tag);
 
     function read_coption_bytes32(bytes memory data, uint256 offset)
@@ -148,15 +147,6 @@ library Convert {
             uint8(chain_id >> 48),
             uint8(chain_id >> 56)
         );
-    }
-
-    function uint_to_bytes(uint src) internal pure returns (bytes memory) {
-        bytes memory dst = new bytes(32);
-
-        assembly {
-            mstore(add(dst, 32), src)
-        }
-        return dst;
     }
 
     function bytes_to_bytes32(bytes memory src) internal pure returns (bytes32) {

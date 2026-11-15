@@ -3,17 +3,7 @@ pragma solidity 0.8.28;
 
 /// @title SolanaConstants
 /// @notice Canonical Solana sysvar + program pubkeys for CPI plumbing.
-/// @dev
-///   Each constant is the bytes32 representation of the bs58-decoded Solana
-///   pubkey. Tests in `tests/cpi/SolanaConstants.test.ts` bs58-decode the
-///   canonical name and cross-check every value.
-///
-///   Maintenance: never hand-derive these. If a new program constant is
-///   needed, add it here AND add a bs58 cross-check row to the test file.
-///
-///   Source: values copied verbatim from earlier Meteora, Kamino and Drift
-///   adapters and cross-checked in the test file. Copy the bytes; don't
-///   re-derive them.
+/// @dev bs58-decoded pubkeys; tests/cpi/SolanaConstants.test.ts cross-checks each.
 library SolanaConstants {
     // ──────────────────────────────────────────────────────────────────
     // System + sysvars
@@ -47,7 +37,6 @@ library SolanaConstants {
         0x8c97258f4e2489f1bb3d1029148e0d830b5a1399daff1084048e7bd8dbe9f859;
 
     /// TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb — Token-2022.
-    /// Forward-compatible; no current adapter uses Token-2022 extensions.
     bytes32 internal constant TOKEN_2022_PROGRAM =
         0x06ddf6e1ee758fde18425dbce46ccddab61afc4d83b90d27febdf928d8a18bfc;
 }

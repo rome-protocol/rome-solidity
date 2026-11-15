@@ -14,9 +14,7 @@ import {AccountReader} from "../cpi/AccountReader.sol";
 /// @title ERC20SPLNamedFactory
 /// @notice Registers a Solana mint once and deploys its ERC-20 wrapper, named by RomeNaming:
 ///         "<origin name cut to 25 bytes> (Rome)", origin symbol cut to 10 bytes.
-/// @dev No owner, no upgrade, no setter; no caller picks a name. The mint is the key, never the
-///      symbol. `grandfatherHash` is keccak256(abi.encode(list)) of the fixed-at-deploy list of
-///      `(uint32 network, bytes32 mint, address wrapper)` entries.
+/// @dev No owner, upgrade or setter; keyed by mint; only a mint's own authority may supply origin strings; grandfatherHash = keccak256(abi.encode(list)).
 contract ERC20SPLNamedFactory {
     enum WrapperKind {
         None,
@@ -55,8 +53,6 @@ contract ERC20SPLNamedFactory {
     error AlreadyRegistered();
     error Grandfathered();
     error NoName();
-    error BadName();
-    error BadSymbol();
     /// @dev Metadata pointer to an account that is neither the mint nor its Metaplex account.
     error ExternalPointer();
     error NotMintAuthority();

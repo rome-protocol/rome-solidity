@@ -29,9 +29,9 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
 
     string private _name;
     string private _symbol;
-    ERC20Users private _users; // not read here; kept for the deploy ABI
+    // Not read; kept for the constructor ABI.
+    ERC20Users private _users;
 
-    error ERC20InvalidApprover(address approver);
     error ERC20InvalidSpender(address spender);
     error ERC20InsufficientAllowance(
         address spender,
@@ -84,7 +84,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return _symbol;
     }
 
-    /// @notice Never reverts (ERC-20): 0 for an uninitialised mint.
+    /// @notice The mint's supply, 0 for a missing mint; reverts after an earlier cached operation in the same transaction.
     function totalSupply() external view returns (uint256) {
         if (AccountReader.lamportsOf(mint_id) == 0) {
             return 0;
@@ -132,7 +132,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return HelperProgram.ata(user, mint_id);
     }
 
-    /// @dev The one create site; sets the created-flag.
+    /// @dev Creates `user`'s ATA and sets its created-flag.
     function _createAta(address user) internal {
         (bool ok, bytes memory result) = address(AssociatedSplCached).delegatecall(
             abi.encodeWithSignature(

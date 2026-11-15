@@ -32,7 +32,7 @@ describe("AccountReader", () => {
         assert.equal(existsSync(WRAPPER_PATH), true, `expected ${WRAPPER_PATH} to exist`);
     });
 
-    it("declares the four expected internal view functions", () => {
+    it("declares the three expected internal view functions", () => {
         const src = readFileSync(LIB_PATH, "utf8");
 
         // Each function: typed name, internal view, expected signature.
@@ -40,7 +40,6 @@ describe("AccountReader", () => {
             /function\s+lamportsOf\s*\(\s*bytes32\s+\w+\s*\)\s+internal\s+view\s+returns\s*\(\s*uint64\s*\)/,
             /function\s+readU64At\s*\(\s*bytes32\s+\w+\s*,\s*uint16\s+\w+\s*\)\s+internal\s+view\s+returns\s*\(\s*uint64\s*\)/,
             /function\s+readBytesAt\s*\(\s*bytes32\s+\w+\s*,\s*uint16\s+\w+\s*,\s*uint16\s+\w+\s*\)\s+internal\s+view\s+returns\s*\(\s*bytes\s+memory\s*\)/,
-            /function\s+readBytes32At\s*\(\s*bytes32\s+\w+\s*,\s*uint16\s+\w+\s*\)\s+internal\s+view\s+returns\s*\(\s*bytes32\s*\)/,
         ];
 
         for (const re of expected) {
@@ -74,7 +73,7 @@ describe("AccountReader", () => {
         assert.equal(/CpiProgram\.account_u64_at\s*\(/.test(src), true,
             "readU64At must dispatch through CpiProgram.account_u64_at");
         assert.equal(/CpiProgram\.account_data_at\s*\(/.test(src), true,
-            "readBytesAt/readBytes32At must dispatch through CpiProgram.account_data_at");
+            "readBytesAt must dispatch through CpiProgram.account_data_at");
 
         assert.equal(/\.call\s*\(/.test(src), false,
             "library must not use raw .call(...) — use typed CpiProgram dispatch");
@@ -82,10 +81,10 @@ describe("AccountReader", () => {
             "library must not use raw .delegatecall(...) — use typed CpiProgram dispatch");
     });
 
-    it("wrapper exposes all four functions for tests", () => {
+    it("wrapper exposes all three functions for tests", () => {
         const src = readFileSync(WRAPPER_PATH, "utf8");
 
-        for (const name of ["lamportsOf", "readU64At", "readBytesAt", "readBytes32At"]) {
+        for (const name of ["lamportsOf", "readU64At", "readBytesAt"]) {
             assert.match(src, new RegExp(`function\\s+${name}\\s*\\(`),
                 `wrapper must expose ${name}`);
         }

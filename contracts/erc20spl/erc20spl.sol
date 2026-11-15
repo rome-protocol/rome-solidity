@@ -53,7 +53,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
 
     string private _name;
     string private _symbol;
-    // Not read by this contract; kept for the deploy ABI and SimpleActivator.
+    // Not read; kept for the constructor ABI.
     ERC20Users internal _users;
 
     // Pure EVM allowance; separate from the user's one-time SPL delegate grant to this wrapper.
@@ -66,7 +66,6 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
     // Once true, the ATA exists (never closed on Rome); false falls through to probe/create.
     mapping(address => bool) private _ataCreated;
 
-    error ERC20InvalidApprover(address approver);
     error ERC20InvalidSpender(address spender);
     error ERC20InsufficientAllowance(address spender, uint256 currentAllowance, uint256 requiredAllowance);
 
@@ -78,8 +77,6 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         ERC20Users users_,
         bool supports_armed_transfer_hook
     ) {
-        // An armed hook needs accounts these paths do not supply, so admission refuses it (a
-        // present but unarmed hook is accepted).
         (, uint8 mint_decimals, bytes32 hook_program, , uint32 extensions) = HelperProgram.mint_info(_mint_id);
         if (hook_program != bytes32(0) && !supports_armed_transfer_hook) {
             revert ArmedTransferHookUnsupported(_mint_id, hook_program);
@@ -101,7 +98,7 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         return HelperProgram.ata(user, mint_id);
     }
 
-    /// @dev The one create site; sets the created-flag.
+    /// @dev Creates `user`'s ATA and sets its created-flag.
     function _createAta(address user) internal {
         (bool success, bytes memory result) = address(HelperProgram).delegatecall(
             abi.encodeWithSignature(
@@ -147,8 +144,8 @@ abstract contract SPL_ERC20Base is IERC20, IERC20Metadata {
         return _symbol;
     }
 
+    /// @notice The mint's supply, 0 for a missing mint; reverts after an earlier cached operation in the same transaction.
     function totalSupply() public view virtual returns (uint256) {
-        // Views never revert (ERC-20).
         if (AccountReader.lamportsOf(mint_id) == 0) {
             return 0;
         }
