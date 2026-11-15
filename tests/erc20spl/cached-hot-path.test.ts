@@ -195,6 +195,17 @@ describe("SPL_ERC20_cached — transfer path", () => {
             await ledger.write.setNotListed([ata, false]);
             await ledger.write.setMint([0, 0]);
         });
+
+        it("a fee-capable wrapper's escrow balance read fails closed once the escrow is created", async () => {
+            await ledger.write.setMint([TRANSFER_FEE_CONFIG_BIT, 30]);
+            const f = await as(0, feeWrapper);
+            await f.write.transfer([ledger.address, 5n]);
+            const escrow = deriveAta(feeWrapper.address, FEE_MINT);
+            await ledger.write.setNotListed([escrow, true]);
+            await assert.rejects(f.write.transfer([ledger.address, 5n]), /SolanaAccountNotListed/);
+            await ledger.write.setNotListed([escrow, false]);
+            await ledger.write.setMint([0, 0]);
+        });
     });
 
     it("a fee-capable wrapper still reads the live fee on every transfer", async () => {
