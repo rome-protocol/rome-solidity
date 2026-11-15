@@ -11,7 +11,7 @@ import {
 } from "../interface.sol";
 import {AccountReader} from "../cpi/AccountReader.sol";
 import {Convert} from "../convert.sol";
-import {ERC20Users, ArmedTransferHookUnsupported} from "./erc20spl.sol";
+import {ArmedTransferHookUnsupported} from "./erc20spl.sol";
 
 /// @title SPL_ERC20_cached
 /// @notice ERC-20 wrapper over an SPL mint; every mutation goes through the cached precompiles,
@@ -29,10 +29,11 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
 
     string private _name;
     string private _symbol;
-    // Not read; kept for the constructor ABI.
-    ERC20Users private _users;
 
     error ERC20InvalidSpender(address spender);
+    error ERC20InvalidReceiver(address receiver);
+    /// @dev The program does not list the account in this transaction, so its state is unknown.
+    error SolanaAccountNotListed();
     error ERC20InsufficientAllowance(
         address spender,
         uint256 currentAllowance,
@@ -46,9 +47,6 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     // SPL sent to a not-yet-deployed CREATE2 address is not migrated when it deploys.
     mapping(address => uint256) private _escrow;
 
-    // Once true, the ATA exists (never closed on Rome); false falls through to the create.
-    mapping(address => bool) private _ataCreated;
-
     bytes32 public immutable escrow_ata;
 
     bool private _escrowAtaCreated;
@@ -57,8 +55,7 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         bytes32 _mint_id,
         address _cpi_program,
         string memory name_,
-        string memory symbol_,
-        ERC20Users users_
+        string memory symbol_
     ) {
         // Read on this contract's own track: after a cached invoke, a legacy cross-state read is
         // refused; an armed hook is refused too.
@@ -71,7 +68,6 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         decimals = mint_decimals;
         _name = name_;
         _symbol = symbol_;
-        _users = users_;
         escrow_ata = HelperProgram.ata(address(this), _mint_id);
         fee_capable = (extensions & (uint32(1) << TRANSFER_FEE_CONFIG_EXTENSION_BIT)) != 0;
     }
@@ -92,7 +88,8 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return uint256(AccountReader.readU64At(mint_id, 36));
     }
 
-    /// @notice Never reverts. Uses `SplCached.account`, not `AccountReader.lamportsOf`, so a
+    /// @notice 0 for an account without a token account; reverts `SolanaAccountNotListed` when the
+    ///         transaction omits it. Uses `SplCached.account`, not `AccountReader.lamportsOf`, so a
     ///         same-transaction cached credit is visible. A contract's balance is its escrow
     ///         ledger.
     function balanceOf(address account) public view returns (uint256) {
@@ -101,7 +98,8 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         }
         try SplCached.account(account, mint_id) returns (ISplCached.Account memory acc) {
             return uint256(acc.amount);
-        } catch {
+        } catch (bytes memory r) {
+            if (_notListed(r)) revert SolanaAccountNotListed();
             return 0;
         }
     }
@@ -114,7 +112,8 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     function isEnabled(address user) public view returns (bool) {
         try SplCached.account(user, mint_id) returns (ISplCached.Account memory acc) {
             return acc.delegate == HelperProgram.pda(address(this)) && acc.delegated_amount > 0;
-        } catch {
+        } catch (bytes memory r) {
+            if (_notListed(r)) revert SolanaAccountNotListed();
             return false;
         }
     }
@@ -124,15 +123,33 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         return HelperProgram.ata(user, mint_id);
     }
 
-    /// @notice Creates the user's ATA if not known to exist (idempotent); returns its address.
+    /// @notice Creates the user's ATA if it is missing; returns its address.
     function ensure_token_account(address user) public returns (bytes32) {
-        if (!_ataCreated[user]) {
-            _createAta(user);
-        }
+        if (user == address(0)) revert ERC20InvalidReceiver(address(0));
+        _ensureAta(user);
         return HelperProgram.ata(user, mint_id);
     }
 
-    /// @dev Creates `user`'s ATA and sets its created-flag.
+    /// @dev Probes `user`'s token account (overlay-aware) and creates it on a miss.
+    function _ensureAta(address user) internal {
+        try SplCached.account(user, mint_id) returns (ISplCached.Account memory) {}
+        catch (bytes memory r) {
+            if (_notListed(r)) revert SolanaAccountNotListed();
+            _createAta(user);
+        }
+    }
+
+    /// @dev True when `r` is the program's `Error("account not found: ...")`.
+    function _notListed(bytes memory r) private pure returns (bool) {
+        if (r.length < 4 + 32 + 32 + 19 || bytes4(r) != 0x08c379a0) return false;
+        bytes19 head;
+        assembly ("memory-safe") {
+            head := mload(add(r, 100))
+        }
+        return head == "account not found: ";
+    }
+
+    /// @dev Creates `user`'s ATA.
     function _createAta(address user) internal {
         (bool ok, bytes memory result) = address(AssociatedSplCached).delegatecall(
             abi.encodeWithSignature(
@@ -142,11 +159,11 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
             )
         );
         require(ok, string(Convert.revert_msg(result)));
-        _ataCreated[user] = true;
     }
 
     /// @notice Creates the user's ATA; idempotent.
     function create_token_account(address user) external returns (bytes32) {
+        if (user == address(0)) revert ERC20InvalidReceiver(address(0));
         _createAta(user);
         return HelperProgram.ata(user, mint_id);
     }
@@ -178,7 +195,8 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
         try SplCached.account(address(this), mint_id) returns (ISplCached.Account memory) {
             _escrowAtaCreated = true;
             return escrow_ata;
-        } catch {
+        } catch (bytes memory r) {
+            if (_notListed(r)) revert SolanaAccountNotListed();
             (bool ok, bytes memory result) = address(AssociatedSplCached).delegatecall(
                 abi.encodeWithSignature("create_ata(address,bytes32)", address(this), mint_id)
             );
@@ -192,7 +210,8 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     function _wrapperOnChainBalance() internal view returns (uint256) {
         try SplCached.account(address(this), mint_id) returns (ISplCached.Account memory acc) {
             return uint256(acc.amount);
-        } catch {
+        } catch (bytes memory r) {
+            if (_notListed(r)) revert SolanaAccountNotListed();
             return 0;
         }
     }
@@ -200,6 +219,11 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
     /// @dev EOAs move SPL under their PDA via the delegate grant; contracts via this wrapper's
     ///      escrow ATA.
     function _transfer(address from, address to, uint256 value) internal returns (bool) {
+        if (to == address(0)) revert ERC20InvalidReceiver(address(0));
+        if (value == 0) {
+            emit Transfer(from, to, 0);
+            return true;
+        }
         require(value <= type(uint64).max, "Transfer amount exceeds uint64");
 
         bool fromIsContract = from.code.length > 0;
@@ -231,13 +255,8 @@ contract SPL_ERC20_cached is IERC20, IERC20Metadata {
 
         if (toIsContract) {
             _ensureWrapperAta();
-        } else if (!_ataCreated[to]) {
-            // Unknown recipient: probe once (overlay-aware) and remember the answer.
-            try SplCached.account(to, mint_id) returns (ISplCached.Account memory) {
-                _ataCreated[to] = true;
-            } catch {
-                _createAta(to);
-            }
+        } else {
+            _ensureAta(to);
         }
 
         bool ok;

@@ -16,8 +16,9 @@ interface IWrapperLite {
 ///         cache-based transfer, then explicitly reverts. Expected:
 ///         recipient's SPL balance is UNCHANGED post-tx because the
 ///         cache overlay discards the queued instruction on EVM revert.
-///         Contrast with the CPI-based SPL_ERC20 wrapper where the SPL
-///         transfer would already have hit Solana before the revert.
+///         Contrast with the CPI-based SPL_ERC20 wrapper, whose SPL transfer
+///         hits Solana at call time; a revert of that frame aborts the whole
+///         transaction and cannot be caught.
 contract CachedRevertDemo {
     /// @notice Transfer then revert. Outer call MUST revert; recipient
     ///         balance MUST be unchanged after the tx.

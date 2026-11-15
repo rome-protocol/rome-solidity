@@ -71,7 +71,7 @@ Builder-facing Solidity libraries layered over the CPI precompile — the ergono
 | | **Cached** — `SPL_ERC20_cached` | **CPI-based** — `SPL_ERC20` |
 |---|---|---|
 | Dispatches through | cached precompiles `SplCached 0xff…05` / `AssociatedSplCached 0xff…06` | `HelperProgram 0xff…09` → real CPI Invoke |
-| Side effect | journaled → **commits at end-of-tx, unwinds on EVM revert** | **hits Solana at call time** — not revertable if the EVM tx later reverts |
+| Side effect | journaled → **commits at end-of-tx, unwinds on EVM revert** | **hits Solana at call time**; a revert of any frame that ran one aborts the whole transaction and cannot be caught (only the cached track is journaled and catchable) |
 | Iterative (multi-step) VM | ✅ compatible | ✗ hits `CpiProhibitedInIterativeTx` after the first transfer |
 | CU cost | cheaper (2–10%) | higher |
 | **Use it for** | **the default** — all standard ERC-20 flows, anything composing in the iterative VM (multi-hop DEX, bulkers), anything needing EVM-revert atomicity | operations the cached track can't do — pushing SPL out to an **arbitrary raw Solana wallet** (`bridgeOutToSolana` / `ensureRecipientAta`, which need the **permanently-CPI-only** `create_ata_for_key`) |
@@ -82,10 +82,19 @@ The factories deploy the **cached** wrapper for every token (`new SPL_ERC20_cach
 |---|---|---|
 | `SPL_ERC20_cached` | Cached-track ERC-20 wrapper (default); no CPI Invoke, overlay-aware reads | `transfer`/`transferFrom`/`approve`/`mint_to` → `SplCached` |
 | `SPL_ERC20` | CPI-track ERC-20 wrapper; can push SPL to a raw Solana wallet | `bridgeOutToSolana(bytes32,uint256)`, `transfer`/`approve` via `HelperProgram` |
-| `ERC20Users` | Legacy registry: EVM `address` → its `external_auth` Solana PDA. Written only by `SimpleActivator`; the wrappers no longer register callers on transfer (nothing reads it, and the CALL + SSTORE cost every transfer) | `ensure_user` / `get_user` |
+| `ERC20Users` | Legacy registry: EVM `address` → its `external_auth` Solana PDA. Written only by `SimpleActivator`; the wrappers neither take nor read it | `ensure_user` / `get_user` |
 | `ERC20SPLNamedFactory` | The one factory for new wrappers. Wraps an existing SPL mint and **names it by rule**: "<origin name cut to 25 bytes> (Rome)" · the origin's own symbol cut to 10 bytes (no `ro` prefix), from the mint's own metadata, read fail-closed. No caller picks a name; no symbol table; a grandfather list fixed at deploy; `preview(mint)` shows the result or the refusal | `add_spl_token_with_metadata` / `add_spl_token_by_authority` (a mint the caller made) / `preview` / `create_token_mint` |
 | `ERC20SPLFactory` | Legacy (3.0.0, 9.0.0 and earlier): stays deployed and callable, chosen names and a first-come symbol table; no script here makes a wrapper through it | `add_spl_token_with_metadata` / `add_spl_token_no_metadata` / `create_token_mint` |
 | `cached_revert_demo` | Executable proof of the cached track's revert / iterative / one-track properties | (demos) |
+
+**Wrapper behaviour.**
+- A transfer to the zero address reverts `ERC20InvalidReceiver`; so do `ensure_token_account` and `create_token_account` for it. A zero-value transfer emits `Transfer` and returns without touching a precompile.
+- A transfer probes the recipient's token account every time and creates it when it is missing. Nothing is remembered per recipient, so a closed account is created again. The CPI-track wrapper counts an account as existing only when it holds lamports and the mint's token program owns it.
+- The cached wrapper's reads (`balanceOf`, `isEnabled`) and its transfer probes revert `SolanaAccountNotListed` when the transaction does not list the account; a listed but absent account reads 0.
+- The hook-aware wrapper follows the mint's live hook: with no hook a transfer is a plain `TransferChecked` and the supplied tail is ignored; after a rotation the tail is validated against the new hook's validation account.
+- Contract balances share one escrow token account per wrapper, so an issuer freeze or seizure of it reaches every contract holder of that token. A mint whose hook or fee authority is live can lock contract-held balances while it is armed.
+- Do not receive wrapper tokens in a constructor: SPL sent during construction stays in the contract's own token account.
+- Wrapper `Transfer` events do not cover every credit (a mint to an account does not emit one); an indexer should read the SPL balance as well.
 
 **Where used:** the AMM & lending forks trade against the **cached** wrappers — Uniswap-style AMM forks, `rome-aave-v3` (reserves = wUSDC/wETH/wSOL cached), `compound-on-rome-comet` (collateral/base, wired by address); UIs `aerarium`, `cardo`, `rome-aave-v3-demo` read/transfer them; the wrapper factory (`ERC20SPLNamedFactory` on a chain where it is live, else the legacy `ERC20SPLFactory`) is used by the AMM forks and `cardo`. The non-cached `SPL_ERC20` has no public app consumer by name — it's superseded by the cached track on devnet and retained for its CPI-only exit path.
 

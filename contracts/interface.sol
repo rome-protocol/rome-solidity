@@ -44,8 +44,9 @@ interface IWithdraw {
 // Route through the Rome EVM program journal so non-EVM side effects
 // (SPL / ATA / System CPIs + Withdraw) are revertable alongside EVM
 // diffs. The non-cached precompiles above (Withdraw at 0x42..16,
-// System at 0xff..07, etc.) remain wired and continue to dispatch the
-// legacy non-revertable path.
+// System at 0xff..07, etc.) dispatch the legacy track: their side effects hit
+// Solana at call time, and a revert of any frame that ran one aborts the whole
+// transaction and cannot be caught.
 
 interface IWithdrawCached {
     // 0x4d8b0ea4 — payable

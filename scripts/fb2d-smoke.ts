@@ -1,13 +1,12 @@
 // FB-2d + FB-2b + FB-2e smoke test on Hadrian
 // ===========================================
 //
-// 1. Deploy fresh ERC20Users
-// 2. Deploy a patched SPL_ERC20_cached pointing at the existing wUSDC mint
+// 1. Deploy a patched SPL_ERC20_cached pointing at the existing wUSDC mint
 //    (`0x3b442cb3912157f13a933d0134282d032b5ffecd01a2dbf1b7790608df002ea7`)
 //    with CPI precompile address `0xff00...08`. The patched wrapper carries
 //    FB-2d (balanceOf), FB-2b (allowance), FB-2e (approve auto-creates owner ATA).
-// 3. Read-side check: `balanceOf(<random fresh address>)` → expect 0, not revert
-// 4. Approve-side check: eth_call simulating approve() from a fresh-but-funded
+// 2. Read-side check: `balanceOf(<random fresh address>)` → expect 0, not revert
+// 3. Approve-side check: eth_call simulating approve() from a fresh-but-funded
 //    address — expect success (no revert).
 //
 // Establishes that the wrapper now matches ERC-20 spec across all three view
@@ -59,23 +58,17 @@ async function main() {
     console.log("Pointing wrapper at wUSDC's existing mint:", WUSDC_MINT_ID);
     console.log("CPI precompile:    ", CPI_PRECOMPILE);
 
-    // Step 1: deploy fresh ERC20Users
-    console.log("\n[1/3] Deploying fresh ERC20Users…");
-    const users = await viem.deployContract("ERC20Users", []);
-    console.log("      ERC20Users @", users.address);
-
-    // Step 2: deploy patched SPL_ERC20_cached
-    console.log("\n[2/3] Deploying patched SPL_ERC20_cached…");
+    // Step 1: deploy patched SPL_ERC20_cached
+    console.log("\n[1/2] Deploying patched SPL_ERC20_cached…");
     const wrapper = await viem.deployContract("SPL_ERC20_cached", [
         WUSDC_MINT_ID,
         CPI_PRECOMPILE,
         "wUSDC FB-2d smoke",
         "wUSDC_fb2d",
-        users.address,
     ]);
     console.log("      SPL_ERC20_cached @", wrapper.address);
 
-    // Step 3: smoke probe
+    // Step 2: smoke probe
     const ERC20_ABI = [
         {
             type: "function",
@@ -160,7 +153,6 @@ async function main() {
 
     console.log("\n✅ ALL FIXES VERIFIED ON-CHAIN — FB-2b, FB-2d, FB-2e");
     console.log("\nAddresses for follow-up smoke (Hadrian):");
-    console.log(`  ERC20Users:          ${users.address}`);
     console.log(`  SPL_ERC20_cached:    ${wrapper.address}  (FB-2b+2d+2e patched)`);
 }
 

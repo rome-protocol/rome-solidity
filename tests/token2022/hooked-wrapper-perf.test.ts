@@ -30,7 +30,7 @@ describe("SPL_ERC20_Token2022Hooked hot-path dispatch", () => {
 
     assert.match(
       validate,
-      /returns \(uint16 feeBps\)/,
+      /returns \(uint16 feeBps, ICrossProgramInvocation\.AccountMeta\[\] calldata tail\)/,
       "the metadata validation pass must return the fee predicate it already read",
     );
     assert.equal(

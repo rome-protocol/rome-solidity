@@ -9,10 +9,9 @@ import {
 
 /// SPL_ERC20_Token2022Hooked — the hook-aware wrapper's transfer path derived
 /// `RomeEVMAccount.pda(address(this))` (a HelperProgram precompile call) on
-/// EVERY transfer for a value that never changes, and registered the caller in
-/// `ERC20Users` for nothing. The wrapper PDA is now an immutable (`self_pda`)
-/// and the registry call is gone. `mint_info` per transfer STAYS: it is the
-/// check that the hook program was not rotated under the wrapper.
+/// EVERY transfer for a value that never changes. The wrapper PDA is an
+/// immutable (`self_pda`). `mint_info` per transfer STAYS: it is how the wrapper
+/// follows the live hook.
 describe("SPL_ERC20_Token2022Hooked — warm transfer hot path", async () => {
     const HELPER = HELPER_PROGRAM_ADDRESS;
     const CPI = CPI_PROGRAM_ADDRESS;
@@ -23,7 +22,6 @@ describe("SPL_ERC20_Token2022Hooked — warm transfer hot path", async () => {
     const MINT: `0x${string}` = "0x0601000000000000000000000000000000000000000000000000000000000077";
 
     let helper: any;
-    let users: any;
     let hooked: any;
     let wallets: any[];
     const addr = (i: number) => wallets[i].account.address as `0x${string}`;
@@ -38,8 +36,7 @@ describe("SPL_ERC20_Token2022Hooked — warm transfer hot path", async () => {
             await conn.provider.request({ method: "hardhat_setCode", params: [a, code] });
         }
         helper = await viem.getContractAt("PrecompileMock", HELPER as `0x${string}`);
-        users = await viem.deployContract("TrappingUsers");
-        hooked = await viem.deployContract("SPL_ERC20_Token2022Hooked", [MINT, CPI, "Wrapped", "WRAP", users.address]);
+        hooked = await viem.deployContract("SPL_ERC20_Token2022Hooked", [MINT, CPI, "Wrapped", "WRAP"]);
     });
 
     const metas = async () => [
@@ -51,26 +48,22 @@ describe("SPL_ERC20_Token2022Hooked — warm transfer hot path", async () => {
         assert.equal(await hooked.read.self_pda(), await helper.read.pda([hooked.address]));
     });
 
-    it("a warm hooked transfer re-derives no PDA and registers no caller", async () => {
+    it("a warm hooked transfer re-derives no PDA", async () => {
         const w = await viem.getContractAt("SPL_ERC20_Token2022Hooked", hooked.address, { client: { wallet: wallets[0] } });
         await w.write.transferWithHookAccounts([addr(1), 5n, await metas()]);
         await helper.write.setPdaTrap([true]);
-        await users.write.setArmed([true]);
         const tx = await w.write.transferWithHookAccounts([addr(1), 5n, await metas()]);
-        assert.ok(tx, "warm hooked transfer must succeed with the PDA and registry traps armed");
+        assert.ok(tx, "warm hooked transfer must succeed with the PDA trap armed");
         await helper.write.setPdaTrap([false]);
-        await users.write.setArmed([false]);
     });
 
     it("transferFromWithHookAccounts takes the same path", async () => {
         const w0 = await viem.getContractAt("SPL_ERC20_Token2022Hooked", hooked.address, { client: { wallet: wallets[0] } });
         await w0.write.approve([addr(2), 100n]);
         await helper.write.setPdaTrap([true]);
-        await users.write.setArmed([true]);
         const w2 = await viem.getContractAt("SPL_ERC20_Token2022Hooked", hooked.address, { client: { wallet: wallets[2] } });
         assert.ok(await w2.write.transferFromWithHookAccounts([addr(0), addr(1), 5n, await metas()]));
         assert.equal(await hooked.read.allowance([addr(0), addr(2)]), 95n);
         await helper.write.setPdaTrap([false]);
-        await users.write.setArmed([false]);
     });
 });

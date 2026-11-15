@@ -35,13 +35,11 @@ describe("SPL_ERC20_cached.transferFrom, executed", async () => {
         "0x0600000000000000000000000000000000000000000000000000000000000042";
 
     async function deployCached() {
-        const users = await viem.deployContract("ERC20Users");
         return viem.deployContract("SPL_ERC20_cached", [
             MINT,
             SPL_CACHED,
             "Wrapped",
             "WRAP",
-            users.address,
         ]);
     }
 

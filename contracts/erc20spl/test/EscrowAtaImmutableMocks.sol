@@ -8,14 +8,11 @@ import {ISplCached} from "../../interface.sol";
 ///
 /// @dev Both wrapper families derive their own escrow ATA once at
 ///      construction instead of re-deriving it on every contract-destined
-///      transfer, caching the existence probe behind a monotone flag —
-///      same shape as `AtaCreatedFlagMocks.sol`'s per-user fast path, one
-///      level up (the wrapper's own ATA, not an arbitrary user's). Uses
-///      the same REVERTING TRAP technique — see that file's header.
+///      transfer, caching the existence probe behind a monotone flag (the
+///      wrapper's own ATA, not an arbitrary user's). Uses the REVERTING TRAP
+///      technique of `HotPathMocks.sol` — see that file's header.
 contract EscrowAtaLedger {
-    // Legacy track: ATA pubkey -> created. Keyed identically to
-    // `AtaCreatedFlagLedger.created` (both derive via the mock's own
-    // `ata()` function), kept separate so the two suites never share state.
+    // Legacy track: ATA pubkey -> created, derived via the mock's own `ata()` function.
     mapping(bytes32 => bool) public createdAta;
     // Cached track: keccak(user, mint) -> created (SplCached.account has no
     // raw-ATA-pubkey overload in this mock; keying on the inputs is enough).

@@ -16,9 +16,8 @@ import {SPL_ERC20, ERC20Users} from "../erc20spl/erc20spl.sol";
 ///              rents + ~5 fresh-recipient-transfer reserve).
 ///           2. wUSDC ATA created, owned by the user's PDA.
 ///           3. wSOL ATA created, owned by the user's PDA.
-///           4. User registered in BOTH wrappers' `ERC20Users` mapping,
-///              so wrapper writes (`transfer` / `approve` / `transferFrom`)
-///              and DEX swaps resolve `users.get_user(msg.sender)`
+///           4. User registered in the shared `ERC20Users` mapping,
+///              so DEX swaps resolve `users.get_user(msg.sender)`
 ///              without reverting.
 ///
 ///         Replaces the previous three-call flow (`activate()` +
@@ -107,11 +106,8 @@ contract SimpleActivator {
     SPL_ERC20 public immutable wsolWrapper;
 
     /// @notice Shared ERC20Users contract — registers user PDAs so
-    ///         downstream wrapper / DEX calls can `get_user(msg.sender)`
-    ///         without reverting with "User does not exist". Both
-    ///         `wusdcWrapper` and `wsolWrapper` consult this same
-    ///         contract (instantiated by `ERC20SPLFactory` at chain
-    ///         bring-up and shared across all factory-deployed wrappers).
+    ///         downstream DEX calls can `get_user(msg.sender)` without
+    ///         reverting with "User does not exist".
     ERC20Users public immutable users;
 
     /// @notice The wUSDC wrapper's underlying SPL mint pubkey. Captured
@@ -217,15 +213,9 @@ contract SimpleActivator {
         );
         if (!ok3) revert CpiFailed("create_ata(wSOL)");
 
-        // CPI 4 + 5 — register user in both wrappers' ERC20Users
-        // mappings. Single shared `users` contract (instantiated by
-        // ERC20SPLFactory at chain bring-up and shared across all
-        // factory-deployed wrappers — so wusdcWrapper._users ==
-        // wsolWrapper._users == this contract's `users` field), but
-        // we follow the convention of treating each wrapper's mapping
-        // independently in case the factory layout ever changes. The
-        // mapping write inside `ensure_user` is idempotent — a re-run
-        // returns the existing entry and writes nothing.
+        // Register the user in the shared `users` mapping. The write
+        // inside `ensure_user` is idempotent — a re-run returns the
+        // existing entry and writes nothing.
         users.ensure_user(user);
 
         emit Activated(user, msg.value);

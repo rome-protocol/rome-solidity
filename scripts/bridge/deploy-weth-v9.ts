@@ -1,6 +1,5 @@
 import hardhat from "hardhat";
 import { assertTestnetSend } from "./lib/testnet-guard.js";
-import { readDeployments } from "../lib/deployments.js";
 import { assertDirectWrapperDeployAllowed } from "../lib/wrapper-factory.js";
 import { base58ToBytes32 } from "../lib/pubkey.js";
 const CPI = "0xFF00000000000000000000000000000000000008" as const;
@@ -9,7 +8,7 @@ const CPI = "0xFF00000000000000000000000000000000000008" as const;
 const WETH_MINT = process.env.WETH_MINT ?? "6F5YWWrUMNpee8C6BDUc6DmRvYRMDDTgJHwKhbXuifWs";
 async function main() {
   const { viem, networkName } = (await hardhat.network.connect()) as unknown as {
-    viem: { getWalletClients: () => Promise<Array<{ account?: { address: `0x${string}` } }>>; deployContract: (n: "SPL_ERC20", a: readonly [`0x${string}`,`0x${string}`,string,string,`0x${string}`]) => Promise<{ address: `0x${string}` }>; };
+    viem: { getWalletClients: () => Promise<Array<{ account?: { address: `0x${string}` } }>>; deployContract: (n: "SPL_ERC20", a: readonly [`0x${string}`,`0x${string}`,string,string]) => Promise<{ address: `0x${string}` }>; };
     networkName: string;
   };
   const [admin] = await viem.getWalletClients();
@@ -17,10 +16,8 @@ async function main() {
   // No wrapper is deployed directly on a chain where the named wrapper factory is live.
   assertDirectWrapperDeployAllowed(networkName, "deploy a wrapper directly (deploy-weth-v9)");
   await assertTestnetSend(await (viem as any).getPublicClient(), `${networkName} deploy-weth-v9`);
-  const d = readDeployments(networkName) as Record<string, { address?: `0x${string}` }>;
-  const usersAddr = d["ERC20Users"]?.address;
   const mint = base58ToBytes32(WETH_MINT) as `0x${string}`;
-  const w = await viem.deployContract("SPL_ERC20", [mint, CPI, "Rome WETH (v9 ensureRecipientAta)", "WETHv9", usersAddr!]);
+  const w = await viem.deployContract("SPL_ERC20", [mint, CPI, "Rome WETH (v9 ensureRecipientAta)", "WETHv9"]);
   console.log("=== DEPLOYED WETH v9 ===");
   console.log(`Address: ${w.address}`);
 }

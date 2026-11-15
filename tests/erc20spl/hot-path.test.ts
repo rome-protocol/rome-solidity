@@ -1,26 +1,17 @@
 import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import hardhat from "hardhat";
-import { keccak256, encodePacked } from "viem";
+import { keccak256, encodePacked, zeroAddress, parseEventLogs } from "viem";
 import { HELPER_PROGRAM_ADDRESS, CPI_PROGRAM_ADDRESS } from "../precompile-addresses";
 
-/// SPL_ERC20 (CPI-track wrapper) — the warm transfer path reaches exactly one
-/// precompile write. Three per-transfer costs that bought nothing are gone:
+/// SPL_ERC20 (CPI-track wrapper) — the transfer path reaches the SPL move and one probe of the
+/// recipient's token account (`account_info`: lamports and token-program owner). Nothing is
+/// remembered per recipient, so a closed or pre-funded account is handled on every call.
+/// `mint_info` is read per transfer only by a fee-capable wrapper.
 ///
-///   1. `ERC20Users.ensure_user(msg.sender)` — a CALL into the registry (SLOAD,
-///      SSTORE the first time) whose result the transfer discarded; nothing
-///      reads `get_user` any more.
-///   2. `HelperProgram.mint_info(mint)` — a mint load + parse on EVERY transfer
-///      just to learn `feeBps`. A Tokenkeg mint can never carry a fee and a
-///      Token-2022 mint's TransferFeeConfig is fixed at InitializeMint, so fee
-///      CAPABILITY is a constructor fact (`fee_capable`); only fee-capable
-///      wrappers read the live bps per transfer.
-///   3. `HelperProgram.ata(to)` + `lamportsOf` — derivation and existence probe
-///      of the recipient ATA after the wrapper already recorded it exists.
-///
-/// Traps (see `HotPathMocks.sol`) are armed between two calls under test: the
-/// second call succeeding while a trap is armed is the proof the path is gone.
-describe("SPL_ERC20 — warm transfer hot path", () => {
+/// Traps (see `HotPathMocks.sol`) are armed between two calls under test: the second call
+/// succeeding while a trap is armed is the proof the path is gone.
+describe("SPL_ERC20 — transfer path", () => {
     const HELPER = HELPER_PROGRAM_ADDRESS;
     const CPI = CPI_PROGRAM_ADDRESS;
     const MINT = `0x${"a1".repeat(32)}` as `0x${string}`;
@@ -30,7 +21,6 @@ describe("SPL_ERC20 — warm transfer hot path", () => {
     let viem: any;
     let conn: any;
     let ledger: any;
-    let users: any;
     let wrapper: any;
     let feeWrapper: any;
     let wallets: any[];
@@ -44,7 +34,6 @@ describe("SPL_ERC20 — warm transfer hot path", () => {
         await ledger.write.setMintInfoTrap([false]);
         await ledger.write.setAccountReadTrap([false]);
         await ledger.write.setCreateTrap([false]);
-        await users.write.setArmed([false]);
     }
 
     before(async () => {
@@ -52,7 +41,6 @@ describe("SPL_ERC20 — warm transfer hot path", () => {
         viem = conn.viem;
         wallets = await viem.getWalletClients();
         ledger = await viem.deployContract("HotPathLedger", []);
-        users = await viem.deployContract("TrappingUsers", []);
         const mock = await viem.deployContract("HotPathPrecompileMock", [ledger.address]);
         const client = await viem.getPublicClient();
         const code = await client.getCode({ address: mock.address });
@@ -62,10 +50,10 @@ describe("SPL_ERC20 — warm transfer hot path", () => {
         }
         // Fee-incapable mint (no extensions) — the common case.
         await ledger.write.setMint([0, 0]);
-        wrapper = await viem.deployContract("SPL_ERC20", [MINT, CPI, "Wrapped", "WRAP", users.address]);
+        wrapper = await viem.deployContract("SPL_ERC20", [MINT, CPI, "Wrapped", "WRAP"]);
         // Fee-capable mint: TransferFeeConfig present, 30 bps armed.
         await ledger.write.setMint([TRANSFER_FEE_CONFIG_BIT, 30]);
-        feeWrapper = await viem.deployContract("SPL_ERC20", [FEE_MINT, CPI, "Fee", "FEE", users.address]);
+        feeWrapper = await viem.deployContract("SPL_ERC20", [FEE_MINT, CPI, "Fee", "FEE"]);
         await ledger.write.setMint([0, 0]);
     });
 
@@ -74,52 +62,94 @@ describe("SPL_ERC20 — warm transfer hot path", () => {
         assert.equal(await feeWrapper.read.fee_capable(), true);
     });
 
-    it("a cold transfer creates the recipient ATA but never registers the caller", async () => {
-        await users.write.setArmed([true]);
+    it("a cold transfer creates the recipient ATA", async () => {
         const w = await as(0, wrapper);
         await w.write.transfer([addr(1), 5n]);
         assert.equal(await ledger.read.created([deriveAta(addr(1), MINT)]), true, "recipient ATA must be created on first sight");
-        await disarmAll();
     });
 
-    it("a warm transfer reads neither the registry, nor the mint, nor the recipient ATA", async () => {
-        await users.write.setArmed([true]);
+    it("a warm transfer neither reads the mint nor creates, but probes the recipient", async () => {
         await ledger.write.setMintInfoTrap([true]);
-        await ledger.write.setAccountReadTrap([true]);
         await ledger.write.setCreateTrap([true]);
         const w = await as(0, wrapper);
-        const tx = await w.write.transfer([addr(1), 5n]);
-        assert.ok(tx, "warm transfer must succeed with every hot-path trap armed");
+        assert.ok(await w.write.transfer([addr(1), 5n]), "warm transfer must succeed with the mint and create traps armed");
+        await ledger.write.setAccountReadTrap([true]);
+        await assert.rejects(w.write.transfer([addr(1), 5n]), /account_info fired/, "the recipient is probed on every transfer");
         await disarmAll();
     });
 
-    it("transferFrom takes the same warm path", async () => {
+    it("transferFrom takes the same path", async () => {
         const w0 = await as(0, wrapper);
         await w0.write.approve([addr(2), 100n]);
-        await users.write.setArmed([true]);
         await ledger.write.setMintInfoTrap([true]);
-        await ledger.write.setAccountReadTrap([true]);
         await ledger.write.setCreateTrap([true]);
         const w2 = await as(2, wrapper);
-        const tx = await w2.write.transferFrom([addr(0), addr(1), 5n]);
-        assert.ok(tx);
+        assert.ok(await w2.write.transferFrom([addr(0), addr(1), 5n]));
         assert.equal(await wrapper.read.allowance([addr(0), addr(2)]), 95n);
         await disarmAll();
     });
 
-    it("a fresh recipient still probes and creates — the flag is per-user", async () => {
+    it("a fresh recipient is created", async () => {
         await ledger.write.setCreateTrap([true]);
         const w = await as(0, wrapper);
-        await assert.rejects(w.write.transfer([addr(3), 5n]), /create_ata fired/);
+        await assert.rejects(w.write.transfer([addr(3), 5n]), /create must not run/);
         await disarmAll();
         await w.write.transfer([addr(3), 5n]);
         assert.equal(await ledger.read.created([deriveAta(addr(3), MINT)]), true);
     });
 
-    it("public ensure_token_account still answers the ATA on the fast path, without probing", async () => {
+    it("a closed recipient ATA is created again", async () => {
+        const w = await as(0, wrapper);
+        await w.write.transfer([addr(4), 5n]);
+        const ata = deriveAta(addr(4), MINT);
+        await ledger.write.close([ata]);
+        assert.equal(await ledger.read.created([ata]), false);
+        await w.write.transfer([addr(4), 5n]);
+        assert.equal(await ledger.read.created([ata]), true, "a closed ATA must be re-created, not remembered as existing");
+    });
+
+    it("a pre-funded recipient address that no token program owns is created", async () => {
+        const ata = deriveAta(addr(5), MINT);
+        await ledger.write.prefund([ata]);
+        const w = await as(0, wrapper);
+        await w.write.transfer([addr(5), 5n]);
+        assert.equal(await ledger.read.created([ata]), true, "lamports alone must not count as an existing token account");
+    });
+
+    it("ensure_token_account probes, creates only when missing and answers the ATA", async () => {
+        const ata = deriveAta(addr(6), MINT);
+        await wrapper.write.ensure_token_account([addr(6)]);
+        assert.equal(await ledger.read.created([ata]), true);
+        await ledger.write.setCreateTrap([true]);
+        const { result } = await wrapper.simulate.ensure_token_account([addr(6)]);
+        assert.equal(result, ata, "an existing ATA is answered without a create");
         await ledger.write.setAccountReadTrap([true]);
-        const { result } = await wrapper.simulate.ensure_token_account([addr(1)]);
-        assert.equal(result, deriveAta(addr(1), MINT));
+        await assert.rejects(wrapper.simulate.ensure_token_account([addr(6)]), /account_info fired/);
+        await disarmAll();
+    });
+
+    it("ensure_token_account and create_token_account refuse the zero address", async () => {
+        await assert.rejects(wrapper.write.ensure_token_account([zeroAddress]), /ERC20InvalidReceiver/);
+        await assert.rejects(wrapper.write.create_token_account([zeroAddress, `0x${"00".repeat(32)}`]), /ERC20InvalidReceiver/);
+    });
+
+    it("a transfer to the zero address reverts", async () => {
+        const w = await as(0, wrapper);
+        await assert.rejects(w.write.transfer([zeroAddress, 5n]), /ERC20InvalidReceiver/);
+        await assert.rejects(w.write.transfer([zeroAddress, 0n]), /ERC20InvalidReceiver/);
+    });
+
+    it("a zero-value transfer emits Transfer and touches no precompile", async () => {
+        await ledger.write.setMintInfoTrap([true]);
+        await ledger.write.setAccountReadTrap([true]);
+        await ledger.write.setCreateTrap([true]);
+        const w = await as(0, wrapper);
+        const hash = await w.write.transfer([addr(7), 0n]);
+        const receipt = await (await viem.getPublicClient()).getTransactionReceipt({ hash });
+        const logs = parseEventLogs({ abi: wrapper.abi, logs: receipt.logs, eventName: "Transfer" });
+        assert.equal(logs.length, 1);
+        assert.equal(logs[0].args.value, 0n);
+        assert.equal(await ledger.read.created([deriveAta(addr(7), MINT)]), false, "no ATA is created for a zero value");
         await disarmAll();
     });
 

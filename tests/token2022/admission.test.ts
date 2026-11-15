@@ -138,13 +138,11 @@ describe("armed-hook admission, executed", async () => {
     const WRAPPERS = ["SPL_ERC20", "SPL_ERC20_cached"] as const;
 
     async function deployWrapper(name: string, mint: `0x${string}`) {
-        const users = await viem.deployContract("ERC20Users");
         return viem.deployContract(name, [
             mint,
             CPI_PROGRAM_ADDRESS,
             "Wrapped",
             "WRAP",
-            users.address,
         ]);
     }
 
@@ -291,14 +289,12 @@ describe("each wrapper reads its own track, executed", async () => {
     }
 
     async function deploy(name: string) {
-        const users = await viem.deployContract("ERC20Users");
         const mint = `0x06${"00".repeat(31)}` as `0x${string}`; // 6 decimals, nothing armed
         return viem.deployContract(name, [
             mint,
             CPI_PROGRAM_ADDRESS,
             "Wrapped",
             "WRAP",
-            users.address,
         ]);
     }
 

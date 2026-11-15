@@ -65,12 +65,12 @@ describe("the named wrapper factory", async () => {
     it("has the interface it documents: no caller picks a name, no symbol table, its own lookups", async () => {
         const f = await newFactory();
         const names = new Set(f.abi.filter((x: any) => x.type === "function").map((x: any) => x.name));
-        for (const gone of ["add_spl_token_no_metadata", "token_by_symbol_hash", "mint_by_symbol_hash"]) {
+        for (const gone of ["add_spl_token_no_metadata", "token_by_symbol_hash", "mint_by_symbol_hash", "users"]) {
             assert.ok(!names.has(gone), `${gone} is gone`);
         }
         for (const kept of [
             "add_spl_token_with_metadata", "add_spl_token_by_authority", "preview", "token_by_mint", "wrapper_kind_by_mint",
-            "users", "grandfathered", "grandfatherHash", "create_token_mint", "get_current_mint", "init_token_mint", "creator_nonce",
+            "grandfathered", "grandfatherHash", "create_token_mint", "get_current_mint", "init_token_mint", "creator_nonce",
         ]) {
             assert.ok(names.has(kept), `${kept} is there`);
         }
@@ -116,6 +116,19 @@ describe("the named wrapper factory", async () => {
             }
         }
         assert.deepEqual(bad, []);
+    });
+
+    it("a Metaplex account that cannot be read reverts MetaplexUnreadable on preview and on the add", async () => {
+        const v = vectors.mints.find((m) => m.id === "metaplex/plain")!;
+        await plant(v);
+        const f = await newFactory();
+        const pda = mockMetadataPda(v.mint);
+        await store.write.setUnreadable([pda, true]);
+        assert.equal(await revertName(f.read.preview([v.mint])), "MetaplexUnreadable");
+        assert.equal(await revertName(f.write.add_spl_token_with_metadata([v.mint])), "MetaplexUnreadable");
+        assert.equal(await f.read.token_by_mint([v.mint]), zeroAddress);
+        await store.write.setUnreadable([pda, false]);
+        assert.equal(await revertName(f.write.add_spl_token_with_metadata([v.mint])), null);
     });
 
     it("a mint with an armed transfer hook gets the hook-aware wrapper, named by the same rule", async () => {
@@ -320,6 +333,17 @@ describe("the named wrapper factory", async () => {
             await store.write.clear([mockMetadataPda(MINT)]);
             await store.write.set([MINT, PROGRAM.p2022, withAuthority]);
             assert.equal(await revertName(send(f, data)), "ExternalPointer");
+        });
+
+        it("a Metaplex account that cannot be read refuses the registration; a listed but absent one does not", async () => {
+            const f = await newFactory();
+            const data = calldata(MINT, toHex("My Token"), toHex("MYT"));
+            await plantAuthorityMint();
+            await store.write.setUnreadable([mockMetadataPda(MINT), true]);
+            assert.equal(await revertName(send(f, data)), "MetaplexUnreadable");
+            assert.equal(await f.read.token_by_mint([MINT]), zeroAddress);
+            await store.write.setUnreadable([mockMetadataPda(MINT), false]);
+            assert.equal(await revertName(send(f, data)), null, "absent but listed: still registers");
         });
 
         it("a registered mint is refused again, and a refused call leaves no wrapper", async () => {

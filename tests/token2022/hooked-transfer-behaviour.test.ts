@@ -1,6 +1,7 @@
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
 import { network } from "hardhat";
+import { parseEventLogs, stringToHex, keccak256, zeroAddress } from "viem";
 import {
     HELPER_PROGRAM_ADDRESS,
     CPI_PROGRAM_ADDRESS,
@@ -46,14 +47,12 @@ describe("SPL_ERC20_Token2022Hooked, executed", async () => {
     const MINT: `0x${string}` =
         "0x0601000000000000000000000000000000000000000000000000000000000042";
 
-    async function deployHooked() {
-        const users = await viem.deployContract("ERC20Users");
+    async function deployHooked(mint: `0x${string}` = MINT) {
         return viem.deployContract("SPL_ERC20_Token2022Hooked", [
-            MINT,
+            mint,
             CPI,
             "Wrapped",
             "WRAP",
-            users.address,
         ]);
     }
 
@@ -147,5 +146,100 @@ describe("SPL_ERC20_Token2022Hooked, executed", async () => {
         const eoa = zeroAddr(9);
         await helper.write.setBalance([eoa, MINT, 700n]);
         assert.equal(await hooked.read.balanceOf([eoa]), 700n, "control: the EOA leg must still work");
+    });
+
+    it("a transfer to the zero address reverts, zero value included", async () => {
+        const hookMetas = await hookMetasFor(hooked);
+        await assert.rejects(
+            hooked.write.transferWithHookAccounts([zeroAddress, 1n, hookMetas], { account: deployer.account }),
+            /ERC20InvalidReceiver/,
+        );
+        await assert.rejects(
+            hooked.write.transferWithHookAccounts([zeroAddress, 0n, hookMetas], { account: deployer.account }),
+            /ERC20InvalidReceiver/,
+        );
+        await assert.rejects(hooked.write.ensure_token_account([zeroAddress]), /ERC20InvalidReceiver/);
+    });
+
+    it("a zero-value transfer emits Transfer and sends no CPI, whatever the tail", async () => {
+        const before = await cpi.read.invokeCount();
+        const hash = await hooked.write.transferWithHookAccounts([zeroAddr(7), 0n, []], { account: deployer.account });
+        const receipt = await (await viem.getPublicClient()).getTransactionReceipt({ hash });
+        const logs = parseEventLogs({ abi: hooked.abi, logs: receipt.logs, eventName: "Transfer" });
+        assert.equal(logs.length, 1);
+        assert.equal(logs[0].args.value, 0n);
+        assert.equal(await cpi.read.invokeCount(), before);
+    });
+
+    describe("the wrapper follows the live hook", () => {
+        // A second mint so the overrides below touch no other case in this file.
+        const MINT2: `0x${string}` = "0x0601000000000000000000000000000000000000000000000000000000000043";
+        const NEW_HOOK = keccak256(stringToHex("rotated-hook"));
+        let w: any;
+        let system: any;
+        const unarmedMetas = (hookProgram: `0x${string}`, validation: `0x${string}`) => [
+            { pubkey: hookProgram, is_signer: false, is_writable: false },
+            { pubkey: validation, is_signer: false, is_writable: false },
+        ];
+        const accountsLength = async () => cpi.read.lastInvokeAccountsLength();
+
+        before(async () => {
+            w = await deployHooked(MINT2);
+            system = await viem.getContractAt("PrecompileMock", SYSTEM as `0x${string}`);
+        });
+
+        it("a disarmed mint transfers as a plain TransferChecked and ignores a stale tail", async () => {
+            const stale = await hookMetasFor(w);
+            await w.write.transferWithHookAccounts([zeroAddr(1), 5n, stale], { account: deployer.account });
+            assert.equal(await accountsLength(), 6n, "armed: four fixed accounts plus the hook tail");
+
+            await helper.write.setLiveHook([MINT2, `0x${"00".repeat(32)}`]);
+
+            await w.write.transferWithHookAccounts([zeroAddr(1), 5n, []], { account: deployer.account });
+            assert.equal(await accountsLength(), 4n, "an empty tail is a plain TransferChecked");
+            await w.write.transferWithHookAccounts([zeroAddr(1), 5n, stale], { account: deployer.account });
+            assert.equal(await accountsLength(), 4n, "a stale tail is dropped");
+
+            await w.write.approve([spender.account.address, 100n], { account: deployer.account });
+            await w.write.transferFromWithHookAccounts(
+                [deployer.account.address, zeroAddr(2), 5n, stale],
+                { account: spender.account },
+            );
+            assert.equal(await accountsLength(), 4n);
+
+            const solanaRecipient = `0x${"11".repeat(32)}` as `0x${string}`;
+            await w.write.bridgeOutToSolanaWithHookAccounts([solanaRecipient, 5n, stale], { account: deployer.account });
+            assert.equal(await accountsLength(), 4n);
+        });
+
+        it("a rotated hook is validated against its own validation account", async () => {
+            const oldMetas = await hookMetasFor(w);
+            const [validation] = await system.read.find_program_address([
+                NEW_HOOK,
+                [{ item: stringToHex("extra-account-metas") }, { item: MINT2 }],
+            ]);
+            await helper.write.setLiveHook([MINT2, NEW_HOOK]);
+            const newMetas = unarmedMetas(NEW_HOOK, validation);
+
+            await assert.rejects(
+                w.write.transferWithHookAccounts([zeroAddr(3), 5n, oldMetas], { account: deployer.account }),
+                /InvalidHookProgramMeta/,
+                "the old hook's tail must no longer pass",
+            );
+            await w.write.transferWithHookAccounts([zeroAddr(3), 5n, newMetas], { account: deployer.account });
+            assert.equal(await accountsLength(), 6n);
+            const [lastHook] = await cpi.read.lastInvokeAccount([4n]);
+            const [lastValidation] = await cpi.read.lastInvokeAccount([5n]);
+            assert.equal(lastHook, NEW_HOOK);
+            assert.equal(lastValidation, validation);
+
+            await w.write.transferFromWithHookAccounts(
+                [deployer.account.address, zeroAddr(4), 5n, newMetas],
+                { account: spender.account },
+            );
+            const solanaRecipient = `0x${"22".repeat(32)}` as `0x${string}`;
+            await w.write.bridgeOutToSolanaWithHookAccounts([solanaRecipient, 5n, newMetas], { account: deployer.account });
+            assert.equal(await accountsLength(), 6n);
+        });
     });
 });

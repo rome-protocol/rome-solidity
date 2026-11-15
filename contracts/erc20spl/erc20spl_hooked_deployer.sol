@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {ERC20Users} from "./erc20spl.sol";
 import {SPL_ERC20_Token2022Hooked} from "./erc20spl_token2022_hooked.sol";
 
 /// @dev Keeps the hooked wrapper's creation code out of its factory's runtime bytecode; only the creating factory may call `deploy`.
@@ -18,12 +17,11 @@ contract ERC20SPLHookedDeployer {
         bytes32 mint,
         address cpiProgram,
         string memory name,
-        string memory symbol,
-        ERC20Users users
+        string memory symbol
     ) external returns (address wrapper) {
         if (msg.sender != factory) revert OnlyFactory(msg.sender);
         wrapper = address(new SPL_ERC20_Token2022Hooked(
-            mint, cpiProgram, name, symbol, users
+            mint, cpiProgram, name, symbol
         ));
     }
 }

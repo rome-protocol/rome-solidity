@@ -15,9 +15,7 @@ import {
 /// recomputed via a precompile call from `_ensureWrapperAta` — and its
 /// existence probe (`AccountReader.lamportsOf` on the legacy track,
 /// `SplCached.account` on the cached track) must fire at most ONCE per
-/// wrapper instance, same monotone-existence argument as
-/// `ensure-token-account-created-flag.test.ts`'s per-user flag (ATAs are
-/// never closed on Rome).
+/// wrapper instance (the escrow ATA is never closed).
 ///
 /// Deploys the REAL `SPL_ERC20` / `SPL_ERC20_cached` contracts (not mirror
 /// helpers) with precompile stand-ins installed via `hardhat_setCode`, so
@@ -57,8 +55,6 @@ describe("escrow ATA — constructor-derived immutable, created-once flag", () =
             const cpiCode = await client.getCode({ address: cpiMock.address });
             await conn.provider.request({ method: "hardhat_setCode", params: [HELPER, helperCode] });
             await conn.provider.request({ method: "hardhat_setCode", params: [CPI, cpiCode] });
-
-            const users = await viem.deployContract("ERC20Users", []);
             // Constructor derives `escrow_ata` here — the ONE legitimate
             // `HelperProgram.ata` call, before the trap below is armed.
             wrapper = await viem.deployContract("SPL_ERC20", [
@@ -66,7 +62,6 @@ describe("escrow ATA — constructor-derived immutable, created-once flag", () =
                 CPI,
                 "Wrapped",
                 "WRAP",
-                users.address,
             ]);
 
             recipient = ledger; // any contract address; never called into
@@ -113,14 +108,11 @@ describe("escrow ATA — constructor-derived immutable, created-once flag", () =
             await conn.provider.request({ method: "hardhat_setCode", params: [HELPER, helperCode] });
             await conn.provider.request({ method: "hardhat_setCode", params: [SPL_CACHED, splCachedCode] });
             await conn.provider.request({ method: "hardhat_setCode", params: [ASSOC_SPL_CACHED, assocCode] });
-
-            const users = await viem.deployContract("ERC20Users", []);
             wrapper = await viem.deployContract("SPL_ERC20_cached", [
                 MINT_ID,
                 ASSOC_SPL_CACHED,
                 "Wrapped",
                 "WRAP",
-                users.address,
             ]);
 
             recipient = ledger;

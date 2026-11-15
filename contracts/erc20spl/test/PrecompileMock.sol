@@ -12,10 +12,10 @@ import {SolanaConstants} from "../../cpi/SolanaConstants.sol";
 /// @dev Installed via `hardhat_setCode` at one precompile address per
 ///      track; each install gets independent storage (`hardhat_setCode`
 ///      copies code, not storage), so state set through one address is
-///      invisible to another. Existence probes (`account_lamports`,
-///      `SplCached.account`) always answer as already-existing, since
-///      these fixtures are about the transfer primitive, not ATA
-///      bootstrap.
+///      invisible to another. Existence probes (`account_info`,
+///      `SplCached.account`) answer as an existing token account unless
+///      `setAccount` overrides one, since these fixtures are about the
+///      transfer primitive, not ATA bootstrap.
 contract PrecompileMock {
     struct Meta {
         bytes32 pubkey;
@@ -48,15 +48,27 @@ contract PrecompileMock {
     /// Layout of the mint id, most-significant byte first (same convention
     /// as `MintInfoMock`): byte 0 decimals, byte 1 non-zero arms the
     /// transfer hook, bytes 2-3 transfer fee bps (big-endian).
+    struct HookOverride {
+        bool set;
+        bytes32 hookProgram;
+    }
+    mapping(bytes32 => HookOverride) private _hookOverride;
+
+    /// Test-only: the mint's live hook program (zero disarms it), whatever its id encodes.
+    function setLiveHook(bytes32 mint, bytes32 hookProgram) external {
+        _hookOverride[mint] = HookOverride(true, hookProgram);
+    }
+
     function mint_info(bytes32 mint)
         external
-        pure
+        view
         returns (bytes32 tokenProgram, uint8 decimals, bytes32 hookProgram, uint16 feeBps, uint32 extensions)
     {
         decimals = uint8(mint[0]);
         hookProgram = mint[1] == 0
             ? bytes32(0)
             : keccak256(abi.encodePacked("precompile-mock-hook", mint));
+        if (_hookOverride[mint].set) hookProgram = _hookOverride[mint].hookProgram;
         feeBps = (uint16(uint8(mint[2])) << 8) | uint16(uint8(mint[3]));
         tokenProgram = TOKEN_2022_PROGRAM;
         extensions = hookProgram != bytes32(0) ? uint32(1) << 14 : 0;
@@ -65,6 +77,9 @@ contract PrecompileMock {
     function ata(address user, bytes32 mint) public pure returns (bytes32) {
         return keccak256(abi.encodePacked("precompile-mock-ata", user, mint));
     }
+
+    /// Reached via `delegatecall` from `ensureRecipientAta`; nothing to record.
+    function create_ata_for_key(bytes32, bytes32) external {}
 
     /// Armed by `hooked-hot-path.test.ts` between two transfers: a wrapper
     /// that still re-derives its own PDA per transfer reverts here. Storage
@@ -131,9 +146,30 @@ contract PrecompileMock {
         return (m.pubkey, m.is_signer, m.is_writable);
     }
 
-    /// Always non-zero: every ATA reads as already-existing, so
-    /// `ensure_token_account`'s probe never falls through to
-    /// `create_ata`. See the contract-level note above.
+    struct AccountOverride {
+        bool set;
+        uint64 lamports;
+        bytes32 owner;
+    }
+    mapping(bytes32 => AccountOverride) private _accountOverride;
+
+    /// Test-only: what `account_info` reports for `account_`.
+    function setAccount(bytes32 account_, uint64 lamports, bytes32 owner) external {
+        _accountOverride[account_] = AccountOverride(true, lamports, owner);
+    }
+
+    /// By default every account reads as a Token-2022 account with lamports, so
+    /// `ensure_token_account`'s probe never falls through to `create_ata`.
+    function account_info(bytes32 account_)
+        external
+        view
+        returns (uint64, bytes32, bool, bool, bool, bytes memory)
+    {
+        AccountOverride memory o = _accountOverride[account_];
+        if (o.set) return (o.lamports, o.owner, false, false, false, "");
+        return (1_000_000, TOKEN_2022_PROGRAM, false, false, false, "");
+    }
+
     function account_lamports(bytes32) external pure returns (uint64) {
         return 1_000_000;
     }
