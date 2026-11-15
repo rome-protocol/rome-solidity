@@ -150,13 +150,13 @@ interface without CPI. The call-graph ends at the mock.
 ## 4. The user is never the signer
 
 The signer of a CPI is whoever calls the precompile, and that is the contract.
-Never mark `UserPda.pda(user)` (the user's authority) as a signer in an account
+Never mark `RomeEVMAccount.pda(user)` (the user's authority) as a signer in an account
 list: Rome gives it no signer seed, and the Solana runtime refuses the CPI. A
 contract cannot move a user's assets by signing for them; it needs the user's
 SPL delegation first (section 2).
 
 Use the user's address for what it is good for: keying a position (as a salt),
-deriving the user's ATA to pay out to (`UserPda.ata(user, mint)`), and reading
+deriving the user's ATA to pay out to (`HelperProgram.ata(user, mint)`), and reading
 balances. Take it from `msg.sender`.
 
 Never derive anything from `tx.origin`. The CI job `tx-origin-ban` fails the
@@ -303,6 +303,6 @@ plus one CPI.
 | `PdaDeriver.sol` | `find_program_address` + typed seed helpers + N-arg makeSeeds (single PDA via `0xFF…07`) |
 | `PdasBatch.sol` | `pdas_batch_derive` wrapper — N PDAs against one program in one syscall (`0xFF…08` / `0x944336f8`). Use over N×`PdaDeriver.derive` whenever you derive ≥2 PDAs back-to-back. Convenience: `pair` / `triplet` / `quad` for common shapes. Worked example: `contracts/examples/pdas_batch.sol`. |
 | `SolanaConstants.sol` | Sysvars + System/Token programs |
-| `UserPda.sol` | EVM user → Solana PDA + ATA (no tx.origin) |
+| `UserPda.sol` | ATA of a raw Solana owner key (no tx.origin) |
 | `templates/CpiAdapterBase.sol` | Ownable + Pausable + ReentrancyGuard + backend |
 | `templates/CpiProgramWrapper.sol` | Prose scaffold for golden-vector wrappers |

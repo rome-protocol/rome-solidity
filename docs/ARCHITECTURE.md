@@ -50,7 +50,7 @@ Builder-facing Solidity libraries layered over the CPI precompile — the ergono
 | `AccountReader` | Typed wrappers over the account-read shortcut selectors — **reads, not CPIs** (no signing, no side effect) | `lamportsOf` / `readU64At` / `readBytesAt` |
 | `PdaDeriver` | Single-PDA `find_program_address` + typed seed builders | `derive` / `seedBytes` / `makeSeeds` |
 | `PdasBatch` | Derive N PDAs against one program in a single syscall (~50–80K CU saved per PDA) | `derive(seedGroups, programId)` / `pair` / `triplet` |
-| `UserPda` | EVM address → Solana user PDA + ATA, always via an explicit `address` (never `tx.origin`) | `pda(address)` / `ata(address, mint)` / `atas` |
+| `UserPda` | ATA of a raw Solana owner key (token program resolved from the mint), never `tx.origin` | `ataForKey(ownerKey, mint)` |
 | `EnsureAta` | Idempotently create a user's ATA before a downstream CPI needs it | `ensure(user, mint)` |
 | `SolanaConstants` | Canonical Solana sysvar/program pubkeys as `bytes32` | `SPL_TOKEN_PROGRAM` / `SYSVAR_RENT` / … |
 | `CostEstimate` / `CostEstimator` / `ICostView` | Uniform pre-sign USD cost-quote shape + helpers (rent math, existence checks, oracle-priced) | `quoteCost(user, inputs) → CostEstimate` |

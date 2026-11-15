@@ -121,7 +121,7 @@ The read-shortcut disambiguation matters when reasoning about iterative-VM compo
 ## Conventions & Gotchas
 
 - **`.sol` never hardcodes an app-contract address** — only precompile constants in `interface.sol` may. Every other address comes from `rome-protocol/registry` at runtime (TS side) or as a constructor arg (Solidity side).
-- **`tx.origin` is banned in `contracts/`** — CI job `tx-origin-ban` enforces this. Use `UserPda.pda(msg.sender)` or the explicit `address user` argument in the three-layer adapter pattern.
+- **`tx.origin` is banned in `contracts/`** — CI job `tx-origin-ban` enforces this. Use `RomeEVMAccount.pda(msg.sender)` or the explicit `address user` argument in the three-layer adapter pattern.
 - **Cached track is the default; a contract uses one track, never both.** Reach for the CPI-track `SPL_ERC20` only when you specifically need `bridgeOutToSolana` / `ensureRecipientAta`.
 - **Wrapper warm-transfer path is one precompile write (2026-09).** No `ERC20Users.ensure_user` on transfer/create/bridge-out (nothing reads `get_user`; the registry stays for `SimpleActivator` and ABI compatibility), `mint_info` only on a `fee_capable` mint (TransferFeeConfig is fixed at InitializeMint → constructor immutable), recipient-ATA flag checked BEFORE any derivation/probe (and a successful probe sets it), hooked wrapper's own PDA is the `self_pda` immutable. Guarded by trap tests `tests/erc20spl/hot-path.test.ts`, `cached-hot-path.test.ts`, `tests/token2022/hooked-hot-path.test.ts` — a change that re-adds a per-transfer read fails them.
 - **`RomeBridgeWithdraw` events live in `RomeBridgeEvents`**, not on the interface. Indexers subscribe to `RomeBridgeEvents`.
