@@ -60,20 +60,70 @@ describe("the live named factory record", () => {
         assert.throws(() => resolveLiveNamedFactory("x", dep, "0x00000000000000000000000000000000000000f1"), NotLiveNamedFactoryError);
     });
 
-    it("the committed hadrian record resolves the recut named factory, and both older factories are marked deprecated", () => {
+    it("the committed hadrian record resolves E1'' as the live named factory, and E1' and E1 are deprecated and chain to it", () => {
         const E1 = "0x3B1a41F1dF45200f16d35FA5788d251d9Fb92d92";
-        const E1_RECUT = "0x0335129633949207492d32E935976211526E4CA0";
+        const E1_PRIME = "0x0335129633949207492d32E935976211526E4CA0";
+        const E1_SECOND = "0xbaB7C737900b67794703Cd47e0e9823a22038246";
         const dep = JSON.parse(src("deployments/hadrian.json"));
-        assert.equal(resolveLiveNamedFactory("hadrian", dep), E1_RECUT);
+        assert.equal(resolveLiveNamedFactory("hadrian", dep), E1_SECOND);
+        assert.equal(dep.ERC20SPLNamedFactory.live, true);
         assert.equal(dep.ERC20SPLFactory.deprecated, true);
         assert.throws(() => resolveLiveNamedFactory("hadrian", dep, dep.ERC20SPLFactory.address), NotLiveNamedFactoryError);
-        // the first named factory is kept as a record, no longer live, replaced by the recut one
+        // E1' (the first recut) is kept as a record, no longer live, replaced by E1''
+        const prime = dep.ERC20SPLNamedFactoryDeprecated_03351296;
+        assert.equal(getAddress(prime.address), E1_PRIME);
+        assert.equal(prime.live, false);
+        assert.equal(prime.deprecated, true);
+        assert.equal(getAddress(prime.replacedBy), E1_SECOND);
+        assert.throws(() => resolveLiveNamedFactory("hadrian", dep, E1_PRIME), NotLiveNamedFactoryError);
+        // the first named factory keeps its own record, replaced by E1' as it was when it was retired
         const old = dep.ERC20SPLNamedFactoryDeprecated_3b1a41f1;
         assert.equal(getAddress(old.address), E1);
         assert.equal(old.live, false);
         assert.equal(old.deprecated, true);
-        assert.equal(getAddress(old.replacedBy), E1_RECUT);
+        assert.equal(getAddress(old.replacedBy), E1_PRIME);
         assert.throws(() => resolveLiveNamedFactory("hadrian", dep, E1), NotLiveNamedFactoryError);
+    });
+
+    it("the hadrian record holds the hooked deployer'' and W''(SOL), both made by E1'' and recorded live", () => {
+        const dep = JSON.parse(src("deployments/hadrian.json"));
+        const e1 = getAddress(dep.ERC20SPLNamedFactory.address);
+        assert.equal(getAddress(dep.ERC20SPLNamedFactory.hookedWrapperDeployer), getAddress("0xB3E30144456368047A674d773D5Fc5E24D3831B6"));
+        const hooked = dep.ERC20SPLHookedDeployer;
+        assert.equal(getAddress(hooked.address), getAddress(dep.ERC20SPLNamedFactory.hookedWrapperDeployer));
+        assert.equal(getAddress(hooked.factory), e1);
+        assert.equal(hooked.live, true);
+        assert.equal(hooked.deployTx, dep.ERC20SPLNamedFactory.deployTx, "its constructor made it in E1''s deploy transaction");
+        const sol = dep.SPL_ERC20_SOL;
+        assert.equal(getAddress(sol.address), getAddress("0x800B2965AAC6EfDcfca13F0c719307760b6780dC"));
+        assert.equal(sol.mintId, "So11111111111111111111111111111111111111112");
+        assert.equal(getAddress(sol.factory), e1);
+        assert.equal(sol.via, "ERC20SPLNamedFactory.add_spl_token_with_metadata");
+        // the earlier wSOL wrapper keeps its own record
+        assert.notEqual(getAddress(dep.SPL_ERC20_WSOL.address), getAddress(sol.address));
+    });
+
+    it("no script reads users() from the named factory: it has no getter (#408), and the one reader that calls users() reads the legacy ERC20SPLFactory ABI", () => {
+        const hits: string[] = [];
+        const walk = (dir: string) => {
+            for (const e of readdirSync(join(root, dir))) {
+                const rel = `${dir}/${e}`;
+                if (statSync(join(root, rel)).isDirectory()) {
+                    if (e !== "node_modules") walk(rel);
+                } else if (/\.(ts|mts|js|mjs|cjs|sh)$/.test(e)) {
+                    const code = src(rel)
+                        .split("\n")
+                        .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+                        .join("\n");
+                    if (/\.read\.users\(|functionName:\s*["']users["']|["']users\(\)["']|cast call[^\n]*users\(\)/.test(code)) hits.push(rel);
+                }
+            }
+        };
+        walk("scripts");
+        assert.deepEqual(hits, ["scripts/activation/deploy-simple-activator.ts"]);
+        const activator = src("scripts/activation/deploy-simple-activator.ts");
+        assert.match(activator, /getContractAt\("ERC20SPLFactory"/, "it reads the legacy factory's ABI");
+        assert.doesNotMatch(activator, /ERC20SPLNamedFactory/);
     });
 
     it("direct wrapper deploys and a second legacy factory stop on a chain where the named factory is live", () => {

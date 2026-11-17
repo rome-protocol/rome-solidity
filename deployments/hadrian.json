@@ -532,12 +532,13 @@
     "via": "ERC20SPLFactory.add_spl_token_no_metadata"
   },
   "ERC20SPLNamedFactory": {
-    "address": "0x0335129633949207492d32e935976211526e4ca0",
+    "address": "0xbab7c737900b67794703cd47e0e9823a22038246",
     "cpiContractAddress": "0xFF00000000000000000000000000000000000008",
     "grandfatherHash": "0x6562c19f6a449e1833c1174fccd7ac0ea685ff2299480fd008f9c9062fe5c620",
     "live": true,
-    "deployTx": "0xcd47194f6ac0377eb5fb49e0983415eb2a53d4c9b656f601fdcdad0bfe0a98e0",
-    "deployedAt": 1794406593
+    "deployTx": "0xac805dcaa6f7f1020bdd39cace12842123ecfda0bf507534993379284da04999",
+    "deployedAt": 1794817995,
+    "hookedWrapperDeployer": "0xb3e30144456368047a674d773d5fc5e24d3831b6"
   },
   "ERC20SPLNamedFactoryDeprecated_3b1a41f1": {
     "address": "0x3b1a41f1df45200f16d35fa5788d251d9fb92d92",
@@ -548,5 +549,33 @@
     "deployedAt": 1794248839,
     "deprecated": true,
     "replacedBy": "0x0335129633949207492d32E935976211526E4CA0"
+  },
+  "ERC20SPLNamedFactoryDeprecated_03351296": {
+    "address": "0x0335129633949207492d32e935976211526e4ca0",
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008",
+    "grandfatherHash": "0x6562c19f6a449e1833c1174fccd7ac0ea685ff2299480fd008f9c9062fe5c620",
+    "live": false,
+    "deployTx": "0xcd47194f6ac0377eb5fb49e0983415eb2a53d4c9b656f601fdcdad0bfe0a98e0",
+    "deployedAt": 1794406593,
+    "deprecated": true,
+    "replacedBy": "0xbaB7C737900b67794703Cd47e0e9823a22038246"
+  },
+  "ERC20SPLHookedDeployer": {
+    "address": "0xb3e30144456368047a674d773d5fc5e24d3831b6",
+    "factory": "0xbab7c737900b67794703cd47e0e9823a22038246",
+    "deployTx": "0xac805dcaa6f7f1020bdd39cace12842123ecfda0bf507534993379284da04999",
+    "deployedAt": 1794817995,
+    "via": "ERC20SPLNamedFactory constructor",
+    "live": true
+  },
+  "SPL_ERC20_SOL": {
+    "address": "0x800b2965aac6efdcfca13f0c719307760b6780dc",
+    "mintId": "So11111111111111111111111111111111111111112",
+    "name": "Wrapped SOL (Rome)",
+    "symbol": "SOL",
+    "factory": "0xbab7c737900b67794703cd47e0e9823a22038246",
+    "deployedAt": 1794818040,
+    "deployTx": "0xf6cd07e0684f90873068779b6b2ea6c85568568db5c72f394c2e52d4b7139026",
+    "via": "ERC20SPLNamedFactory.add_spl_token_with_metadata"
   }
 }
