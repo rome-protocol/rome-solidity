@@ -1,7 +1,8 @@
 {
   "ERC20SPLFactory": {
     "address": "0x4068aa7482dc15e9f78e22fbe0f884531c83ae6e",
-    "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008",
+    "deprecated": true
   },
   "SPL_ERC20_USDC": {
     "address": "0x0952D233b0c254cd375F3bFB3E5869C1a906f9b3",
@@ -192,5 +193,23 @@
     },
     "codeHash": "0x2e2978fd187b648bb9afc523cf5b45daba9015cc14017c977518363a7fca4788",
     "deployInputHash": "0xa62bb70cb28c9e4cbd4f1b7fd684a8d0437532f92df66a16ee8f13825a1c7d69"
+  },
+  "ERC20SPLNamedFactory": {
+    "address": "0x7De9F216f0ce5a2966E827Abe823B1F245c143B7",
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008",
+    "grandfatherHash": "0xb3d611d167e68e2621cb09aaa7fae1f42b75838878cda025bb8b59cb21c7f594",
+    "live": true,
+    "deployTx": "0x1238e16a2e6de805d0b82dab712f2ee547705cd5435d44e9e05183a9aa3f4718",
+    "deployBlock": 471022653,
+    "deployedAt": 1795023895,
+    "hookedWrapperDeployer": "0x85d386fea56c23d5df5bbf8b59ebf5675a323f5b"
+  },
+  "ERC20SPLHookedDeployer": {
+    "address": "0x85d386fea56c23d5df5bbf8b59ebf5675a323f5b",
+    "factory": "0x7De9F216f0ce5a2966E827Abe823B1F245c143B7",
+    "deployTx": "0x1238e16a2e6de805d0b82dab712f2ee547705cd5435d44e9e05183a9aa3f4718",
+    "deployedAt": 1795023895,
+    "via": "ERC20SPLNamedFactory constructor",
+    "live": true
   }
 }
