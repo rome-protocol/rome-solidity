@@ -108,6 +108,8 @@ describe("the live named factory record", () => {
         const E1 = "0x7De9F216f0ce5a2966E827Abe823B1F245c143B7";
         assert.equal(resolveLiveNamedFactory("rubicon", dep), E1);
         assert.equal(dep.ERC20SPLNamedFactory.live, true);
+        assert.equal(dep.ERC20SPLFactory.address, "0x4068aa7482dc15e9f78e22fbe0f884531c83ae6e");
+        assert.equal(dep.ERC20SPLFactory.deprecated, true);
         assert.equal(dep.ERC20SPLNamedFactory.deployTx, "0x1238e16a2e6de805d0b82dab712f2ee547705cd5435d44e9e05183a9aa3f4718");
         assert.equal(dep.ERC20SPLNamedFactory.deployBlock, 471022653);
         assert.equal(dep.ERC20SPLNamedFactory.cpiContractAddress, "0xFF00000000000000000000000000000000000008");

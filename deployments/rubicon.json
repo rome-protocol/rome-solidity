@@ -1,7 +1,8 @@
 {
   "ERC20SPLFactory": {
     "address": "0x4068aa7482dc15e9f78e22fbe0f884531c83ae6e",
-    "cpiContractAddress": "0xFF00000000000000000000000000000000000008"
+    "cpiContractAddress": "0xFF00000000000000000000000000000000000008",
+    "deprecated": true
   },
   "SPL_ERC20_USDC": {
     "address": "0x0952D233b0c254cd375F3bFB3E5869C1a906f9b3",
