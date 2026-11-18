@@ -103,6 +103,21 @@ describe("the live named factory record", () => {
         assert.notEqual(getAddress(dep.SPL_ERC20_WSOL.address), getAddress(sol.address));
     });
 
+    it("the rubicon record holds the named factory live with its deploy transaction and block, and the hooked deployer its constructor made", () => {
+        const dep = JSON.parse(src("deployments/rubicon.json"));
+        const E1 = "0x7De9F216f0ce5a2966E827Abe823B1F245c143B7";
+        assert.equal(resolveLiveNamedFactory("rubicon", dep), E1);
+        assert.equal(dep.ERC20SPLNamedFactory.live, true);
+        assert.equal(dep.ERC20SPLNamedFactory.deployTx, "0x1238e16a2e6de805d0b82dab712f2ee547705cd5435d44e9e05183a9aa3f4718");
+        assert.equal(dep.ERC20SPLNamedFactory.deployBlock, 471022653);
+        assert.equal(dep.ERC20SPLNamedFactory.cpiContractAddress, "0xFF00000000000000000000000000000000000008");
+        const hooked = dep.ERC20SPLHookedDeployer;
+        assert.equal(getAddress(hooked.address), getAddress(dep.ERC20SPLNamedFactory.hookedWrapperDeployer));
+        assert.equal(getAddress(hooked.factory), E1);
+        assert.equal(hooked.live, true);
+        assert.equal(hooked.deployTx, dep.ERC20SPLNamedFactory.deployTx);
+    });
+
     it("no script reads users() from the named factory: it has no getter (#408), and the one reader that calls users() reads the legacy ERC20SPLFactory ABI", () => {
         const hits: string[] = [];
         const walk = (dir: string) => {
