@@ -1,3 +1,14 @@
+## 2026-11-24 — `OracleSource.Atlas`
+
+Source only: nothing is deployed by this change.
+
+- `IAdapterMetadata.OracleSource` gains `Atlas` as value 2, for adapters fed by a plain-EVM source (values 0 and 1 do
+  not change). A `BatchReader` compiled before this change reverts `getFeedHealth` for the whole batch on an adapter
+  that reports value 2, because an unknown enum value is a decode failure that `try/catch` does not catch. Every chain
+  that serves such an adapter needs a `BatchReader` built from this version or later; the `BatchReader` source itself
+  is unchanged.
+- Tests: `BatchReader.getFeedHealth` over an adapter reporting `Atlas` (healthy, paused, reverting).
+
 ## 2026-11-15 — Name reader and wrapper: own-entry rule, self-transfer, cheaper reads
 
 Source only: nothing is deployed by this change. The bytecode of `ERC20SPLNamedFactory` and `SPL_ERC20_cached` changes
