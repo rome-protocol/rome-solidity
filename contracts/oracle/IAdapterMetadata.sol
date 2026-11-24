@@ -4,13 +4,16 @@ pragma solidity ^0.8.20;
 /// @title IAdapterMetadata
 /// @notice Shared metadata shape exposed by Pyth and Switchboard adapters
 ///         so consumers (portal, integrators) can describe a feed with a
-///         single on-chain call.
+///         single on-chain call. `Atlas` marks an adapter fed by a plain-EVM
+///         source (no Solana account): its `solanaAccount` carries the
+///         provider's feed id, left-aligned, and `factory` the contract that
+///         holds the price.
 interface IAdapterMetadata {
-    enum OracleSource { Pyth, Switchboard }
+    enum OracleSource { Pyth, Switchboard, Atlas }
 
     struct AdapterMetadata {
         string description;       // human-readable pair ("SOL / USD")
-        OracleSource sourceType;  // 0=Pyth, 1=Switchboard
+        OracleSource sourceType;  // 0=Pyth, 1=Switchboard, 2=Atlas
         bytes32 solanaAccount;    // Solana account pubkey this adapter reads
         uint256 maxStaleness;     // staleness threshold in seconds
         uint64 createdAt;         // unix timestamp at initialize()
