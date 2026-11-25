@@ -69,7 +69,7 @@ export interface RegistryOracleFile {
     string,
     {
       address: string;
-      source: "pyth" | "switchboard" | "cached-pyth" | "cached-feed" | "book";
+      source: "pyth" | "switchboard" | "cached-pyth" | "cached-feed" | "book" | "atlas";
       underlyingAccount?: string;
     }
   >;

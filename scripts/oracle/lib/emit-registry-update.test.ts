@@ -596,3 +596,15 @@ describe("emitRegistryUpdate — PriceBook feeds", () => {
     expect(Object.keys(oracle.feeds).some((k) => k.endsWith("-BOOK"))).toBe(false);
   });
 });
+
+describe("RegistryOracleFile feed sources", () => {
+  it("accepts the atlas source (checked by the type: a wrong source name fails tsc)", () => {
+    const file = {
+      factory: "0x0000000000000000000000000000000000000001",
+      feeds: {
+        "ETH/USD-ATLAS": { address: "0x0000000000000000000000000000000000000002", source: "atlas" },
+      },
+    } satisfies RegistryOracleFile;
+    expect(file.feeds["ETH/USD-ATLAS"].source).toBe("atlas");
+  });
+});
