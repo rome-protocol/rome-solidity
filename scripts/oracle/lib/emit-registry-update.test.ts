@@ -596,3 +596,28 @@ describe("emitRegistryUpdate — PriceBook feeds", () => {
     expect(Object.keys(oracle.feeds).some((k) => k.endsWith("-BOOK"))).toBe(false);
   });
 });
+
+describe("RegistryOracleFile feed sources", () => {
+  // Note: vitest strips `satisfies`; the type check only holds under `tsc --noEmit`.
+  it("accepts a schema-valid atlas feed and atlasBook", () => {
+    const file = {
+      factory: "0x0000000000000000000000000000000000000001",
+      atlasBook: {
+        address: "0x0000000000000000000000000000000000000003",
+        implementation: "0x0000000000000000000000000000000000000004",
+        owner: "0x0000000000000000000000000000000000000005",
+        status: "live",
+      },
+      feeds: {
+        "ETH/USD-ATLAS": {
+          address: "0x0000000000000000000000000000000000000002",
+          source: "atlas",
+          feedId: "0x0000027b",
+          maxStaleness: 60,
+          status: "live",
+        },
+      },
+    } satisfies RegistryOracleFile;
+    expect(file.feeds["ETH/USD-ATLAS"].source).toBe("atlas");
+  });
+});
