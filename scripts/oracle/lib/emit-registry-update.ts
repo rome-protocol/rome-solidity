@@ -65,12 +65,23 @@ export interface RegistryOracleFile {
     address: string;
     implementation: string;
   };
+  // Atlas book (schema: oracle.schema.json). Type only; the emitter does not generate it.
+  atlasBook?: {
+    address: string;
+    implementation: string;
+    owner: string;
+    status: "live" | "paused" | "retired";
+  };
   feeds: Record<
     string,
     {
       address: string;
       source: "pyth" | "switchboard" | "cached-pyth" | "cached-feed" | "book" | "atlas";
       underlyingAccount?: string;
+      status?: "live" | "deprecated" | "retired";
+      // Atlas feeds only: bytes4 feed id (hex string) and staleness in seconds (1..86400).
+      feedId?: string;
+      maxStaleness?: number;
     }
   >;
 }
